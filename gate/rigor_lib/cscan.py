@@ -443,13 +443,40 @@ def read_symbols(nm, path):
     return sorted(defined), sorted(weak), sorted(undefined)
 
 
+# nm classes of defined external objects in writable storage (data, bss, small data, common).
+MUTABLE_CLASSES = ("D", "B", "G", "S", "C")
+# Read-only after relocation: `const` tables that hold addresses sit here in a PIC object.
+RELRO_PREFIXES = (".data.rel.ro", ".tdata.rel.ro")
+
+
+def read_mutable(nm, path):
+    """Defined external objects in a writable section (`--format=sysv` names the section, posix does not)."""
+    done = subprocess.run([nm, "-g", "--defined-only", "--format=sysv", path], stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, universal_newlines=True)
+    if done.returncode != 0:
+        raise SystemExit("cscan: nm failed on %s: %s" % (path, done.stderr))
+    mutable, seen = set(), set()
+    for line in done.stdout.splitlines():
+        cells = [cell.strip() for cell in line.split("|")]
+        if len(cells) != 7 or cells[0] == "Name":
+            continue
+        name, kind, section = cells[0], cells[2], cells[6]
+        seen.add(name)
+        if kind in MUTABLE_CLASSES and not section.startswith(RELRO_PREFIXES):
+            mutable.add(name)
+    return sorted(mutable), seen
+
+
 def build_unit(args, name, preprocessed, obj):
     with open(preprocessed, "rb") as handle:
         text = handle.read().decode("utf-8", "replace")
     collector = Collector(args.system_root)
     collector.scan(text)
     defined, weak, undefined = read_symbols(args.nm, obj)
-    unit = {"name": name, "defined": defined, "weak": weak, "undefined": undefined}
+    mutable, seen = read_mutable(args.nm, obj)
+    if seen != set(defined):
+        raise SystemExit("cscan: nm formats disagree on %s" % obj)
+    unit = {"name": name, "defined": defined, "weak": weak, "undefined": undefined, "mutable": mutable}
     unit.update(collector.result())
     return unit
 

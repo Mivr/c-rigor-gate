@@ -8,6 +8,8 @@
     deny_exempt = ["open"]          # entries of global.deny it may use (implies allow)
     allow_builtins = ["__builtin_trap"]   # guarded builtins (semantic_table.GUARDED_BUILTINS) it may use
     third_party = ["gate//third_party/mbedtls:mbedtls"]   # gate-owned libraries it may depend on
+    level = "L3"                    # L1 is exempt from the exports check; see `exports`
+    exports = ["core_add"]          # every external symbol the module may define (T033, gate `symbols`)
 """
 
 import tomllib
@@ -18,12 +20,17 @@ from rigor_lib.errors import InternalError
 from rigor_lib.facts_data import LABEL, SYMBOL
 
 
+LEVELS = ("L1", "L2", "L3", "L4", "L5")
+
+
 @dataclass(frozen=True)
 class Module:
     allow: frozenset = frozenset()
     deny_exempt: frozenset = frozenset()
     allow_builtins: frozenset = frozenset()
     third_party: frozenset = frozenset()
+    level: str = None       # None: not declared (`rigor grade` hands this reader a copy without `level`)
+    exports: frozenset = None   # None: no `exports` key
 
 
 @dataclass(frozen=True)
@@ -48,7 +55,11 @@ def _only(where, table, allowed):
 
 def _module(label, table, deny):
     where = "module %s" % label
-    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party"))
+    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports"))
+    level = table.get("level")
+    if level is not None and level not in LEVELS:
+        raise InternalError("policy: %s level must be one of %s" % (label, ", ".join(LEVELS)))
+    exports = _names(where + " exports", table["exports"]) if "exports" in table else None
     exempt = _names(where + " deny_exempt", table.get("deny_exempt", []))
     if not exempt <= deny:
         raise InternalError("policy: %s deny_exempt names symbols that are not denied: %s"
@@ -57,7 +68,7 @@ def _module(label, table, deny):
     if not builtins <= set(semantic_table.GUARDED_BUILTINS):
         raise InternalError("policy: %s allow_builtins names unguarded builtins" % label)
     third = _names(where + " third_party", table.get("third_party", []), LABEL)
-    return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins, third)
+    return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins, third, level, exports)
 
 
 def load_policy(path):
