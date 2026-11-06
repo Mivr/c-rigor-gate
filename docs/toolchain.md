@@ -79,4 +79,4 @@ and libFuzzer's own `Done 200000 runs` line. Nothing in the report or the crash 
 none can turn a fail into a pass. Outputs are byte-identical across cold runs (the report keeps only deterministic
 lines); a warm run executes 0 actions. Self-test: `selftest/fuzz.sh`.
 
-Self-test: `selftest/toolchain.sh`.
+Self-test: `selftest/toolchain.sh`. Its remote-execution step asserts on the fresh-nonce actions only: every compile, archive, link and test run of the stamped scratch targets must be `re(...)`, and no action anywhere may be `local`. Unchanged dependencies (the fetched LLVM and sysroot, ctest) may be `cache` or `re`, because whether they appear as cache hits depends on farm and daemon history, not on the product.
