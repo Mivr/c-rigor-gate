@@ -124,8 +124,16 @@ for want in "(c_compile l.c)" "(c_compile t.c)" "(archive " "(cxx_link_executabl
   grep -qF "$want" "$out/whatran.txt" || fail "$CUR: no $want action in what-ran" "$out/whatran.txt"
 done
 grep -q '^test.run' "$out/whatran.txt" || fail "$CUR: no test.run in what-ran" "$out/whatran.txt"
-if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
-  fail "$CUR: an action did not run on RE" "$out/whatran.txt"
+# Fresh-nonce actions (the scratch targets and their test run) must have executed on RE. Dependency actions (the
+# fetched toolchain, the sysroot, ctest) are not nonce-stamped, so a cache hit on them is legitimate and depends on
+# farm and daemon history; they may be `cache` or `re`. Nothing may be `local`.
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' '
+    NF >= 3 && ($1 == "test.run" || $2 ~ /^root\/\/selftest\/scratch:/) && $3 !~ /^re\(/ { bad = 1 }
+    END { exit !bad }'; then
+  fail "$CUR: a fresh-nonce action did not run on RE" "$out/whatran.txt"
+fi
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF >= 3 && $3 !~ /^(re\(|cache)/ { bad = 1 } END { exit !bad }'; then
+  fail "$CUR: an action ran locally or on an unknown executor" "$out/whatran.txt"
 fi
 grep -q "local: 0)" "$out/$step.log" || fail "$CUR: local executions reported" "$out/$step.log"
 rm -rf "$scratch"
