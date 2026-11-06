@@ -1,0 +1,5 @@
+buck-out/
+.buckd/
+/cache/
+*.profraw
+*.profdata
