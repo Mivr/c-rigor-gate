@@ -103,6 +103,23 @@ class GitMixin:
             i += 1
         return out + argv[i:]
 
+    def git_exec_strings(self, argv, raw, depth, env):
+        """git subcommands that run a shell command for the agent (T057, R008 #11): `rebase -x/--exec CMD`,
+        `bisect run CMD ARGS`, `submodule foreach CMD`."""
+        _, sub, sub_args = cmds.git_parts(self.effective_git_argv(argv, self.cmd_env))
+        if sub == "rebase":
+            for i, arg in enumerate(sub_args):
+                if arg in ("-x", "--exec") and i + 1 < len(sub_args):
+                    self.bash(sub_args[i + 1], depth + 1, env)
+                elif arg.startswith("--exec="):
+                    self.bash(arg[len("--exec="):], depth + 1, env)
+        elif sub == "bisect" and sub_args[:1] == ["run"] and len(sub_args) > 1:
+            self.bash(" ".join(sub_args[1:]), depth + 1, env)
+        elif sub == "submodule" and sub_args[:1] == ["foreach"] and len(sub_args) > 1:
+            rest = [a for a in sub_args[1:] if a != "--recursive" and not a.startswith("-q")]
+            if rest:
+                self.bash(" ".join(rest), depth + 1, env)
+
     def git_config_code(self, argv, raw, depth, env):
         """The value of an `alias.*` (`!CMD` is shell, else git arguments), `core.pager`, `pager.*`, `core.sshCommand`
         or an editor key, from `-c` or the environment, is audited as the command it runs (T057, R008 #10)."""

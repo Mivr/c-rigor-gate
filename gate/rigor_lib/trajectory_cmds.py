@@ -8,7 +8,7 @@ from rigor_lib import trajectory_rules as rules
 from rigor_lib.trajectory_shell import UNRESOLVED
 
 KEYWORDS = ("{", "}", "!", "then", "do", "else", "if", "while", "until", "fi", "done", "elif", "for", "case",
-            "esac", "function", "select")
+            "esac", "function", "select", "coproc")
 _ASSIGN_WORD = re.compile(r"\A[A-Za-z_][A-Za-z0-9_]*=")
 _HOST_RE = re.compile(r"\A(?:[\w-]+@)?(?P<host>\[[0-9a-fA-F:]+\]|[A-Za-z0-9_.-]+)(?::\d+)?(?:[:/].*)?\Z")
 _CURL_VALUE_OPTS = ("-o", "-H", "-d", "-X", "-u", "-A", "-e", "-K", "-T", "-w", "-m", "-x", "-b", "-c", "-F",
@@ -157,6 +157,10 @@ def unwrap_once(argv):
     """(inner argv, extra rule ids) for a wrapper command (inner may be empty); (None, []) if not one."""
     name = name_of(argv[0])
     extra = []
+    if name == "busybox" and len(argv) > 1:
+        return argv[1:], []  # `busybox X ...` runs applet X (T057, R008 #11/#12)
+    if name == "flock" and any(a in ("-c", "--command") or a.startswith("--command=") for a in argv[1:]):
+        return None, []  # `flock FILE -c CMD`: a code string, audited by _command_strings, not a wrapped argv
     if name == "env":
         i = 1
         while i < len(argv):
@@ -178,6 +182,17 @@ def unwrap_once(argv):
         "xargs": ("-I", "-n", "-P", "-d", "-L", "-s", "-E", "-a", "-J"), "timeout": ("-k", "-s", "--signal",
                                                                                    "--kill-after"),
         "flock": ("-w", "-E"), "watch": ("-n", "-d"),
+        "taskset": ("-c", "--cpu-list", "-p", "--pid"), "chrt": ("-p", "--pid"),
+        "chroot": ("--userspec", "--groups"), "prlimit": (), "setpriv": (
+            "--reuid", "--regid", "--groups", "--inh-caps", "--ambient-caps", "--bounding-set", "--securebits",
+            "--pdeathsig", "--selinux-label", "--apparmor-profile"),
+        "numactl": ("-N", "-m", "-C", "-c", "-p", "--cpunodebind", "--membind", "--physcpubind", "--preferred",
+                    "--interleave"),
+        "strace": ("-o", "-e", "-p", "-s", "-a", "-E", "-O", "-u", "-S", "-P", "-b", "-I", "-D", "--output",
+                   "--trace", "--seccomp-bpf"),
+        "ltrace": ("-o", "-e", "-p", "-s", "-u", "-a", "-l", "-F"),
+        "unshare": ("--map-user", "--map-group", "--setgroups", "-S", "-G", "--wd"),
+        "nsenter": ("-t", "--target", "-S", "-G", "-C", "-W"),
     }
     if name not in table:
         return None, []
@@ -186,8 +201,11 @@ def unwrap_once(argv):
     if name in rules.SUDO_COMMANDS:
         extra.append("cmd-sudo")
     i = _skip_options(argv, 1, table[name])
-    if name in ("timeout", "flock", "watch") and i < len(argv):
-        i += 1  # duration / lock file
+    if name in ("timeout", "flock", "watch", "chrt", "chroot") and i < len(argv):
+        i += 1  # duration / lock file / scheduling priority / new root
+    if name == "taskset" and i < len(argv) and not any(
+            a in ("-c", "--cpu-list") or a.startswith("--cpu-list=") for a in argv[1:i]):
+        i += 1  # the CPU affinity mask, given positionally (not via -c)
     return argv[i:], extra
 
 
@@ -313,6 +331,99 @@ def job_run(argv):
     if i + 1 >= len(argv):
         return None
     return directory, i
+
+
+# -- command strings (T057, R008 #11) --------------------------------------------------------
+_AWK_SYSTEM_RE = re.compile(r'\bsystem\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)')
+_SED_E_RE = re.compile(r'(?:\A|[;\n])[ \t]*(?:[0-9$]+|/(?:[^/\\]|\\.)*/)?[ \t]*,?[ \t]*'
+                       r'(?:[0-9$]+|/(?:[^/\\]|\\.)*/)?[ \t]*e[ \t]+(\S[^\n]*)')
+
+
+def opt_value(args, names):
+    """The value of the first `-c`/`--command`-style option in `args` (`-cCMD`, `--command=CMD`, or the next word)."""
+    for i, arg in enumerate(args):
+        if arg in names and i + 1 < len(args):
+            return args[i + 1]
+        for name in names:
+            if name.startswith("--") and arg.startswith(name + "="):
+                return arg[len(name) + 1:]
+            if not name.startswith("--") and len(name) == 2 and arg.startswith("-") and not arg.startswith("--"):
+                if arg.startswith(name) and len(arg) > 2:
+                    return arg[2:]  # `-cCMD`
+                if arg.endswith(name[1]) and len(arg) > 2 and i + 1 < len(args):
+                    return args[i + 1]  # a cluster ending in the code letter (`-qc CMD`)
+    return None
+
+
+def awk_system_calls(argv):
+    """The shell commands of literal `system("...")` calls in an awk program (the first non-option word, or -e/-f
+    values; -f names a file the audit does not have, so it is skipped)."""
+    args = argv[1:]
+    programs, i = [], 0
+    value_opts = ("-F", "-v", "--field-separator", "--assign")
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            i += 1
+            if i < len(args):
+                programs.append(args[i])
+            break
+        if arg.startswith("-") and arg != "-":
+            if arg in ("-f", "--file", "--source", "-e"):
+                i += 2
+                continue
+            if arg in value_opts:
+                i += 2
+                continue
+            i += 1
+            continue
+        programs.append(arg)
+        break
+    out = []
+    for program in programs:
+        out.extend(_AWK_SYSTEM_RE.findall(program))
+    return out
+
+
+def sed_exec_commands(argv):
+    """The shell commands of `e command` directives in a sed script (`-e` values, or the first positional)."""
+    args = argv[1:]
+    scripts, i, explicit = [], 0, False
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-e", "--expression") and i + 1 < len(args):
+            scripts.append(args[i + 1])
+            explicit = True
+            i += 2
+            continue
+        if arg.startswith("--expression="):
+            scripts.append(arg[len("--expression="):])
+            explicit = True
+        elif arg in ("-f", "--file") and i + 1 < len(args):
+            i += 2
+            continue
+        i += 1
+    if not explicit:
+        plain = [args[i] for i in positionals(args, ("-e", "--expression", "-f", "--file"))]
+        if plain:
+            scripts.append(plain[0])
+    out = []
+    for script in scripts:
+        out.extend(m.group(1) for m in _SED_E_RE.finditer(script))
+    return out
+
+
+def parallel_commands(args):
+    """The shell commands `parallel` runs: the template before `:::`, or (no template) each argument after it."""
+    seps = (":::", "::::", ":::+", "::::+")
+    if not any(s in args for s in seps):
+        template = [a for a in args if not a.startswith("-")]
+        return [" ".join(template)] if template else []
+    cut = next(i for i, a in enumerate(args) if a in seps)
+    template = [a for a in args[:cut] if not a.startswith("-")]
+    if template:
+        return [" ".join(template)]
+    return [a for a in args[cut + 1:] if a not in seps and not a.startswith("-")]
 
 
 # -- git -------------------------------------------------------------------------------------

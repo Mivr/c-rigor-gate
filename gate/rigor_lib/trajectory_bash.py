@@ -448,6 +448,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         if item.group in flags["obfuscated"] and name in rules.INTERPRETERS + ("eval",):
             self.add("cmd-obfuscated-exec", raw, name)
         self._command_rules(argv, raw, name)
+        self._command_strings(item, argv, name, raw, depth, env)
         data_skip = self._data_indexes(argv, name, item.group in flags["sink"])
         write_idx = self._write_targets(item, argv, raw)
         if item.job_dir is not None:
@@ -464,6 +465,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self.stdin_code(item, argv, name, raw, depth, flags)
         if name == "git":
             self.git_config_code(argv, raw, depth, env)
+            self.git_exec_strings(argv, raw, depth, env)
             self.note_clone(argv, len(self.hits) == hits_before)
         self.clean_env = item.clean_env
         if not item.wrapped:
@@ -580,7 +582,35 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         for name, value in pairs:
             if _COMMAND_VAR_RE.match(name) and value.strip():
                 self.bash(value, depth + 1, env)
+            if name == "PS4" and value.strip():  # PS4 is re-expanded at use (set -x); its $(...) run (R008 #11)
+                for sub in shell.body_expansions(value)[0]:
+                    self.bash(sub, depth + 1, env)
             self.value_reads(value, raw)
+
+    # -- command strings run by wrappers and builtins (T057, R008 #11) ------------------------------
+    def _command_strings(self, item, argv, name, raw, depth, env):
+        """A command handed as a string to a wrapper or builtin runs as shell: `script -c`, `flock -c`, `su -c`,
+        `trap HANDLER`, `parallel`, awk `system("...")` and sed `e command`. (coproc is a keyword, already
+        stripped; git rebase -x / bisect run / submodule foreach are in git_exec_strings.)"""
+        args = argv[1:]
+        if item.wrapped:
+            return
+        if name in ("script", "flock", "su"):
+            code = cmds.opt_value(args, ("-c", "--command"))
+            if code is not None:
+                self.bash(code, depth + 1, env)
+        elif name == "trap" and args and args[0] not in ("-", "", "-p", "-l", "--"):
+            self.bash(args[0], depth + 1, env)
+        elif name == "parallel":
+            for code in cmds.parallel_commands(args):
+                if code.strip():
+                    self.bash(code, depth + 1, env)
+        elif name in ("awk", "gawk", "mawk", "nawk"):
+            for code in cmds.awk_system_calls(argv):
+                self.bash(code, depth + 1, env)
+        elif name in ("sed", "gsed"):
+            for code in cmds.sed_exec_commands(argv):
+                self.bash(code, depth + 1, env)
 
     def value_reads(self, value, raw):
         """Read-check a value that names paths (a `:`-separated list), without counting it as a read of a file."""

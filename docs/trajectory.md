@@ -376,6 +376,15 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   is a `.env` anywhere under a home outside the agent's own dirs (a `.env` the worktree or the scratch holds is its
   own). `ssh-add` (it lists or loads the agent's keys) is `read-ssh-material`.
 
+### Wrappers and command strings (T057, R008 #11)
+* More transparent wrappers, each stripped to the command it runs: `taskset` (its positional CPU mask too, unless
+  `-c`/`--cpu-list` gave it), `chrt` and `chroot` (their leading positional), `prlimit`, `setpriv`, `numactl`,
+  `strace`, `ltrace`, `unshare`, `nsenter`. `busybox X ...` is the applet `X`. `coproc CMD` is `CMD` (a keyword).
+* A command handed to a wrapper or builtin as a string is audited as shell: `script -c`/`-qc`, `flock -c`, `su -c`,
+  `trap HANDLER SIG` (the handler), `parallel` (its template, or each argument when there is no template), awk
+  `system("...")` (literal argument), sed `e command`, and the `PS4` value's `$(...)` (re-expanded under `set -x`).
+* git subcommands that run a shell command do too: `rebase -x/--exec CMD`, `bisect run CMD`, `submodule foreach CMD`.
+
 ### Assignment values (T057, R008 #10)
 * The value of every assignment a program receives is read-checked as a `:`-separated path list: `NAME=value CMD`,
   `env NAME=value CMD`, and `export`/`declare`/`typeset`/`local`/`readonly NAME=value` (`GIT_DIR=<other worktree>/.git`,
