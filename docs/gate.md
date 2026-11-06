@@ -113,3 +113,12 @@ Python would otherwise write `__pycache__/*.pyc` next to the sources, which dirt
 import. `-I` ignores `PYTHON*` variables, so the `-B` flag (not `PYTHONDONTWRITEBYTECODE`) is what
 works under isolated mode; the test helper also launches `rigor` with `-I -B`. Nothing here
 depends on `.gitignore`.
+
+## Running the tests
+`selftest/gate.sh` runs the unit tests through `gate/tests/run_parallel.py`: the same discovery as
+`unittest discover -s gate/tests -t gate`, but each test module runs in its own subprocess with its own
+`TMPDIR`, `--jobs` at a time (default: half the CPUs, 1 to 16; `--timeout` kills a hung module after 900 s).
+It prints one line per module, the full output of failed modules, and `Ran N tests in S s`. It exits 1 on any
+failure, import error, missing test count, or when tests run differs from tests discovered, and 2 on a runner
+error. Module durations are kept in `$TMPDIR/gate-test-durations.json` to start the longest modules first (a
+scheduling hint only). `GATE_SERIAL=1 selftest/gate.sh` runs the old single-process command.
