@@ -1,11 +1,13 @@
 """The Bash-tool analysis of `rigor trajectory`, plus the shared stateful analyzer."""
 
+import fnmatch
 import re
 
 from rigor_lib import trajectory_cmds as cmds
 from rigor_lib import trajectory_rules as rules
 from rigor_lib import trajectory_shell as shell
 from rigor_lib.trajectory_code import CodeMixin
+from rigor_lib.trajectory_flow import FlowMixin
 from rigor_lib.trajectory_paths import expand_braces, is_url
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
 
@@ -24,6 +26,18 @@ _FRAGMENTS = (
 _READERS = ("cat", "head", "tail", "less", "more", "grep", "rg", "ag", "sed", "awk", "xxd", "strings", "od",
             "base64", "cp", "ls", "find", "tar", "zip", "wc", "sort", "diff", "cmp", "file", "stat", "source", ".")
 _DATA_SKIP_OPTS = ("-m", "--message", "--author", "--date", "-S")
+_NON_PATH_OPTS = ("--pid=", "--lines=", "--bytes=", "--max-count=", "--sleep-interval=", "--max-unchanged-stats=")
+_TRIM_RE = re.compile(r"(%%|%|##|#)(.*)\Z", re.DOTALL)
+
+
+def trim_value(value, op, pattern):
+    """`${v#p}`, `${v##p}`, `${v%p}`, `${v%%p}` for a known value (shell glob patterns)."""
+    size = len(value)
+    if op in ("#", "##"):
+        cuts = range(size + 1) if op == "#" else range(size, -1, -1)
+        return next((value[i:] for i in cuts if fnmatch.fnmatchcase(value[:i], pattern)), value)
+    cuts = range(size, -1, -1) if op == "%" else range(size + 1)
+    return next((value[:i] for i in cuts if fnmatch.fnmatchcase(value[i:], pattern)), value)
 
 
 def excerpt_around(raw, token):
@@ -48,7 +62,7 @@ class Prepared:
         self.group = cmd.group
 
 
-class Analyzer(CodeMixin):
+class Analyzer(CodeMixin, FlowMixin):
     def __init__(self, policy, task):
         self.policy = policy
         self.task = task
@@ -57,6 +71,7 @@ class Analyzer(CodeMixin):
         self.created = set()
         self.read_set = set()
         self.env_now = {}
+        self.iterations = 0   # loop bodies run in this Bash call (bounded)
         self.files = {}       # normalized path -> content the agent wrote (for later execution)
 
     # -- plumbing ----------------------------------------------------------------------------
@@ -80,12 +95,17 @@ class Analyzer(CodeMixin):
         def replace(match):
             inner = match.group(1) if match.group(1) is not None else match.group(2)
             name = _NAME_RE.match(inner)
+            if name is None and inner in env and inner[0] in "0123456789@#*":
+                return env[inner]  # a positional parameter bound by the caller of a written script
             if name is None or inner.startswith("!"):
                 return UNRESOLVED
             rest = inner[name.end():]
             value = env.get(name.group(0))
             if rest == "":
                 return UNRESOLVED if value is None else value
+            trim = _TRIM_RE.match(rest)
+            if trim is not None and value is not None and UNRESOLVED not in value + trim.group(2):
+                return trim_value(value, trim.group(1), trim.group(2))
             if rest.startswith(":-"):
                 return value if value else rest[2:]
             if rest.startswith("-"):
@@ -132,12 +152,12 @@ class Analyzer(CodeMixin):
         if depth > rules.MAX_DEPTH:
             self.add("nesting-too-deep", text)
             return
+        if depth == 0:
+            self.iterations = 0
         env = dict(self.base_env() if env is None else env)
-        prepared = []
-        for cmd in shell.parse(text):
-            item = self.prepare(cmd, env, depth)
-            if item is not None:
-                prepared.append(item)
+        self.run_commands(shell.parse(text), env, depth)
+
+    def flush(self, prepared, depth, env):
         flags = self._pipeline_flags(prepared)
         for item in prepared:
             self.analyze(item, flags, depth, env)
@@ -295,7 +315,7 @@ class Analyzer(CodeMixin):
     def read_word(self, text, raw, name="", force=False):
         candidates = [text]
         eq = re.match(r"(?:-[^=\s]*|of|if|file|path)=(.*)\Z", text, re.DOTALL)
-        if eq is not None:
+        if eq is not None and not text.startswith(_NON_PATH_OPTS):
             candidates.append(eq.group(1))
         for candidate in candidates:
             for variant in expand_braces(candidate):
@@ -377,7 +397,7 @@ class Analyzer(CodeMixin):
 
     def write(self, text, op, raw):
         if UNRESOLVED in text:
-            self.add("write-unresolved", raw, text.replace(UNRESOLVED, "$("))
+            self._unresolved_write(text, raw)
             return
         normal = self.policy.normalize(text, self.cwd)
         if normal is None:
@@ -387,6 +407,22 @@ class Analyzer(CodeMixin):
             self.add("write-outside", raw, text)
             return
         self.tamper_check(normal, op, raw, text)
+
+    def _unresolved_write(self, text, raw):
+        """A write target with an unknown part. When the unknown part is one final path component, the
+        directory above it is known: outside the allowed places it is `write-outside`; in a declared
+        scratch directory nothing can matter (no protected or test files there); in the worktree a human
+        must look, because the component could be a protected or test file."""
+        shown = text.replace(UNRESOLVED, "$(")
+        cut = text.split(UNRESOLVED)[0]
+        if not cut.startswith("/") or "/" in text[len(cut):]:
+            self.add("write-unresolved", raw, shown)
+            return
+        directory = self.policy.normalize(cut[:cut.rindex("/") + 1], self.cwd)
+        if directory is None or self.policy.relative_to_worktree(directory) is not None:
+            self.add("write-unresolved", raw, shown)
+        elif not self.policy.write_ok(directory):
+            self.add("write-outside", raw, shown)
 
     def tamper_check(self, normal, op, raw, token):
         rel = self.policy.relative_to_worktree(normal)

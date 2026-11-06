@@ -14,6 +14,7 @@ UNRESOLVED = "\x02"  # a command substitution or other value the lexer cannot kn
 _REDIR_RE = re.compile(r"<<<|<<-|<<|<&|<>|<|&>>|&>|>>|>&|>\||>")
 _OPERATORS = ";&|()\n"
 _WORD_END = " \t" + _OPERATORS + "<>"
+_LEADING = ("do", "then", "else", "elif", "if", "{")  # reserved words that only start a command
 _ANSI = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f",
          "v": "\v", "\\": "\\", "'": "'", '"': '"', "?": "?"}
 
@@ -111,6 +112,32 @@ def _balanced(text, start, opener, closer):
     return len(text)
 
 
+def arith_end(text, i):
+    """Index past `$((...))` starting at text[i], or -1 when text[i:] is not an arithmetic expansion."""
+    if not text.startswith("$((", i):
+        return -1
+    end = _balanced(text, i + 2, "(", ")")
+    return end if text[end - 2:end] == "))" else -1
+
+
+def nested_subs(body):
+    """Texts of the `$(...)` and backtick substitutions written inside an arithmetic expression."""
+    found, i = [], 0
+    while i < len(body):
+        if body.startswith("$(", i):
+            end = _balanced(body, i + 2, "(", ")")
+            found.append(body[i + 2:end - 1])
+            i = end
+        elif body[i] == "`":
+            end = body.find("`", i + 1)
+            end = len(body) if end < 0 else end
+            found.append(body[i + 1:end])
+            i = end + 1
+        else:
+            i += 1
+    return found
+
+
 class Lexer:
     def __init__(self, text):
         self.text = text
@@ -141,6 +168,11 @@ class Lexer:
                 end = self._ansi_end(i + 2)
                 out.append(ansi_decode(text[i + 2:end]))
                 i, quoted = end + 1, True
+            elif char == "$" and arith_end(text, i) > 0:
+                end = arith_end(text, i)
+                subs.extend(nested_subs(text[i + 3:end - 2]))
+                out.append(UNRESOLVED)
+                i = end
             elif char == "$" and text.startswith("$(", i):
                 end = _balanced(text, i + 2, "(", ")")
                 subs.append(text[i + 2:end - 1])
@@ -190,6 +222,11 @@ class Lexer:
                 elif nxt != "\n":
                     out.append("\\" + nxt)
                 i += 2
+            elif char == "$" and arith_end(text, i) > 0:
+                end = arith_end(text, i)
+                subs.extend(nested_subs(text[i + 3:end - 2]))
+                out.append(UNRESOLVED)
+                i = end
             elif char == "$" and text.startswith("$(", i):
                 end = _balanced(text, i + 2, "(", ")")
                 subs.append(text[i + 2:end - 1])
@@ -306,6 +343,8 @@ class Lexer:
     def _add_word(self, word, raw):
         cur = self.cur
         cur.raw += " " + raw
+        if not (cur.words or cur.assigns) and not word.quoted and not word.subs and word.text in _LEADING:
+            return  # `do x=1`, `then cmd`, `{ cmd`: the reserved word is not the command
         match = None if cur.words else re.match(r"[A-Za-z_][A-Za-z0-9_]*=", raw)
         if match is not None:
             name, value = word.text.split("=", 1)
