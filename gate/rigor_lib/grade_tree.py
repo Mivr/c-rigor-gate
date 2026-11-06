@@ -112,6 +112,13 @@ def write_file(root, rel_path, data, mode):
     return jsonio.sha256_hex(data)
 
 
+def write_symlink(root, rel_path, target):
+    path = os.path.join(root, rel_path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.symlink(target, path)
+    return jsonio.sha256_hex(target)
+
+
 def copy_gate(repo, sha, tree):
     """Put the gate commit's files under tree/gate. Returns ({tree path: sha256}, .buckconfig bytes)."""
     manifest = {}
@@ -123,8 +130,11 @@ def copy_gate(repo, sha, tree):
             buckconfig = data
         if text in _GATE_SKIPPED:
             continue
+        if entry.mode == "120000":  # gate-owned symlink (e.g. CLAUDE.md); never from a product
+            manifest["gate/" + text] = write_symlink(os.path.join(tree, "gate"), text, data)
+            continue
         if entry.mode not in _FILE_MODES:
-            raise InternalError("gate commit holds a non-file entry: %s" % text)
+            raise InternalError("gate commit holds an unsupported entry: %s" % text)
         manifest["gate/" + text] = write_file(os.path.join(tree, "gate"), text, data,
                                               _FILE_MODES[entry.mode])
     if buckconfig is None:
