@@ -8,7 +8,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
-load("@gate//rules:facts.bzl", "c_facts")
+load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 
 _SEALED = [
@@ -90,20 +90,29 @@ def _check(macro, srcs, headers):
     _plain_files(macro, "srcs", srcs, ".c")
     _plain_files(macro, "headers", headers, ".h")
 
-# `<name>_facts` exists in the release mode only: the preprocessed text and the symbols of the
-# release objects (see rules/facts.bzl). `unit` is the target whose compile actions are read.
+# `<name>_facts` is built in the release mode, `<name>_facts_san` in the san mode: the preprocessed
+# text and the symbols of that mode's objects (see rules/facts.bzl). `unit` is the target whose compile
+# actions are read. `rigor facts --modes` compares the two (T023).
 _RELEASE_ONLY = ["toolchains//:release"]
+_SAN_ONLY = ["toolchains//:san"]
+
+_RELEASE_OR_SAN = select({
+    "toolchains//:release": [],
+    "toolchains//:san": [],
+    "DEFAULT": ["toolchains//:never"],
+})
 
 def _facts(name, kind, srcs, deps, unit = None):
-    c_facts(
-        name = name + "_facts",
-        unit = unit if unit else ":" + name,
-        facts_name = name,
-        kind = kind,
-        srcs = srcs,
-        facts_deps = deps,
-        target_compatible_with = _RELEASE_ONLY,
-    )
+    for suffix, mode, rule in (("_facts", _RELEASE_ONLY, c_facts), ("_facts_san", _SAN_ONLY, c_san_facts)):
+        rule(
+            name = name + suffix,
+            unit = unit if unit else ":" + name,
+            facts_name = name,
+            kind = kind,
+            srcs = srcs,
+            facts_deps = deps,
+            target_compatible_with = mode,
+        )
 
 def c_library(name, srcs = [], headers = [], deps = [], visibility = []):
     _check("c_library", srcs, headers)
@@ -134,11 +143,6 @@ def c_binary(name, srcs = [], deps = []):
     _facts(name, "c_binary", srcs, deps)
 
 # `<name>_results` is built in release and san only (cov and fuzz do not produce verdicts).
-_RELEASE_OR_SAN = select({
-    "toolchains//:release": [],
-    "toolchains//:san": [],
-    "DEFAULT": ["toolchains//:never"],
-})
 
 def c_test(name, srcs = [], deps = []):
     _check("c_test", srcs, [])
@@ -188,14 +192,14 @@ def c_fuzz(name, srcs = [], deps = []):
     )
 
     # The fuzz target itself only builds in the fuzz mode; its facts are read from a release-mode
-    # twin that compiles the same sources with the same deps and flags.
+    # (and a san-mode) twin that compiles the same sources with the same deps and flags.
     native.cxx_library(
         name = name + "__facts_unit",
         srcs = srcs,
         deps = deps,
         compiler_flags = _compile_flags(),
         link_style = "static",
-        target_compatible_with = _RELEASE_ONLY,
+        target_compatible_with = _RELEASE_OR_SAN,
     )
     _facts(name, "c_fuzz", srcs, deps, unit = ":" + name + "__facts_unit")
 
