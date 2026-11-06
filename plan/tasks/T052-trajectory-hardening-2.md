@@ -44,3 +44,15 @@ selftest/gate.sh
 ```
 Report new findings on the 14 real transcripts with your ruling for each (true / false positive), and keep false
 positives on real agent behaviour (e.g. `grep -r` inside the agent's own worktree) at zero.
+
+## Orchestrator rulings (after the first attempt)
+1. `echo $!` directly after a command the lexer put in the background, in the same call, is the agent's own pid
+   (keep `fp_kill_pid_echoed_after_background` green). Any other echo/printf/pgrep/ps-printed pid is not.
+2. A keep-run's `kept /var/tmp/rigor-grade.*` line may also be read in a later call from the keep run's own output
+   file, if no other command wrote that file in between (T022 stays at 0 blocks). Canary dirs stay same-call only.
+3. `find / ...` (T008 line 676) is a recursive reader over forbidden roots: block, a true positive; update T008's
+   expected blocks in `trajectory_real.sh` with that justification.
+4. Glob rules for `*-hidden` / `annas-mcp` / other task dirs apply only under `/var/tmp`, `/data` and `/home`;
+   `/usr/include/a*` and similar system globs stay green.
+5. The start state: `/var/tmp/cache/T052/work/` has the first attempt's baseline and runner; the uncommitted lexer
+   `background` flag in the worktree may be kept or redone.
