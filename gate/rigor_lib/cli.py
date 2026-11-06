@@ -5,12 +5,13 @@ import os
 import sys
 
 from rigor_lib.errors import InternalError
+from rigor_lib import grade
 from rigor_lib import approve, contract, jsonio, ratchet, suppressions, tests_gate, verdict
 from rigor_lib.findings import GateResult, finding
 from rigor_lib.runner import EXIT_ERROR, EXIT_FAIL, EXIT_PASS
 
 # Each module has add_parser(subparsers).
-COMMANDS = [contract, suppressions, tests_gate, ratchet, verdict, approve]
+COMMANDS = [contract, suppressions, tests_gate, ratchet, verdict, approve, grade]
 
 
 def build_parser():
