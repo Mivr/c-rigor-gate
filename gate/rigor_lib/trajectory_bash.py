@@ -97,6 +97,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self.files = {}       # normalized path -> content the agent wrote (for later execution)
         self.known_before = None  # the file the latest write touched, if its text was known just before
         self.dirty = set()    # files in `files` that were changed afterwards by something we did not model
+        self.unknown = set()  # files the transcript wrote with a text the audit does not know (T049, R008 #3)
         self.clones = {}      # local clones the agent made: dir -> origin no longer proven (see GitMixin)
         self.cwd_stack = []   # working directories to return to when a `( ... )` subshell closes
         self.own_pids = set()  # process ids the agent started (printed by tools/job run, a background command)
@@ -115,6 +116,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         if normal is not None and isinstance(content, str):
             self.files[normal] = content
             self.dirty.discard(normal)
+            self.unknown.discard(normal)
 
     def base_env(self):
         return {"HOME": self.policy.home, "PWD": self.cwd}
@@ -227,24 +229,27 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
                 state[item.group] = True
             if state.get(item.group) and self._executes_stdin(item.argv):
                 flagged[item.group] = True
-        sinks = {}
+        sinks, producer, last = {}, {}, {}
         for item in prepared:
             if item.argv and self._executes_stdin(item.argv):
                 sinks[item.group] = True
-        return {"obfuscated": flagged, "sink": sinks}
+                if item.group in last:
+                    producer[id(item)] = last[item.group]  # the stage whose output is this one's stdin (T049)
+            last[item.group] = item
+        return {"obfuscated": flagged, "sink": sinks, "producer": producer}
 
     @staticmethod
     def _executes_stdin(argv):
         name = cmds.name_of(argv[0])
         if name in ("eval", "source", "."):
             return name == "eval" and len(argv) == 1
-        if name not in rules.INTERPRETERS:
+        if name not in rules.INTERPRETERS and cmds.interpreter_kind(name) is None:
             return False
         args = argv[1:]
-        if any(a == "-c" or re.fullmatch(r"-[a-z]*c", a) for a in args):
+        if cmds.code_word(name, args)[1]:
             return False
-        plain = [args[i] for i in cmds.positionals(args)]
-        return not plain or plain == ["-"]
+        plain = [args[i] for i in cmds.positionals(args, ("-W", "-X", "-m", "-r"))]
+        return not plain or plain[0] in cmds.STDIN_PATHS  # `/dev/stdin` and the like are `-` (T049)
 
     # -- preparation -------------------------------------------------------------------------
     def prepare(self, command, env, depth):
@@ -253,6 +258,12 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         for word in self._all_words(command):
             for sub in word.subs:
                 self.bash(sub, depth + 1, env)
+        for doc in command.heredocs:
+            if not doc.quoted:  # T049 (R008 #1): the shell expands an unquoted body before anyone reads it
+                subs, names = shell.body_expansions(doc.body)
+                for sub in subs:
+                    self.bash(sub, depth + 1, env)
+                self._live_secrets(shell.Word(" ".join(names), [], False), command.raw)
         for name, word in command.assigns:
             if rules.SECRET_NAME_RE.fullmatch(name):
                 self.add("secret-env-mention", command.raw, name)
@@ -349,6 +360,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
                 self._heredocs(item, depth, flags, data_only=True)
             return
         name = cmds.name_of(argv[0])
+        if not item.wrapped:
+            self._literal_output(command, argv, name)
         if UNRESOLVED in argv[0]:
             self.add("cmd-unresolved", raw, argv[0].replace(UNRESOLVED, "$("))
         if item.group in flags["obfuscated"] and name in rules.INTERPRETERS + ("eval",):
@@ -366,11 +379,22 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self._kill_rules(argv, raw, name)
         self.clean_env = item.clean_env
         self._run_code(item, argv, name, raw, depth, env)
+        self.stdin_code(item, argv, name, raw, depth, flags)
         if name == "git":
             self.note_clone(argv, len(self.hits) == hits_before)
         self.clean_env = item.clean_env
         if not item.wrapped:
             self._heredocs(item, depth, flags, data_only=False)
+
+    def _literal_output(self, command, argv, name):
+        """`echo TEXT > f`, `printf FMT ARGS >> f` with a literal text: the content of f is known (T049)."""
+        outs = [r for r in command.redirects if r.op in (">", ">>", ">|") and r.fd in (None, "1")]
+        if name not in ("echo", "printf") or len(outs) != 1 or command.heredocs:
+            return
+        text = cmds.echo_text(argv) if name == "echo" else cmds.printf_text(argv)
+        if text is not None:
+            self.keep_text(self.expand(outs[0].target, self.env_now), "edit" if outs[0].op == ">>" else "rewrite",
+                           text)
 
     def _kill_rules(self, argv, raw, name):
         """Rule `kill-foreign`: signals by process name, or to a pid the agent did not start (see own_pids)."""
@@ -418,10 +442,12 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         skip = set()
         if name in ("echo", "printf") and not shell_sink:
             skip.update(range(1, len(argv)))
-        if name == "eval" or name in rules.INTERPRETERS or re.fullmatch(r"python[0-9.]+", name):
-            skip.update(range(1, len(argv)) if name == "eval" else
-                        [i + 1 for i, a in enumerate(argv[1:-1], start=1)
-                         if a in ("-c", "-e", "-E") or re.fullmatch(r"-[a-zA-Z]*[ce]", a)])
+        if name == "eval":
+            skip.update(range(1, len(argv)))
+        elif name in rules.INTERPRETERS or cmds.interpreter_kind(name) is not None:
+            at = cmds.code_word(name, argv[1:])[0]
+            if at is not None:
+                skip.add(at + 1)  # the inline code is audited as code, not read as a path
         if name in ("grep", "egrep", "fgrep", "rg", "ag", "ack"):
             skip.update(_grep_pattern_indexes(argv))
         if name == "git":
@@ -519,7 +545,10 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             return
         op = "edit" if redirect.op in (">>", "&>>") else "rewrite"
         self.write(target, op, command.raw)
-        if command.heredocs and cmds.name_of(command.words[0].text if command.words else "") in ("cat", "tee"):
+        if redirect.fd not in (None, "1") or redirect.op not in (">", ">>", ">|"):
+            return  # stderr only, or `&>`: what lands in the file is not (only) the text below
+        name = cmds.name_of(command.words[0].text if command.words else "")
+        if command.heredocs and name in ("cat", "tee") and known_body(command.heredocs[0]):
             self.keep_text(target, op, command.heredocs[0].body)
 
     def keep_text(self, target, op, body):
@@ -544,12 +573,28 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             return
         self.git_touch(normal)
         self.known_before = normal if normal in self.files and normal not in self.dirty else None
-        if normal in self.files and op in ("rewrite", "edit", "delete"):
-            self.dirty.add(normal)  # whatever else this was, it is not the text we remember
+        self._content_changed(normal, op)
         if not self.policy.write_ok(normal):
             self.add("write-outside", raw, text)
             return
         self.tamper_check(normal, op, raw, text)
+
+    def _content_changed(self, normal, op):
+        """What the audit knows of a file's text after a write (T049, R008 #3). A rewrite replaces it with text
+        the audit does not know (a redirect of command output, `cp`, `base64 -d >`, `tee` in a pipe, `mv`), until
+        a writer whose text is known records it right after (Write, literal `echo`/`printf >`, a quoted
+        here-document). An edit of a known file makes it `dirty` (audited as written, reviewed); a deleted file
+        is forgotten."""
+        if op == "delete":
+            self.files.pop(normal, None)
+            self.dirty.discard(normal)
+            self.unknown.discard(normal)
+        elif op == "rewrite":
+            if normal in self.files:
+                self.dirty.add(normal)
+            self.unknown.add(normal)
+        elif op == "edit" and normal in self.files:
+            self.dirty.add(normal)
 
     def _unresolved_write(self, text, raw):
         """A write target with an unknown part. When the unknown part is one final path component, the
@@ -589,6 +634,12 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             self.created.discard(normal)
         elif normal not in self.read_set:
             self.created.add(normal)
+
+
+def known_body(doc):
+    """True when the text a here-document writes is known: a quoted delimiter, or an unquoted body that
+    expands nothing."""
+    return doc.quoted or shell.body_is_literal(doc.body)
 
 
 def _grep_pattern_indexes(argv):

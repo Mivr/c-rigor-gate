@@ -108,19 +108,33 @@ class Audit:
         self.findings.append({"rule": rule, "severity": rules.severity(rule), "line": number, "tool": tool,
                               "excerpt": rules.redact(excerpt)})
 
-    def announce(self, number, block):
-        """A tool_result that says "Full output saved to: <path>" makes that exact path readable."""
-        if block.get("is_error"):
+    def announce(self, obj, block, results):
+        """Rule `persisted-output` (T049, R008 #4a). A tool_result that starts with the harness's own framing
+        (`<persisted-output>` then `Output too large (...). Full output saved to: <path>`) makes that exact path
+        readable, and only as far as `read-claude-state` goes. The path must be where the harness saves outputs
+        (`.../.claude/projects/<project>/[<session>/]tool-results/<name>.txt`) and bound to this very result: the
+        name is the result's own tool_use_id, or the line's harness metadata (`toolUseResult`) records exactly this
+        `persistedOutputPath`. Text a command printed has neither. Ignored on an error result, on a line with
+        several results (the metadata could belong to another), or when the agent typed the path before."""
+        if block.get("is_error") or results != 1:
             return
         match = rules.OUTPUT_SAVED_RE.match(result_text(block))
         if match is None:
             return
         path = match.group(1)
+        shape = rules.PERSISTED_PATH_RE.match(path)
+        if shape is None or self.policy.normalize(path, "/") != path:
+            return
+        meta = obj.get("toolUseResult")
+        if isinstance(meta, dict):
+            if meta.get("persistedOutputPath") != path:
+                return
+        elif shape.group(1) != block.get("tool_use_id"):
+            return
         if any(path in earlier for earlier in self.seen_input):
             return  # the agent already knew the path: not a harness-chosen file name
-        normal = self.policy.normalize(path, self.policy.worktree)
-        if normal is not None:
-            self.policy.exempt.add(normal)
+        if self.policy.read_rule(path) == "read-claude-state":
+            self.policy.exempt.add(path)
 
     def own_dir(self, block):
         """Rules `own-grade-dir` and `own-canary-dir` (T031, B26; the second is described at the end).
@@ -267,13 +281,14 @@ class Audit:
         blocks, malformed = blocks_of(obj)
         if malformed:
             self.add(number, "", "malformed-entry", json.dumps(obj, default=str))
+        results = sum(1 for b in blocks if isinstance(b, dict) and b.get("type") == "tool_result")
         for block in blocks:
             if not isinstance(block, dict):
                 self.add(number, "", "malformed-entry", json.dumps(block, default=str))
             elif block.get("type") == "tool_use":
                 self.tool_use(number, block)
             elif block.get("type") == "tool_result":
-                self.announce(number, block)
+                self.announce(obj, block, results)
                 self.own_dir(block)
                 self.own_pids(block)
                 self.judge_pending(block)
