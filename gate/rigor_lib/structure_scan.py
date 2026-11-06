@@ -504,11 +504,67 @@ def parse_include_list(text, files):
     return names
 
 
+_WRAPPER_LINE = re.compile(r'#[ \t]*include[ \t]*"([^"\n]+)"')
+
+
+def strip_comments(text):
+    """The text with comments removed (a comment becomes one space, as in translation phase 3)."""
+    text = text.replace("\\\n", "")
+    out, i, size = [], 0, len(text)
+    while i < size:
+        two = text[i:i + 2]
+        if two == "//":
+            end = text.find("\n", i)
+            i = size if end < 0 else end
+            out.append(" ")
+        elif two == "/*":
+            end = text.find("*/", i + 2)
+            if end < 0:
+                raise ScanError("unterminated comment")
+            i = end + 2
+            out.append(" ")
+        elif text[i] == '"':
+            end = text.find('"', i + 1)
+            end = size - 1 if end < 0 else end
+            out.append(text[i:end + 1])
+            i = end + 1
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def check_wrapper(src, include_text, seen, files):
+    """A main file the dump never names is accepted only as a wrapper: nothing but `#include "x"` lines, and the
+    dump has a location in every file they name. Anything else would be a scan that saw nothing of the source."""
+    blind = "no location of the dump names %s; the scan would be blind" % src
+    with open(src, "rb") as handle:
+        text = handle.read().decode("utf-8", "replace")
+    try:
+        lines = [ln.strip() for ln in strip_comments(text).splitlines() if ln.strip()]
+    except ScanError as exc:
+        raise ScanError("%s (%s)" % (blind, exc)) from exc
+    wanted = []
+    for line in lines:
+        match = _WRAPPER_LINE.fullmatch(line)
+        if match is None:
+            raise ScanError("%s (it is not only `#include \"...\"` lines)" % blind)
+        wanted.append(os.path.normpath(match.group(1)))
+    if not wanted:
+        raise ScanError("%s (it is empty)" % blind)
+    located = {os.path.normpath(n) for n in seen}
+    read = parse_include_list(include_text, files)
+    for name in wanted:
+        hits = [r for r in read if r == name or r.endswith("/" + name)]
+        if not any(h in located for h in hits):
+            raise ScanError("%s (the included %s produced no location)" % (blind, name))
+
+
 def unit_facts(label, src, ast, include_text, files):
     main = os.path.normpath(src)
     functions, refs, seen = analyse(ast, main, files)
     if not any(os.path.normpath(n) == main for n in seen):
-        raise ScanError("no location of the dump names %s; the scan would be blind" % src)
+        check_wrapper(src, include_text, seen, files)
     names = {main}
     names.update(parse_include_list(include_text, files))
     names.update(os.path.normpath(n) for n in seen if not n.startswith("<") and not files.is_system(n))

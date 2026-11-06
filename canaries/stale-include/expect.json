@@ -1,0 +1,12 @@
+{
+  "bypass": "stale layout include",
+  "description": "product.toml includes gone/** which matches nothing (mirrors grade.sh step stale-include).",
+  "fail": {
+    "buckfiles": [
+      "stale-include"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

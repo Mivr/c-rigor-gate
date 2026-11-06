@@ -1,0 +1,12 @@
+{
+  "bypass": "denied symbol",
+  "description": "core references kill() without ever calling it (mirrors grade.sh step kills).",
+  "fail": {
+    "symbols": [
+      "denied-symbol"
+    ],
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}

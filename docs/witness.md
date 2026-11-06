@@ -1,9 +1,9 @@
 # Witness grading
 
-> **Not wired yet.** This is the library of P002 step 1 (T036). `rigor grade` does not read a witness, a
-> role or an `impl` key yet: binding the bundle into the verdict is T037, the `witness-tests` and
-> `mutants-witness` gates are T039, and `tests-stub` with the test-author role is T041. The design is
-> `plan/P002-witness-grading.md`.
+> **Partly wired.** The library is P002 step 1 (T036). `rigor grade --witness DIR` snapshots the bundle
+> and binds it into the verdict (T037, "Binding" below), but no gate reads the bundle, a role or an
+> `impl` key yet: the `witness-tests` and `mutants-witness` gates are T039, and `tests-stub` with the
+> test-author role is T041. The design is `plan/P002-witness-grading.md`.
 
 A **witness** is an implementation of a module that the gate holds and the implementer never sees. The
 test-author grade judges the tests against it: every new test fails on the stubs, every expected test
@@ -50,6 +50,30 @@ each module in W to its `impl` globs. For each one the bundle lists, the head pa
 left out and the bundle files matching them are added; a module in W that the bundle does not list keeps
 its head files (the gate reports `witness-missing`). A path that would be both a file and a directory is
 exit 2.
+
+## Binding (T037)
+
+The bundle is bound like `policy.toml` (T021's rules: copy once, hash the copy), with no signature.
+- `rigor grade --witness DIR`: DIR is made absolute and copied once into `<work>/inputs/witness/`.
+  The copy refuses symlinks (the bundle directory itself, files, directories, `witness.toml`) and
+  special files. The copy is then loaded once with `witness_bundle.load`; that one load is both the
+  grade's `g.witness` and what `witness_sha256` is computed from (`digest`, above), so nothing is
+  hashed from one read and used from another, and the original can change afterwards without effect.
+- Any defect (missing or unreadable DIR, symlink, special file, any format defect of the loader) is
+  exit 2 before `clone`: no gate runs and no verdict is written.
+- `core.inputs.witness_sha256` is the digest, or `null` without `--witness`. The same bundle stored under
+  two paths gives the same core.
+- `rigor verify --expect-witness-sha S` rejects a verdict whose `witness_sha256` is any other value, and
+  one graded without a witness (`null`). Without the option any well-formed value, or `null`, is
+  accepted. The merge bot passes it for every decisive grade of a product with L3 modules.
+- `rigor grade` clears `<work>/tree-witness/` and `<work>/witness/` before a run (stopping the witness
+  tree's Buck2 daemon first), and stops that daemon again on exit, as it does for `<work>/tree/`. T039
+  fills them.
+- **Approvals** (owner decision 4, not yet confirmed): an equivalent mutant of the witness is approved
+  with the separate kind `witness-equivalent-mutant` (`rigor approve --kind witness-equivalent-mutant
+  --scope <mutant id> ...`), never with `equivalent-mutant`, so a witness approval cannot cover a same-id
+  mutant of the implementer's code. Nothing uses it before `mutants-witness` (T039). Prefer rewriting the
+  witness; approve only spec-required defensive code.
 
 ## Roles
 

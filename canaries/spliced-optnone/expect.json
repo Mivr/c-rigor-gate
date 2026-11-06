@@ -1,0 +1,10 @@
+{
+  "bypass": "spliced optnone attribute",
+  "description": "optnone built by token pasting plus a spliced #line (mirrors grade.sh step spliced-optnone).",
+  "fail": {
+    "semantic-suppressions": [
+      "forbidden-attribute",
+      "line-directive"
+    ]
+  }
+}

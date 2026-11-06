@@ -2,13 +2,15 @@
 
 import json
 import os
+import shutil
 import subprocess
+from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import grade, jsonio, verdict
+from rigor_lib import grade, jsonio, verdict, witness_bundle
 from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase, base_env, read_json, run_rigor
-from tests.test_verdict_inputs import Fixture, HEAD, GATE
+from tests.test_verdict_inputs import Fixture, HEAD, GATE, WITNESS_FIXTURE
 
 
 def passing_results(directory, order):
@@ -87,6 +89,23 @@ class GradeVerdict(TempDirTestCase):
                 mock.patch.object(grade, "sign_verdict") as sign:
             code = grade.run(g.args)
         return code, sign
+
+    def test_a_pass_without_a_witness_binds_null(self):
+        self.fixture.file_hashes["witness_sha256"] = None
+        self.assertEqual(grade.write_verdict(self.grading()), 0)
+        self.assertIn("witness_sha256", read_json(self.out)["core"]["inputs"])
+        self.assertIsNone(read_json(self.out)["core"]["inputs"]["witness_sha256"])
+
+    def test_the_witness_tree_daemon_is_stopped_too(self):
+        g = self.grading()
+        g.args.sign_key = None
+        g.gate_clean = True
+        with mock.patch.object(grade, "start_grading", return_value=g), \
+                mock.patch.object(grade, "run_gates", return_value=None), \
+                mock.patch.object(grade.grade_context, "kill_daemon") as kill:
+            grade.run(g.args)
+        self.assertEqual([c.args for c in kill.call_args_list],
+                         [(g.tree,), (os.path.join(g.work, "tree-witness"),)])
 
     def test_signing_only_happens_for_a_clean_gate(self):
         code, sign = self.run_grade(True)
@@ -211,6 +230,85 @@ class Verify(TempDirTestCase):
         self.make(disagree)
         self.assertRejected(self.verify(), "disagrees")
 
+    def test_expect_witness_sha_accepts_only_that_bundle(self):
+        wanted = self.fixture.inputs()["witness_sha256"]
+        self.make()
+        self.assertEqual(self.verify("--expect-witness-sha", wanted).code, 0)
+        self.assertRejected(self.verify("--expect-witness-sha", "e" * 64), "witness_sha256 is %s" % wanted)
+
+    def test_expect_witness_sha_rejects_a_grade_without_a_witness(self):
+        self.fixture.file_hashes["witness_sha256"] = None
+        self.make()
+        self.assertEqual(self.verify().code, 0)
+        self.assertRejected(self.verify("--expect-witness-sha", "e" * 64), "witness_sha256 is null")
+
+    def test_a_malformed_witness_sha_is_rejected(self):
+        def bad(core):
+            core["inputs"]["witness_sha256"] = "short"
+        self.make(bad)
+        self.assertRejected(self.verify(), "witness_sha256 is missing or malformed")
+
     def test_an_unreadable_verdict_is_an_internal_error(self):
         outcome = run_rigor(["verify", "--verdict", self.tmp / "none.json", "--allowed-signers", self.signers])
         self.assertEqual(outcome.code, 2)
+
+
+class GradeWitnessOption(TempDirTestCase):
+    """`rigor grade --witness` end to end up to `clone` (no Buck2: the product repo does not exist, so
+    `clone` is an internal error and the FAIL verdict still records the bound inputs)."""
+
+    def grade(self, *extra):
+        task = self.tmp / "task.toml"
+        task.write_text('id = "t"\nallowed = ["**"]\n')
+        self.work = self.tmp / "work"
+        self.out = self.tmp / "verdict.json"
+        return run_rigor(["grade", "--product-repo", self.tmp / "no-repo", "--base", "main", "--head", "main",
+                          "--task", task, "--product", GATE_DIR.parent / "products" / "selftest" / "product.toml",
+                          "--work", self.work, "--out", self.out, "--allow-dirty-gate", *extra])
+
+    def bundle(self):
+        target = self.tmp / "bundle"
+        shutil.copytree(WITNESS_FIXTURE, target, symlinks=True)
+        return target
+
+    def test_a_bundle_is_snapshotted_and_bound(self):
+        source = self.bundle()
+        outcome = self.grade("--witness", source)
+        self.assertExit(outcome, 2)
+        self.assertIn("clone", outcome.stderr)
+        inputs = read_json(self.out)["core"]["inputs"]
+        self.assertEqual(inputs["witness_sha256"], witness_bundle.digest(witness_bundle.load(str(source))))
+        copy = self.work / "inputs" / "witness"
+        self.assertEqual(witness_bundle.digest(witness_bundle.load(str(copy))), inputs["witness_sha256"])
+
+    def test_a_relative_bundle_path_is_made_absolute(self):
+        names = ("product_repo", "task", "product", "approvals", "witness", "sign_key", "work", "verdict_out")
+        args = SimpleNamespace(**{name: None for name in names})
+        args.witness = "bundle"
+        grade.absolute_arguments(args)
+        self.assertEqual(args.witness, os.path.abspath("bundle"))
+
+    def test_without_witness_the_input_is_null(self):
+        outcome = self.grade()
+        self.assertExit(outcome, 2)
+        self.assertIsNone(read_json(self.out)["core"]["inputs"]["witness_sha256"])
+        self.assertFalse((self.work / "inputs" / "witness").exists())
+
+    def test_a_bad_bundle_is_exit_2_before_clone(self):
+        source = self.bundle()
+        os.symlink(source / "files" / "core" / "core.c", source / "files" / "core" / "alias.c")
+        outcome = self.grade("--witness", source)
+        self.assertExit(outcome, 2)
+        self.assertIn("witness bundle: symlink", outcome.stderr)
+        self.assertFalse(self.out.exists())
+        self.assertFalse((self.work / "src").exists())
+        self.assertEqual(os.listdir(self.work / "results"), [])
+
+    def test_a_malformed_manifest_is_exit_2_before_clone(self):
+        source = self.bundle()
+        (source / "witness.toml").write_text("product = \"x\"\n")
+        outcome = self.grade("--witness", source)
+        self.assertExit(outcome, 2)
+        self.assertIn("witness.toml", outcome.stderr)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(os.listdir(self.work / "results"), [])

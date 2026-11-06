@@ -21,9 +21,9 @@ the grading driver writes it in a gate-owned package, as it does for `c_mutants`
 
 load("@prelude//cxx:cxx_toolchain_types.bzl", "CxxToolchainInfo")
 
-def _label_text(label: Label) -> str:
+def _label_text(label: Label, name: str = "") -> str:
     cell = "" if label.cell == "root" else label.cell
-    return "{}//{}:{}".format(cell, label.package, label.name)
+    return "{}//{}:{}".format(cell, label.package, name if name else label.name)
 
 def _objects(dep: Dependency) -> dict[str, Artifact]:
     subs = dep[DefaultInfo].sub_targets
@@ -60,7 +60,8 @@ def _structure_impl(ctx: AnalysisContext) -> list[Provider]:
         fail("{}: srcs {} do not match the objects the module compiles {}".format(ctx.label, wanted, sorted(objects.keys())))
     toolchain = ctx.attrs._toolchain[CxxToolchainInfo]
     prefix = _compile_prefix(ctx, ctx.attrs.headers, toolchain)
-    label = _label_text(ctx.attrs.module.label)
+    label = _label_text(ctx.attrs.module.label, ctx.attrs.facts_name)
+    package = ctx.attrs.module.label.package
     units = []
     for src in srcs:
         out = ctx.actions.declare_output("unit/{}.json".format(src.short_path))
@@ -98,7 +99,7 @@ def _structure_impl(ctx: AnalysisContext) -> list[Provider]:
     for dep in ctx.attrs.deps:
         join.add("--dep", _label_text(dep.label))
     for src in srcs:
-        join.add("--src", ctx.label.package + "/" + src.short_path)
+        join.add("--src", package + "/" + src.short_path)
     join.add(units)
     ctx.actions.run(join, category = "c_structure")
     return [DefaultInfo(default_output = result)]
@@ -107,6 +108,7 @@ c_structure_rule = rule(
     impl = _structure_impl,
     attrs = {
         "deps": attrs.list(attrs.dep(), default = []),
+        "facts_name": attrs.string(default = ""),
         "headers": attrs.list(attrs.source(), default = []),
         "kind": attrs.string(),
         "module": attrs.dep(),
@@ -118,8 +120,12 @@ c_structure_rule = rule(
     },
 )
 
-def c_structure(name, module, srcs, headers = [], deps = [], kind = "c_library"):
-    """Structure facts of `module` (a c_library, c_binary, c_test or c_fuzz target); release mode only."""
+def c_structure(name, module, srcs, headers = [], deps = [], kind = "c_library", facts_name = ""):
+    """Structure facts of `module` (a c_library, c_binary, c_test or c_fuzz target); release mode only.
+
+    `module`, `srcs` and `headers` may live in another package than the target (the grading driver's
+    generated package); `facts_name` is the name the module is known by when it is not the target's
+    (a `c_fuzz` reads a `<name>__facts_unit` library but is `<name>`)."""
     if kind not in ["c_library", "c_binary", "c_test", "c_fuzz"]:
         fail("c_structure: bad kind {!r}".format(kind))
     c_structure_rule(
@@ -129,5 +135,6 @@ def c_structure(name, module, srcs, headers = [], deps = [], kind = "c_library")
         headers = headers,
         deps = deps,
         kind = kind,
+        facts_name = facts_name,
         target_compatible_with = ["toolchains//:release"],
     )

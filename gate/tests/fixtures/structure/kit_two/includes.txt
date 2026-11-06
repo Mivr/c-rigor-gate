@@ -1,0 +1,2 @@
+. @D@/tests/a.h
+. @D@/tests/b.h

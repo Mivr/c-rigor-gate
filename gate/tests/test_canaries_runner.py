@@ -1,6 +1,9 @@
 """Tests for canaries/runner.py scheduling and the miss check (T025). The verdict logic is unchanged."""
 
 import importlib.util
+import os
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -42,6 +45,52 @@ class MissCase(unittest.TestCase):
 
     def test_all_ok_is_clean(self):
         self.assertEqual(runner.misses([outcome("a"), outcome("b")], ["a", "b"]), [])
+
+
+class LeakCase(unittest.TestCase):
+    def test_process_in_tree_is_found_and_outside_is_not(self):
+        with tempfile.TemporaryDirectory() as tree, tempfile.TemporaryDirectory() as other:
+            inside = subprocess.Popen(["sleep", "30"], cwd=os.path.join(tree))
+            outside = subprocess.Popen(["sleep", "30"], cwd=other)
+            try:
+                found = runner.find_daemons(tree)
+                self.assertEqual([pid for pid, _ in found], [inside.pid])
+                self.assertEqual(runner.find_daemons(os.path.join(tree, "nothing")), [])
+            finally:
+                inside.kill()
+                outside.kill()
+                inside.wait()
+                outside.wait()
+            self.assertEqual(runner.find_daemons(tree), [])
+
+    def test_leak_fails_the_canary_even_when_the_verdict_is_right(self):
+        with tempfile.TemporaryDirectory() as work:
+            verdict = os.path.join(work, "verdict.json")
+            with open(verdict, "w", encoding="utf-8") as handle:
+                handle.write('{"core": {"overall": "PASS", "gates": []}}')
+            expect = {"control": True}
+            clean = runner.judge(expect, 0, os.path.join(work, "grade"), verdict, work)
+            self.assertTrue(clean["ok"], clean)
+            daemon = subprocess.Popen(["sleep", "30"], cwd=work)
+            try:
+                leaked = runner.judge(expect, 0, os.path.join(work, "grade"), verdict, work)
+            finally:
+                daemon.kill()
+                daemon.wait()
+            self.assertFalse(leaked["ok"])
+            self.assertIn("still running", leaked["why"][0])
+            self.assertIn(str(daemon.pid), leaked["why"][0])
+
+    def test_leak_is_reported_without_a_verdict_too(self):
+        with tempfile.TemporaryDirectory() as work:
+            daemon = subprocess.Popen(["sleep", "30"], cwd=work)
+            try:
+                result = runner.judge({"control": True}, 1, work, os.path.join(work, "none.json"), work)
+            finally:
+                daemon.kill()
+                daemon.wait()
+            self.assertEqual(result["why"][0], "no verdict.json")
+            self.assertIn("still running", result["why"][1])
 
 
 if __name__ == "__main__":

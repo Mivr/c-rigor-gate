@@ -20,6 +20,14 @@ KIND_TEST_REMOVAL = "test-removal"
 KIND_RATCHET = "ratchet"
 KIND_EQUIVALENT_MUTANT = "equivalent-mutant"
 KINDS = (KIND_SUPPRESSION, KIND_TEST_REMOVAL, KIND_RATCHET, KIND_EQUIVALENT_MUTANT)
+
+# --- BEGIN witness-equivalent-mutant (P002 Q3, owner decision 4: NOT YET CONFIRMED) ---------------
+# An equivalent mutant of the gate-held witness (gate `mutants-witness`), kept apart from
+# `equivalent-mutant` so that an approval written for the witness can never cover a same-id mutant of
+# the implementer's code. If the owner rejects the kind, delete this block; nothing else refers to it.
+KIND_WITNESS_EQUIVALENT_MUTANT = "witness-equivalent-mutant"
+KINDS = KINDS + (KIND_WITNESS_EQUIVALENT_MUTANT,)
+# --- END witness-equivalent-mutant ------------------------------------------------------------------
 _DOCUMENT_KEYS = {"kind", "scope", "reason", "repo_sha"}
 _FULL_SHA = re.compile(r"[0-9a-f]{40}")
 _SSH_TIMEOUT_SECONDS = 60
