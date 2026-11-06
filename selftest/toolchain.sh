@@ -63,9 +63,10 @@ sums=""
 for i in 1 2 3; do
   log="$out/fuzz$i.log"
   if run "$log" test --target-platforms ${PLAT}fuzz //examples/bad/fuzzme:fuzzme; then fail "$CUR: fuzzme did not fail" "$log"; fi
-  grep -q "INFO: Seed: 1$" "$log" || fail "$CUR: seed not 1" "$log"
+  grep -q "fuzz: -seed=1 -runs=200000 verdict: fail" "$log" || fail "$CUR: seed/runs not reported" "$log"
   grep -q "AddressSanitizer: heap-buffer-overflow" "$log" || fail "$CUR: wrong crash kind" "$log"
-  grep -q "Test unit written to" "$log" || fail "$CUR: no crash artifact" "$log"
+  grep -q "reproducer: crash-" "$log" || fail "$CUR: no crash artifact named in the report" "$log"
+  grep -Eq "in LLVMFuzzerTestOneInput examples/bad/fuzzme/fuzzme\.c:[0-9]+" "$log" || fail "$CUR: crash not symbolized" "$log"
   sums="$sums $(grep -o 'crash-[0-9a-f]*' "$log" | head -1)"
 done
 [ "$(echo $sums | tr ' ' '\n' | sort -u | wc -l)" = 1 ] || fail "$CUR: crash input differs between runs:$sums"
