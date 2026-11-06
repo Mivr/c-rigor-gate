@@ -234,6 +234,18 @@ echo "  build actions executed: cold $exec_cold, warm $exec_warm"
 [ "$exec_warm" = 0 ] || fail "warm run executed $exec_warm build actions"
 exec_facts_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["symbols"]["executed_actions"])' "$work/warm.verdict.json")"
 [ "$exec_facts_warm" = 0 ] || fail "warm run executed $exec_facts_warm facts actions"
+exec_mut_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["mutants"]["executed_actions"])' "$work/warm.verdict.json")"
+[ "$exec_mut_warm" = 0 ] || fail "warm run executed $exec_mut_warm mutants actions"
+python3 -I - "$cold_verdict" <<'EOF2' || fail "cold: the mutants gate did not mutate the modules it should"
+import json, sys
+m = json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["mutants"]
+mods = m["modules"]
+for label, s in sorted(mods.items()):
+    print("  mutants %s: total %d, %s" % (label, s["total"], {k: v for k, v in s["verdicts"].items() if v}))
+assert set(mods) == {"//core:core", "//util:util"}, sorted(mods)
+assert mods["//core:core"]["total"] > 0 and mods["//core:core"]["survivors"] == [], mods["//core:core"]
+assert m["executed_actions"] > 0, m
+EOF2
 sha_cold="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_sha256"])' "$cold_verdict")"
 sha_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_sha256"])' "$work/warm.verdict.json")"
 [ "$sha_cold" = "$sha_warm" ] || fail "core_sha256 differs between two runs of the same inputs"
@@ -283,6 +295,9 @@ b = u["metadata"]["gate_metadata"]["build"]
 print("  uncached: executed %d, cached %d" % (b["executed_actions"], b["cached_actions"]))
 assert u["core"]["uncached"] is True and w["core"]["uncached"] is False
 assert b["executed_actions"] > 0 and b["cached_actions"] == 0, b
+mu = u["metadata"]["gate_metadata"]["mutants"]
+print("  uncached mutants: executed %d, cached %d" % (mu["executed_actions"], mu["cached_actions"]))
+assert mu["executed_actions"] > 0 and mu["cached_actions"] == 0, mu
 f = u["metadata"]["gate_metadata"]["symbols"]
 print("  uncached facts: executed %d, cached %d" % (f["executed_actions"], f["cached_actions"]))
 assert f["executed_actions"] > 0 and f["cached_actions"] == 0, f
@@ -302,9 +317,14 @@ run_case failing-test tests-release:test-not-pass,tests-san:test-not-pass
 run_case removed-test tests-release:missing-test,tests-san:missing-test
 run_case deleted-target tests-release:missing-test,tests-san:missing-test,symbols:policy-module-without-facts
 run_case heap-overflow tests-san:test-not-pass
-run_case kills symbols:denied-symbol
-run_case spliced-optnone semantic-suppressions:forbidden-attribute,semantic-suppressions:line-directive
+run_case kills symbols:denied-symbol,mutants:survived-mutant   # (the untested core_stop is a survivor too)
+run_case spliced-optnone semantic-suppressions:forbidden-attribute,semantic-suppressions:line-directive,mutants:survived-mutant
 run_case raw-rule buckfiles:bad-call
+# Mutation testing (T008): each of these must be caught by `mutants` alone (or with the gate named beside it).
+run_case weak-test mutants:survived-mutant
+run_case hollow-module mutants:no-mutants,mutants:unmutated-function
+run_case unviable-shape mutants:unviable-ratio
+run_case new-module symbols:module-not-in-policy,mutants:level-missing
 
 # 3. an internal error (unreadable contract) is exit 2 and a FAIL verdict
 step=$((step + 1))
