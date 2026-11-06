@@ -4,11 +4,12 @@ import argparse
 import os
 import sys
 
-from rigor_lib import approve, contract, jsonio, ratchet, suppressions, tests_gate
+from rigor_lib import approve, contract, jsonio, ratchet, suppressions, tests_gate, verdict
 from rigor_lib.findings import GateResult, finding
 from rigor_lib.runner import EXIT_ERROR
 
-COMMANDS = [contract, suppressions, tests_gate, ratchet, approve]  # each module has add_parser(subparsers)
+# Each module has add_parser(subparsers).
+COMMANDS = [contract, suppressions, tests_gate, ratchet, verdict, approve]
 
 
 def build_parser():
