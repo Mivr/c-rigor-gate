@@ -87,6 +87,44 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 | `module-not-in-policy` / `policy-module-without-facts` / `trusted-module-without-facts` | facts and policy disagree |
 | `missing-dep-facts` | a declared dep has no facts file |
 
+## Modes: `<name>_facts_san` and `rigor facts --modes` (T023)
+The semantic scan reads the **release** compile, but the `san` tests run the `san` compile. Code that exists in
+one of them only (`#if __has_feature(address_sanitizer)`, `__has_feature(undefined_behavior_sanitizer)`, a macro
+from a product header that tests either) is invisible to a release-only scan. So every `c_library`, `c_binary`,
+`c_test` and `c_fuzz` also has `<name>_facts_san` (`target_compatible_with = toolchains//:san`): the same rule,
+the same scanner, the compile command of the `san` build, cached like the release facts. A `c_fuzz` reads a
+`<name>__facts_unit` twin that now builds in release and san. Both `_facts` and `_facts_san` have a `[calls]`
+sub-target, `calls.json`: the functions the preprocessed text calls, per unit (`gate/rigor_lib/facts_modes.py scan`;
+an identifier followed by `(` in product text, keywords excluded; a declaration counts, so a function that exists
+in one mode only is found).
+
+`rigor facts --modes RELEASE_DIR SAN_DIR [--out F]` (gate `mode-divergence`). Each directory holds, per target,
+`<name>.json` (the facts file) and `<name>.calls.json`. For every unit, each semantic item present in one
+mode and not in the other is a finding `mode-divergent-code` with `target`, `unit`, `only_in` (`release`|`san`),
+`item_kind` (`pragma`, `attribute`, `line-directive`, `identifier` (asm, builtins, `#define`/`#undef` of reserved
+names, denied identifiers charged through toolchain code), `call`), `item`, `file`, `line`. The line is part of the
+item. Symbol facts (`defined`/`weak`/`undefined`) are never compared: the sanitizer runtime legitimately changes them.
+Comments do not survive preprocessing in either mode, so they cannot differ.
+
+**The legitimate difference, and why there is no knob.** The gate's own sealed flags differ between the modes
+(`-O1 -fsanitize=...` against `-O2`), and so do the macros they define and what toolchain headers do with them.
+All of that is `<built-in>`, `<command line>` or text under the toolchain's header roots, which the scanner never
+treats as product text. Anything the product itself writes (in a `.c`, in its own header, through its own macro) that
+differs is a finding, at every level; there is no policy entry that allows it. A sanitizer-conditional product line is
+the way R001 R5 hid things, and a production build has no use for one.
+
+Fail closed (exit 2, never a pass): a directory that is empty, missing or holds anything but regular `*.json`; a facts
+file or calls file that is malformed or has another schema; a facts file without its `.calls.json` (or the reverse); a
+calls file whose label differs from its facts; a target or a unit in one mode only (a module with no `san` twin).
+Gate-owned `c_third_party` facts are skipped in both directories.
+
+What this toolchain does and does not make differ (measured): `__has_feature(address_sanitizer)` and
+`__has_feature(undefined_behavior_sanitizer)` differ (found). `__SANITIZE_ADDRESS__` is a GCC macro that the pinned
+clang 19 does not define under `-fsanitize=address`, so code under it is dead in both modes (not a divergence).
+`NDEBUG` is defined in neither mode and both modes optimise (`__OPTIMIZE__` is defined at `-O1` and `-O2`), so
+code under `#ifndef NDEBUG` or `#ifdef __OPTIMIZE__` is the same text in both (and visible to the release scan).
+Wiring into `rigor grade` is a later task.
+
 ## 3. `rigor buckfiles --root DIR [--out F]` (gate `buckfiles`)
 Each `BUCK` is parsed (never executed) with `ast`. Allowed: `load("@gate//rules:c.bzl", ...)` naming only
 `c_library`, `c_binary`, `c_test`, `c_fuzz`, and top-level calls to those with keyword arguments

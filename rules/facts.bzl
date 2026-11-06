@@ -1,6 +1,8 @@
 """`<name>_facts`: what the compiler and the linker actually saw, as one cacheable JSON file.
 
-Built in the release mode only. For every source of the target the prelude already produces, with
+`<name>_facts` is built in the release mode, `<name>_facts_san` (same rule, same scanner) in the `san`
+mode (T023). Each also carries the called-function set of the preprocessed text as `[calls]`
+(`gate/rigor_lib/facts_modes.py`); `rigor facts --modes` compares the two modes. For every source of the target the prelude already produces, with
 the very same compile command, the `clang -E` output (`[objects][<unit>][preprocessed]`) and the
 release object. A gate-owned Python script (`gate/rigor_lib/cscan.py`) scans the former and lists
 the symbols of the latter with the pinned `llvm-nm`. The file is data; `rigor facts` decides.
@@ -48,7 +50,28 @@ def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
             unit.default_outputs[0],
         )
     ctx.actions.run(cmd, category = "c_facts")
-    return [DefaultInfo(default_output = facts)]
+
+    # The called-function set per unit, from the same preprocessed text (for the mode comparison).
+    calls = ctx.actions.declare_output("calls.json")
+    calls_cmd = cmd_args(
+        "/usr/bin/env",
+        "python3",
+        "-I",
+        "-B",
+        ctx.attrs._modes_scanner,
+        "scan",
+        "--label",
+        _label_text(ctx.label, ctx.attrs.facts_name),
+        "--cscan",
+        ctx.attrs._scanner,
+        ctx.attrs._roots[RunInfo],
+        "--out",
+        calls.as_output(),
+    )
+    for name in sorted(objects.keys()):
+        calls_cmd.add("--unit", name, objects[name][DefaultInfo].sub_targets["preprocessed"][DefaultInfo].default_outputs[0])
+    ctx.actions.run(calls_cmd, category = "c_calls")
+    return [DefaultInfo(default_output = facts, sub_targets = {"calls": [DefaultInfo(default_output = calls)]})]
 
 c_facts = rule(
     impl = _facts_impl,
@@ -60,6 +83,7 @@ c_facts = rule(
         "unit": attrs.dep(),
         "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
         "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
+        "_modes_scanner": attrs.source(default = "gate//gate/rigor_lib:facts_modes.py"),
         "_scanner": attrs.source(default = "gate//gate/rigor_lib:cscan.py"),
     },
 )
