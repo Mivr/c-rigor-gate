@@ -27,6 +27,11 @@ _ALIAS_RE = re.compile(r"`(\w+)` was read as `(\w+)`")
 _ALIAS_TARGETS = {"file_path", "notebook_path", "content", "old_string", "new_string", "new_source"}
 _KEEP_RUN_RE = re.compile(r"(?<![\w-])RIGOR_GRADE_KEEP=1(?![\w-])[^\n]*(?<![\w./-])selftest/grade\.sh(?![\w.-])")
 _KEPT_RE = re.compile(r"^kept (/var/tmp/rigor-grade\.[A-Za-z0-9]{6})$", re.M)
+# the canary runner's own last line (canaries/runner.py): `SUMMARY: N canaries (...), ..., wall Ns, jobs N, scratch DIR`
+_CANARY_KEEP_RE = re.compile(r"(?<![\w./-])selftest/canaries\.sh(?![\w.-])[^\n;&|]*\s--keep(?![\w-])")
+_CANARY_DIR_RE = re.compile(
+    r"^SUMMARY: \d+ canaries \([^\n()]*\), [^\n]*, wall \d+s, jobs \d+, scratch (/var/tmp/rigor-canaries\.[a-z0-9_]{8})$",
+    re.M)
 
 
 # -- transcript parsing --------------------------------------------------------------------------
@@ -114,15 +119,22 @@ class Audit:
             self.policy.exempt.add(normal)
 
     def own_dir(self, block):
-        """Rule `own-grade-dir`: the output of a Bash call says `kept /var/tmp/rigor-grade.XXXXXX`, and the agent
+        """Rules `own-grade-dir` and `own-canary-dir` (T031, B26; the second is described at the end).
+        Rule `own-grade-dir`: the output of a Bash call says `kept /var/tmp/rigor-grade.XXXXXX`, and the agent
         itself ran `selftest/grade.sh` with `RIGOR_GRADE_KEEP=1` earlier. That scratch dir is its own to remove.
         Only a line of exactly that shape counts, only for a directory directly under /var/tmp, and never one
         the agent had already typed (it must be the script that chose the name), so `ls -d` of other runs,
-        or an `echo` of a name, proves nothing."""
+        or an `echo` of a name, proves nothing.
+        `own-canary-dir`: the same conditions, but the runner's `SUMMARY: ..., scratch /var/tmp/rigor-canaries.XXXXXXXX`
+        line must be in the result of the very Bash call that ran `selftest/canaries.sh ... --keep`."""
         command = self.commands.get(block.get("tool_use_id"))
-        if command is None or not self.keep_run or block.get("is_error"):
+        if command is None or block.get("is_error"):
             return
-        for path in _KEPT_RE.findall(result_text(block)):
+        text = result_text(block)
+        found = _KEPT_RE.findall(text) if self.keep_run else []
+        if _CANARY_KEEP_RE.search(command):
+            found += _CANARY_DIR_RE.findall(text)  # rule `own-canary-dir`: that same call ran the runner with --keep
+        for path in found:
             if path not in command and not any(path in earlier for earlier in self.seen_input):
                 self.policy.made.append(path)
 
