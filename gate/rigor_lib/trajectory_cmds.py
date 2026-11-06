@@ -355,38 +355,45 @@ def opt_value(args, names):
     return None
 
 
-def awk_system_calls(argv):
-    """The shell commands of literal `system("...")` calls in an awk program (the first non-option word, or -e/-f
-    values; -f names a file the audit does not have, so it is skipped)."""
+def awk_programs(argv):
+    """The program texts of an awk command: the first non-option word, or the `-e`/`--source` values (gawk). `-f`
+    names a file the audit does not have, so it is skipped."""
     args = argv[1:]
-    programs, i = [], 0
+    programs, i, explicit = [], 0, False
     value_opts = ("-F", "-v", "--field-separator", "--assign")
     while i < len(args):
         arg = args[i]
         if arg == "--":
             i += 1
-            if i < len(args):
+            if i < len(args) and not explicit:
                 programs.append(args[i])
             break
         if arg.startswith("-") and arg != "-":
-            if arg in ("-f", "--file", "--source", "-e"):
-                i += 2
-                continue
-            if arg in value_opts:
+            if arg in ("--source", "-e") and i + 1 < len(args):
+                programs.append(args[i + 1])
+                explicit = True
+            if arg in ("-f", "--file", "--source", "-e") or arg in value_opts:
                 i += 2
                 continue
             i += 1
             continue
-        programs.append(arg)
+        if not explicit:
+            programs.append(arg)
         break
+    return programs
+
+
+def awk_system_calls(argv):
+    """The shell commands of literal `system("...")` calls in an awk program (see awk_programs)."""
     out = []
-    for program in programs:
+    for program in awk_programs(argv):
         out.extend(_AWK_SYSTEM_RE.findall(program))
     return out
 
 
-def sed_exec_commands(argv):
-    """The shell commands of `e command` directives in a sed script (`-e` values, or the first positional)."""
+def sed_scripts(argv):
+    """The script texts of a sed command: the `-e`/`--expression` values, else the first positional (`-f` names a
+    file the audit does not have)."""
     args = argv[1:]
     scripts, i, explicit = [], 0, False
     while i < len(args):
@@ -407,8 +414,33 @@ def sed_exec_commands(argv):
         plain = [args[i] for i in positionals(args, ("-e", "--expression", "-f", "--file"))]
         if plain:
             scripts.append(plain[0])
+    return scripts
+
+
+def _sed_addr(group):
+    """A sed address: a line number (`3`, `$`, `0~4`), `/regex/` or `\\cREGEXc` (its delimiter group `group`)."""
+    return (r'(?:[0-9$]+(?:~[0-9]+)?|/(?:[^/\\\n]|\\.)*/[IM]*|\\(?P<%s>.)(?:(?!(?P=%s))[^\\\n]|\\.)*(?P=%s)[IM]*)'
+            % (group, group, group))
+
+
+_SED_FILE_RE = re.compile(r'(?:\A|[;\n{}])[ \t]*(?:' + _sed_addr("d1") + r'[ \t]*(?:,[ \t]*(?:' + _sed_addr("d2") +
+                          r'|[+~][0-9]+))?)?[ \t]*!?[ \t]*(?P<cmd>[rRwW])[ \t]*(?P<file>[^\s;][^\n]*)')
+
+
+def sed_file_commands(argv):
+    """[(letter, file)] of the `r`/`R` (read) and `w`/`W` (write) commands of a sed script (T062, R008 #19); the file
+    name runs to the end of the line, as in GNU sed."""
+    found = []
+    for script in sed_scripts(argv):
+        for match in _SED_FILE_RE.finditer(script):
+            found.append((match.group("cmd"), match.group("file").rstrip()))
+    return found
+
+
+def sed_exec_commands(argv):
+    """The shell commands of `e command` directives in a sed script (see sed_scripts)."""
     out = []
-    for script in scripts:
+    for script in sed_scripts(argv):
         out.extend(m.group(1) for m in _SED_E_RE.finditer(script))
     return out
 

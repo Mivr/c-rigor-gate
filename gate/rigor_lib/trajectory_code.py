@@ -35,7 +35,11 @@ def _syntax_check_only(args):
 
 
 _ENV_WHOLE_RE = re.compile(r"\bos\.environ\b(?!\s*\[|\s*\.\s*(?:get|setdefault|pop)\b)|"
-                           r"\bprocess\.env\b(?!\s*[.\[])|\bENV\.(?:to_h|each|keys|to_a)\b|\bgetenv\(\s*\)")
+                           r"\bprocess\.env\b(?!\s*[.\[])|\bENV\.(?:to_h|each|keys|to_a)\b|\bgetenv\(\s*\)|"
+                           r"%ENV\b")  # T062 (R008 #19): Perl's whole hash (`keys %ENV`), not one entry (`$ENV{X}`)
+# Ruby's ENV object itself (`p ENV`, `puts ENV.inspect`), not a lookup of one entry (T062, R008 #19)
+_RUBY_ENV_RE = re.compile(r"(?<![\w$@:.])ENV\b(?!\s*\[|\s*\.\s*(?:fetch|key\?|has_key\?|include\?|member\?|delete|"
+                          r"store|assoc)(?!\w))")
 
 _EXEC_DECODE_RE = re.compile(r"\b(?:exec|eval)\s*\(.{0,160}?(?:b64decode|fromhex|unhexlify|decode\(|atob|chr\()", re.DOTALL)
 
@@ -141,7 +145,7 @@ class CodeMixin:
             return
         at, flagged = cmds.code_word(name, args)  # T049: the interpreter's own code flags (R008 #2)
         if at is not None:
-            self.code(cmds.attached_code(name, args[at]), is_shell, raw, depth, env)
+            self.code(cmds.attached_code(name, args[at]), is_shell, raw, depth, env, name)
             return
         if flagged:
             return
@@ -180,7 +184,8 @@ class CodeMixin:
             env["@"] = env["*"] = " ".join(args)
             is_shell = interpreter in rules.SHELLS or interpreter == "sh" or (
                 interpreter == "exec" and _shebang_is_shell(content))
-            self.code(content, is_shell, raw, depth, env)
+            lang = _shebang_name(content) if interpreter == "exec" else interpreter
+            self.code(content, is_shell, raw, depth, env, lang)
 
     def _is_scratch_script(self, normal, interpreter, path_text):
         """A script in a declared scratch directory (at any depth, T049) that this transcript never wrote.
@@ -222,7 +227,7 @@ class CodeMixin:
                 if UNRESOLVED in text:
                     self.add("cmd-obfuscated-exec", raw, "<<<")
                 else:
-                    self.code(text + "\n", is_shell, raw, depth, None)
+                    self.code(text + "\n", is_shell, raw, depth, None, name)
             elif redirect.op == "<":
                 found = True
                 self._executed_file(self.expand(redirect.target, self.env_now), name, raw, depth)
@@ -237,7 +242,7 @@ class CodeMixin:
             if text is None:
                 self.add("cmd-obfuscated-exec", raw, pname)
             else:
-                self.code(text, is_shell, raw, depth, None)
+                self.code(text, is_shell, raw, depth, None, name)
             return
         if pname == "cat":
             files = [a for a in (argv[1 + i] for i in cmds.positionals(argv[1:])) if a != "-"]
@@ -248,7 +253,7 @@ class CodeMixin:
             if producer.cmd.heredocs:
                 doc = producer.cmd.heredocs[0]
                 if doc.quoted or shell.body_is_literal(doc.body):
-                    self.code(doc.body, is_shell, raw, depth, None)
+                    self.code(doc.body, is_shell, raw, depth, None, name)
                 else:
                     self.add("cmd-obfuscated-exec", raw, "<<" + doc.delimiter)
                 return
@@ -272,20 +277,22 @@ class CodeMixin:
                 i = end
             i += 1
 
-    def code(self, text, is_shell, raw, depth, env):
-        """Analyze text handed to an interpreter."""
+    def code(self, text, is_shell, raw, depth, env, lang=None):
+        """Analyze text handed to an interpreter (`lang`: its command name, when known)."""
         if is_shell:
             self.bash(text, depth + 1, env)
         else:
-            self.scan_code(text, raw)
+            self.scan_code(text, raw, lang)
 
-    def scan_code(self, text, raw):
+    def scan_code(self, text, raw, lang=None):
         for literal in path_literals(text):
             self._scan_literal(literal, raw)
         for path, op in write_literals(text):  # T061 (R008 #16): a literal the code writes or deletes
             if "\n" not in path and path.strip():
                 self.write(path, op, raw)
         match = None if self.clean_env else whole_environment(text)  # `env -i`: nothing inherited to dump
+        if match is None and not self.clean_env and cmds.interpreter_kind(lang or "") == "ruby":
+            match = _RUBY_ENV_RE.search(text)
         if match is not None:
             self.add("cmd-env-dump", raw, match.group(0))
         match = _EXEC_DECODE_RE.search(text)
@@ -317,7 +324,7 @@ class CodeMixin:
         # a here-document fed through a pipe (`cat <<EOF | sh`) is audited by stdin_code, in the reader's language
         for doc in command.heredocs:
             if is_code:
-                self.code(doc.body, name in rules.SHELLS, command.raw, depth, None)
+                self.code(doc.body, name in rules.SHELLS, command.raw, depth, None, name)
             else:
                 for secret in rules.SECRET_NAME_RE.finditer(doc.body):
                     self.add("secret-env-in-file", command.raw, secret.group(0))
@@ -326,17 +333,21 @@ class CodeMixin:
                         self.keep_text(item.argv[index], op, doc.body)
 
 
-def _shebang_is_shell(content):
-    """A file run directly is shell code unless its `#!` line names another interpreter (`python3`,
-    `/usr/bin/env -S node`, ...)."""
+def _shebang_name(content):
+    """The interpreter a file's `#!` line names (`python3`, `/usr/bin/env -S node`, ...); None without one."""
     first = content.split("\n", 1)[0]
     if not first.startswith("#!"):
-        return True
+        return None
     words = first[2:].split()
     while words and (posixpath.basename(words[0]) == "env" or words[0].startswith("-")):
         words = words[1:]
-    name = posixpath.basename(words[0]) if words else ""
-    return cmds.interpreter_kind(name) in (None, "shell")
+    return posixpath.basename(words[0]) if words else ""
+
+
+def _shebang_is_shell(content):
+    """A file run directly is shell code unless its `#!` line names another interpreter."""
+    name = _shebang_name(content)
+    return name is None or cmds.interpreter_kind(name) in (None, "shell")
 
 
 def _quote(word):

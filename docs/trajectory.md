@@ -506,6 +506,21 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   relative to the working directory. The source is read-checked as resolved (a link to `/var/tmp/cache/T042` is
   `read-other-cache`), without counting as a read of a file.
 
+### Program text in awk, sed, perl, ruby and node (T062, R008 #19)
+* An awk or sed program (awk's first plain word or `-e`/`--source` values, sed's `-e`/`--expression` values or first
+  plain word; `-f` files are not known) is code, whether or not it looks like code: the forbidden fragments are
+  searched in its whole text, and so are absolute paths into another task's cache (`/var/tmp/cache/T042/...`) or
+  another worktree (`.../wt/<repo>/T042/...`), judged by the read rules (the agent's own dirs are fine). awk's
+  `getline < "/var/tmp/cache/T042/out.log"` is `read-other-cache`. The same path patterns apply wherever the fragments
+  are searched (code-like words, inline-code literals). A path in a sed `s` pattern counts too (fail closed); a
+  `#`, `:`, `=`, `@`, `!`, `%` or `^` ends a path piece, so `s#<own worktree>#/work#g` stays green.
+* sed's `r`/`R FILE` reads FILE (attached `1r/path` too, relative to the working directory) and `w`/`W FILE` writes it
+  (`w /dev/stdout` is fine); the file name runs to the end of the line, as in GNU sed. Limit: the `w` flag of an `s`
+  command is not modelled.
+* The whole environment: Perl's `%ENV` (`keys %ENV`; `$ENV{HOME}` is one entry), Ruby's bare `ENV` (`p ENV`; `ENV[...]`,
+  `ENV.fetch`, `ENV.key?` are lookups; only in code run by `ruby`), awk's `ENVIRON` without a subscript
+  (`for (k in ENVIRON)`; `ENVIRON["HOME"]` is one entry) and node's `-p`/`--print process.env` are `cmd-env-dump`.
+
 ## Limits (be honest about them)
 * The lexer is not a shell: functions, aliases, `source`d files the agent did not write, arithmetic, `printf '\057'`
   style computed paths and code inside languages other than shell are not interpreted. Computed command names and

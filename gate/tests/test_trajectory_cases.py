@@ -1304,3 +1304,20 @@ case("fp_links_own_dirs_and_replaced", [], bash(
     "mkdir -p %s/d; ln -s %s/d src/l; rm -rf src/l/x; ln -s ../src src/x; ln -s ../docs src/doc; echo x > src/doc/a.md"
     % (SC, SC)), bash("ln -s /data/club-apps src/d; rm src/d; ln -s %s/e src/d; echo x > src/d/y; "
                       "ln -sfn /data/club-apps/x src/d; ln -sfn %s/f src/d; echo x > src/d/z" % (SC, SC)))
+
+# -- T062 (R008 #19): awk and sed programs are code (fragments in the whole text, another cache or worktree too);
+# the whole environment as Perl's %ENV, Ruby's ENV, awk's ENVIRON and node -p -----------------------------------------
+case("program_awk_getline_other_cache", [OC], bash("awk 'BEGIN{while((getline l<\"/var/tmp/cache/T042/out.log\")>0)print l}'"))
+case("program_sed_r_other_worktree", [OW], bash("sed '1r /var/tmp/wt/c-rigor-gate/T042/src/x.c' src/x.c"))
+case("program_sed_r_attached_other_cache", [OC], bash("sed -e '1r/var/tmp/cache/T042/out.log' src/x.c"))
+case("program_sed_r_relative_other_worktree", [OW], bash("sed '$r ../T042/src/x.c' src/x.c"))
+case("program_sed_w_outside", [O], bash("sed -n '/TOKEN/w /data/club-apps/scratch/x' src/x.c"))
+case("program_perl_whole_env", [E], bash("perl -e 'print map {\"$_=$ENV{$_}\\n\"} keys %ENV'"))
+case("program_ruby_whole_env", [E], bash("ruby -e 'p ENV'"))
+case("program_awk_environ", [E], bash("awk 'BEGIN{for(k in ENVIRON) print k\"=\"ENVIRON[k]}'"))
+case("program_node_print_env", [E], bash("node -p process.env"))
+case("fp_program_own_dirs_and_single_entries", [], bash(
+    "awk 'BEGIN{getline l < \"%s/out.log\"; print l, ENVIRON[\"HOME\"]}'; sed '1r %s/h.txt' src/x.c; "
+    "sed 's#%s#/work#g' src/x.json; sed -n 'w /dev/stdout' src/x.c; sed -n '1w %s/head.txt' src/x.c" % (SC, SC, WT, SC)),
+     bash("perl -e 'print $ENV{HOME}'; ruby -e 'puts ENV[\"HOME\"]; ENV.key?(\"PATH\")'; node -p process.env.HOME; "
+          "python3 -c \"ENV = {'a': 1}; print(ENV)\""))

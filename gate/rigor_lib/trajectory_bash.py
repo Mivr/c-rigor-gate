@@ -28,6 +28,16 @@ _FRAGMENTS = (
     (re.compile(r"(?:^|[/\s'\"=])[\w.-]+-hidden(?:\.git)?(?![\w.-])"), "read-hidden-repo"),
     (re.compile(r"/annas-mcp(?![\w-])"), "read-clean-room"),
 )
+# T062 (R008 #19): absolute paths into a cache or a worktree dir, inside program text; read_rule() decides (own is fine)
+_SEG = r"[^\s/'\"<>(){}\[\];|&,`$\\#:=@!%^]+"  # also a sed `s` or awk delimiter
+_PATH_FRAGMENTS = (
+    re.compile(r"(?<![\w.~-])" + re.escape(rules.CACHE_ROOT.rstrip("/")) + r"/" + _SEG + r"(?:/" + _SEG + r")*"),
+    re.compile(r"(?<![\w.~-])/(?:" + _SEG + r"/)*?wt/" + _SEG + r"/" + _SEG + r"(?:/" + _SEG + r")*"),
+)
+_PATH_FRAGMENT_RULES = ("read-other-cache", "read-other-worktree")
+_AWK_NAMES = ("awk", "gawk", "mawk", "nawk", "busybox-awk")
+_SED_NAMES = ("sed", "gsed")
+_AWK_ENVIRON_RE = re.compile(r"\bENVIRON\b(?!\s*\[)")  # the whole array (`for (k in ENVIRON)`), not one entry
 _READERS = ("cat", "head", "tail", "less", "more", "grep", "rg", "ag", "sed", "awk", "xxd", "strings", "od",
             "base64", "cp", "ls", "find", "tar", "zip", "wc", "sort", "diff", "cmp", "file", "stat", "source", ".")
 _DATA_SKIP_OPTS = ("-m", "--message", "--author", "--date", "-S")
@@ -468,6 +478,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
                 self.add("secret-env-mention", raw, match.group(0))
         self._kill_rules(argv, raw, name)
         self.clean_env = item.clean_env
+        self._program_texts(argv, name, raw)
         self._run_code(item, argv, name, raw, depth, env)
         self.stdin_code(item, argv, name, raw, depth, flags)
         if name == "git":
@@ -646,12 +657,29 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             for code in cmds.parallel_commands(args):
                 if code.strip():
                     self.bash(code, depth + 1, env)
-        elif name in ("awk", "gawk", "mawk", "nawk"):
+        elif name in _AWK_NAMES:
             for code in cmds.awk_system_calls(argv):
                 self.bash(code, depth + 1, env)
-        elif name in ("sed", "gsed"):
+        elif name in _SED_NAMES:
             for code in cmds.sed_exec_commands(argv):
                 self.bash(code, depth + 1, env)
+
+    def _program_texts(self, argv, name, raw):
+        """An awk or sed program is code (T062, R008 #19): the forbidden fragments are searched in its whole text
+        (`getline < "FILE"`), whether or not it looks like code; sed's `r`/`R FILE` reads FILE and `w`/`W FILE`
+        writes it; and awk's `ENVIRON` without a subscript (`for (k in ENVIRON)`) is the whole environment."""
+        programs = cmds.awk_programs(argv) if name in _AWK_NAMES else (
+            cmds.sed_scripts(argv) if name in _SED_NAMES else [])
+        for letter, path_text in cmds.sed_file_commands(argv) if name in _SED_NAMES else ():
+            if letter in "rR":
+                self.read_word(path_text, raw, name, force=True)
+            else:  # `w FILE` writes it, even under -n
+                self.write(path_text, "rewrite", raw)
+        for program in programs:
+            self.scan_fragments(program, raw)
+            match = _AWK_ENVIRON_RE.search(program) if name in _AWK_NAMES and not self.clean_env else None
+            if match is not None:
+                self.add("cmd-env-dump", raw, match.group(0))
 
     def value_reads(self, value, raw):
         """Read-check a value that names paths (a `:`-separated list), without counting it as a read of a file."""
@@ -815,6 +843,13 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             match = pattern.search(text)
             if match is not None:
                 self.add(rule, raw, match.group(0).strip(" '\"=:"))
+        for pattern in _PATH_FRAGMENTS:  # another task's cache or worktree named inside the text (T062, R008 #19)
+            for match in pattern.finditer(text):
+                normal = self.policy.normalize(match.group(0), self.cwd)
+                rule = self.policy.read_rule(normal) if normal else None
+                if rule in _PATH_FRAGMENT_RULES:
+                    self.add(rule, raw, match.group(0))
+                    break
 
     # -- secrets -----------------------------------------------------------------------------
     def _secret_words(self, argv, raw, name, skip):
