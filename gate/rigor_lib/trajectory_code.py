@@ -168,7 +168,7 @@ class CodeMixin:
     def scan_code(self, text, raw):
         for literal in path_literals(text):
             self._scan_literal(literal, raw)
-        match = whole_environment(text)
+        match = None if self.clean_env else whole_environment(text)  # `env -i`: nothing inherited to dump
         if match is not None:
             self.add("cmd-env-dump", raw, match.group(0))
         match = _EXEC_DECODE_RE.search(text)

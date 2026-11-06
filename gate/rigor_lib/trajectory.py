@@ -27,6 +27,10 @@ _ALIAS_RE = re.compile(r"`(\w+)` was read as `(\w+)`")
 _ALIAS_TARGETS = {"file_path", "notebook_path", "content", "old_string", "new_string", "new_source"}
 _KEEP_RUN_RE = re.compile(r"(?<![\w-])RIGOR_GRADE_KEEP=1(?![\w-])[^\n]*(?<![\w./-])selftest/grade\.sh(?![\w.-])")
 _KEPT_RE = re.compile(r"^kept (/var/tmp/rigor-grade\.[A-Za-z0-9]{6})$", re.M)
+# `tools/job run` prints `job NAME: pid N, deadline ...`; `echo $!` prints N; an interactive shell prints `[1] N`
+_JOB_PID_RE = re.compile(r"^job \S+: pid (\d+),", re.M)
+_BACKGROUND_PID_RE = re.compile(r"^(?:\[\d+\]\s+)?(\d+)\s*$", re.M)
+_BACKGROUND_RE = re.compile(r"(?<![&>])&(?![&>])|\$!|\bnohup\b|\bsetsid\b")
 # the canary runner's own last line (canaries/runner.py): `SUMMARY: N canaries (...), ..., wall Ns, jobs N, scratch DIR`
 _CANARY_KEEP_RE = re.compile(r"(?<![\w./-])selftest/canaries\.sh(?![\w.-])[^\n;&|]*\s--keep(?![\w-])")
 _CANARY_DIR_RE = re.compile(
@@ -137,6 +141,19 @@ class Audit:
         for path in found:
             if path not in command and not any(path in earlier for earlier in self.seen_input):
                 self.policy.made.append(path)
+
+    def own_pids(self, block):
+        """Rule `kill-foreign` (T045): the pids of processes the agent started. A `tools/job run` call prints its
+        job's pid; a command that backgrounds something (`&`, `$!`, `nohup`, `setsid`) may print its pid on a line
+        of its own. Any other number in any output (`ps`, `pgrep`, a log) proves nothing."""
+        command = self.commands.get(block.get("tool_use_id"))
+        if command is None or block.get("is_error"):
+            return
+        text = result_text(block)
+        if "job run" in command:
+            self.analyzer.own_pids.update(_JOB_PID_RE.findall(text))
+        if _BACKGROUND_RE.search(command):
+            self.analyzer.own_pids.update(_BACKGROUND_PID_RE.findall(text))
 
     def tool_use(self, number, block):
         name, inp = block.get("name"), block.get("input")
@@ -258,6 +275,7 @@ class Audit:
             elif block.get("type") == "tool_result":
                 self.announce(number, block)
                 self.own_dir(block)
+                self.own_pids(block)
                 self.judge_pending(block)
 
 

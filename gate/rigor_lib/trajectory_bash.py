@@ -31,6 +31,20 @@ _NON_PATH_OPTS = ("--pid=", "--lines=", "--bytes=", "--max-count=", "--sleep-int
 _TRIM_RE = re.compile(r"(%%|%|##|#)(.*)\Z", re.DOTALL)
 
 
+_DECLARERS = ("export", "declare", "typeset", "local", "readonly")
+_DECLARED_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)\Z", re.DOTALL)
+
+
+def _declared(args):
+    """{NAME: value} of the `NAME=value` words of `export`, `declare -x` and the like."""
+    found = {}
+    for arg in args:
+        match = _DECLARED_RE.match(arg)
+        if match is not None:
+            found[match.group(1)] = match.group(2)
+    return found
+
+
 def trim_value(value, op, pattern):
     """`${v#p}`, `${v##p}`, `${v%p}`, `${v%%p}` for a known value (shell glob patterns)."""
     size = len(value)
@@ -53,7 +67,7 @@ def excerpt_around(raw, token):
 
 
 class Prepared:
-    __slots__ = ("cmd", "argv", "extra", "words", "group", "cwd", "inner", "wrapped", "job_dir", "job_skip")
+    __slots__ = ("cmd", "argv", "extra", "words", "group", "cwd", "inner", "wrapped", "job_dir", "job_skip", "clean_env")
 
     def __init__(self, cmd, argv, extra, words, cwd):
         self.cmd = cmd
@@ -66,6 +80,7 @@ class Prepared:
         self.wrapped = False  # this is such a CMD: the redirections and here-documents belong to tools/job
         self.job_dir = None   # the job directory `tools/job run` writes (`--dir`, else `$TMPDIR/jobs`)
         self.job_skip = set()  # argv index of the `--dir` value: a write target, not a read
+        self.clean_env = False  # `env -i` (with no secret-looking name) emptied the environment it runs in
 
 
 class Analyzer(CodeMixin, FlowMixin, GitMixin):
@@ -84,6 +99,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self.dirty = set()    # files in `files` that were changed afterwards by something we did not model
         self.clones = {}      # local clones the agent made: dir -> origin no longer proven (see GitMixin)
         self.cwd_stack = []   # working directories to return to when a `( ... )` subshell closes
+        self.own_pids = set()  # process ids the agent started (printed by tools/job run, a background command)
+        self.clean_env = False  # the command being analysed runs under `env -i`
 
     # -- plumbing ----------------------------------------------------------------------------
     def add(self, rule, raw, token=""):
@@ -107,6 +124,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         def replace(match):
             inner = match.group(1) if match.group(1) is not None else match.group(2)
             name = _NAME_RE.match(inner)
+            if inner == "!":
+                return rules.BACKGROUND_PID  # the last background job: a process the agent started
             if name is None and inner in env and inner[0] in "0123456789@#*":
                 return env[inner]  # a positional parameter bound by the caller of a written script
             if name is None or inner.startswith("!"):
@@ -248,6 +267,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         item = self._unwrapped(command, words, here, values.get("TMPDIR", env.get("TMPDIR")), 0)
         if item.argv and cmds.name_of(item.argv[0]) in ("cd", "pushd"):
             self._change_dir(item.argv, env)
+        elif item.argv and cmds.name_of(item.argv[0]) in _DECLARERS:
+            env.update(_declared(item.argv[1:]))  # `export NAME=value` binds it for the commands after it
         return item
 
     @staticmethod
@@ -266,24 +287,34 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             argv = inner
         return argv, extra
 
-    def _unwrapped(self, command, words, here, tmpdir, nest):
+    def _unwrapped(self, command, words, here, tmpdir, nest, clean=False):
         """The Prepared item for `words`. `tools/job run [OPTS] NAME -- CMD` becomes two items: the tools/job
         call itself (its argv ends before `--`; it writes its job directory) and, as `inner`, CMD exactly as if
         it had been run directly at this point (wrappers inside CMD are unwrapped in turn)."""
         argv, extra = self._unwrap(list(words))
+        assigns, emptied = cmds.env_wrappers(words[:len(words) - len(argv)])
+        if emptied:
+            tmpdir = None  # `env -i`: only what it assigns is left
+        tmpdir = assigns.get("TMPDIR", tmpdir)
+        clean = (clean or emptied) and not any(rules.SECRET_NAME_RE.search(n) for n in assigns)
+        if clean and "cmd-env-dump" in extra and cmds.clean_environment(assigns, emptied):
+            extra.remove("cmd-env-dump")  # `env -i A=b` alone prints only A=b
         job = cmds.job_run(argv) if argv and nest < 8 else None
         if job is None:
-            return Prepared(command, argv, extra, words, here)
+            item = Prepared(command, argv, extra, words, here)
+            item.clean_env = clean
+            return item
         dir_index, cut = job
         own = argv[:cut]
         item = Prepared(command, own, extra, words[:len(words) - len(argv)] + own, here)
+        item.clean_env = clean
         if dir_index is not None:
             item.job_skip = {dir_index}
             text = own[dir_index]
             item.job_dir = text[len("--dir="):] if text.startswith("--dir=") else text
         elif tmpdir:  # tools/job refuses an empty TMPDIR
             item.job_dir = tmpdir + "/jobs"
-        item.inner = self._unwrapped(command, argv[cut + 1:], here, tmpdir, nest + 1)
+        item.inner = self._unwrapped(command, argv[cut + 1:], here, tmpdir, nest + 1, clean)
         item.inner.wrapped = True
         return item
 
@@ -332,11 +363,32 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         for word in item.words[:len(item.words) - len(argv)]:
             for match in rules.SECRET_NAME_RE.finditer(word):
                 self.add("secret-env-mention", raw, match.group(0))
+        self._kill_rules(argv, raw, name)
+        self.clean_env = item.clean_env
         self._run_code(item, argv, name, raw, depth, env)
         if name == "git":
             self.note_clone(argv, len(self.hits) == hits_before)
+        self.clean_env = item.clean_env
         if not item.wrapped:
             self._heredocs(item, depth, flags, data_only=False)
+
+    def _kill_rules(self, argv, raw, name):
+        """Rule `kill-foreign`: signals by process name, or to a pid the agent did not start (see own_pids)."""
+        if name in rules.KILL_BY_NAME:
+            self.add("kill-foreign", raw, name)
+        elif name == "kill":
+            targets = cmds.kill_targets(argv)
+            if targets is None:
+                return
+            foreign = [t for t in targets if not self._own_target(t)]
+            if foreign or not targets:  # no target: `... | xargs kill`, the pids come from another command
+                self.add("kill-foreign", raw, name if not foreign or UNRESOLVED in foreign[0] else foreign[0])
+
+    def _own_target(self, target):
+        digits = target.lstrip("-")
+        if target.startswith("%"):
+            return UNRESOLVED not in target  # a job of this shell (`kill %1`, `kill $!`)
+        return digits.isdigit() and digits in self.own_pids
 
     def _command_rules(self, argv, raw, name):
         args = argv[1:]
