@@ -65,7 +65,8 @@ def discard(path):
 
 
 def absolute_arguments(args):
-    for name in ("product_repo", "task", "product", "approvals", "sign_key", "work", "verdict_out"):
+    for name in ("product_repo", "task", "product", "approvals", "witness", "sign_key", "work",
+                 "verdict_out"):
         value = getattr(args, name)
         if value is not None:
             setattr(args, name, os.path.abspath(value))
@@ -85,12 +86,15 @@ def start_grading(args):
     inputs["allowed_signers_sha256"] = file_sha256(approval_args.DEFAULT_ALLOWED_SIGNERS)
     order_bytes = jsonio.read_bytes(grade_context.ORDER_FILE)
     inputs["order_sha256"] = jsonio.sha256_hex(order_bytes)
+    # P002 Q1: a bad bundle is exit 2 here, before `clone`.
+    witness, inputs["witness_sha256"] = verdict_inputs.snapshot_witness(
+        args.witness, os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.WITNESS_NAME))
     product = product_layout.load_product(args.product)
     return grade_context.Grading(
         args=args, product=product, gate_sha=gate_sha, work=work,
         src=os.path.join(work, "src"), tree=os.path.join(work, "tree"),
         results=os.path.join(work, "results"), test_results=os.path.join(work, "test-results"),
-        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean)
+        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean, witness=witness)
 
 
 def file_sha256(path):
@@ -121,6 +125,7 @@ def run(args):
         failure = run_gates(g)
     finally:
         grade_context.kill_daemon(g.tree)
+        grade_context.kill_daemon(os.path.join(g.work, grade_context.WITNESS_TREE))
     code = write_verdict(g)
     if failure is not None:
         raise InternalError("grading stopped by an internal error: %s" % (failure,))
@@ -144,6 +149,9 @@ def add_parser(subparsers):
     parser.add_argument("--task", required=True, help="TASK.toml (the contract)")
     parser.add_argument("--product", required=True, help="products/<name>/product.toml")
     parser.add_argument("--approvals")
+    parser.add_argument("--witness", metavar="DIR",
+                        help="witness bundle (docs/witness.md); snapshotted into <work>/inputs/witness "
+                             "and bound as witness_sha256 (null without it)")
     parser.add_argument("--sign-key")
     parser.add_argument("--work", required=True)
     parser.add_argument("--allow-dirty-gate", action="store_true",
