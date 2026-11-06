@@ -1,10 +1,19 @@
 {
   "bypass": "compiler builtin aliasing a denied capability",
-  "description": "__builtin_alloca: no libc symbol, not counted by -Wframe-larger-than (R001 R1).",
+  "contains": {
+    "build": "c_rigor_gate_bans___builtin_alloca"
+  },
+  "description": "__builtin_alloca: no libc symbol, not counted by -Wframe-larger-than (R001 R1). The sealed compiler guard (T014) stops the build; the semantic scan's banned-builtin is the second wall, tested in selftest/product_checks.",
   "fail": {
-    "semantic-suppressions": [
-      "forbidden-builtin"
+    "build": [
+      "build-failed"
     ]
   },
-  "pending": "T014"
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
 }
