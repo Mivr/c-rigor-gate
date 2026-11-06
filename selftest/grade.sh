@@ -86,7 +86,7 @@ EOF
 edit_deleted_target() { sed -i '/^c_test(name = "util_test"/d' util/BUCK; }
 # Product checks (T007). Each is spelled so that the text scan of `suppressions` cannot see it.
 edit_kills() {  # symbols: core references kill (never called)
-  printf '\n#include <signal.h>\nint core_stop(int pid);\nint core_stop(int pid) { return kill(pid, 0); }\n' >> core/core.c
+  printf '\nint kill(int pid, int sig);\nint core_stop(int pid);\nint core_stop(int pid) { return kill(pid, 0); }\n' >> core/core.c
 }
 edit_spliced_optnone() {  # semantic-suppressions: attribute built by pasting, #line spliced
   printf '\n#define GLUE(a, b) a##b\nint core_slow(int a);\n__attribute__((GLUE(opt, none))) int core_slow(int a) { return a; }\n#li\\\nne 1 "fake.c"\n' >> core/core.c
