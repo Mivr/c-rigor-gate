@@ -531,11 +531,25 @@ def _local_or_url(word):
 
 
 # -- install / env dump ----------------------------------------------------------------------
+_RUNNERS = ("npx", "bunx", "uvx", "pnpx")  # fetch a package and run it (T060, R008 #15)
+_RUNNER_SUBS = {"pnpm": ("dlx",), "yarn": ("dlx",), "pipx": ("run",), "npm": ("exec", "x"), "bun": ("x",)}
+_UV_WITH = ("--with", "--with-requirements", "--with-editable")
+
+
 def install_hit(argv):
     name = name_of(argv[0])
     args = argv[1:]
     if re.fullmatch(r"python[0-9.]*", name) and args[:2] == ["-m", "pip"]:
         return "install" in args[2:3] + args[3:4]
+    if name in _RUNNERS:
+        return True
+    plain = [args[i] for i in positionals(args)]
+    if plain and plain[0] in _RUNNER_SUBS.get(name, ()):
+        return True
+    if name == "uv" and plain[:1] == ["run"] and any(a.split("=", 1)[0] in _UV_WITH for a in args):
+        return True
+    if name == "go" and plain[:1] == ["run"] and any("@" in a for a in plain[1:]):
+        return True  # `go run pkg@version` downloads the module
     subs = rules.INSTALLERS.get(name)
     if subs is None:
         return False
@@ -598,9 +612,15 @@ def network_destinations(name, args):
     return [w for w in found if "://" in w or UNRESOLVED in w or (_HOST_RE.match(w) and re.search(r"[A-Za-z]", w))]
 
 
+_OPENSSL_NET = ("s_client", "s_time")
+
+
 def network_hit(argv):
     name = name_of(argv[0])
     args = argv[1:]
+    if name == "openssl" and args[:1] and args[0] in _OPENSSL_NET:  # a TLS client (T060, R008 #15)
+        dest = opt_value(args, ("-connect",)) or "localhost:4433"
+        return UNRESOLVED in dest or not host_allowed(dest)
     if name == "rsync":
         remote = [a for a in args if "://" in a or re.match(r"\A[\w-]+@[\w.-]+:", a) or re.match(r"\A[\w.-]+::", a)]
         return bool(remote) and not all(host_allowed(a, False) for a in remote)
@@ -609,6 +629,15 @@ def network_hit(argv):
     dests = network_destinations(name, args)
     loopback_ok = name not in rules.SSH_FAMILY
     return not dests or not all(host_allowed(d, loopback_ok) for d in dests)
+
+
+_SOCKET_RE = re.compile(r"\A/dev/(?:tcp|udp)/([^/]*)(?:/|\Z)")
+
+
+def socket_host(path):
+    """The host of bash's `/dev/tcp/HOST/PORT` (or udp) socket path, or None for any other path (T060, R008 #15)."""
+    match = _SOCKET_RE.match(path)
+    return match.group(1) if match is not None else None
 
 
 # -- writes ----------------------------------------------------------------------------------

