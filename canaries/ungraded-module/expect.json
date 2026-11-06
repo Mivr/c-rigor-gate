@@ -1,0 +1,12 @@
+{
+  "bypass": "silently ungraded directory",
+  "description": "A module directory (extra/) the layout does not list; same edit as the grade.sh step ungraded-module (T053). Sibling of ungraded-path, which adds http/ with a header.",
+  "fail": {
+    "buckfiles": [
+      "ungraded-path"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}
