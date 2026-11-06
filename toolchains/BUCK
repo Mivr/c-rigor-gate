@@ -1,0 +1,200 @@
+load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
+load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
+load(":fetch.bzl", "fetched_tree")
+load(":platforms.bzl", "exec_platform", "target_platform")
+load(":tools.bzl", "clang_cc", "clang_ld", "llvm_bin")
+
+WORKER_IMAGE = read_root_config("rbe", "worker_image_digest", "")
+
+# ---------------------------------------------------------------------------
+# Modes (a target-platform constraint). Select with --target-platforms
+# toolchains//:linux_<mode>; the default is release.
+# ---------------------------------------------------------------------------
+
+constraint_setting(name = "mode")
+
+# Never satisfied by any platform; used to mark targets incompatible with a mode.
+constraint_value(name = "never", constraint_setting = ":mode")
+
+[
+    constraint_value(name = m, constraint_setting = ":mode")
+    for m in ["release", "san", "cov", "fuzz"]
+]
+
+exec_platform(
+    name = "platforms",
+    cpu_configuration = "prelude//cpu/constraints:x86_64",
+    os_configuration = "prelude//os/constraints:linux",
+    worker_image = WORKER_IMAGE,
+    visibility = ["PUBLIC"],
+)
+
+[
+    target_platform(
+        name = "linux_" + m,
+        cpu_configuration = "prelude//cpu/constraints:x86_64",
+        os_configuration = "prelude//os/constraints:linux",
+        mode = ":" + m,
+        visibility = ["PUBLIC"],
+    )
+    for m in ["release", "san", "cov", "fuzz"]
+]
+
+# ---------------------------------------------------------------------------
+# Pinned downloads. Only the listed members are unpacked.
+# ---------------------------------------------------------------------------
+
+_LLVM = "LLVM-19.1.7-Linux-X64/"
+_RT = _LLVM + "lib/clang/19/lib/x86_64-unknown-linux-gnu/"
+RUNTIMES = [
+    "clang_rt.crtbegin.o",
+    "clang_rt.crtend.o",
+    "libclang_rt.builtins.a",
+    "libclang_rt.asan.a",
+    "libclang_rt.asan.a.syms",
+    "libclang_rt.asan_static.a",
+    "libclang_rt.asan-preinit.a",
+    "libclang_rt.ubsan_standalone.a",
+    "libclang_rt.ubsan_standalone.a.syms",
+    "libclang_rt.lsan.a",
+    "libclang_rt.fuzzer.a",
+    "libclang_rt.fuzzer_interceptors.a",
+    "libclang_rt.profile.a",
+]
+
+fetched_tree(
+    name = "llvm",
+    url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz",
+    sha256 = "4a5ec53951a584ed36f80240f6fbf8fdd46b4cf6c7ee87cc2d5018dc37caf679",
+    size_bytes = 1653440720,
+    strip_components = 1,
+    members = [
+        _LLVM + "bin/clang-19",
+        _LLVM + "bin/lld",
+        _LLVM + "bin/ld.lld",
+        _LLVM + "bin/llvm-ar",
+        _LLVM + "bin/llvm-ranlib",
+        _LLVM + "bin/llvm-nm",
+        _LLVM + "bin/llvm-objcopy",
+        _LLVM + "bin/llvm-strip",
+        _LLVM + "bin/llvm-objdump",
+        _LLVM + "bin/llvm-cov",
+        _LLVM + "bin/llvm-profdata",
+        _LLVM + "bin/llvm-symbolizer",
+        _LLVM + "lib/clang/19/include",
+    ] + [_RT + r for r in RUNTIMES],
+    visibility = ["PUBLIC"],
+)
+
+# Chromium's Debian bullseye amd64 sysroot (glibc 2.31). Link-time stubs plus headers.
+_SR = "./usr/include/"
+_XH = _SR + "x86_64-linux-gnu/"
+_GCC = "./usr/lib/gcc/x86_64-linux-gnu/10/"
+_UL = "./usr/lib/x86_64-linux-gnu/"
+_L = "./lib/x86_64-linux-gnu/"
+
+fetched_tree(
+    name = "sysroot",
+    url = "https://commondatastorage.googleapis.com/chrome-linux-sysroot/f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e",
+    sha256 = "f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e",
+    size_bytes = 19314716,
+    members = [
+        _SR + "*.h",
+        _SR + "arpa",
+        _SR + "asm-generic",
+        _SR + "linux",
+        _SR + "net",
+        _SR + "netinet",
+        _SR + "netpacket",
+        _SR + "rpc",
+        _SR + "scsi",
+        _SR + "sys",
+        _XH + "a.out.h",
+        _XH + "fpu_control.h",
+        _XH + "ieee754.h",
+        _XH + "asm",
+        _XH + "bits",
+        _XH + "gnu",
+        _XH + "sys",
+        _L + "ld-2.31.so",
+        _L + "ld-linux-x86-64.so.2",
+        _L + "libc-2.31.so",
+        _L + "libc.so.6",
+        _L + "libdl-2.31.so",
+        _L + "libdl.so.2",
+        _L + "libm-2.31.so",
+        _L + "libm.so.6",
+        _L + "libmvec-2.31.so",
+        _L + "libmvec.so.1",
+        _L + "libpthread-2.31.so",
+        _L + "libpthread.so.0",
+        _L + "libresolv-2.31.so",
+        _L + "libresolv.so.2",
+        _L + "librt-2.31.so",
+        _L + "librt.so.1",
+        _L + "libutil-2.31.so",
+        _L + "libutil.so.1",
+        _L + "libgcc_s.so.1",
+        "./lib64/ld-linux-x86-64.so.2",
+        _UL + "crt1.o",
+        _UL + "Scrt1.o",
+        _UL + "crti.o",
+        _UL + "crtn.o",
+        _UL + "libc.so",
+        _UL + "libc_nonshared.a",
+        _UL + "libm.so",
+        _UL + "libdl.so",
+        _UL + "libmvec.so",
+        _UL + "libpthread.so",
+        _UL + "libresolv.so",
+        _UL + "librt.so",
+        _UL + "libutil.so",
+        _GCC + "crtbegin.o",
+        _GCC + "crtbeginS.o",
+        _GCC + "crtbeginT.o",
+        _GCC + "crtend.o",
+        _GCC + "crtendS.o",
+        _GCC + "libgcc.a",
+        _GCC + "libgcc_s.so",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+
+clang_cc(name = "cc", llvm = ":llvm", llvm_major = "19", sysroot = ":sysroot")
+
+clang_ld(name = "ld", llvm = ":llvm", llvm_major = "19", runtimes = RUNTIMES, sysroot = ":sysroot")
+
+[
+    llvm_bin(name = "llvm-" + t, bin = "bin/llvm-" + t, llvm = ":llvm")
+    for t in ["ar", "nm", "objcopy", "objdump", "ranlib", "strip", "cov", "profdata", "symbolizer"]
+]
+
+cxx_toolchain(
+    name = "cxx",
+    c_compiler = ":cc",
+    cxx_compiler = ":cc",
+    assembler = ":cc",
+    linker = ":ld",
+    archiver = ":llvm-ar",
+    archiver_type = "gnu",
+    nm = ":llvm-nm",
+    objdump = ":llvm-objdump",
+    ranlib = ":llvm-ranlib",
+    strip = ":llvm-strip",
+    objcopy_for_shared_library_interface = ":llvm-objcopy",
+    compiler_type = "clang",
+    linker_type = "gnu",
+    cpp_dep_tracking_mode = "none",
+    generate_linker_maps = False,
+    c_compiler_flags = [],
+    link_style = "static",
+    cache_links = True,
+    visibility = ["PUBLIC"],
+)
+
+system_genrule_toolchain(name = "genrule", visibility = ["PUBLIC"])
+system_python_bootstrap_toolchain(name = "python_bootstrap", visibility = ["PUBLIC"])
