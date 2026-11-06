@@ -139,7 +139,7 @@ def cmd_collect(argv):
         gen = read_json(entry["gen"])
         sources.append({"file": gen["file"], "sha256": gen["sha256"],
                         "definitions": gen["definitions"], "functions": gen["functions"],
-                        "skipped": gen["skipped"],
+                        "skipped": gen["skipped"], "hidden": gen["hidden"],
                         "baseline": read_json(entry["baseline"]), "original": read_json(entry["original"])})
         extra = manifest["mutants"].get(entry["rel"], {})
         for mutant in gen["mutants"]:

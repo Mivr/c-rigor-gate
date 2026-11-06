@@ -11,10 +11,14 @@ exactly where the AST says it must be is skipped. Output (canonical JSON):
     {"schema": 1, "file": PATH, "sha256": ..., "definitions": N,
      "functions": [{"name", "line"} + {"reason": "no-mutable-token"} when it has no mutant...],
      "skipped": [{"name", "file", "reason": "macro" | "header"}...],
+     "hidden": [{"function", "macro", "line", "defined_in"}...],
      "mutants": [{"id", "file", "begin_offset", "end_offset", "original", "replacement",
                   "operator", "function", "line"}...]}
 `skipped` lists functions with a body that no mutant can reach: made by a macro in the main file, or
 defined in a header that is not one of the `--system-root` directories (the toolchain's own).
+`hidden` lists the uses, inside function bodies that are mutated, of a macro that is not the toolchain's:
+code the generator cannot mutate because a macro of the product (in the main file, in a product header,
+or on the command line) wrote it (R002 F1; see `Walker.note_macros`). `rigor mutants` makes each a finding.
 Accounting invariant (B19): every function definition (a non-implicit `FunctionDecl` with a
 `CompoundStmt` child) outside the toolchain's own headers is in exactly one of `functions` and
 `skipped`; `definitions` is how many there are, counted by `audit_definitions`, a second walk that
@@ -49,6 +53,23 @@ BINARY_TABLES = (("relational", RELATIONAL), ("arithmetic", ARITHMETIC), ("logic
 OPERATORS = ("relational", "arithmetic", "logical", "not-removal", "compound-assignment",
              "increment", "integer-literal", "condition", "return-value", "statement-deletion",
              "function-body")
+IDENTIFIER = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*")
+BUILT_IN = "<built-in>"
+SCRATCH = "<scratch space>"
+OPERATOR_NODES = ("BinaryOperator", "CompoundAssignOperator", "ConditionalOperator")
+# Node kinds that decide nothing by themselves, so a macro that only supplies them hides no logic:
+# constants, conversions, grouping, names, and declarations (an initializer is a child of its own).
+INERT = frozenset(("IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral",
+                   "ImplicitCastExpr", "CStyleCastExpr", "ParenExpr", "DeclRefExpr", "ConstantExpr",
+                   "UnaryExprOrTypeTraitExpr", "PredefinedExpr", "DeclStmt", "VarDecl", "ParmVarDecl",
+                   "TypedefDecl", "RecordDecl", "FieldDecl", "EnumDecl", "EnumConstantDecl", "NullStmt",
+                   "CompoundLiteralExpr", "InitListExpr"))
+# A constant expression is built from these alone: whatever macro writes it, it cannot depend on an input.
+CONSTANT_KINDS = frozenset(("IntegerLiteral", "CharacterLiteral", "FloatingLiteral", "StringLiteral",
+                            "ImplicitCastExpr", "CStyleCastExpr", "ParenExpr", "ConstantExpr",
+                            "UnaryExprOrTypeTraitExpr", "BinaryOperator", "UnaryOperator",
+                            "ConditionalOperator"))
+UNKNOWN_MACRO = "?"
 LITERAL = re.compile(rb"(0[xX][0-9a-fA-F]+|0|[1-9][0-9]*)([uUlL]*)")
 # Node kinds below which nothing is mutated: constants the language requires (case labels, bit-field
 # widths, enumerator values, static assertions) and operands of sizeof, which are not evaluated.
@@ -102,11 +123,78 @@ class Source:
             return None
         return pos
 
+    def identifier(self, offset):
+        """The C identifier that starts at `offset` (the name of a macro at its use), or None."""
+        found = IDENTIFIER.match(self.data, offset) if 0 <= offset < len(self.data) else None
+        return found.group(0).decode("latin-1") if found else None
+
     def token_at(self, offset, token):
         return self.data.startswith(token, offset)
 
 
-def annotate(root, main_file):
+def call_end(data, name_end):
+    """End of a function-like macro's use whose name ends at `name_end`: just after the matching `)`; the
+    name's own end if no `(` follows; None if the parentheses are not balanced in the text."""
+    pos = name_end
+    while pos < len(data) and data[pos:pos + 1] in (b" ", b"\t", b"\n", b"\r"):
+        pos += 1
+    if data[pos:pos + 1] != b"(":
+        return name_end
+    depth = 0
+    while pos < len(data):
+        byte = data[pos:pos + 1]
+        if byte in (b'"', b"'"):
+            pos += 1
+            while pos < len(data) and data[pos:pos + 1] != byte:
+                pos += 2 if data[pos:pos + 1] == b"\\" else 1
+        elif data.startswith(b"/*", pos):
+            pos = data.find(b"*/", pos + 2)
+            if pos < 0:
+                return None
+            pos += 1
+        elif byte == b"(":
+            depth += 1
+        elif byte == b")":
+            depth -= 1
+            if depth == 0:
+                return pos + 1
+        pos += 1
+    return None
+
+
+def visible_extent(plain, origin, main_file, data=None, ending=False):
+    """(start, end) of the text in the main file that stands for one end of a range: the token itself,
+    the argument token the author wrote at a macro call (spelled after the call's name), or, for a
+    token the macro makes, the macro's name at its use. None if the main file shows nothing there."""
+    if plain is not None:
+        return (plain[1], plain[1] + plain[2]) if plain[0] == main_file and plain[1] is not None else None
+    if origin is None:
+        return None
+    spell_file, spell_at, spell_len, exp_file, exp_at, exp_len = origin
+    if exp_file != main_file or exp_at is None:
+        return None
+    if spell_file == main_file and spell_at is not None and spell_at > exp_at:
+        return spell_at, spell_at + spell_len
+    if ending and data is not None:  # the use of a function-like macro ends at its closing parenthesis
+        stop = call_end(data, exp_at + exp_len)
+        return None if stop is None else (exp_at, stop)
+    return exp_at, exp_at + exp_len
+
+
+def visible_span(begin, begin_origin, end, end_origin, main_file, data=None):
+    """The main-file text an operand seems to occupy, for finding the operator next to it. Unlike `_span` it
+    also covers operands that touch a macro (`x < LIMIT`, `assert(a < b)`). It is only used to look for an
+    operator token between two operands, which must stand in plain text. A token that a macro makes is shown
+    by the macro's use; if an operator is written by the macro itself, both operands are that use, no token
+    lies between them, and the miss is a finding."""
+    first = visible_extent(begin, begin_origin, main_file)
+    last = visible_extent(end, end_origin, main_file, data, ending=True)
+    if first is None or last is None or last[1] < first[0]:
+        return None
+    return first[0], last[1]
+
+
+def annotate(root, main_file, data=None):
     """Store `_span` on every node: the byte range [begin, end) if both ends are plain main-file
     locations, else None, and `_where` (file, in a macro expansion) of its `loc`. Returns whether
     any location named the main file. The walk follows clang's print order, which fixes what an elided `file`
@@ -122,28 +210,42 @@ def annotate(root, main_file):
     def point(loc):
         if "spellingLoc" in loc or "expansionLoc" in loc:
             places = [bare(loc[part]) for part in ("spellingLoc", "expansionLoc") if part in loc]
-            return None, places[-1][0]
-        return bare(loc), None
+            origin = None
+            if "spellingLoc" in loc and "expansionLoc" in loc:
+                origin = places[0] + places[1]
+            return None, places[-1][0], origin
+        return bare(loc), None, None
 
     def visit(node):
         if not isinstance(node, dict):
             return
         node["_span"] = None
+        origins = []
         if "loc" in node:
-            plain, expanded = point(node["loc"])
+            plain, expanded, origin = point(node["loc"])
             node["_where"] = (plain[0] if plain else expanded, plain is None)
+            node["_name_in_macro"] = plain is None
+            origins.append(("loc", origin))
         if "range" in node:
-            begin = point(node["range"]["begin"])[0]
-            end = point(node["range"]["end"])[0]
+            begin, _, begin_origin = point(node["range"]["begin"])
+            end, _, end_origin = point(node["range"]["end"])
+            node["_xspan"] = visible_span(begin, begin_origin, end, end_origin, main_file, data)
+            origins.extend((("begin", begin_origin), ("end", end_origin)))
             if begin and end and begin[0] == main_file and end[0] == main_file \
                     and begin[1] is not None and end[1] is not None and begin[2] and end[2] \
                     and end[1] + end[2] >= begin[1]:
                 node["_span"] = (begin[1], end[1] + end[2])
+        node["_origins"] = [(part,) + o for part, o in origins if o is not None]
+        node.setdefault("_xspan", None)
         for child in node.get("inner", []):
             visit(child)
 
     visit(root)
     return state["main_seen"]
+
+
+def operand_span(node):
+    return (span_of(node) or node.get("_xspan")) if isinstance(node, dict) else None
 
 
 def span_of(node):
@@ -159,6 +261,10 @@ class Walker:
         self.functions = []
         self.skipped = []  # functions with a body that no mutant can reach, and why
         self.system = []  # names of definitions in the toolchain's own headers (reported nowhere)
+        self.hidden = []  # code in live function bodies that a product macro makes (R002 F1)
+        self.hidden_seen = set()
+        self.known_system = set()  # macros seen with a token spelled in the toolchain's headers
+        self.pasted = []  # (function, macro, offset) of tokens made by ## or #, spelled nowhere
 
     def add(self, ctx, operator, begin, end, replacement):
         original = self.source.data[begin:end]
@@ -184,8 +290,10 @@ class Walker:
             for child in children:  # its last statement is the value: never replace it by (void)0
                 if isinstance(child, dict) and child.get("kind") == "CompoundStmt":
                     child["_value_last"] = True
-        if ctx["function"] is not None and ctx["live"] and span_of(node) is not None:
-            self.mutate(node, kind, children, ctx)
+        if ctx["function"] is not None and ctx["live"]:
+            self.note_macros(node, ctx)
+            if span_of(node) is not None or (kind in OPERATOR_NODES and not constant_tree(node)):
+                self.mutate(node, kind, children, ctx)  # an operator is found from its operands' text
         for child in children:
             self.visit(child, child_ctx)
 
@@ -197,9 +305,11 @@ class Walker:
         if not bodies or node.get("isImplicit"):
             return ctx
         body = bodies[0]  # wherever it sits: attributes may follow it
-        if span_of(body) is None:
-            # Made by a macro, or defined in a header. (A node whose range merely *starts* in a macro,
-            # `NOINLINE int f(void) { ... }`, is not that: its body is plain main-file text.)
+        if span_of(body) is None or node.get("_name_in_macro"):
+            # Made by a macro, or defined in a header: the body, or the function's name, does not
+            # lie in plain main-file text. (A node whose range merely *starts* in a macro, `bool f(void)
+            # { ... }` or `NOINLINE int f(void) { ... }`, is not that: the decision is taken from the
+            # name's location and the body's span, never from `range.begin`.)
             self.skip(node)
             return ctx
         params = [c.get("name") for c in node["inner"] if c.get("kind") == "ParmVarDecl"]
@@ -221,9 +331,58 @@ class Walker:
             reason = "header"
         self.skipped.append({"name": node.get("name", ""), "file": file, "reason": reason})
 
+    def note_macros(self, node, ctx):
+        """Record every use of a product macro that makes a part of this node (R002 F1).
+
+        A location that is a macro expansion has a spelling place (where the token was written) and an
+        expansion place (the use, in the main file). The token is the macro's own, and the code is
+        hidden from mutation, unless its spelling is
+        - in a toolchain header (`NULL`, `bool`, `INT32_MAX`, `offsetof`, `assert` ...: not a finding),
+        - in the compiler's `<built-in>` buffer (`__LINE__`), or
+        - in the main file *after* the use's start: a macro definition precedes every use of it, so
+          such a token is an argument, text the author wrote at the call site, which is mutated like any.
+        A token made by `##` or `#` is spelled in `<scratch space>`, which names no macro: it is a
+        finding unless the same macro is shown to be the toolchain's by another of its tokens (`finish`).
+        Everything else (a body in the main file or in a product header, `<command line>`) is a finding,
+        in the function that contains the use. Nodes that cannot decide anything by themselves (a
+        literal, a cast, a parenthesis, a name, a declaration, an attribute) are not looked at: what
+        they enclose is."""
+        kind = node.get("kind", "")
+        if kind in INERT or kind in OPERATOR_NODES or kind.endswith("Attr") or constant_tree(node):
+            return  # (an operator is judged by `operator_between`: it is found next to its operands or reported)
+        for part, spell_file, spell_at, _, exp_file, exp_at, _ in node.get("_origins", ()):
+            if kind == "ReturnStmt" and part == "end":
+                continue  # `return LIMIT;`: the value is a child of its own; `return` itself is at begin
+            here = exp_file == self.main and exp_at is not None
+            name = self.source.identifier(exp_at) if here else None
+            if in_roots(spell_file, self.system_roots):
+                self.known_system.add(name)
+            elif spell_file == BUILT_IN:
+                continue
+            elif spell_file == SCRATCH:
+                self.pasted.append((ctx["function"], name or UNKNOWN_MACRO, exp_at if here else None))
+            elif not (spell_file == self.main and here and spell_at is not None and spell_at > exp_at):
+                self.record_hidden(ctx["function"], name or UNKNOWN_MACRO, exp_at if here else None, spell_file)
+
+    def finish(self):
+        """Pasted tokens of a macro that no other token proves to be the toolchain's are findings."""
+        for function, macro, at in self.pasted:
+            if macro not in self.known_system:
+                self.record_hidden(function, macro, at, SCRATCH)
+
+    def record_hidden(self, function, macro, at, defined_in):
+        key = (function, macro, at, defined_in if at is None else "")
+        if key not in self.hidden_seen:
+            self.hidden_seen.add(key)
+            self.hidden.append({"function": function, "macro": macro,
+                                "line": self.source.line(at) if at is not None else 0,
+                                "defined_in": defined_in})
+
     def mutate(self, node, kind, children, ctx):
         span = span_of(node)
-        if kind == "BinaryOperator":
+        if kind == "ConditionalOperator":
+            self.ternary(node, children, ctx)
+        elif kind == "BinaryOperator":
             self.binary(node, children, ctx)
         elif kind == "UnaryOperator":
             self.unary(node, span, ctx)
@@ -244,14 +403,52 @@ class Walker:
         opcode = node.get("opcode")
         if opcode not in table or len(children) != 2:
             return
-        lhs, rhs = span_of(children[0]), span_of(children[1])
+        lhs, rhs = operand_span(children[0]), operand_span(children[1])
         if lhs is None or rhs is None:
+            self.operator_missing(opcode, None, ctx, node, children)
             return
         at = self.source.token_between(lhs[1], rhs[0], opcode.encode("ascii"))
         if at is None:
+            self.operator_missing(opcode, lhs[1], ctx, node, children)
             return
         for replacement in table[opcode]:
             self.add(ctx, operator, at, at + len(opcode), replacement)
+
+    def ternary(self, node, children, ctx):
+        """`c ? a : b` has no mutation of its own, but its `?` and `:` must be written between the operands
+        like any plain text; if a macro supplies them, that is a finding (as for any operator)."""
+        spans = [operand_span(c) for c in children]
+        if len(spans) != 3 or None in spans:
+            self.operator_missing("?:", None, ctx, node, children)
+            return
+        for token, left, right in ((b"?", spans[0], spans[1]), (b":", spans[1], spans[2])):
+            if self.source.token_between(left[1], right[0], token) is None:
+                self.operator_missing(token.decode(), left[1], ctx, node, children)
+                return
+
+    def operator_missing(self, opcode, after, ctx, node, children):
+        """Both operands are visible but the operator is not written between them: a macro supplies it
+        (`a PLUS b`, `SUM(a, b)`), and the AST does not say where an operator is. Fail closed: a finding,
+        unless the toolchain's own macro supplies it (its tokens are spelled in a system header)."""
+        if any(in_roots(o[1], self.system_roots) or o[1] == BUILT_IN for o in node.get("_origins", ())):
+            return
+        macro, at, defined_in = self.operand_macro(children)
+        if macro is None and after is not None:
+            at = self.source.skip_blank(after, len(self.source.data))
+            macro = self.source.identifier(at)
+        self.record_hidden(ctx["function"], macro or UNKNOWN_MACRO, at if macro else None,
+                           defined_in or "<operator %s not found between its operands>" % opcode)
+
+    def operand_macro(self, children):
+        """(name, use offset, file of its tokens) of a macro, not the toolchain's, whose own tokens an
+        operand shows; (None, None, None) if there is none."""
+        for child in children:
+            for _, spell_file, spell_at, _, exp_file, exp_at, _ in child.get("_origins", ()) \
+                    if isinstance(child, dict) else ():
+                if exp_file == self.main and exp_at is not None and not in_roots(spell_file, self.system_roots) \
+                        and not (spell_file == self.main and spell_at is not None and spell_at > exp_at):
+                    return self.source.identifier(exp_at), exp_at, spell_file
+        return None, None, None
 
     def binary(self, node, children, ctx):
         opcode = node.get("opcode")
@@ -331,6 +528,23 @@ class Walker:
         uses = "".join("(void)%s; " % name for name in ctx["params"])
         self.add(ctx, "function-body", span[0], span[1],
                  "{ " + uses + ("}" if returns == "void" else "return 0; }"))
+
+
+def constant_tree(node):
+    """True if the whole subtree is a constant expression: literals, `sizeof`, enumerators and the
+    operators between them. Such text decides nothing about an input, so a macro writing it hides no logic
+    (its operators still cannot be mutated: that is a limit, not a finding)."""
+    if "_constant" not in node:
+        kind = node.get("kind", "")
+        if kind == "DeclRefExpr":
+            node["_constant"] = node.get("referencedDecl", {}).get("kind") == "EnumConstantDecl"
+        elif kind == "UnaryExprOrTypeTraitExpr":
+            node["_constant"] = True
+        elif kind not in CONSTANT_KINDS or (kind == "UnaryOperator" and node.get("opcode") in ("++", "--")):
+            node["_constant"] = False
+        else:
+            node["_constant"] = all(constant_tree(c) for c in node.get("inner", []) if isinstance(c, dict))
+    return node["_constant"]
 
 
 def in_roots(file, roots):
@@ -440,13 +654,14 @@ def check_accounting(walker, ast):
 
 
 def generate(file_path, data, ast, system_roots=()):
-    if not annotate(ast, file_path) and data.strip():
+    if not annotate(ast, file_path, data) and data.strip():
         raise SystemExit("gen.py: no location in the AST names %r; the generator would be blind"
                          % file_path)
     source = Source(data)
     walker = Walker(source, file_path, system_roots)
     for top in ast.get("inner", []):
         walker.visit(top, {"function": None, "live": True})
+    walker.finish()
     definitions = check_accounting(walker, ast)
     mutants = assign_ids(walker.mutants, file_path)
     mutated = {m["function"] for m in mutants}
@@ -454,6 +669,7 @@ def generate(file_path, data, ast, system_roots=()):
                  for f in walker.functions]
     return {"schema": SCHEMA, "file": file_path, "sha256": hashlib.sha256(data).hexdigest(),
             "definitions": definitions, "functions": functions, "skipped": walker.skipped,
+            "hidden": sorted(walker.hidden, key=lambda h: (h["line"], h["macro"], h["function"], h["defined_in"])),
             "mutants": mutants}
 
 

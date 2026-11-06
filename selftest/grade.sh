@@ -50,7 +50,7 @@ base="$(git -C "$repo" rev-parse HEAD)"
 
 cat > "$work/task.toml" <<'EOF'
 id = "selftest"
-allowed = ["core/**", "util/**", ".buckconfig"]
+allowed = ["core/**", "util/**", ".buckconfig", "extra/**", "third_party/**"]
 EOF
 
 # ---------------------------------------------------------------------------------------
@@ -96,6 +96,26 @@ edit_spliced_optnone() {  # semantic-suppressions: attribute built by pasting, #
 }
 edit_raw_rule() {  # buckfiles: a raw rule beside the macros (it is never built)
   printf '\nnative.cxx_library(name = "raw", srcs = ["core.c"])\n' >> core/BUCK
+}
+# Layout coverage (T013, B14): product code the layout leaves out is a finding, never silence.
+edit_ungraded_module() {  # a module directory the layout does not list
+  mkdir -p extra
+  printf 'load("@gate//rules:c.bzl", "c_library")\n\nc_library(name = "extra", srcs = ["extra.c"], visibility = ["PUBLIC"])\n' > extra/BUCK
+  printf 'int extra_one(void) { return 1; }\n' > extra/extra.c
+}
+edit_excluded_code() {  # a C file under a path the (variant) product.toml excludes as "docs"
+  mkdir -p core/docs
+  printf 'int hidden_one(void) { return 1; }\n' > core/docs/hidden.c
+}
+edit_stale_include() { printf '\n/* stale include case */\n' >> core/core.c; }
+edit_third_party_copy() {  # a vendored copy of a library inside the product: gate//third_party is the only source
+  mkdir -p third_party/mini
+  printf 'load("@gate//rules:c.bzl", "c_library")\n\nc_library(name = "mini", srcs = ["mini.c"], visibility = ["PUBLIC"])\n' > third_party/mini/BUCK
+  printf 'int mini_one(void) { return 1; }\n' > third_party/mini/mini.c
+}
+edit_case_collision() {  # two paths that differ only in letter case
+  printf 'int case_one(void) { return 1; }\n' > core/Twin.c
+  printf 'int case_two(void) { return 2; }\n' > core/twin.c
 }
 # Mutation testing (T008).
 edit_weak_test() {  # a check is gone: the mutants around zero in core_sign survive
@@ -329,6 +349,20 @@ run_case weak-test mutants:survived-mutant
 run_case hollow-module mutants:no-mutants,mutants:unmutated-function
 run_case unviable-shape mutants:unviable-ratio
 run_case new-module symbols:module-not-in-policy,mutants:level-missing
+
+# Layout coverage: the product.toml variants live beside copies of the policy and expected tests.
+for variant in excl stale; do
+  mkdir -p "$work/prod-$variant"
+  cp products/selftest/policy.toml products/selftest/expected-tests.json "$work/prod-$variant/"
+done
+sed 's|^exclude = \[\]|exclude = ["core/docs/**"]|' products/selftest/product.toml > "$work/prod-excl/product.toml"
+sed 's|^include = \["core/\*\*",|include = ["gone/**", "core/**",|' products/selftest/product.toml > "$work/prod-stale/product.toml"
+grep -q 'core/docs' "$work/prod-excl/product.toml" && grep -q 'gone/' "$work/prod-stale/product.toml" || fail "product.toml variants"
+run_case ungraded-module buckfiles:ungraded-path
+run_case excluded-code buckfiles:excluded-code --product "$work/prod-excl/product.toml"
+run_case stale-include buckfiles:stale-include --product "$work/prod-stale/product.toml"
+run_case third-party-copy buckfiles:ignored-code
+run_case case-collision buckfiles:case-collision
 
 # 3. an internal error (unreadable contract) is exit 2 and a FAIL verdict
 step=$((step + 1))

@@ -57,12 +57,12 @@ class SampleTest(unittest.TestCase):
         self.assertEqual(keys, sorted(keys))
 
     def test_macro_expansions_are_skipped(self):
-        # `if (IS_NEG(x))` and `x > LIMIT` have no relational, condition or literal mutants.
-        for operator in ("relational", "condition"):
-            self.assertEqual(self.of("macros", operator), [])
+        # `if (IS_NEG(x))` has no relational or condition mutant; `x > LIMIT` has no condition mutant, but its
+        # operator is plain text next to a constant macro, so it is mutated (T028).
+        self.assertEqual(self.of("macros", "condition"), [])
+        self.assertEqual([(m["line"], m["replacement"]) for m in self.of("macros", "relational")],
+                         [(18, "<="), (18, ">=")])
         self.assertEqual([m["line"] for m in self.of("macros", "integer-literal")], [17, 19])
-        text = b"".join(m["original"].encode("latin-1") for m in self.of("macros", "relational"))
-        self.assertEqual(text, b"")
 
     def test_pointer_arithmetic_is_not_mutated_but_integer_arithmetic_is(self):
         self.assertEqual(self.pairs("ptr_math", "arithmetic"), [("+", "-")])

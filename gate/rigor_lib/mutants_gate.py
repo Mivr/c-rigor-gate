@@ -13,6 +13,8 @@ id), no-mutants (a source with functions but no mutants: the generator went blin
 unmutated-function (L3: a function made by a macro or defined in a product header, which no mutant
 can reach; info in L2),
 unviable-ratio (more than a quarter of the generated mutants did not compile: L3 and up; info in L2),
+macro-hidden-code (L3: a function body uses a macro defined by the product, whose expansion no mutant
+can reach; info in L2),
 crash-only-function / no-assert-kill-function (L3 function whose mutants no check failure ever
 killed), baseline-red, harness-mismatch, missing-run, bad-results, module-not-in-policy,
 policy-module-without-report, no-reports. Survivors of L2 modules are info findings.
@@ -94,6 +96,19 @@ def skipped_findings(report, level):
     return found
 
 
+def hidden_findings(report, level):
+    """Code a macro of the product wrote inside a function the generator mutated (R002 F1): the
+    mutants never touch it, so a backdoor there is invisible. Macros of the toolchain's headers
+    (`NULL`, `bool`, `INT32_MAX`) are not reported by the generator. Not approvable."""
+    found = []
+    for source in report.sources:
+        for function, macro, line, defined_in in source.hidden:
+            found.append(finding("macro-hidden-code", module=report.label, file=source.file, line=line,
+                                 function=function, macro=macro, defined_in=defined_in,
+                                 severity="error" if level in STRICT_LEVELS else SEVERITY_INFO))
+    return found
+
+
 def function_findings(report, verdicts):
     """Every function with mutants needs a mutant that some test killed by a failed check. A
     duplicate counts with the verdict of the mutant it duplicates (the same object, the same run)."""
@@ -149,6 +164,7 @@ def module_findings(report, level, approval_set, used):
     found.extend(blindness_findings(report, verdicts))
     found.extend(unviable_findings(report, level, verdicts))
     found.extend(skipped_findings(report, level))
+    found.extend(hidden_findings(report, level))
     found.extend(survivor_findings(report, level, verdicts, approval_set, used))
     if level in STRICT_LEVELS:
         found.extend(function_findings(report, verdicts))

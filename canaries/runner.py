@@ -21,12 +21,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANARIES = os.path.join(ROOT, "canaries")
 GATE_ORDER = os.path.join(ROOT, "gate", "order.txt")
 UNCACHED_DEFAULT = "weak-test"
+DEFAULT_JOBS = 8
 EXPECT_KEYS = {"description", "bypass", "fail", "not_run", "exit", "pending", "control", "absent", "contains"}
 
 GIT_ENV = {
@@ -133,7 +135,7 @@ def expected_text(expect):
     return render(fail, sorted(expect.get("not_run", [])))
 
 
-def grade_one(canary_id, scratch, uncached):
+def grade_one(canary_id, scratch, uncached, keep=True):
     expect = load_expect(canary_id)
     work = os.path.join(scratch, canary_id)
     os.makedirs(work)
@@ -158,6 +160,8 @@ def grade_one(canary_id, scratch, uncached):
     except Exception as error:  # a canary that cannot run is a failed canary, never a skipped one
         outcome.update(got="ERROR %s" % str(error)[:300], ok=False, why=["harness error"])
     outcome["seconds"] = time.time() - started
+    if not keep:  # the verdict is judged; a canary's tree (buck-out) is the bulk of the scratch disk
+        remove_tree(work)
     return outcome
 
 
@@ -227,9 +231,72 @@ def check_coverage(ids):
     return [gate for gate in gates if gate not in covered]
 
 
+def cost(canary_id):
+    """Expected relative cost of grading a canary: the more gates it is expected to run, the longer it takes.
+
+    Only the order canaries are started in depends on this, never a verdict.
+    """
+    expect = load_expect(canary_id)
+    if expect.get("control"):
+        return 99
+    skipped = len(expect.get("not_run", []))
+    return 10 - skipped
+
+
+def schedule(selected, uncached_id):
+    """(control ids, uncached ids, the rest longest-first). Every selected id appears exactly once."""
+    first = [i for i in selected if load_expect(i).get("control")]
+    slow = [i for i in selected if i == uncached_id and i not in first]
+    rest = sorted((i for i in selected if i not in first and i not in slow), key=lambda i: (-cost(i), i))
+    return first, slow, rest
+
+
+def misses(outcomes, selected):
+    """Ids that count against the pack: a canary that is not ok and not pending, or that has no outcome."""
+    seen = {o["id"] for o in outcomes}
+    absent = [i for i in selected if i not in seen]
+    return sorted(absent + [o["id"] for o in outcomes if not o["ok"] and not o["pending"]])
+
+
+def announce(done):
+    print("  %-28s %s (%.0fs)" % (done["id"], "ok" if done["ok"] else "done", done["seconds"]), flush=True)
+
+
+def grade_all(selected, scratch, uncached_id, jobs, keep):
+    """Grade every selected canary, each in its own clone, `jobs` at a time (the uncached one counts as one).
+
+    The control runs first and warms the cache the others share; the uncached canary shares nothing with
+    the others, so it starts at once on its own thread and runs alongside the control and the rest.
+    """
+    first, slow, rest = schedule(selected, uncached_id)
+    outcomes, lock = [], threading.Lock()
+
+    def one(canary_id):
+        done = grade_one(canary_id, scratch, canary_id == uncached_id, keep)
+        with lock:
+            outcomes.append(done)
+        announce(done)
+
+    def uncached_lane():
+        for canary_id in slow:
+            one(canary_id)
+
+    lane = threading.Thread(target=uncached_lane)
+    lane.start()
+    for canary_id in first:
+        one(canary_id)
+    width = max(1, jobs - (1 if slow else 0))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=width) as pool:
+        for future in [pool.submit(one, i) for i in rest]:
+            future.result()
+    lane.join()
+    return outcomes
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--jobs", type=int, default=4)
+    parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
+                        help="canaries graded at once, the uncached one included (default %(default)s)")
     parser.add_argument("--only", action="append", default=[], help="run only this canary id")
     parser.add_argument("--uncached", default=UNCACHED_DEFAULT, help="the canary graded with --uncached")
     parser.add_argument("--keep", action="store_true")
@@ -247,26 +314,12 @@ def main():
         return 1
     scratch = tempfile.mkdtemp(prefix="rigor-canaries.", dir=os.environ.get("TMPDIR", "/var/tmp"))
     started = time.time()
-    outcomes = []
     try:
-        # The control goes first and alone: it fills the cache every canary shares.
-        first = [i for i in selected if load_expect(i).get("control")]
-        rest = [i for i in selected if i not in first]
-        for canary_id in first:
-            outcomes.append(grade_one(canary_id, scratch, False))
-            print("  control %s: %s (%.0fs)" % (canary_id, "ok" if outcomes[-1]["ok"] else "MISS",
-                                               outcomes[-1]["seconds"]), flush=True)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-            futures = [pool.submit(grade_one, i, scratch, i == args.uncached) for i in rest]
-            for future in futures:
-                outcomes.append(future.result())
-                done = outcomes[-1]
-                print("  %-28s %s (%.0fs)" % (done["id"], "ok" if done["ok"] else "done", done["seconds"]),
-                      flush=True)
+        outcomes = grade_all(selected, scratch, args.uncached, args.jobs, args.keep)
         outcomes.sort(key=lambda item: (not item["control"], item["id"]))
         print()
         print_table(outcomes)
-        misses = [o for o in outcomes if not o["ok"] and not o["pending"]]
+        missed = misses(outcomes, selected)
         pending = [o for o in outcomes if o["pending"]]
         print()
         for item in outcomes:
@@ -278,9 +331,9 @@ def main():
                   ", ".join("%s (%s)" % (o["id"], o["pending"]) for o in pending))
         live = [o for o in outcomes if not o["pending"]]
         print("SUMMARY: %d canaries (%d live, %d pending), %d live misses, wall %.0fs, jobs %d, scratch %s" % (
-            len(outcomes), len(live), len(pending), len(misses), time.time() - started, args.jobs,
+            len(outcomes), len(live), len(pending), len(missed), time.time() - started, args.jobs,
             scratch if args.keep else "(removed)"))
-        return 1 if misses else 0
+        return 1 if missed else 0
     finally:
         if not args.keep:
             remove_tree(scratch)
