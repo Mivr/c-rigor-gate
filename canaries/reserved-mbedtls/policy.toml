@@ -25,7 +25,7 @@ exports = ["main"]
 [module."//util:util"]
 level = "L2"
 allow = ["malloc"]
-exports = ["util_make_ramp", "util_sum"]
+exports = ["mbedtls_ssl_read", "util_make_ramp", "util_sum"]
 
 [module."//util:core_test"]
 allow = []
