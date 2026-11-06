@@ -828,6 +828,103 @@ PY
 echo "    survivors exactly as expected: $(printf '%s\n' "$got" | wc -l)"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
+begin "GREEN: struct returns, direct and through typedefs, get mutants that all compile, and a strong test kills them all (T050)"
+cat >> "$scratch/m/BUCK" <<'EOF'
+
+c_library(name = "rec", srcs = ["rec.c"], headers = ["rec.h"])
+c_test(name = "rec_test", srcs = ["rec_test.c"], deps = [":rec"])
+c_mutants(name = "rec_mutants", module = ":rec", tests = [":rec_test"])
+EOF
+cat > "$scratch/m/rec.h" <<'EOF'
+#ifndef REC_H
+#define REC_H
+typedef struct { int a; int b; } rec_box_t;
+typedef struct rec_span { int ptr; int len; } rec_span_t;
+typedef rec_span_t rec_span2_t;
+struct rec_pair { int lo; int hi; };
+rec_box_t rec_box(int x, int y);
+rec_span_t rec_span(int len);
+rec_span2_t rec_span2(int len);
+struct rec_pair rec_pair(int x, int y);
+#endif
+EOF
+cat > "$scratch/m/rec.c" <<'EOF'
+#include "rec.h"
+
+rec_box_t rec_box(int x, int y)
+{
+    rec_box_t r;
+    r.a = x;
+    r.b = y;
+    return r;
+}
+
+rec_span_t rec_span(int len)
+{
+    rec_span_t r;
+    r.ptr = 7;
+    r.len = len;
+    return r;
+}
+
+rec_span2_t rec_span2(int len)
+{
+    rec_span2_t r;
+    r.ptr = 9;
+    r.len = len;
+    return r;
+}
+
+struct rec_pair rec_pair(int x, int y)
+{
+    struct rec_pair r;
+    r.lo = x;
+    r.hi = y;
+    return r;
+}
+EOF
+cat > "$scratch/m/rec_test.c" <<'EOF'
+#include "ctest/ctest.h"
+#include "rec.h"
+
+static void t_rec(ctest_t *t)
+{
+    rec_box_t b = rec_box(3, 4);
+    rec_span_t s = rec_span(5);
+    rec_span2_t s2 = rec_span2(6);
+    struct rec_pair p = rec_pair(1, 2);
+    CHECK_EQ_I64(t, b.a, 3);
+    CHECK_EQ_I64(t, b.b, 4);
+    CHECK_EQ_I64(t, s.ptr, 7);
+    CHECK_EQ_I64(t, s.len, 5);
+    CHECK_EQ_I64(t, s2.ptr, 9);
+    CHECK_EQ_I64(t, s2.len, 6);
+    CHECK_EQ_I64(t, p.lo, 1);
+    CHECK_EQ_I64(t, p.hi, 2);
+}
+
+CTEST_SUITE("rec", { "rec", t_rec })
+EOF
+run "$out/build_rec.log" build "$pkg:rec_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_rec.log"
+p="$(awk -v t="$pkg:rec_mutants" 'index($1, t) {print $2}' "$out/build_rec.log" | tail -1)"
+[ -f "$p" ] || fail "$CUR: no report for rec"
+mkdir -p "$out/only_rec"; cp "$p" "$out/only_rec/rec.json"
+printf '[module."%s:rec_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_rec"
+[ "$GATE_CODE" = 0 ] || fail "$CUR: expected exit 0, got $GATE_CODE" "$out/gate.log"
+"${PY[@]}" - "$out/only_rec/rec.json" <<'PY' || fail "$CUR: bad rec report"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert all(f.get("reason") is None for f in d["sources"][0]["functions"]), "a struct-returning function has no mutants"
+for fn in ("rec_box", "rec_span", "rec_span2", "rec_pair"):
+    ops = {m["operator"] for m in d["mutants"] if m["function"] == fn}
+    assert ops >= {"function-body", "return-value"}, (fn, ops)
+bad = [m["id"] for m in d["mutants"] if m["compile"]["status"] == "unviable"]
+assert not bad, "mutants that do not compile: %s" % bad
+print("    %d mutants, none unviable" % len(d["mutants"]))
+PY
+echo "    gate green: no unviable mutant, no no-assert-kill-function, no survivor"
+
 begin "GREEN: a module of two sources in two directories (the right object is swapped on relink)"
 mkdir -p "$out/only_multi"; cp "$RES/multi.json" "$out/only_multi/"
 printf '[module."%s:multi_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
