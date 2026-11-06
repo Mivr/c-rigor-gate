@@ -680,6 +680,104 @@ gate "$out/only_macro"
 echo "    L2: exit 0, info"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
+begin "RED: a toolchain NULL in a condition, enumerators, strings and characters are mutated, and weak tests leave exactly their survivors (T035)"
+cat >> "$scratch/m/BUCK" <<'EOF'
+
+c_library(name = "lit", srcs = ["lit.c"], headers = ["lit.h"])
+c_test(name = "lit_test", srcs = ["lit_test.c"], deps = [":lit"])
+c_mutants(name = "lit_mutants", module = ":lit", tests = [":lit_test"])
+EOF
+cat > "$scratch/m/lit.h" <<'EOF'
+#ifndef LIT_H
+#define LIT_H
+typedef enum { LIT_OK = 0, LIT_ERR_LOW = 1, LIT_ERR_HIGH = 2 } lit_status;
+int lit_get(const int *p);
+lit_status lit_check(int v);
+const char *lit_name(void);
+char lit_letter(void);
+#endif
+EOF
+cat > "$scratch/m/lit.c" <<'EOF'
+#include "lit.h"
+
+#include <stddef.h>
+
+int lit_get(const int *p)
+{
+    int v = 0;
+    if (p != NULL) {
+        v = *p;
+    }
+    return v;
+}
+
+lit_status lit_check(int v)
+{
+    if (v < 0) {
+        return LIT_ERR_LOW;
+    }
+    if (v > 9) {
+        return LIT_ERR_HIGH;
+    }
+    return LIT_OK;
+}
+
+const char *lit_name(void) { return "lit"; }
+
+char lit_letter(void) { return 'q'; }
+EOF
+cat > "$scratch/m/lit_test.c" <<'EOF'
+#include "ctest/ctest.h"
+#include "lit.h"
+
+static void t_lit(ctest_t *t)
+{
+    int zero = 0;
+    CHECK_EQ_I64(t, lit_get(&zero), 0);
+    CHECK_EQ_I64(t, lit_check(0), LIT_OK);
+    CHECK_EQ_I64(t, lit_check(5), LIT_OK);
+    CHECK_EQ_I64(t, lit_check(9), LIT_OK);
+    CHECK(t, lit_check(-1) != LIT_OK);
+    CHECK(t, lit_check(10) != LIT_OK);
+    CHECK(t, lit_name() != NULL);
+    CHECK(t, lit_letter() != 0);
+}
+
+CTEST_SUITE("lit", { "lit", t_lit })
+EOF
+run "$out/build_lit.log" build "$pkg:lit_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_lit.log"
+p="$(awk -v t="$pkg:lit_mutants" 'index($1, t) {print $2}' "$out/build_lit.log" | tail -1)"
+[ -f "$p" ] || fail "$CUR: no report for lit"
+mkdir -p "$out/only_lit"; cp "$p" "$out/only_lit/lit.json"
+printf '[module."%s:lit_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_lit"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: expected exit 1, got $GATE_CODE" "$out/gate.log"
+got="$(json '"\n".join(sorted("%s|%s|%s|%s" % (f["function"], f["operator"], f["line"], f["replacement"]) for f in r["findings"] if f["rule"] == "survived-mutant"))')"
+want="$(cat <<'EOF'
+lit_check|enum-constant|17|LIT_ERR_HIGH
+lit_get|function-body|6|{ (void)p; return 0; }
+lit_get|integer-literal|7|1
+lit_letter|char-literal|27|('q' + 1)
+lit_name|string-literal|25|""
+lit_name|string-literal|25|m
+EOF
+)"
+[ "$got" = "$want" ] || fail "$CUR: survivors differ from the expected list" <(printf 'got:\n%s\nwant:\n%s\n' "$got" "$want")
+"${PY[@]}" - "$out/only_lit/lit.json" <<'PY' || fail "$CUR: bad lit report"
+import json, sys
+d = json.load(open(sys.argv[1]))
+ops = {}
+for m in d["mutants"]:
+    ops.setdefault(m["operator"], set()).add(m["function"])
+assert ops["condition"] >= {"lit_get"}, "the condition with NULL has no condition mutant"
+assert ops["enum-constant"] == {"lit_check"} and ops["string-literal"] == {"lit_name"} and ops["char-literal"] == {"lit_letter"}, ops
+assert not d["sources"][0]["hidden"], "a toolchain macro was reported as hidden code"
+print("    new operators:", {k: sorted(v) for k, v in sorted(ops.items()) if k in ("condition", "enum-constant", "string-literal", "char-literal")})
+PY
+# (the condition and relational mutants of `p != NULL` compile to the function-body mutant's object here: duplicates)
+echo "    survivors exactly as expected: $(printf '%s\n' "$got" | wc -l)"
+printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+
 begin "GREEN: a module of two sources in two directories (the right object is swapped on relink)"
 mkdir -p "$out/only_multi"; cp "$RES/multi.json" "$out/only_multi/"
 printf '[module."%s:multi_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
