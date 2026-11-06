@@ -16,7 +16,16 @@ RED = {
     "w-flag": ["cc -w x.c", 'flags = ["-w"]', "CFLAGS=-w", "-w"],
     "no-sanitize": ['__attribute__((no_sanitize("address")))', "no_sanitize_memory"],
     "attribute-optnone": ["__attribute__((optnone))", "__attribute__ (( no_instrument_function ))",
-                          "__attribute__((  optnone))"],
+                          "__attribute__((  optnone))", "__attribute__((noinline, optnone))",
+                          "__attribute__((used, no_profile_instrument_function))",
+                          "__attribute__((a(1), b, disable_sanitizer_instrumentation, c))",
+                          "__attribute__((__optnone__))", "__attribute__((noinline,optnone,used))"],
+    "attribute-bracket": ["[[clang::optnone]]", "[[gnu::no_instrument_function]]",
+                          "[[clang::no_sanitize(\"address\")]]", "[[gnu::optnone, gnu::used]]",
+                          "[[ clang::disable_sanitizer_instrumentation ]]",
+                          "[[gnu::no_profile_instrument_function]]"],
+    "trigraph": ["??=pragma clang diagnostic ignored", "x ??/", "a ??' b", "??( ??) ??! ??< ??> ??-"],
+    "line-directive": ["#line 1", "# line 20 \"x.c\"", "#  line"],
     "define-ndebug-assert": ["#define NDEBUG", "# undef assert", "#define assert(x) ((void)0)",
                              "#undef NDEBUG", "#  define   NDEBUG 1"],
     "sanitize-address-macro": ["#ifdef __SANITIZE_ADDRESS__"],
@@ -27,7 +36,8 @@ RED = {
     "llvm-profile": ["LLVM_PROFILE_FILE", "__llvm_profile_write_file()"],
     "fuzzer-entry": ["int LLVMFuzzerTestOneInput(void)", "LLVMFuzzerCustomMutator"],
     "fno-sanitize": ["-fno-sanitize=address", "cc -fno-sanitize-recover x.c"],
-    "sanitizer-options": ["ASAN_OPTIONS=detect_leaks=0", "UBSAN_OPTIONS=x", "LSAN_OPTIONS=x"],
+    "sanitizer-options": ["ASAN_OPTIONS=detect_leaks=0", "UBSAN_OPTIONS=x", "LSAN_OPTIONS=x",
+                          "MSAN_OPTIONS=x", "TSAN_OPTIONS=x", "HWASAN_OPTIONS=x"],
 }
 
 GREEN = [
@@ -36,7 +46,10 @@ GREEN = [
     "sanitize_ok", "ok_sanitizer_here",
     "__attribute__((noreturn))", "__attribute__((unused))", "#define NDEBUG_FOO 1",
     "#define assertion 1", "#ifdef NDEBUG", "__SANITIZE_X", "__has_feature(c_atomic)",
-    'getenv("HOME")', "getenv(name)", "LLVM_PROF", "-fsanitize=address", "MSAN_OPTIONS=x",
+    'getenv("HOME")', "getenv(name)", "LLVM_PROF", "-fsanitize=address", "san_options", "SAN_OPT", "msan_options",
+    "__attribute__((noinline, used))", "__attribute__((noreturn)) int f(void);",
+    "[[nodiscard]]", "[[gnu::used]]", "[[clang::fallthrough]]", "int a[2] = {0}; b = a[1]; // ?",
+    "what??", "x ?? y", "#linear", "#define LINE 1", "# pragma once", "__LINE__",
     "ASAN_OPT", "int x = 0;", "",
 ]
 

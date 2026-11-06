@@ -319,3 +319,30 @@ class ApprovalFailClosedTests(ApprovalCase):
         plain.write_text("x")
         with self.assertRaises(InternalError):
             approvals.load_approvals(plain, self.repo.root, self.head, self.allowed)
+
+
+class ApprovalHistorySubstitutionTests(ApprovalCase):
+    def side_commit(self):
+        self.repo.git("checkout", "-q", self.first)
+        self.repo.git("checkout", "-q", "-b", "side")
+        self.repo.write("side.txt", "s\n")
+        side = self.repo.commit("side")
+        self.repo.git("checkout", "-q", "task")
+        return side
+
+    def test_graft_cannot_make_a_non_ancestor_look_like_an_ancestor(self):
+        side = self.side_commit()
+        self.make(repo_sha=side)
+        grafts = self.repo.root / ".git" / "info" / "grafts"
+        grafts.parent.mkdir(exist_ok=True)
+        grafts.write_text("%s %s %s\n" % (self.head, self.first, side))
+        self.assertIsNone(self.load().covering("suppression", SCOPE))
+
+    def test_replace_ref_cannot_make_a_non_ancestor_look_like_an_ancestor(self):
+        side = self.side_commit()
+        self.make(repo_sha=side)
+        self.repo.git("checkout", "-q", "--detach", self.head)
+        twin = self.repo.git("commit-tree", self.head + "^{tree}", "-p", self.first, "-p", side,
+                             "-m", "twin")
+        self.repo.git("replace", self.head, twin)
+        self.assertIsNone(self.load().covering("suppression", SCOPE))

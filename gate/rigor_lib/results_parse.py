@@ -1,7 +1,8 @@
 """Parse the JSON Lines test results written by the `ctest` framework.
 
 Line formats (one JSON object per line):
-  {"id": "<suite>/<name>", "status": "pass"|"fail"|"skip", "asserts": <int >= 0>}
+  {"id": "<suite>/<name>", "status": "pass"|"fail"|"skip", "asserts": <int >= 0>,
+   "reason": <string, at most 1024 characters; optional>}
   {"summary": {"total": <int>, "passed": <int>}}      exactly one, as the last line of a file
 Anything else is reported as a finding; nothing here raises for bad product data.
 """
@@ -15,6 +16,8 @@ from rigor_lib.findings import finding
 TEST_ID = re.compile(r"[A-Za-z0-9_.+:-]+/[A-Za-z0-9_.+:-]+")
 STATUSES = ("pass", "fail", "skip")
 _TEST_KEYS = {"id", "status", "asserts"}
+_OPTIONAL_TEST_KEYS = {"reason"}
+MAX_REASON_CHARACTERS = 1024
 _SUMMARY_KEYS = {"total", "passed"}
 
 
@@ -46,8 +49,12 @@ def _is_count(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def _is_reason(value):
+    return isinstance(value, str) and len(value) <= MAX_REASON_CHARACTERS
+
+
 def _parse_test(obj):
-    if set(obj) != _TEST_KEYS:
+    if not _TEST_KEYS <= set(obj) or set(obj) - _TEST_KEYS - _OPTIONAL_TEST_KEYS:
         raise _BadLine("test-keys")
     if not isinstance(obj["id"], str) or not TEST_ID.fullmatch(obj["id"]):
         raise _BadLine("bad-id")
@@ -55,6 +62,8 @@ def _parse_test(obj):
         raise _BadLine("bad-status")
     if not _is_count(obj["asserts"]):
         raise _BadLine("bad-asserts")
+    if "reason" in obj and not _is_reason(obj["reason"]):
+        raise _BadLine("bad-reason")
     return obj["id"], obj["status"], obj["asserts"]
 
 

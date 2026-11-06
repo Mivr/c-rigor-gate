@@ -24,12 +24,17 @@ def git_environment():
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
+        # The graded repo is the agent's: its refs/replace/* objects and info/grafts must not
+        # rewrite the history or trees the gate judges.
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_GRAFT_FILE": os.devnull,
     }
 
 
 def _run(repo, args):
     """Run git in `repo`; return (returncode, stdout bytes, stderr bytes)."""
-    command = ["git", "--literal-pathspecs", "-C", os.fsencode(repo)] + [os.fsencode(a) for a in args]
+    command = ["git", "--literal-pathspecs", "-c", "core.fsmonitor=false",
+               "-c", "core.hooksPath=" + os.devnull, "-C", os.fsencode(repo)] + [os.fsencode(a) for a in args]
     try:
         done = subprocess.run(command, env=git_environment(), capture_output=True,
                               timeout=GIT_TIMEOUT_SECONDS, stdin=subprocess.DEVNULL)

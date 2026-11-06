@@ -264,6 +264,49 @@ class TestsGateMalformedLineTests(ResultsCase):
         self.assertExit(outcome, 1)
 
 
+class TestsGateReasonTests(ResultsCase):
+    def reason_line(self, reason, status="pass"):
+        return json.dumps({"id": "s/one", "status": status, "asserts": 1, "reason": reason})
+
+    def test_optional_reason_string_is_accepted(self):
+        self.write_file([self.reason_line("check failed: x == 1", "fail"), summary_line(1, 0)])
+        self.assertRules(self.write_expected(["s/one"]), [("test-not-pass", "s/one")])
+
+    def test_reason_on_a_passing_test_is_accepted(self):
+        self.write_file([self.reason_line("fine"), summary_line(1, 1)])
+        self.assertRules(self.write_expected(["s/one"]), [], code=0)
+
+    def test_reason_of_exactly_1024_characters_is_accepted(self):
+        self.write_file([self.reason_line("x" * 1024), summary_line(1, 1)])
+        self.assertRules(self.write_expected(["s/one"]), [], code=0)
+
+    def test_reason_of_1025_characters_is_malformed(self):
+        self.write_file([self.reason_line("x" * 1025), summary_line(1, 1)])
+        outcome, result = self.grade(self.write_expected(["s/one"]))
+        self.assertExit(outcome, 1)
+        self.assertEqual(self.reasons_of(result), ["bad-reason"])
+
+    def test_non_string_reasons_are_malformed(self):
+        for value in (1, None, True, ["a"], {"a": 1}):
+            with self.subTest(value=value):
+                self.write_file([self.reason_line(value), summary_line(1, 1)])
+                outcome, result = self.grade(self.write_expected(["s/one"]))
+                self.assertExit(outcome, 1)
+                self.assertEqual(self.reasons_of(result), ["bad-reason"])
+
+    def test_other_extra_keys_stay_malformed(self):
+        self.write_file(['{"id":"s/one","status":"pass","asserts":1,"note":"x"}', summary_line(1, 1)])
+        outcome, result = self.grade(self.write_expected(["s/one"]))
+        self.assertExit(outcome, 1)
+        self.assertEqual(self.reasons_of(result), ["test-keys"])
+
+    def test_reason_does_not_excuse_missing_keys(self):
+        self.write_file(['{"id":"s/one","status":"pass","reason":"x"}', summary_line(1, 1)])
+        outcome, result = self.grade(self.write_expected(["s/one"]))
+        self.assertExit(outcome, 1)
+        self.assertEqual(self.reasons_of(result), ["test-keys"])
+
+
 class TestsGateRatchetTests(ResultsCase):
     def setUp(self):
         super().setUp()

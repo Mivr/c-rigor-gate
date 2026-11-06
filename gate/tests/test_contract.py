@@ -371,3 +371,38 @@ class ContractUnitTests(TempDirTestCase):
 
     def test_plain_modes_are_accepted(self):
         self.assertEqual(self.rules(self.entry(b"src/x", "100755")), [])
+
+
+class ContractHistorySubstitutionTests(ContractCase):
+    """`git replace` objects and info/grafts in the graded repo must not change what is graded."""
+
+    def test_replace_ref_cannot_hide_an_outside_change(self):
+        self.repo.write("tool.sh", "changed\n")
+        bad_head = self.repo.commit("outside change")
+        self.repo.git("checkout", "-q", "--detach", self.base)
+        clean = self.repo.commit("clean twin")
+        self.repo.git("replace", bad_head, clean)
+        self.repo.git("checkout", "-q", "task")
+        outcome, result = self.grade(["src/**"], head=bad_head)
+        self.assertExit(outcome, 1)
+        self.assertEqual(self.rules(result), [("outside-allowed", "tool.sh")])
+
+    def test_replaced_tree_cannot_hide_an_outside_change(self):
+        self.repo.write("tool.sh", "changed\n")
+        bad_head = self.repo.commit("outside change")
+        bad_tree = self.repo.git("rev-parse", bad_head + "^{tree}")
+        clean_tree = self.repo.git("rev-parse", self.base + "^{tree}")
+        self.repo.git("replace", bad_tree, clean_tree)
+        outcome, result = self.grade(["src/**"], head=bad_head)
+        self.assertExit(outcome, 1)
+        self.assertEqual(self.rules(result), [("outside-allowed", "tool.sh")])
+
+    def test_graft_cannot_change_the_merge_base(self):
+        self.repo.write("tool.sh", "changed\n")
+        bad_head = self.repo.commit("outside change")
+        grafts = self.repo.root / ".git" / "info" / "grafts"
+        grafts.parent.mkdir(exist_ok=True)
+        grafts.write_text("%s %s\n" % (bad_head, bad_head))  # pretend head is its own parent
+        outcome, result = self.grade(["src/**"], head=bad_head)
+        self.assertExit(outcome, 1)
+        self.assertEqual(self.rules(result), [("outside-allowed", "tool.sh")])

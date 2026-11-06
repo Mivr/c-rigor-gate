@@ -21,7 +21,9 @@ On exit 2 with `--out`, the file is replaced by a `FAIL` result with the single 
 `internal-error` (the error text goes in `metadata.error`), so a stale `PASS` can never survive.
 `verdict` removes its stale `--out` file instead.
 
-Git is run with no user or system config, `--no-ext-diff --no-textconv`, `--ignore-submodules=none`,
+Git is run with no user or system config, `GIT_NO_REPLACE_OBJECTS=1` and `GIT_GRAFT_FILE=/dev/null`
+(so `refs/replace/*` and `info/grafts` in the agent's repo cannot rewrite the trees or ancestry
+being judged), `-c core.fsmonitor=false -c core.hooksPath=/dev/null`, `--no-ext-diff --no-textconv`, `--ignore-submodules=none`,
 `--literal-pathspecs`, and `-z` output, and paths are handled as raw bytes. The graded repository
 must be a clone assembled by the gate driver; its own config is not a trusted input.
 
@@ -47,8 +49,8 @@ plus `approval-in-repo` and `forged-approval`.
 An approval of kind `suppression` and scope `<path>:<line>-<pattern id>` covers one violation.
 
 ### `tests --results DIR --expected E.json [--previous P.json] [--approvals DIR --repo R --head H]`
-Results are `*.jsonl` files in DIR (not recursive): one `{"id","status","asserts"}` object per
-test and one final `{"summary":{"total","passed"}}` per file. `E.json` and `P.json` are
+Results are `*.jsonl` files in DIR (not recursive): one `{"id","status","asserts"}` object (plus an optional `reason` string of at most 1024
+characters) per test and one final `{"summary":{"total","passed"}}` per file. `E.json` and `P.json` are
 `{"ids": ["suite/name", ...]}` (gate-owned input; a defect is exit 2). Ids match
 `[A-Za-z0-9_.+:-]+/[A-Za-z0-9_.+:-]+`.
 Rules: `missing-test`, `duplicate-test`, `test-not-pass`, `no-assertions`,
@@ -98,7 +100,16 @@ Gates that take `--approvals` need `--repo` and `--head` (for the ancestry check
 without them. Existence of ssh-keygen is only required when the approvals directory is non-empty.
 
 ## Known limits
-- Pattern scanning is textual. It can be evaded by splitting a token across lines or macros; the
-  table is deliberately the spec's, not a compiler.
+- Pattern scanning is a line regex. Line splices (a backslash-newline inside a token) and macro
+  token-pasting still evade it. A semantic scan over the preprocessed source and the object
+  symbols is planned for a later task; do not try to solve that with more regexes.
 - `symlink` and `submodule` changes are refused outright rather than judged by target.
 - Scope strings for `suppression` approvals pin a line number, so they go stale when lines move.
+
+## Hygiene: why `-B` and `PYTHONDONTWRITEBYTECODE`
+Python would otherwise write `__pycache__/*.pyc` next to the sources, which dirties the worktree
+(and the contract gate would see the files) and lets a stale compiled module outlive its source.
+`selftest/gate.sh` runs `python3 -I -B`, and `gate/rigor` sets `sys.dont_write_bytecode` before any
+import. `-I` ignores `PYTHON*` variables, so the `-B` flag (not `PYTHONDONTWRITEBYTECODE`) is what
+works under isolated mode; the test helper also launches `rigor` with `-I -B`. Nothing here
+depends on `.gitignore`.
