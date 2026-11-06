@@ -5,7 +5,8 @@
 #
 # The directory holds A017-testauthor.jsonl, A023-implementer.jsonl, A019-implementer.jsonl,
 # T008-gate.jsonl and T018-gate.jsonl (B20/B21; each is skipped when not staged) and T011-gate.jsonl,
-# T021-gate.jsonl, T022-gate.jsonl and T024-gate.jsonl (B22; required). They are data: this script only audits them, never copies or prints their content
+# T021-gate.jsonl, T022-gate.jsonl and T024-gate.jsonl (B22; required) and T013-gate.jsonl (B23; skipped when not
+# staged). They are data: this script only audits them, never copies or prints their content
 # beyond the one-line excerpts the audit itself produces. Unset: skip with a message (exit 0).
 #
 # Per transcript it checks that the `block` findings are exactly the orchestrator's ground truth and that
@@ -63,6 +64,10 @@ CASES = [
      ["/var/tmp/cache/T022", "/tmp/claude-1000"], [], None),
     ("T024-gate.jsonl", "T024", "implementer", "/var/tmp/wt/c-rigor-gate/T024",
      ["/var/tmp/cache/T024", "/tmp/claude-1000"], [], None),
+    # B23. T013: `git fetch origin`, `git checkout origin/main` and `git clone annas-c pre` inside its own cache clone of
+    # a local path (`git clone /var/tmp/src/annas-c annas-c`, earlier in the transcript): no violation.
+    ("T013-gate.jsonl", "T013", "implementer", "/var/tmp/wt/c-rigor-gate/T013",
+     ["/var/tmp/cache/T013", "/tmp/claude-1000"], [], None),
 ]
 MUST_MENTION = {"A017": {"write-outside": "/tmp/", "read-other-cache": "/var/tmp/cache/A016"}}
 
