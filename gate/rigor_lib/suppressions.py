@@ -22,8 +22,9 @@ def patch_violations(path_text, patch):
     return found
 
 
-def entry_findings(repo, base, head, entry, approval_set, used):
-    """Findings for one changed path. Ids of approvals that cover a violation go in `used`."""
+def entry_findings(repo, base, head, entry, approval_set, used, seen):
+    """Findings for one changed path. Ids of approvals that cover a violation go in `used`;
+    every diff violation (reported or approved) goes in `seen` as (path, line, pattern)."""
     if entry.status == "D":
         return []
     shown = paths.display_path(entry.path)
@@ -33,6 +34,7 @@ def entry_findings(repo, base, head, entry, approval_set, used):
         found.append(finding("binary-artifact", path=shown))
     patch = gitrun.patch_for_path(repo, base, head, entry.path)
     for number, pattern_id in patch_violations(text, patch):
+        seen.add((shown, number, pattern_id))
         approval = approval_set.covering(approvals.KIND_SUPPRESSION,
                                          violation_scope(shown, number, pattern_id))
         if approval is None:
@@ -43,13 +45,47 @@ def entry_findings(repo, base, head, entry, approval_set, used):
     return found
 
 
-def run(args):
+def text_violations(path_text, data):
+    """(line number, pattern id) for every forbidden pattern on every line of a whole file."""
+    found = []
+    for number, raw_line in enumerate(data.split(b"\n"), start=1):
+        for pattern_id in patterns.matching_pattern_ids(path_text, raw_line.decode("latin-1")):
+            found.append((number, pattern_id))
+    return found
+
+
+def tree_findings(repo, entries, seen, approval_set, used):
+    """`forbidden-pattern-in-tree` findings for lines of the graded tree the diff scan did not see.
+
+    `entries` have `.path` (bytes) and `.blob`; `seen` holds the (path, line, pattern) triples the
+    diff scan already handled (reported or approved), so a hit is never reported twice.
+    """
+    found = []
+    for entry in entries:
+        shown = paths.display_path(entry.path)
+        data = gitrun.run_git(repo, ["cat-file", "blob", entry.blob])
+        for number, pattern_id in text_violations(paths.match_text(entry.path), data):
+            if (shown, number, pattern_id) in seen:
+                continue
+            approval = approval_set.covering(approvals.KIND_SUPPRESSION,
+                                             violation_scope(shown, number, pattern_id))
+            if approval is None:
+                found.append(finding("forbidden-pattern-in-tree", path=shown, line=number,
+                                     pattern=pattern_id))
+            else:
+                used.add(approval.stem)
+    return found
+
+
+def run(args, tree_entries=()):
     base, head = gitrun.resolve_range(args.repo, args.base, args.head)
     approval_set = approval_args.load_from_args(args)
     used = set()
+    seen = set()
     found = list(approval_set.problems)
     for entry in gitrun.changed_entries(args.repo, base, head):
-        found.extend(entry_findings(args.repo, base, head, entry, approval_set, used))
+        found.extend(entry_findings(args.repo, base, head, entry, approval_set, used, seen))
+    found.extend(tree_findings(args.repo, tree_entries, seen, approval_set, used))
     found.extend(approvals.approval_lookalike_findings(args.repo, head))
     metadata = {"merge_base": base, "head": head, "approvals_used": sorted(used)}
     return GateResult(GATE_ID, found, metadata)
