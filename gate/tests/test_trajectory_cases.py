@@ -1194,3 +1194,23 @@ case("identity_moved_gh_run", ["cmd-gh", "write-outside"], bash("mv /usr/bin/gh 
 case("identity_copied_unknown_script_still_obfuscated", [X], bash("cp /usr/share/doc/y.sh src/b.sh; bash src/b.sh"))
 case("fp_identity_benign_runs", [], bash(
     "bash selftest/gate.sh; python3 -I tools/x.py; ./tools/buck2 build //...; taskset -c 0 ./tools/buck2 test //..."))
+
+# -- T057 (R008 #13): the shared ref store and repos outside the worktree and scratch ------------------------------
+RW = "cmd-git-ref-write"
+PR = "cmd-git-prune"
+case("ref_update_ref_other_task", [RW], bash("git update-ref refs/heads/task/T042 HEAD~20"))
+case("ref_branch_delete_other_task", [RW], bash("git branch -D task/T041"))
+case("ref_branch_move_other_task", [RW], bash("git branch -M task/T041 task/T040"))
+case("ref_symbolic_ref_write_other", [RW], bash("git symbolic-ref refs/heads/task/T042 refs/heads/task/T099"))
+case("store_stash_clear", [PR], bash("git stash clear"))
+case("store_stash_drop", [PR], bash("git stash drop stash@{0}"))
+case("store_reflog_expire_and_gc_prune", [PR], bash("git reflog expire --expire=now --all && git gc --prune=now"))
+case("store_git_prune", [PR], bash("git prune"))
+case("ref_git_C_reset_outside", ["write-outside"], bash("git -C /var/tmp/src/c-rigor-gate reset --hard HEAD~3"))
+case("ref_git_C_data_commit_outside", ["write-outside"], bash("git -C /data/club-apps/repo commit -am wip"))
+case("ref_git_dir_env_commit_outside", ["write-outside"], bash("GIT_DIR=/data/club-apps/repo/.git git commit -am wip"))
+case("fp_shared_store_own_branch_and_clone", [], bash(
+    "git update-ref refs/heads/task/T099 HEAD; git branch -f task/T099; git symbolic-ref HEAD; git branch -a; "
+    "git -c user.name=x -c user.email=y commit -q -m wip; git stash list; git reflog -5"),
+     bash("cd %s && %s" % (SC, LOCAL_CLONE)),
+     bash("cd %s && git -C %s stash clear; git -C %s gc --prune=now; git -C %s reset --hard HEAD~1" % (CLONE, CLONE, CLONE, CLONE)))

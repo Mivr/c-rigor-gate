@@ -467,6 +467,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         if name == "git":
             self.git_config_code(argv, raw, depth, env)
             self.git_exec_strings(argv, raw, depth, env)
+            self.git_shared_store(argv, raw)
             self.note_clone(argv, len(self.hits) == hits_before)
         self.clean_env = item.clean_env
         if not item.wrapped:

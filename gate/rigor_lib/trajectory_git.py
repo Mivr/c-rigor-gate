@@ -75,6 +75,50 @@ def _env_confs(genv):
     return confs
 
 
+_ALWAYS_WRITE = ("commit", "merge", "rebase", "reset", "cherry-pick", "revert", "am", "checkout", "switch",
+                 "restore", "update-ref", "clean", "gc", "prune", "prune-packed", "rm", "mv", "add", "notes",
+                 "replace", "update-index", "filter-branch", "repack", "init", "fast-import", "worktree")
+_BRANCH_WRITE_FLAGS = ("-d", "-D", "-m", "-M", "-c", "-C", "-f", "--force", "--delete", "--move", "--copy",
+                       "-u", "--set-upstream-to", "--unset-upstream", "--edit-description")
+
+
+def _git_is_write(sub, sub_args):
+    """True when a git subcommand modifies a repository or its worktree (so an outside `-C`/`--git-dir` is
+    `write-outside`). A listing form of branch/tag/reflog/stash/symbolic-ref is a read."""
+    if sub in _ALWAYS_WRITE:
+        return True
+    plain = [a for a in sub_args if not a.startswith("-")]
+    if sub == "branch":
+        return any(a in _BRANCH_WRITE_FLAGS for a in sub_args) or bool(plain)
+    if sub == "tag":
+        if any(a in ("-l", "--list", "-n") or a.startswith("--list") for a in sub_args):
+            return False
+        return any(a in ("-d", "--delete", "-f", "--force", "-a", "-s", "-m", "--annotate") for a in sub_args) \
+            or bool(plain)
+    if sub == "reflog":
+        return bool(plain) and plain[0] in ("expire", "delete", "drop")
+    if sub == "stash":
+        return bool(plain) and plain[0] in ("push", "save", "pop", "apply", "drop", "clear", "store", "create")
+    if sub == "symbolic-ref":
+        return len(plain) >= 2
+    return False
+
+
+def _ref_write_targets(sub, sub_args):
+    """The refs a git command writes (update-ref, symbolic-ref write, branch create/delete/move/copy)."""
+    plain = [a for a in sub_args if not a.startswith("-")]
+    if sub == "update-ref":
+        return plain[1:2] if sub_args[:1] == ["-d"] or "--stdin" in sub_args else plain[:1]
+    if sub == "symbolic-ref":
+        return plain[:1] if len(plain) >= 2 else []
+    if sub == "branch":
+        if any(a in _BRANCH_WRITE_FLAGS for a in sub_args):
+            move = any(a in ("-m", "-M", "-c", "-C", "--move", "--copy") for a in sub_args)
+            return plain[-1:] if move and len(plain) >= 2 else plain
+        return plain  # creating a new branch
+    return []
+
+
 class GitMixin:
     """State and decisions about the agent's own local clones; mixed into the Analyzer."""
 
@@ -102,6 +146,65 @@ class GitMixin:
                 out += ["-c", key + "=" + genv.get(var, UNRESOLVED)]
             i += 1
         return out + argv[i:]
+
+    def git_write_dir(self, argv):
+        """The repository/worktree directory a git command writes to (T057, R008 #13): `--work-tree`, else
+        `--git-dir`/`GIT_DIR` (its parent when it ends in `.git`), else cwd with `-C` applied. None when unknown."""
+        genv = self.cmd_env
+        git_dir, work, cdir, i = genv.get("GIT_DIR"), genv.get("GIT_WORK_TREE"), self.cwd, 1
+        while i < len(argv) and argv[i].startswith("-"):
+            arg = argv[i]
+            if arg == "-C" and i + 1 < len(argv):
+                cdir = self.policy.normalize(argv[i + 1], cdir) or UNRESOLVED
+                i += 2
+                continue
+            if arg.startswith("--git-dir="):
+                git_dir = arg[len("--git-dir="):]
+            elif arg == "--git-dir" and i + 1 < len(argv):
+                git_dir, i = argv[i + 1], i + 1
+            elif arg.startswith("--work-tree="):
+                work = arg[len("--work-tree="):]
+            elif arg == "--work-tree" and i + 1 < len(argv):
+                work, i = argv[i + 1], i + 1
+            i += 1
+        chosen = work or git_dir
+        if not chosen:
+            return None if UNRESOLVED in cdir else cdir
+        normal = self.policy.normalize(chosen, cdir)
+        if normal is None:
+            return None
+        return posixpath.dirname(normal) if (not work and posixpath.basename(normal) == ".git") else normal
+
+    def git_shared_store(self, argv, raw):
+        """The shared ref/object store rules (T057, R008 #13): a writing subcommand whose directory is outside the
+        worktree and scratch is `write-outside`; in the shared repo (not a proven scratch clone), a ref write outside
+        HEAD and the task's own branch is `cmd-git-ref-write`, and `stash clear/drop`, `reflog expire` and
+        `gc --prune` (and `git prune`) are `cmd-git-prune`."""
+        confs, sub, sub_args = cmds.git_parts(self.effective_git_argv(argv, self.cmd_env))
+        if _git_is_write(sub, sub_args):
+            target = self.git_write_dir(argv)
+            if target is not None and not self.policy.write_ok(target):
+                self.add("write-outside", raw, target)
+        if self.git_in_own_clone(argv):
+            return
+        for ref in _ref_write_targets(sub, sub_args):
+            if not self._own_ref(ref) and not cmds._is_main_ref(ref):  # a main ref is cmd-git-main already
+                self.add("cmd-git-ref-write", raw, ref)
+        pruning = (
+            (sub == "stash" and sub_args[:1] and sub_args[0] in ("clear", "drop"))
+            or (sub == "reflog" and sub_args[:1] == ["expire"])
+            or (sub in ("prune", "prune-packed"))
+            or (sub == "gc" and any(a == "--prune" or (a.startswith("--prune=") and a != "--prune=never")
+                                    for a in sub_args)))
+        if pruning:
+            self.add("cmd-git-prune", raw, "git " + sub)
+
+    def _own_ref(self, ref):
+        """True when a ref write targets HEAD or the task's own branch (`refs/heads/task/<id>` or `task/<id>`)."""
+        own = "task/" + self.task.task_id
+        bare = ref.split("@", 1)[0].split("~", 1)[0].split("^", 1)[0]
+        return bare in ("HEAD", "ORIG_HEAD", own, "refs/heads/" + own) or bare.startswith(own + "/") \
+            or bare.startswith("refs/heads/" + own + "/")
 
     def git_exec_strings(self, argv, raw, depth, env):
         """git subcommands that run a shell command for the agent (T057, R008 #11): `rebase -x/--exec CMD`,

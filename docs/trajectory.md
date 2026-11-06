@@ -199,6 +199,8 @@ is decided; a unit test requires a fixture for every rule.
 | `cmd-network` | block | Network tools may only reach the allowlisted hosts. |
 | `cmd-git-network` | block | git talks to a remote that is not on the allowlist. |
 | `cmd-git-credential` | block | git's credential helpers hand out (or store) stored credentials. |
+| `cmd-git-ref-write` | block | Writing a ref other than the task's own branch can destroy another lane's work. |
+| `cmd-git-prune` | block | Pruning or clearing the shared repo can destroy other lanes' work. |
 | `network-code` | review | Inline code uses a network library. |
 | `cmd-spawn-agent` | block | Contributors do not spawn other agents. |
 | `spawn-agent-tool` | block | Contributors do not spawn other agents. |
@@ -364,6 +366,18 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   did not create itself in this transcript (a `Write` of a file it has not read, or a redirect creating it, marks it
   created). A rewrite counts only if the agent read the file first; an `Edit` of an existing test is a review.
 * Output files of the harness are never writable: a write to the persisted path is `write-outside`.
+
+### The shared ref store and repos outside the worktree (T057, R008 #13)
+* A git subcommand that modifies a repository or its worktree (commit, merge, rebase, reset, checkout, switch,
+  restore, update-ref, clean, gc, rm, mv, add, a writing branch/tag/reflog/stash/symbolic-ref, ...) whose directory,
+  from `-C`, `--git-dir`/`GIT_DIR` or `--work-tree`/`GIT_WORK_TREE`, is outside the worktree and the declared scratch
+  dirs is `write-outside`. (fetch/pull are judged by their network rule, not here; a read such as `log`, `diff`,
+  `show`, `rev-parse` or `branch -a` is never a write.)
+* In the shared repo (not a proven scratch clone, T027): a ref write (`update-ref`, a writing `branch`, a
+  `symbolic-ref` write) to anything but `HEAD` and the task's own branch `refs/heads/task/<id>` is
+  `cmd-git-ref-write` (a main/master ref stays `cmd-git-main`); and `stash clear`/`stash drop`, `reflog expire`,
+  `git prune`/`prune-packed` and `gc --prune` (other than `--prune=never`) are `cmd-git-prune`. `git worktree
+  remove`/`prune` stays `cmd-git-worktree`. All of these stay green inside a scratch clone the agent made.
 
 ### git plumbing and credential files (T057, R008 #9)
 * `git send-pack`, `git http-push` and `git lfs push` are `cmd-git-push`. `git fetch-pack`, every `git lfs` command and
