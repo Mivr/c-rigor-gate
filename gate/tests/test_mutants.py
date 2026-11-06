@@ -170,10 +170,15 @@ class MutantsTest(TempDirTestCase):
         result = self.fails_with(report([mutant(1)], functions=("f", "g")), "unaccounted-function")
         self.assertEqual(result["findings"][0]["problems"], {"no mutant and no reason": ["g"]})
 
-    def test_a_function_with_the_reason_no_mutable_token_is_accounted_for_and_reported_as_info(self):
+    def test_a_function_with_the_reason_no_mutable_token_is_an_error_in_l3_and_info_in_l2(self):
         document = report([mutant(1)], functions=("f", "g"))
         document["sources"][0]["functions"][1]["reason"] = "no-mutable-token"
         self.put(document)
+        outcome, result = self.grade()
+        self.assertExit(outcome, 1)
+        self.assertEqual([(f["rule"], f["severity"], f["function"]) for f in result["findings"]],
+                         [("no-mutable-token", "error", "g")])
+        self.write_policy("L2")
         outcome, result = self.grade()
         self.assertExit(outcome, 0)
         self.assertEqual([(f["rule"], f["severity"], f["function"]) for f in result["findings"]],

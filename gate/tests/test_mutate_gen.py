@@ -169,7 +169,7 @@ class UnreachableTest(unittest.TestCase):
 class IdTest(unittest.TestCase):
     def make(self, offset, **fields):
         item = {"begin_offset": offset, "end_offset": offset + 1, "original": "<", "replacement": "<=",
-                "operator": "relational", "function": "f", "line": 1, "file": "a.c"}
+                "operator": "relational", "function": "f", "line": 1, "file": "a.c", "body": "b0"}
         item.update(fields)
         return item
 
@@ -190,10 +190,106 @@ class IdTest(unittest.TestCase):
                         gen.assign_ids([self.make(10, operator="logical")], "a.c")):
             self.assertNotEqual(changed[0]["id"], base)
 
+    def test_the_hash_of_the_function_body_is_part_of_the_id(self):
+        base = gen.assign_ids([self.make(10), self.make(30)], "a.c")
+        edited = gen.assign_ids([self.make(10, body="b1"), self.make(30, body="b1")], "a.c")
+        self.assertEqual(set(m["id"] for m in base) & set(m["id"] for m in edited), set())
+
+    def test_the_ordinal_only_separates_equal_candidates_of_one_body(self):
+        ids = [m["id"] for m in gen.assign_ids([self.make(10), self.make(30, body="b1")], "a.c")]
+        again = [m["id"] for m in gen.assign_ids([self.make(10)], "a.c")]
+        self.assertEqual(ids[0], again[0])  # the same candidate in another body does not take its ordinal
+        self.assertNotEqual(ids[0], ids[1])
+        # moving an equal candidate to another place of the same body does not change the ids
+        self.assertEqual([m["id"] for m in gen.assign_ids([self.make(10), self.make(30)], "a.c")],
+                         [m["id"] for m in gen.assign_ids([self.make(12), self.make(50)], "a.c")])
+
+    def test_the_body_is_consumed_and_not_reported(self):
+        self.assertNotIn("body", gen.assign_ids([self.make(10)], "a.c")[0])
+
     def test_two_operators_proposing_the_same_text_change_leave_one_mutant(self):
         a = self.make(10, operator="relational")
         b = self.make(10, operator="condition")
         self.assertEqual(len(gen.assign_ids([a, b], "a.c")), 1)
+
+
+class NormaliseBodyTest(unittest.TestCase):
+    def test_comments_and_white_space_do_not_matter(self):
+        plain = b"{ if (a < b) { return 1; } /* c */ return 0; }"
+        spaced = b"{\n\tif (a < b)   {\n return 1; // why\n }\n\n return 0; /* x\ny */\n}"
+        self.assertEqual(gen.normalise_body(plain), gen.normalise_body(spaced))
+        self.assertEqual(gen.normalise_body(spaced), b"{ if (a < b) { return 1; } return 0; }")
+
+    def test_tokens_stay_apart_and_literals_stay_exact(self):
+        self.assertNotEqual(gen.normalise_body(b"{ a b; }"), gen.normalise_body(b"{ ab; }"))
+        self.assertNotEqual(gen.normalise_body(b"{ a/**/b; }"), gen.normalise_body(b"{ ab; }"))
+        self.assertNotEqual(gen.normalise_body(b'{ f("a  b"); }'), gen.normalise_body(b'{ f("a b"); }'))
+        self.assertNotEqual(gen.normalise_body(b'{ f("a//b"); }'), gen.normalise_body(b'{ f("a"); }'))
+        self.assertEqual(gen.normalise_body(b'{ f("q\\"  x"); }'), b'{ f("q\\"  x"); }')
+        self.assertEqual(gen.normalise_body(b"{ c = ' '; }"), b"{ c = ' '; }")
+
+    def test_any_other_change_of_the_body_changes_it(self):
+        self.assertNotEqual(gen.normalise_body(b"{ return a < 1; }"), gen.normalise_body(b"{ return a < 2; }"))
+        self.assertNotEqual(gen.normalise_body(b"{ return a < 1; }"), gen.normalise_body(b"{ return a <= 1; }"))
+
+    def test_a_line_splice_and_an_unterminated_comment_are_dropped(self):
+        self.assertEqual(gen.normalise_body(b"{ a\\\nb; }"), b"{ ab; }")
+        self.assertEqual(gen.normalise_body(b"{ a; /* open"), b"{ a;")
+        self.assertEqual(gen.normalise_body(b"{ a; // open"), b"{ a;")
+
+
+class IdStabilityTest(unittest.TestCase):
+    """Ids are the same in every run, on every machine and in every checkout (B18)."""
+
+    def run_gen(self, where, seed):
+        import os
+        import shutil
+        import subprocess
+        import sys
+        import tempfile
+        with tempfile.TemporaryDirectory(dir=where) as tmp:
+            for name in ("gen_sample.c", "gen_sample.ast.json"):
+                shutil.copy(HERE / "data" / name, tmp)
+            out = Path(tmp) / "out.json"
+            done = subprocess.run([sys.executable, "-I", "-B", str(HERE.parent.parent / "mutate" / "gen.py"),
+                                   "--src", "gen_sample.c", "--ast", "gen_sample.ast.json", "--out", str(out)],
+                                  cwd=tmp, env={"PYTHONHASHSEED": str(seed)}, capture_output=True)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            return json.loads(out.read_text(encoding="utf-8"))
+
+    def test_ids_do_not_depend_on_the_run_or_on_where_the_checkout_is(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            first = self.run_gen(a, 1)
+            second = self.run_gen(b, 2)
+        data, ast = sample()
+        direct = gen.generate("gen_sample.c", data, ast)
+        self.assertEqual(first["mutants"], second["mutants"])
+        self.assertEqual(first["mutants"], direct["mutants"])
+        ids = [m["id"] for m in first["mutants"]]
+        self.assertEqual(len(set(ids)), len(ids))
+        self.assertTrue(all("body" not in m for m in first["mutants"]))
+
+    def test_a_different_body_hash_changes_every_id_of_the_module(self):
+        data, ast = sample()
+        real = gen.generate("gen_sample.c", data, ast)["mutants"]
+        original = gen.Walker.body_hash
+        gen.Walker.body_hash = lambda self, body: "edited"
+        try:
+            edited = gen.generate("gen_sample.c", data, sample()[1])["mutants"]
+        finally:
+            gen.Walker.body_hash = original
+        self.assertEqual(len(real), len(edited))
+        self.assertEqual(set(m["id"] for m in real) & set(m["id"] for m in edited), set())
+
+    def test_two_functions_with_different_bodies_get_different_body_hashes(self):
+        data, ast = sample()
+        source = gen.Source(data)
+        walker = gen.Walker(source, "gen_sample.c")
+        body = {"_span": (0, 30)}
+        other = {"_span": (30, 60)}
+        self.assertEqual(walker.body_hash(body), walker.body_hash(body))
+        self.assertNotEqual(walker.body_hash(body), walker.body_hash(other))
 
 
 class ReturnClassTest(unittest.TestCase):

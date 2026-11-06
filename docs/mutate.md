@@ -191,11 +191,21 @@ object is identical (two enumerators of equal value) is `equivalent`.
 If two operators propose the same text change, one mutant is kept. Compile failure (including a warning
 that is an error under the sealed flags) = `unviable`.
 
-### Ids
-`id` = first 16 hex digits of sha256 over `file`, `function`, `operator`, `original`, `replacement` and the
-ordinal of the mutant among those equal in the function (`NUL`-separated). No line or offset is in it, so an
-approval survives edits elsewhere in the file. (Deviation from the task text: `replacement` is part of the
-hash, because `<`->`<=` and `<`->`>=` at one place would otherwise collide.)
+### Ids (B18, T058)
+`id` = first 16 hex digits of sha256 over `file`, `function`, `operator`, `original` (the mutated token's text),
+`replacement`, the sha256 of the **body of the enclosing function** and the ordinal (`NUL`-separated). The body is
+normalised for white space and comments only: comments become one space, runs of white space one space, line splices
+vanish, string and character literals stay exact. The ordinal is a tie-break only, among candidates of that same body
+with identical `operator`, `original` and `replacement`. No line or offset is in it, so an approval survives edits
+elsewhere in the file and a moved function; the id does not depend on the checkout's path (`file` is the path the
+module's target gives, relative to the repository), the machine or the run.
+**Any other change to the function body changes every id in that function.** An `equivalent-mutant` approval written
+for an old id then names no mutant: it does not cover the survivor that now has the same ordinal (which is an ordinary
+`survived-mutant`), and it is absent from `approvals_used`. No fuzzy matching: a refactor means a new approval.
+(`replacement` is part of the hash, because `<`->`<=` and `<`->`>=` at one place would otherwise collide.)
+**Cold caches, once:** every id changes with this change, so mutant verdict caches keyed on ids go cold once, and every
+existing `equivalent-mutant` approval of a product must be re-issued. `selftest/mutate.sh` pins the drift case.
+Old formula: sha256 of `file`, `function`, `operator`, `original`, `replacement`, ordinal.
 
 ### Struct and union returns (T050; R003 G4, G5; B30)
 A function whose return type is a struct or union gets the `function-body` mutant `{ (void)p; ... return (T){0}; }` and

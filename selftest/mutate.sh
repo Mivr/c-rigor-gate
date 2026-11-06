@@ -1030,6 +1030,34 @@ gate "$out/shifted"
 echo "    same id $id, line moved $old_line -> $((old_line + 1))"
 sed -i '1d' "$scratch/m/equiv.c"
 
+# T058 / B18 (R001 R6): ids are bound to the mutated token and to the body of the function. The approved `<=` -> `<`
+# of twice_pos is rewritten so that the same group and ordinal now names a mutation that changes the result for
+# n = 100 and that no test checks. The old approval must not cover it. (This is a step here and not a canary because
+# the canary pack carries no signed approvals.)
+begin "approval drift: after the function body changes, the old equivalent-mutant approval covers nothing"
+cp "$scratch/m/equiv.c" "$out/equiv.c.orig"
+cat > "$scratch/m/equiv.c" <<'EOF'
+#include "equiv.h"
+
+int twice_pos(int n)
+{
+    if (n > 0 && n <= 100) {
+        return n * 2;
+    }
+    return 0;
+}
+EOF
+run "$out/build_drift.log" build "$pkg:equiv_mutants" --show-full-output || fail "$CUR: build" "$out/build_drift.log"
+p="$(awk -v t="$pkg:equiv_mutants" 'index($1, t) {print $2}' "$out/build_drift.log" | tail -1)"
+mkdir -p "$out/drift"; cp "$p" "$out/drift/equiv.json"
+gate "$out/drift" --approvals "$out/approvals" "${AP[@]}"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: the old approval covered the drifted function (exit $GATE_CODE)" "$out/gate.log"
+[ "$(json '[f["id"] for f in r["findings"] if f["rule"] == "survived-mutant" and f["original"] == "<=" and f["replacement"] == "<"] != []')" = True ] || fail "$CUR: the untested <= -> < mutant is not a survivor" "$out/gate.log"
+[ "$(json '[f for f in r["findings"] if f.get("id") == "'"$id"'"]')" = "[]" ] || fail "$CUR: the old id still names a mutant of the edited function" "$out/gate.log"
+[ "$(json 'r["metadata"]["approvals_used"]')" = "[]" ] || fail "$CUR: the old approval was used" "$out/gate.log"
+echo "    old id $id names nothing now; no approval used; the same-ordinal <= -> < survives"
+cp "$out/equiv.c.orig" "$scratch/m/equiv.c"
+
 begin "WARM: an unchanged tree executes no action"
 build_all "$out/build2.log" || fail "$CUR: buck2 build failed" "$out/build2.log"
 n="$(executed "$out/build2.log")"
