@@ -2,7 +2,7 @@
 
 import argparse
 
-from rigor_lib import facts_data, facts_policy, facts_semantic, facts_symbols, facts_third_party
+from rigor_lib import facts_data, facts_modes, facts_policy, facts_semantic, facts_symbols, facts_third_party
 from rigor_lib.errors import InternalError
 from rigor_lib.runner import gate_handler
 
@@ -18,6 +18,13 @@ class _GateChoice(argparse.Action):
 
 
 def run(args):
+    if args.modes:
+        args.gate_id = facts_modes.GATE_ID    # an internal error replaces the right result file
+        if args.gate or args.facts or args.policy:
+            raise InternalError("--modes takes no --gate, --facts or --policy")
+        return facts_modes.run(args)
+    if not (args.gate and args.facts and args.policy):
+        raise InternalError("rigor facts needs --gate, --facts and --policy (or --modes)")
     facts = facts_data.load_facts_dir(args.facts)
     policy = facts_policy.load_policy(args.policy)
     third = facts_third_party.load(args.third_party)
@@ -32,9 +39,11 @@ def run(args):
 def add_parser(subparsers):
     parser = subparsers.add_parser("facts", allow_abbrev=False,
                                    help="semantic suppressions and symbol policy from build facts")
-    parser.add_argument("--gate", required=True, choices=sorted(GATES), action=_GateChoice)
-    parser.add_argument("--facts", required=True)
-    parser.add_argument("--policy", required=True)
+    parser.add_argument("--gate", choices=sorted(GATES), action=_GateChoice)
+    parser.add_argument("--facts")
+    parser.add_argument("--policy")
+    parser.add_argument("--modes", nargs=2, metavar=("RELEASE_DIR", "SAN_DIR"),
+                        help="compare the release and san facts (gate mode-divergence)")
     parser.add_argument("--libc")
     parser.add_argument("--third-party", help="directory with ALLOWED_LABELS and RESERVED_PREFIXES "
                                               "(default: the gate's own third_party/)")
