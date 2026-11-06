@@ -109,3 +109,7 @@ Approvals never cover anything but a survivor.
 - A test can still kill mutants for the wrong reason, for example by hashing the machine code of the function under
   test: every mutant then fails a check. Nothing in the gate detects that (the `symbols` policy is the only barrier);
   hidden tests and the red team (B7, B8) are the answer.
+- **Known gap (B12, found by T008, not fixed):** `gen.py` silently drops a function whose AST has an attribute node
+  after the body (`__attribute__((noinline)) int f(void) { ... }`): it is not mutated and no finding says so.
+- In `c_mutants` a test is named `<package>__<name>` in the report (every character outside `[a-z0-9_]` becomes
+  `_`), because two packages may each have a test called `arena_test` and both can depend on the same module.

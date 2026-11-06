@@ -53,6 +53,8 @@ A gate that fails by findings does not stop the others (except as noted for `bui
   a policy the gate writes. Findings and the per-module summary (`total`, `verdicts`, `operators`, `survivors`)
   are reported with the product's module labels; metadata also has the executed/cached action counts and the
   sha256 of the generated `BUCK`.
+- **Test names.** Inside a report a test is `<package>__<name>` (`rules/mutate.bzl`), so tests with the same name
+  in two packages can both run against a module.
 - **Unviable ratio (B11).** More than 25 % of a module's generated mutants unviable is `unviable-ratio`: an error
   at L3+, info at L2. Code written so that its mutants fail to compile (for example constants at the limit of
   their type, which trip `-Werror`) would otherwise escape.
