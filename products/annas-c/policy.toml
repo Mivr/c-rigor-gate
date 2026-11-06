@@ -585,6 +585,15 @@ exports = ["kf_entry", "kf_entry_count", "kf_entry_is", "kf_fail", "kf_fail2", "
     "kit_dir_count", "kit_dir_put", "kit_dir_read", "kit_env_begin_fake", "kit_env_begin_real",
     "kit_env_end", "kit_fd_count", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
 
+[module."//posix_fs:fs_direct_test"]
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy",
+    "memset", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strcmp"]
+deny_exempt = ["fopen", "getenv", "unlink"]
+exports = ["kf_entry", "kf_entry_count", "kf_entry_is", "kf_fail", "kf_fail2", "kf_init", "kf_log",
+    "kf_log_reset", "kf_open_fds", "kf_open_fs", "kf_open_tmp", "kf_preload", "kf_sys",
+    "kit_dir_count", "kit_dir_put", "kit_dir_read", "kit_env_begin_fake", "kit_env_begin_real",
+    "kit_env_end", "kit_fd_count", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
+
 [module."//posix_fs:fs_errno_test"]
 allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy",
     "memset", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strchr", "strcmp"]
@@ -610,7 +619,8 @@ allow = ["__errno_location", "close", "fsync", "ftruncate", "linkat", "memcpy", 
 deny_exempt = ["open", "openat"]
 exports = ["pfs_find", "pfs_fsync", "pfs_ftruncate", "pfs_link_tmp", "pfs_map_err",
     "pfs_op_commit", "pfs_op_write", "pfs_open_tmp", "pfs_pwrite", "pfs_release", "posix_fs_close",
-    "posix_fs_open", "posix_fs_open_sys", "posix_fs_port", "posix_fs_sys_libc"]
+    "posix_fs_commit", "posix_fs_create_temp", "posix_fs_discard", "posix_fs_open", "posix_fs_open_sys",
+    "posix_fs_port", "posix_fs_sys_libc", "posix_fs_write"]
 
 [module."//posix_fs:testkit"]
 level = "L1"
