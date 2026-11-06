@@ -1,0 +1,26 @@
+load("@gate//rules:third_party.bzl", "c_third_party")
+load(":files.bzl", "MBEDTLS_FILES")
+
+# mbedTLS 3.6.7 (LTS), release tarball pinned by sha256. See docs/third-party.md.
+_NOT_COMPILED = ["library/net_sockets.c", "library/ecp_curves_new.c"]
+
+c_third_party(
+    name = "mbedtls",
+    url = "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2",
+    sha256 = "a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6",
+    size_bytes = 5473689,
+    top = "mbedtls-3.6.7",
+    dirs = ["include", "library"],
+    files = MBEDTLS_FILES,
+    srcs = [f for f in MBEDTLS_FILES if f.startswith("library/") and f.endswith(".c") and f not in _NOT_COMPILED],
+    own_srcs = ["gate_platform.c"],
+    private_headers = [f for f in MBEDTLS_FILES if f.startswith("library/") and f.endswith(".h")],
+    public_headers = [f for f in MBEDTLS_FILES if f.startswith("include/")],
+    config_header = "gate_mbedtls_config.h",
+    config_macro = "MBEDTLS_CONFIG_FILE",
+)
+
+# Shared with the self-test server build (third_party/selftest).
+export_file(name = "gate_mbedtls_config.h", visibility = ["//third_party/..."])
+
+export_file(name = "gate_platform.c", visibility = ["//third_party/..."])
