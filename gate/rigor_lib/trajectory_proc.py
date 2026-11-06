@@ -17,6 +17,7 @@ _PREFIX_RE = re.compile(r"[A-Za-z]*")
 # a shell command string: os.system(S), os.popen(S), subprocess.getoutput(S), Node's execSync(S)/cp.exec(S)
 _SHELL_CALL_RE = re.compile(
     r"(?<![\w$.])(?:os\.(?:system|popen)|subprocess\.(?:getoutput|getstatusoutput)|commands\.getoutput|"
+    r"(?:asyncio\.)?create_subprocess_shell|"
     r"(?:child_process|cp|require\(\s*['\"](?:node:)?child_process['\"]\s*\))\.(?:exec|execSync)|execSync)\s*\(")
 # an argv (or a string with shell=True): subprocess.run/call/check_*/Popen, os.exec*/spawn*, Node spawn/execFile
 _ARGV_CALL_RE = re.compile(
@@ -24,7 +25,7 @@ _ARGV_CALL_RE = re.compile(
     r"os\.(?P<osx>exec[lv]p?e?|spawn[lv]p?e?|posix_spawnp?)|"
     r"(?:(?:child_process|cp|require\(\s*['\"](?:node:)?child_process['\"]\s*\))\.)?"
     r"(?P<node>spawn|spawnSync|execFile|execFileSync)|"
-    r"(?P<sys>system|exec))\s*\(")
+    r"(?:asyncio\.)?(?P<aexec>create_subprocess_exec)|(?P<sys>system|exec))\s*\(")
 _RUBY_PERL = ("ruby", "perl")
 _BARE_SYSTEM_RE = re.compile(r"(?<![\w$.:])(?:system|exec|spawn)[ \t]+(?=[\[\"'])")
 _BACKTICK_RE = re.compile(r"`([^`\n]*)`|%x\{([^}\n]*)\}|%x\(([^)\n]*)\)|\bqx\{([^}\n]*)\}|\bqx\(([^)\n]*)\)")
@@ -39,7 +40,7 @@ _KILL_CALLS = (
     (re.compile(r"(?<![\w$.])psutil\.Process\s*\("), 0),
     (re.compile(r"(?<![\w$.:])Process\.kill\s*\("), 1),
 )
-_PERL_KILL_RE = re.compile(r"(?<![\w$.>-])kill\s*\(?\s*")
+_PERL_KILL_RE = re.compile(r"(?<![\w$.>-])kill(?![\w-])\s*\(?\s*")
 _PSUTIL_SIGNAL_RE = re.compile(r"\s*\.\s*(?:kill|terminate|send_signal)\s*\(")
 _SPAWN_RE = re.compile(r"(?:subprocess\.Popen|Popen|multiprocessing\.Process|Process|create_subprocess_(?:exec|shell)|"
                        r"spawn|fork|os\.fork|os\.posix_spawnp?|os\.spawn[lv]p?e?|pty\.fork)\s*\(")
@@ -135,7 +136,9 @@ def commands(text, lang=None):
         positional = [a for a in args if re.match(r"[A-Za-z_]\w*\s*=(?!=)", a) is None]
         if not positional:
             continue
-        if call.group("sys") is not None:
+        if call.group("aexec") is not None:
+            command = _system_command(positional, names, lists)  # (program, *args), like system()
+        elif call.group("sys") is not None:
             if call.group("sys") == "exec" and lang not in _RUBY_PERL:
                 continue  # Python's exec() runs Python (its text is searched for fragments elsewhere)
             command = _system_command(positional, names, lists)

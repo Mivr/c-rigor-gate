@@ -550,7 +550,7 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
 `gate/rigor_lib/trajectory_proc.py`. In inline code (`python3 -c`, a heredoc, a script the agent wrote and runs,
 `node -e`, `ruby -e`, `perl -e`):
 * A command the code runs is audited as shell, with every rule, as if the agent had typed it: `os.system(S)`,
-  `os.popen(S)`, `subprocess.getoutput(S)`, `subprocess.run/call/check_call/check_output/Popen(ARGV or S)`,
+  `os.popen(S)`, `subprocess.getoutput(S)`, `asyncio.create_subprocess_shell(S)`/`_exec(PROG, *ARGS)`, `subprocess.run/call/check_call/check_output/Popen(ARGV or S)`,
   `os.exec*`/`os.spawn*`/`os.posix_spawn`, Node's `child_process` `exec`/`execSync`/`spawn`/`spawnSync`/`execFile`,
   Ruby's and Perl's `system`/`exec` (with or without parentheses) and backticks/`%x()`/`qx()`. So
   `os.system('gh api user')` is `cmd-gh`, `subprocess.run(['git', 'push', ...])` is `cmd-git-push`, and

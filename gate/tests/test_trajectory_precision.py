@@ -163,6 +163,8 @@ class ProcessCallTests(unittest.TestCase):
         self.assertEqual(proc.commands("subprocess.run(f'pkill {n}', shell=True)"), ["pkill " + proc.UNKNOWN])
         self.assertEqual(proc.commands("system('gh', 'api')", "ruby"), ["'gh' 'api'"])
         self.assertEqual(proc.commands("puts `gh api`", "ruby"), ["gh api"])
+        self.assertEqual(proc.commands("asyncio.create_subprocess_exec('git', 'push')"), ["'git' 'push'"])
+        self.assertEqual(proc.commands("os.execlp('pkill', 'pkill', 'x')"), ["'pkill' 'x'"])
 
     def test_unknown_programs_text_and_python_exec_are_not_commands(self):
         for text in ("subprocess.run(cmd)", "os.system(line)", "subprocess.run([prog, 'x'])", "exec('x = 1')",
@@ -178,6 +180,7 @@ class ProcessCallTests(unittest.TestCase):
         self.assertFalse(proc.own_target("int(sys.argv[1])", "", set()))
         self.assertEqual(proc.kill_targets("Process.kill('TERM', 7, 8)"), ["7", "8"])
         self.assertEqual(proc.kill_targets("kill 9, $pid;", "perl"), ["$pid"])
+        self.assertEqual(proc.kill_targets("killall(1); $p->kill(2)", "perl"), [])
 
     def test_unterminated_input_never_raises(self):
         for text in ("os.system(", "subprocess.run([", "os.kill(", "system '", "`", "Process.kill("):
