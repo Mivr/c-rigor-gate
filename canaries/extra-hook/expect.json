@@ -1,0 +1,10 @@
+{
+  "bypass": "extra exported writable hook",
+  "description": "A writable function-pointer global is added to the module header and honoured by the implementation; the tests never set it (R003 S6a).",
+  "fail": {
+    "symbols": [
+      "mutable-global-export",
+      "unexpected-export"
+    ]
+  }
+}
