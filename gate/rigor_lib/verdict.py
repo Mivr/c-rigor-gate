@@ -8,7 +8,7 @@ order of the order file; a gate with no result file is NOT_RUN, which is a failu
 import os
 import re
 
-from rigor_lib import jsonio
+from rigor_lib import jsonio, verdict_inputs
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
@@ -22,7 +22,12 @@ _RESULT_KEYS = {"gate", "status", "findings", "metadata"}
 
 def read_order(path):
     """Gate ids, one per line, in order. Blank, malformed or repeated ids are errors."""
-    text = jsonio.read_bytes(path).decode("utf-8")
+    return parse_order(jsonio.read_bytes(path))
+
+
+def parse_order(data):
+    """`read_order` over bytes already read (so a grade hashes the bytes it used)."""
+    text = data.decode("utf-8")
     lines = text.split("\n")
     if lines[-1] == "":
         lines.pop()
@@ -132,3 +137,4 @@ def add_parser(subparsers):
     parser.add_argument("--results", required=True)
     parser.add_argument("--out", required=True)
     parser.set_defaults(handler=run, gate_id=None)
+    verdict_inputs.add_verify_parser(subparsers)
