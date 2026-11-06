@@ -1,0 +1,31 @@
+load("@gate//rules:c.bzl", "c_library")
+load("@gate//rules:structure.bzl", "c_structure")
+
+# One module per case, so that a red case produces exactly its own finding. `clean` is the green one.
+[
+    (
+        c_library(name = n, srcs = [n + ".c"]),
+        c_structure(name = n + "_s", module = ":" + n, srcs = [n + ".c"]),
+    )
+    for n in [
+        "clean", "selfrec", "macrorec", "stmtexprrec", "cleanuprec", "asmrec", "aliasrec", "len51", "params7",
+        "nest5", "fpcycle", "callbackcycle", "gotos", "stmtnest", "linehide", "packed", "longline", "macrofn",
+        "file501",
+    ]
+]
+
+c_library(name = "mutual", srcs = ["ping.c", "pong.c"], headers = ["pp.h"])
+c_structure(name = "mutual_s", module = ":mutual", srcs = ["ping.c", "pong.c"], headers = ["pp.h"])
+
+c_library(name = "splitbody", srcs = ["splitbody.c"], headers = ["mid.h"])
+c_structure(name = "splitbody_s", module = ":splitbody", srcs = ["splitbody.c"], headers = ["mid.h"])
+
+# Impossible by construction: the real build cannot see inc2.c while it compiles inc1.c.
+c_library(name = "included", srcs = ["inc1.c", "inc2.c"])
+c_structure(name = "included_s", module = ":included", srcs = ["inc1.c", "inc2.c"])
+
+# A cycle across two modules (xa declares xb's function itself).
+c_library(name = "xa", srcs = ["xa.c"], headers = ["xa.h"])
+c_structure(name = "xa_s", module = ":xa", srcs = ["xa.c"], headers = ["xa.h"])
+c_library(name = "xb", srcs = ["xb.c"], deps = [":xa"])
+c_structure(name = "xb_s", module = ":xb", srcs = ["xb.c"], deps = [":xa"])
