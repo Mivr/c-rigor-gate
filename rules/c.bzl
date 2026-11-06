@@ -7,7 +7,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 
 load("@gate//rules:cov.bzl", "cov_report")
-load("@gate//rules:ctest.bzl", "ctest_results")
+load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
 load("@gate//rules:facts.bzl", "c_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 
@@ -169,13 +169,21 @@ def c_test(name, srcs = [], deps = []):
 
 def c_fuzz(name, srcs = [], deps = []):
     _check("c_fuzz", srcs, [])
-    native.cxx_test(
-        name = name,
+
+    # `<name>__bin` is the libFuzzer binary; `<name>` runs it (-seed=1 -runs=200000) as a cacheable
+    # action with declared outputs and is the test: `<name>[crash]` is the reproducer, `<name>[report]`
+    # the symbolized report.
+    native.cxx_binary(
+        name = name + "__bin",
         srcs = srcs,
         deps = deps,
         compiler_flags = _compile_flags(),
         linker_flags = _link_flags(),
-        args = ["-seed=1", "-runs=200000", "-artifact_prefix=/tmp/"],
+        target_compatible_with = _ONLY_FUZZ,
+    )
+    fuzz_run(
+        name = name,
+        binary = ":" + name + "__bin",
         target_compatible_with = _ONLY_FUZZ,
     )
 

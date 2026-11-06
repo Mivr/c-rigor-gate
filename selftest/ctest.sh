@@ -457,8 +457,13 @@ printf 'const char ctest_scratch_nonce[] = "%s";\n' "$(date +%s%N)-$$" >> "$scra
 must_pass build "$pkg/order:t_results"
 "${B[@]}" log what-ran 2>/dev/null | strip_ansi > "$out/whatran.txt"
 grep -q 'ctest_results' "$out/whatran.txt" || fail "$CUR: no ctest_results action ran" "$out/whatran.txt"
-if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
-  fail "$CUR: an action did not run on RE" "$out/whatran.txt"
+# Only the fresh-nonce actions (the order package and its results) must have run on RE; unchanged dependencies (toolchain, ctest, other
+# facts) may legitimately be cache hits, depending on farm and daemon history. Nothing may run locally.
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $2 ~ /scratch_ctest\/order:|ctest_results/ && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
+  fail "$CUR: a fresh-nonce action did not run on RE" "$out/whatran.txt"
+fi
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^(re\(|cache)/ {bad=1} END{exit !bad}'; then
+  fail "$CUR: an action ran locally or on an unknown executor" "$out/whatran.txt"
 fi
 grep 'ctest_results' "$out/whatran.txt" | head -3
 
