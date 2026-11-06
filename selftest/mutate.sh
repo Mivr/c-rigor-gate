@@ -557,6 +557,8 @@ begin "build the throwaway module's mutants on RE (cold if MUTATE_COLD=1)"
 t0=$SECONDS
 build_all "$out/build1.log" || fail "$CUR: buck2 build failed" "$out/build1.log"
 echo "    built in $((SECONDS - t0)) s, executed $(executed "$out/build1.log") actions"
+# MUTATE_SAVE_RES=<dir>: keep the raw reports, to compare two versions of the rules byte for byte (T064)
+if [ -n "${MUTATE_SAVE_RES:-}" ]; then mkdir -p "$MUTATE_SAVE_RES"; cp "$RES"/*.json "$MUTATE_SAVE_RES/"; fi
 "${PY[@]}" - "$RES" <<'PY'
 import glob, json, os, sys
 operators, verdicts = {}, {}
@@ -1187,6 +1189,7 @@ p="$(awk -v t="$pkg:fold_mutants" 'index($1, t) {print $2}' "$out/build_fold.log
 [ -f "$p" ] || fail "$CUR: no report for fold"
 echo "    built, executed $(executed "$out/build_fold.log") actions"
 mkdir -p "$out/only_fold"; cp "$p" "$out/only_fold/fold.json"
+if [ -n "${MUTATE_SAVE_RES:-}" ]; then cp "$p" "$MUTATE_SAVE_RES/fold.json"; cp "$out/det_a.json" "$MUTATE_SAVE_RES/det_a.json"; fi
 "${PY[@]}" - "$out/only_fold/fold.json" <<'PY' || fail "$CUR: bad fold report"
 import json, sys
 d = json.load(open(sys.argv[1]))
