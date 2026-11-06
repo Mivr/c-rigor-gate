@@ -376,6 +376,14 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   is a `.env` anywhere under a home outside the agent's own dirs (a `.env` the worktree or the scratch holds is its
   own). `ssh-add` (it lists or loads the agent's keys) is `read-ssh-material`.
 
+### Hidden program identity (T057, R008 #12)
+* The command rules run against the real identity of an executed file: the basename of a file an interpreter runs
+  (`bash /usr/local/bin/agent-run` is `cmd-spawn-agent`), and the source basename of a `cp`/`ln`/`install`/`mv SRC
+  DST` whose `DST` is later executed (`ln -s /usr/bin/gh src/g; ./src/g` is `cmd-gh`, `cp /usr/bin/curl c; ./c URL`
+  is `cmd-network`). A `busybox X` is the applet `X`. A path component that is a spawn name or holds `claude-code`
+  is `cmd-spawn-agent`. When the aliased source is a known program its identity replaces `cmd-obfuscated-exec`; a
+  copy of an unknown script keeps `cmd-obfuscated-exec` as before.
+
 ### Wrappers and command strings (T057, R008 #11)
 * More transparent wrappers, each stripped to the command it runs: `taskset` (its positional CPU mask too, unless
   `-c`/`--cpu-list` gave it), `chrt` and `chroot` (their leading positional), `prlimit`, `setpriv`, `numactl`,

@@ -113,6 +113,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self.dirty = set()    # files in `files` that were changed afterwards by something we did not model
         self.unknown = set()  # files the transcript wrote with a text the audit does not know (T049, R008 #3)
         self.clones = {}      # local clones the agent made: dir -> origin no longer proven (see GitMixin)
+        self.aliases = {}     # executable path the agent made -> source basename (cp/ln/install/mv, T057 R008 #12)
         self.cwd_stack = []   # working directories to return to when a `( ... )` subshell closes
         self.own_pids = set()  # process ids the agent started (printed by tools/job run, a background command)
         self.clean_env = False  # the command being analysed runs under `env -i`
@@ -518,6 +519,37 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             return UNRESOLVED not in target  # a job of this shell (`kill %1`, `kill $!`)
         return digits.isdigit() and digits in self.own_pids
 
+    def _note_alias(self, argv):
+        """`cp`/`ln`/`install`/`mv SRC DST`: if DST is later executed, it runs SRC's program (T057, R008 #12)."""
+        name = cmds.name_of(argv[0])
+        args = argv[1:]
+        if any(a in ("-t", "--target-directory") or a.startswith("--target-directory=") for a in args):
+            return  # a directory target (`cp -t DIR ...`) is R008 #17, not modelled here
+        value_opts = {"cp": ("-S", "--suffix"), "mv": ("-S",), "install": ("-m", "-o", "-g", "-S"),
+                      "ln": ("-S",)}[name]
+        pos = cmds.positionals(args, value_opts)
+        if len(pos) != 2:
+            return
+        source, target = args[pos[0]], args[pos[1]]
+        normal = self.policy.normalize(target, self.cwd)
+        if normal is not None and UNRESOLVED not in source:
+            self.aliases[normal] = cmds.name_of(source)
+
+    def program_identity(self, path_text, alias, args, raw):
+        """Command rules for the real identity of an executed file (T057, R008 #12): the basename of an interpreted
+        file or the source basename of an alias is the command name; a path through a `claude-code`/spawn directory
+        is `cmd-spawn-agent`."""
+        before = len(self.hits)
+        pseudo = alias if alias is not None else cmds.name_of(path_text)
+        if pseudo:
+            self._command_rules([pseudo] + list(args), raw, pseudo)
+        if not any(rule == "cmd-spawn-agent" for rule, _ in self.hits[before:]):
+            for part in path_text.split("/"):
+                if part in rules.SPAWN_COMMANDS or "claude-code" in part:
+                    self.add("cmd-spawn-agent", raw, part)
+                    break
+        return len(self.hits) > before  # True when the file's real identity broke a rule
+
     def _command_rules(self, argv, raw, name):
         args = argv[1:]
         if name in rules.GH_COMMANDS:
@@ -540,6 +572,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                     self.add(rule, raw, "git")
             if cmds.git_is_networked(argv) and not (cmds.git_remote_ok(argv) or self.git_local_remote(argv)):
                 self.add("cmd-git-network", raw, "git")
+        if name in ("cp", "ln", "install", "mv"):
+            self._note_alias(argv)
         if cmds.install_hit(argv):
             self.add("cmd-install", raw, name)
         if cmds.env_dump(argv):

