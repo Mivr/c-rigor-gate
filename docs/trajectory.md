@@ -429,6 +429,16 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   other alias is `git ARGS`), `core.pager`, `pager.*`, `core.sshCommand`, `core.editor`, `sequence.editor`, and the
   variables `*_PAGER`, `*_EDITOR`, `PAGER`, `EDITOR`, `VISUAL`, `GIT_SSH_COMMAND`, `GIT_SSH`.
 
+### Network without a listed tool (T060, R008 #15)
+* bash's socket paths `/dev/tcp/HOST/PORT` and `/dev/udp/HOST/PORT`, in any redirect (`<`, `>`, `<>`, `exec 3<>...`) or
+  path argument, open a connection: an unknown host, or one not on `ALLOWED_HOSTS` (loopback is fine, as for the
+  network tools), is `cmd-network`. A socket is judged as network only, never as a file write.
+* `openssl s_client` and `s_time` are network tools: the `-connect HOST:PORT` destination (default `localhost:4433`)
+  must be allowlisted or loopback.
+* Package runners fetch and run code: `npx`, `bunx`, `pnpx`, `uvx`, `pnpm dlx`, `yarn dlx`, `pipx run`, `npm exec`
+  (`npm x`), `bun x`, `uv run --with...` and `go run PKG@VERSION` are `cmd-install`. `go run ./cmd`, `uv run` without
+  `--with`, `npm run` stay green. Python's `urlopen` stays `network-code` (review), by design.
+
 ## Limits (be honest about them)
 * The lexer is not a shell: functions, aliases, `source`d files the agent did not write, arithmetic, `printf '\057'`
   style computed paths and code inside languages other than shell are not interpreted. Computed command names and

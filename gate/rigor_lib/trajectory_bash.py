@@ -706,7 +706,18 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                     self.add(rule, raw, token)
                 return
 
+    def socket_path(self, text, raw):
+        """Rule `cmd-network` for bash's `/dev/tcp/HOST/PORT` and `/dev/udp/...` (T060, R008 #15): a redirect or path
+        argument there opens a connection. An unknown host, or one not on the allowlist (loopback is fine, as for the
+        network tools), is `cmd-network`."""
+        normal = self.policy.normalize(text, self.cwd) if UNRESOLVED not in text else None
+        host = cmds.socket_host(normal if normal is not None else text)
+        if host is not None and (UNRESOLVED in host or not cmds.host_allowed(host)):
+            self.add("cmd-network", raw, text.replace(UNRESOLVED, "$("))
+        return host is not None
+
     def read_word(self, text, raw, name="", force=False):
+        self.socket_path(text, raw)
         if is_url(text):
             self._url_forbidden(text, raw)  # hidden-repo / clean-room checks on a URL path (T057, R008 #14)
         candidates = [text]
@@ -848,6 +859,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             self.dirty.discard(normal)
 
     def write(self, text, op, raw):
+        if self.socket_path(text, raw):
+            return  # a socket, not a file: judged as network only
         if UNRESOLVED in text:
             self._unresolved_write(text, raw)
             return
