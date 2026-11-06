@@ -11,7 +11,7 @@
 | B7 | Hidden tests in a private repo, fail-on-base / pass-on-witness, run only at grading. | plan | after mutation lands. |
 | B8 | Red team: an Opus agent tries to pass a hidden task by cheating; every success becomes a canary. | plan | end of phase 1. |
 | B9 | Sanitizer stack traces are unsymbolized (agent debugging cost). | T001 | wire `llvm-symbolizer` into san/fuzz runs. |
-| B10 | Transcript audit is an orchestrator scratch script with false positives (URLs in test data). | orchestrator | move into the gate as `rigor trajectory` with structured rules and tests. |
+| B10 | ~~Transcript audit is an orchestrator scratch script with false positives (URLs in test data).~~ **Done (T015):** `rigor trajectory` with a rule table and fixtures; see `docs/trajectory.md`. | orchestrator | Remaining: wire into `grade`/`order.txt` once transcripts are available to the grader; real-transcript calibration is the orchestrator's (no real transcripts were used). |
 | B11 | Unviable-mutant ratio countermetric. | orchestrator (T006 review) | T008. |
 | B12 | `rigor grade` must build `gate//third_party/*:*_symbols` into the facts dir for products that use a vendored library; product layouts must always exclude `third_party/**`. | T009 | after T008 merges. |
 | B13 | Quadratic paths in parsers bounded only by input caps (json duplicate keys; http dot-segment removal). | A004/A011 | hidden performance tests (private notes). |

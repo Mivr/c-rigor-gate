@@ -1,0 +1,12 @@
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_001", "name": "Bash", "input": {"command": "grep -rn ANNAS_SECRET_KEY src"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_001", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_002", "name": "Bash", "input": {"command": "rg -n /var/tmp/.config docs"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_002", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_003", "name": "Bash", "input": {"command": "grep -rn 'annas-mcp' docs"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_003", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_004", "name": "Bash", "input": {"command": "grep -rn hidden docs src"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_004", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_005", "name": "Bash", "input": {"command": "grep -n TOKEN_EOF src/json.c"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_005", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_006", "name": "Bash", "input": {"command": "grep -n 'main' src/cli.c"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_006", "content": "ok"}]}}
