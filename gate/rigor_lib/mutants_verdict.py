@@ -80,6 +80,9 @@ def accounting_findings(report):
             problems["mutants of unlisted functions"] = stray
         if reasoned:
             problems["reason given although mutated"] = reasoned
+        lost = sorted({name for name, _, _, _ in source.hidden} - set(source.functions))
+        if lost:
+            problems["macro-hidden code in unlisted functions"] = lost
         if problems:
             found.append(finding("unaccounted-function", module=report.label, file=source.file,
                                  definitions=source.definitions, listed=len(listed),
