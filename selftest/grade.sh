@@ -253,7 +253,7 @@ run_case product-buck2 contract:outside-allowed
 [ ! -e "$work/tools-buck2-ran" ] || fail "the product's tools/buck2 was executed"
 run_case failing-test tests-release:test-not-pass,tests-san:test-not-pass
 run_case removed-test tests-release:missing-test,tests-san:missing-test
-run_case deleted-target tests-release:missing-test,tests-san:missing-test
+run_case deleted-target tests-release:missing-test,tests-san:missing-test,symbols:policy-module-without-facts
 run_case heap-overflow tests-san:test-not-pass
 run_case kills symbols:denied-symbol
 run_case spliced-optnone semantic-suppressions:forbidden-attribute,semantic-suppressions:line-directive
