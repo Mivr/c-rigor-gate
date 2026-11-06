@@ -8,7 +8,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:ctest.bzl", "ctest_results")
-load("@gate//rules:facts.bzl", "c_facts")
+load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 
 _SEALED = [
@@ -103,8 +103,8 @@ _RELEASE_OR_SAN = select({
 })
 
 def _facts(name, kind, srcs, deps, unit = None):
-    for suffix, mode in (("_facts", _RELEASE_ONLY), ("_facts_san", _SAN_ONLY)):
-        c_facts(
+    for suffix, mode, rule in (("_facts", _RELEASE_ONLY, c_facts), ("_facts_san", _SAN_ONLY, c_san_facts)):
+        rule(
             name = name + suffix,
             unit = unit if unit else ":" + name,
             facts_name = name,

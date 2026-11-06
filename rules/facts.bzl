@@ -73,17 +73,20 @@ def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.run(calls_cmd, category = "c_calls")
     return [DefaultInfo(default_output = facts, sub_targets = {"calls": [DefaultInfo(default_output = calls)]})]
 
-c_facts = rule(
-    impl = _facts_impl,
-    attrs = {
-        "facts_deps": attrs.list(attrs.dep(), default = []),
-        "facts_name": attrs.string(),
-        "kind": attrs.string(),
-        "srcs": attrs.list(attrs.string(), default = []),
-        "unit": attrs.dep(),
-        "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
-        "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
-        "_modes_scanner": attrs.source(default = "gate//gate/rigor_lib:facts_modes.py"),
-        "_scanner": attrs.source(default = "gate//gate/rigor_lib:cscan.py"),
-    },
-)
+_ATTRS = {
+    "facts_deps": attrs.list(attrs.dep(), default = []),
+    "facts_name": attrs.string(),
+    "kind": attrs.string(),
+    "srcs": attrs.list(attrs.string(), default = []),
+    "unit": attrs.dep(),
+    "_modes_scanner": attrs.source(default = "gate//gate/rigor_lib:facts_modes.py"),
+    "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
+    "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
+    "_scanner": attrs.source(default = "gate//gate/rigor_lib:cscan.py"),
+}
+
+c_facts = rule(impl = _facts_impl, attrs = _ATTRS)
+
+# The same rule under another name for the `san` twin: `kind(c_facts, //...)` (what `rigor grade` builds,
+# in the release platform) must not pick the san targets up, and a regex `c_facts` does not match this name.
+c_san_facts = rule(impl = _facts_impl, attrs = _ATTRS)

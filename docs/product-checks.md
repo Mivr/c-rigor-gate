@@ -91,7 +91,7 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 The semantic scan reads the **release** compile, but the `san` tests run the `san` compile. Code that exists in
 one of them only (`#if __has_feature(address_sanitizer)`, `__has_feature(undefined_behavior_sanitizer)`, a macro
 from a product header that tests either) is invisible to a release-only scan. So every `c_library`, `c_binary`,
-`c_test` and `c_fuzz` also has `<name>_facts_san` (`target_compatible_with = toolchains//:san`): the same rule,
+`c_test` and `c_fuzz` also has `<name>_facts_san` (`target_compatible_with = toolchains//:san`; rule type `c_san_facts`, the same implementation, named so that `kind(c_facts, //...)`, what `rigor grade` builds in release, does not pick it up): the same rule,
 the same scanner, the compile command of the `san` build, cached like the release facts. A `c_fuzz` reads a
 `<name>__facts_unit` twin that now builds in release and san. Both `_facts` and `_facts_san` have a `[calls]`
 sub-target, `calls.json`: the functions the preprocessed text calls, per unit (`gate/rigor_lib/facts_modes.py scan`;
