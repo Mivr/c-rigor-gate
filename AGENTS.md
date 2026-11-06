@@ -28,6 +28,19 @@ These rules are mandatory. If a task conflicts with them, stop and report; do no
    not done is the worst possible outcome; an honest "blocked" is fine.
 9. **Commit** to your task branch with clear messages. Never amend or force-push someone else's commits.
 
+## Working efficiently
+Every turn re-reads the whole context; a wasted turn is expensive. (Details: `docs/lanes.md`, "Waiting on long jobs".)
+1. Long commands (> 2 min): `TMPDIR=/var/tmp/cache/<task>/tmp tools/job run NAME -- CMD ...`, then
+   `TMPDIR=/var/tmp/cache/<task>/tmp tools/job wait NAME` (blocks up to 110 s; `--max 170` only with Bash
+   `timeout: 600000`). No sleep loops, no `tail -f`, no polling a file.
+2. Scratch files only under `/var/tmp/cache/<task>/` (set `TMPDIR` there); never `/var/tmp/rigor-*` or `/tmp`.
+3. Never `buck2 kill` unless a check needs a cold daemon. A selftest you change must pass twice in a row.
+4. Run exploratory scripts under `timeout 300`. If you are 45 min in without a passing acceptance step, report
+   progress and the blocker instead of continuing silently.
+5. Read files by line range and filter command output (`| tail -40`). Use the Edit tool for small changes instead
+   of rewriting whole files.
+6. Do not merge `main` into your branch unless the task says so or a real conflict blocks you.
+
 ## C rules (products)
 - C17, compiled only through the `gate//rules` macros. No raw `cxx_*` rules, no `compiler_flags`.
 - Static memory or arenas handed in by the caller; no `malloc` outside the `core` arena module.

@@ -86,6 +86,27 @@ def unwrap_once(argv):
     return argv[i:], extra
 
 
+def job_run(argv):
+    """(index of the `--dir` value word or None, index of the `--`) for `tools/job run ... -- CMD`, else None.
+
+    Mirrors parse_run in tools/job: options and NAME come before the first `--` that is not an option's
+    value; CMD (non-empty) follows it. `wait`, `status` and `list` run nothing and are not wrappers."""
+    if name_of(argv[0]) != "job" or argv[1:2] != ["run"]:
+        return None
+    i, directory = 2, None
+    while i < len(argv) and argv[i] != "--":
+        if argv[i] in ("--deadline", "--dir"):
+            directory = i + 1 if argv[i] == "--dir" else directory
+            i += 2
+            continue
+        if argv[i].startswith("--dir="):
+            directory = i
+        i += 1
+    if i + 1 >= len(argv):
+        return None
+    return directory, i
+
+
 # -- git -------------------------------------------------------------------------------------
 def git_parts(argv):
     """(config overrides, subcommand, sub-args) for a git argv."""
