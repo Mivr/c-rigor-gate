@@ -37,6 +37,8 @@ class Source:
     baseline_status: str
     baseline_hash: str
     original_hash: str
+    baseline_o0_status: str = "ok"  # the unmodified source compiled again at -O0 (B15)
+    baseline_o0_hash: str = ""
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,7 @@ class Mutant:
     status: str   # compile status: "ok" or "unviable"
     hash: str
     runs: dict    # test name -> Run
+    o0: object = None  # (status, hash) of the -O0 compile of a candidate for equivalent / duplicate; else None
 
 
 @dataclass(frozen=True)
@@ -106,17 +109,20 @@ def parse_run(path, run, what):
 
 def parse_source(path, entry):
     _exact(path, entry, ("file", "sha256", "definitions", "functions", "skipped", "hidden", "baseline",
-                         "original"), "source")
+                         "baseline_o0", "original"), "source")
     baseline = _exact(path, entry["baseline"], ("status", "hash"), "baseline")
+    baseline_o0 = _exact(path, entry["baseline_o0"], ("status", "hash"), "baseline_o0")
     original = _exact(path, entry["original"], ("status", "hash"), "original")
     if not isinstance(entry["functions"], list):
         _fail(path, "functions must be a list")
     names, unmutated = parse_functions(path, entry["functions"])
     status, base_hash = _digest(path, baseline, "baseline")
     _, original_hash = _digest(path, original, "original")
+    status_o0, base_o0_hash = _digest(path, baseline_o0, "baseline_o0")
     return Source(_text(path, entry["file"], "file"), names, unmutated,
                   _int(path, entry["definitions"], "definitions"), parse_skipped(path, entry["skipped"]),
-                  parse_hidden(path, entry["hidden"]), status, base_hash, original_hash)
+                  parse_hidden(path, entry["hidden"]), status, base_hash, original_hash,
+                  status_o0, base_o0_hash)
 
 
 def parse_functions(path, entries):
@@ -167,16 +173,20 @@ def parse_mutant(path, item, tests):
     if not MUTANT_ID.fullmatch(_text(path, item["id"], "mutant id")):
         _fail(path, "bad mutant id %r" % item["id"])
     info = item["compile"]
-    if not isinstance(info, dict) or not {"status", "hash"} <= set(info) <= {"status", "hash", "detail"}:
+    if not isinstance(info, dict) or not {"status", "hash"} <= set(info) <= {"status", "hash", "detail", "o0"}:
         _fail(path, "mutant %s: bad compile info" % item["id"])
     status, digest = _digest(path, info, "mutant %s" % item["id"])
+    low = None
+    if "o0" in info:
+        low = _digest(path, _exact(path, info["o0"], ("status", "hash"), "mutant %s o0" % item["id"]),
+                      "mutant %s o0" % item["id"])
     if not isinstance(item["runs"], dict) or not set(item["runs"]) <= set(tests):
         _fail(path, "mutant %s: runs name unknown tests" % item["id"])
     runs = {t: parse_run(path, r, "mutant %s run" % item["id"]) for t, r in item["runs"].items()}
     return Mutant(item["id"], _text(path, item["file"], "file"), _int(path, item["line"], "line"),
                   _text(path, item["operator"], "operator"), _text(path, item["function"], "function"),
                   _text(path, item["original"], "original"),
-                  _text(path, item["replacement"], "replacement"), status, digest, runs)
+                  _text(path, item["replacement"], "replacement"), status, digest, runs, low)
 
 
 def parse_report(path, data):

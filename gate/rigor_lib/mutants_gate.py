@@ -153,7 +153,7 @@ def module_summary(report, verdicts):
                   "operator": v.mutant.operator, "replacement": v.mutant.replacement}
                  for v in verdicts if v.verdict == "survived"]
     return {"total": len(verdicts), "verdicts": verdict_counts, "operators": operators,
-            "survivors": survivors}
+            "survivors": survivors, "tce": mutants_verdict.tce_counts(report, verdicts)}
 
 
 def module_findings(report, level, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):

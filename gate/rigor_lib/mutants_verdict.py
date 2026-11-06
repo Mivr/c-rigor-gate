@@ -140,23 +140,60 @@ def mutant_outcomes(report, mutant, baseline_ids):
 
 
 def derive(report, baseline_ids):
-    """(verdicts in report order, findings) for every mutant of a report."""
+    """(verdicts in report order, findings) for every mutant of a report.
+
+    B15 (R001 R2): an object identical to the baseline's (or to an earlier mutant's) at -O2 says little, because the
+    optimiser can fold a behaviour-changing mutation away. Such a candidate carries the result of compiling it again
+    at -O0 (`mutant.o0`); it is `equivalent` (or a `duplicate`) only if the -O0 object is identical as well (to the
+    baseline's -O0 object, or to that of the earlier mutant with the same -O2 object). Otherwise it is live: it was
+    run with its -O0 object like any other mutant. A candidate without a usable -O0 result is `unrun`
+    (`missing-o0`), never equivalent: the claim could not be checked. `rules/mutate.bzl` `_stage3` decides which
+    mutants to run by the same rule; keep the two in step."""
     base_hash = {source.file: source.baseline_hash for source in report.sources}
-    first = {}  # (file, hash) -> the Verdict of the first mutant with that object
+    seen = set()  # (file, -O2 hash) of every compiled mutant so far
+    same = {(source.file, source.baseline_hash, source.baseline_o0_hash): None for source in report.sources}
     verdicts = []
     found = []
     for mutant in report.mutants:
         key = (mutant.file, mutant.hash)
         if mutant.status == "unviable":
             verdict = Verdict(mutant, "unviable")
-        elif mutant.hash == base_hash[mutant.file]:
-            verdict = Verdict(mutant, "equivalent")
-        elif key in first:
-            verdict = Verdict(mutant, "duplicate", first[key].mutant.id)
+        elif mutant.hash == base_hash[mutant.file] or key in seen:
+            verdict = _folded_verdict(report, mutant, baseline_ids, same, found)
         else:
-            name, problems = mutant_outcomes(report, mutant, baseline_ids)
-            found.extend(problems)
-            verdict = Verdict(mutant, name)
-            first[key] = verdict
+            verdict = _live_verdict(report, mutant, baseline_ids, found)
+            if mutant.o0 is not None and mutant.o0[0] == "ok":
+                same.setdefault((mutant.file, mutant.hash, mutant.o0[1]), verdict)
+        if mutant.status == "ok":
+            seen.add(key)
         verdicts.append(verdict)
     return verdicts, found
+
+
+def _live_verdict(report, mutant, baseline_ids, found):
+    name, problems = mutant_outcomes(report, mutant, baseline_ids)
+    found.extend(problems)
+    return Verdict(mutant, name)
+
+
+def _folded_verdict(report, mutant, baseline_ids, same, found):
+    """A mutant whose -O2 object equals the baseline's or an earlier mutant's: decided with its -O0 object."""
+    if mutant.o0 is None or mutant.o0[0] != "ok":
+        found.append(finding("missing-o0", module=report.label, id=mutant.id,
+                             reason="no -O0 compile" if mutant.o0 is None else "the -O0 compile failed"))
+        return Verdict(mutant, "unrun")
+    key = (mutant.file, mutant.hash, mutant.o0[1])
+    if key in same:
+        earlier = same[key]
+        return Verdict(mutant, "equivalent") if earlier is None else Verdict(mutant, "duplicate", earlier.mutant.id)
+    verdict = _live_verdict(report, mutant, baseline_ids, found)
+    same[key] = verdict
+    return verdict
+
+
+def tce_counts(report, verdicts):
+    """B15: how many mutants had the baseline's -O2 object, and how many of those have its -O0 object too
+    (the verdict `equivalent`). The difference ran as live mutants (or are `unrun` for want of a -O0 compile)."""
+    base_hash = {source.file: source.baseline_hash for source in report.sources}
+    folded = [v for v in verdicts if v.mutant.status == "ok" and v.mutant.hash == base_hash[v.mutant.file]]
+    return {"equivalent_o2": len(folded), "equivalent_o0": sum(1 for v in folded if v.verdict == "equivalent")}
