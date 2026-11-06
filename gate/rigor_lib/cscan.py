@@ -33,6 +33,9 @@ WEAK_DEFINED_TYPES = ("W", "V", "i", "I", "u")
 UNDEFINED_TYPES = ("U", "w", "v")
 
 _MARKER = re.compile(r'^\s*#\s*(\d+)\s+"((?:[^"\\]|\\.)*)"((?:\s+\d+)*)\s*$')
+# The compile command keeps macro definitions in the output (-dD); their bodies only matter when
+# expanded, and the expansion is what the rest of the text shows.
+_DEFINITION = re.compile(r"^\s*#\s*(define|undef)\b")
 _PRAGMA = re.compile(r"^\s*#\s*pragma\b(.*)$")
 _TOKEN = re.compile(r"""
     (?P<space>\s+)
@@ -116,7 +119,7 @@ class Collector:
                 current = marker.group(2).replace('\\"', '"').replace("\\\\", "\\")
                 number = int(marker.group(1)) - 1
                 continue
-            if self.is_system(current):
+            if self.is_system(current) or _DEFINITION.match(raw):
                 continue
             where = (display_file(current), number)
             pragma = _PRAGMA.match(raw)

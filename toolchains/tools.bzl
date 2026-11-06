@@ -128,7 +128,7 @@ def _libc_impl(ctx: AnalysisContext) -> list[Provider]:
         [
             "set -eu",
             'nm="$1"; out="$2"; shift 2',
-            '"$nm" -D --defined-only --just-symbol-name "$@" | sed "s/@.*//" | LC_ALL=C sort -u > "$out"',
+            '{ for lib in "$@"; do "$nm" -D --defined-only --just-symbol-name "$lib"; done; } | sed -e "s/@.*//" -e "/^$/d" | LC_ALL=C sort -u > "$out"',
             '[ -s "$out" ] || { echo "libc_symbols: empty" >&2; exit 1; }',
         ],
         is_executable = True,

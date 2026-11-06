@@ -1,0 +1,7 @@
+load("@gate//rules:c.bzl", "c_library")
+c_library(name = "paste", srcs = ["paste.c"])
+c_library(name = "splice", srcs = ["splice.c"])
+c_library(name = "attr", srcs = ["attr.c"])
+c_library(name = "asm", srcs = ["asm.c"])
+c_library(name = "digraph", srcs = ["digraph.c"])
+c_library(name = "unreach", srcs = ["unreach.c"])
