@@ -504,6 +504,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         """Rule `kill-foreign`: signals by process name, or to a pid the agent did not start (see own_pids)."""
         if name in rules.KILL_BY_NAME:
             self.add("kill-foreign", raw, name)
+        elif cmds.kill_by_other_name(argv) is not None:  # T062 (R008 #20)
+            self.add("kill-foreign", raw, cmds.kill_by_other_name(argv))
         elif name == "kill":
             targets = cmds.kill_targets(argv)
             if targets is None:

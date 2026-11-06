@@ -149,7 +149,7 @@ stays `read-secret-dir`.
   line per name), the bare number of `echo $!` after a command the lexer put in the background (`&`), or the shell's
   `[1] N` line for such a command. A pid seen only in `ps`/`pgrep`/`echo`/`printf`/a log, `$(pgrep ...)`,
   `pgrep ... | xargs kill` (no pid on the command line) and an unknown variable are foreign. One finding per `kill` command. `kill -l` and `kill -0` signal nothing; `buck2 kill` is not
-  `kill`. Pids printed by `tools/job run` are the job's child and its runner; a kill of the process group
+  `kill` (`buck2 killall` is, T062: see "Env dumps and kills under other names"). Pids printed by `tools/job run` are the job's child and its runner; a kill of the process group
   (`kill -- -PID`) uses the same number.
 
 ### The persisted tool-output exception
@@ -520,6 +520,18 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
 * The whole environment: Perl's `%ENV` (`keys %ENV`; `$ENV{HOME}` is one entry), Ruby's bare `ENV` (`p ENV`; `ENV[...]`,
   `ENV.fetch`, `ENV.key?` are lookups; only in code run by `ruby`), awk's `ENVIRON` without a subscript
   (`for (k in ENVIRON)`; `ENVIRON["HOME"]` is one entry) and node's `-p`/`--print process.env` are `cmd-env-dump`.
+
+### Env dumps and kills under other names (T062, R008 #20)
+* `cmd-env-dump`: `printenv` with options only (`printenv -0`; not `--help`/`--version`; `printenv NAME` prints one
+  value), and `declare`/`typeset` (and `export`) with no names and a flag cluster holding `p` (or, for `declare`/
+  `typeset`, `x`): `declare -px`, `typeset -xp`. `declare -p` stays a dump with names too, as before; `declare -f`,
+  `-F`, `-a arr` are not.
+* `kill-foreign` (block), commands that signal processes the agent did not start: `buck2 killall` (every buck2
+  daemon on the machine, any global options before it), `fuser -k` (in any cluster, `--kill`), `tmux kill-*`
+  (`kill-server`, `kill-session`, `killp`, `killw`), `screen ... -X quit|kill`, `systemctl kill|stop|restart|
+  try-restart|reload-or-restart|...|isolate|halt|poweroff|reboot` (`--user` too) and `loginctl kill-*|terminate-*`.
+  `buck2 kill` is not one of them: it stops the daemon of its own working tree and isolation dir, which real agents do
+  in their worktree, scratch and grade dirs (orchestrator ruling, T060); it stays green wherever it runs.
 
 ## Limits (be honest about them)
 * The lexer is not a shell: functions, aliases, `source`d files the agent did not write, arithmetic, `printf '\057'`

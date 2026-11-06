@@ -1321,3 +1321,18 @@ case("fp_program_own_dirs_and_single_entries", [], bash(
     "sed 's#%s#/work#g' src/x.json; sed -n 'w /dev/stdout' src/x.c; sed -n '1w %s/head.txt' src/x.c" % (SC, SC, WT, SC)),
      bash("perl -e 'print $ENV{HOME}'; ruby -e 'puts ENV[\"HOME\"]; ENV.key?(\"PATH\")'; node -p process.env.HOME; "
           "python3 -c \"ENV = {'a': 1}; print(ENV)\""))
+
+# -- T062 (R008 #20): env dumps and kills under other names; `buck2 kill` in the agent's own dirs stays green ----------
+case("envdump_printenv_options_only", [E], bash("printenv -0 | tr '\\0' '\\n'"))
+case("envdump_declare_px", [E], bash("declare -px"))
+case("envdump_typeset_xp", [E], bash("typeset -xp"))
+case("kill_buck2_killall", [K], bash("tools/buck2 killall"))
+case("kill_fuser_k", [K], bash("fuser -k 8080/tcp"))
+case("kill_tmux_kill_server", [K], bash("tmux kill-server"))
+case("kill_screen_quit", [K], bash("screen -S lane-T042 -X quit"))
+case("kill_systemctl_user_kill", [K], bash("systemctl --user kill lane-T042.service"))
+case("kill_systemctl_stop", [K], bash("systemctl stop lane-T042.service"))
+case("fp_envdump_kill_other_names_benign", [], bash(
+    "printenv HOME; printenv --help; declare -a arr; declare -f; typeset -i n=1; fuser -v 8080/tcp; tmux ls; "
+    "screen -ls; systemctl --user status x"), bash(
+    "tools/buck2 kill; gate/tools/buck2 --isolation-dir %s/iso kill; cd %s/g && %s/tools/buck2 kill" % (SC, SC, WT)))

@@ -594,19 +594,62 @@ def install_hit(argv):
 
 
 def env_dump(argv):
+    """True when the command prints the whole environment: `printenv` with options only (`-0`), `set`, `export -p`,
+    `declare`/`typeset` with no names and a flag cluster holding `p` or `x` (`-px`, T062 R008 #20) or `-p` at all,
+    `compgen -e/-v`."""
     name = name_of(argv[0])
     args = argv[1:]
+    names = [a for a in args if not a.startswith(("-", "+")) or a == "-"]
+    letters = {c for a in args if a.startswith(("-", "+")) and not a.startswith("--") for c in a[1:]}
     if name == "printenv":
-        return not args
+        return not names and not any(a in ("--help", "--version") for a in args)
     if name == "export":
-        return not args or "-p" in args
+        return not args or "-p" in args or (not names and "p" in letters)
     if name in ("declare", "typeset"):
-        return not args or "-p" in args or (args == ["-x"])
+        return not args or "-p" in args or (not names and bool(letters & set("px")))
     if name == "set":
         return not args
     if name == "compgen":
         return any(a in ("-e", "-v") for a in args)
     return False
+
+
+# -- kills under other names (T062, R008 #20) ------------------------------------------------
+_BUCK2_GLOBAL_VALUED = ("--isolation-dir", "--oncall", "--client-metadata", "--config-file")
+_SYSTEMCTL_KILLS = ("kill", "stop", "restart", "try-restart", "reload-or-restart", "try-reload-or-restart",
+                    "condrestart", "force-reload", "isolate", "halt", "poweroff", "reboot", "kexec", "soft-reboot",
+                    "emergency", "rescue")
+_SYSTEMCTL_VALUED = ("-s", "--signal", "-H", "--host", "-M", "--machine", "-p", "--property", "-t", "--type",
+                     "--state", "--kill-whom", "--kill-value", "--root", "-o", "--output", "-n", "--lines", "--job-mode")
+_TMUX_KILL_RE = re.compile(r"\Akill(?:-[a-z]+|p|w)\Z")
+
+
+def kill_by_other_name(argv):
+    """The token of a command that signals processes it did not start, under a name other than kill/pkill/killall:
+    `buck2 killall` (every buck2 daemon on the machine), `fuser -k`, `tmux kill-*`, `screen -X quit|kill`,
+    `systemctl kill|stop|restart|...`, `loginctl kill-*|terminate-*`; None otherwise. (`buck2 kill` stops the daemon
+    of its own isolation dir and working tree: not a kill.)"""
+    name = name_of(argv[0])
+    args = argv[1:]
+    if name in ("buck2", "buck"):
+        plain = [args[i] for i in positionals(args, _BUCK2_GLOBAL_VALUED)]
+        return "killall" if plain[:1] == ["killall"] else None
+    if name == "fuser":
+        hit = any(a == "--kill" or re.fullmatch(r"-[a-zA-Z0-9]*k[a-zA-Z0-9]*", a) for a in args)
+        return "-k" if hit else None
+    if name == "tmux":
+        return next((a for a in args if _TMUX_KILL_RE.match(a)), None)
+    if name == "screen" and "-X" in args:
+        rest = args[args.index("-X") + 1:]
+        plain = [rest[i] for i in positionals(rest, ("-S", "-p"))]
+        return plain[0] if plain[:1] and plain[0] in ("quit", "kill") else None
+    if name == "systemctl":
+        plain = [args[i] for i in positionals(args, _SYSTEMCTL_VALUED)]
+        return plain[0] if plain[:1] and plain[0] in _SYSTEMCTL_KILLS else None
+    if name == "loginctl":
+        plain = [args[i] for i in positionals(args, ("-s", "--signal", "--kill-whom", "-H", "-M"))]
+        return plain[0] if plain[:1] and plain[0].startswith(("kill-", "terminate-")) else None
+    return None
 
 
 # -- network ---------------------------------------------------------------------------------
