@@ -574,7 +574,9 @@ printf '[module."%s:weak_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 gate "$out/only_weak"
 [ "$GATE_CODE" = 1 ] || fail "$CUR: expected exit 1, got $GATE_CODE" "$out/gate.log"
 got="$(json '"\n".join(sorted("%s|%s|%s" % (f["function"], f["operator"], f["replacement"]) for f in r["findings"] if f["rule"] == "survived-mutant"))')"
-want='double_it|function-body|{ (void)x; return 0; }
+# T051: `x + x` -> `x - x` has the object of the function-body mutant at -O2 (a duplicate), but not at -O0, so it runs (and survives)
+want='double_it|arithmetic|-
+double_it|function-body|{ (void)x; return 0; }
 find|condition|!(a[i] == v)
 find|increment|--
 find|integer-literal|1
@@ -582,8 +584,8 @@ find|relational|<=
 find|return-value|((void)(0), (int *)1)
 store|function-body|{ (void)slot; (void)v; }'
 [ "$got" = "$want" ] || fail "$CUR: survivors differ from the expected list" <(printf 'got:\n%s\nwant:\n%s\n' "$got" "$want")
-[ "$(json '[f["rule"] for f in r["findings"]].count("survived-mutant")')" = 7 ] || fail "$CUR: not exactly 7 findings"
-echo "    7 survivors, exit 1, as expected"
+[ "$(json '[f["rule"] for f in r["findings"]].count("survived-mutant")')" = 8 ] || fail "$CUR: not exactly 8 findings"
+echo "    8 survivors, exit 1, as expected"
 echo "    $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
 
 begin "RED: a generator gone blind (no mutants although there are functions) fails the gate"
