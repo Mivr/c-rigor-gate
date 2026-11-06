@@ -81,3 +81,34 @@ class RunParallelTests(unittest.TestCase):
     def test_bad_jobs_is_runner_error(self):
         self.add("a", "import unittest\nclass T(unittest.TestCase):\n    def test_x(self): pass\n")
         self.assertEqual(self.run_runner("--jobs", "0").returncode, 2)
+
+
+class CpuQuotaTests(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, str(RUNNER.parent))
+        self.addCleanup(sys.path.remove, str(RUNNER.parent))
+        import run_parallel
+        self.rp = run_parallel
+        self.dir = tempfile.mkdtemp(prefix="cpumax.")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def fixture(self, text):
+        path = Path(self.dir) / "cpu.max"
+        path.write_text(text)
+        return str(path)
+
+    def test_quota_limits_cpus(self):
+        self.assertEqual(self.rp.effective_cpus(self.fixture("200000 100000\n")), 2)
+        self.assertEqual(self.rp.effective_cpus(self.fixture("150000 100000\n")), 2)
+        self.assertEqual(self.rp.effective_cpus(self.fixture("50000 100000\n")), 1)
+
+    def test_default_jobs_from_quota(self):
+        self.assertEqual(self.rp.default_jobs(self.fixture("200000 100000\n")), 4)
+        self.assertEqual(self.rp.default_jobs(self.fixture("50000 100000\n")), 2)
+
+    def test_max_and_malformed_and_missing_fall_back(self):
+        base = self.rp.effective_cpus(str(Path(self.dir) / "absent"))
+        self.assertEqual(self.rp.effective_cpus(self.fixture("max 100000\n")), base)
+        for bad in ("", "garbage", "abc def", "100 0"):
+            self.assertEqual(self.rp.effective_cpus(self.fixture(bad)), base, bad)
+        self.assertTrue(2 <= self.rp.default_jobs(self.fixture("max 100000")) <= 16)

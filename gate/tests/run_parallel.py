@@ -11,6 +11,7 @@ Exit codes: 0 all passed, 1 test failure or count mismatch, 2 runner error.
 import argparse
 import concurrent.futures
 import json
+import math
 import os
 import re
 import shutil
@@ -30,6 +31,26 @@ CHILD = (
     "import sys, unittest; sys.path.insert(0, sys.argv[1]); "
     "unittest.main(module=None, argv=['unittest', sys.argv[2]])"
 )
+
+
+def effective_cpus(cpu_max="/sys/fs/cgroup/cpu.max"):
+    """CPUs this process may really use: cgroup quota, affinity and cpu_count, whichever is smallest."""
+    count = os.cpu_count() or 2
+    try:
+        count = min(count, len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):
+        pass
+    try:
+        quota, period = Path(cpu_max).read_text().split()[:2]
+        if quota != "max":
+            count = min(count, max(1, math.ceil(int(quota) / int(period))))
+    except (OSError, ValueError, ZeroDivisionError):
+        pass  # no cgroup limit, or unreadable/malformed: keep the count so far
+    return count
+
+
+def default_jobs(cpu_max="/sys/fs/cgroup/cpu.max"):
+    return max(2, min(16, 2 * effective_cpus(cpu_max)))
 
 
 def flatten(suite):
@@ -94,7 +115,7 @@ def run_module(module, tmp, timeout):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--jobs", type=int, default=max(1, min(16, (os.cpu_count() or 2) // 2)))
+    parser.add_argument("--jobs", type=int, default=default_jobs())
     parser.add_argument("--timeout", type=float, default=900)
     args = parser.parse_args(argv)
     if args.jobs < 1 or args.timeout <= 0:
