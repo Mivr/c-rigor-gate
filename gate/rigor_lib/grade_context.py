@@ -35,16 +35,32 @@ class Grading:
     product_paths: list = field(default_factory=list)
     # the facts build, done once for both fact gates (set by grade_checks)
     facts: object = None
+    # T021: hashes of the snapshotted input files (verdict_inputs.snapshot_inputs), the bytes of the
+    # order file the verdict is built from, and whether the gate checkout was clean.
+    inputs: dict = field(default_factory=dict)
+    order_bytes: bytes = b""
+    gate_clean: bool = False
 
 
 def gate_checkout_sha():
     """Commit of the gate checkout this code runs from; refuse if tracked files differ from it."""
-    dirty = gitrun.run_git(GATE_ROOT, ["status", "--porcelain=v1", "-z", "--untracked-files=no",
-                                       "--ignore-submodules=none"])
-    if dirty != b"":
-        raise InternalError("the gate checkout has uncommitted changes to tracked files")
-    sha = gitrun.run_git(GATE_ROOT, ["rev-parse", "--verify", "HEAD"]).decode("ascii").strip()
-    return sha
+    return gate_checkout_state(False)[0]
+
+
+def gate_checkout_state(allow_dirty, root=None):
+    """(commit, clean) of the gate checkout this code runs from.
+
+    Tracked files that differ from the commit are an error unless `allow_dirty`; then `clean` is
+    False, which goes into the verdict and makes it unverifiable as a PASS.
+    """
+    root = GATE_ROOT if root is None else root
+    dirty = gitrun.run_git(root, ["status", "--porcelain=v1", "-z", "--untracked-files=no",
+                                  "--ignore-submodules=none"])
+    if dirty != b"" and not allow_dirty:
+        raise InternalError("the gate checkout has uncommitted changes to tracked files "
+                            "(--allow-dirty-gate grades anyway, but the verdict can never verify)")
+    sha = gitrun.run_git(root, ["rev-parse", "--verify", "HEAD"]).decode("ascii").strip()
+    return sha, dirty == b""
 
 
 def _make_writable(function, path, _info):
@@ -94,7 +110,8 @@ def prepare_work(work):
     """Create `work` and clear what an earlier run left in it (stopping its daemon first)."""
     os.makedirs(work, exist_ok=True)
     kill_daemon(os.path.join(work, "tree"))
-    for name in ("src", "tree", "results", "test-results", "facts", "mutants-reports", "home", "tmp"):
+    for name in ("src", "tree", "results", "test-results", "facts", "mutants-reports", "home", "tmp",
+                 "inputs"):
         path = os.path.join(work, name)
         if os.path.lexists(path):
             remove_tree(path)

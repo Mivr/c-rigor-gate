@@ -2,7 +2,7 @@
 
 ```
 gate/rigor grade --product-repo R --base B --head H --task TASK.toml --product products/<p>/product.toml \
-                 [--approvals DIR] [--sign-key KEY] [--uncached] --work DIR --out verdict.json
+                 [--approvals DIR] [--sign-key KEY] [--uncached] [--allow-dirty-gate] --work DIR --out verdict.json
 ```
 Exit 0 = overall PASS, 1 = FAIL, 2 = internal error (the verdict, if written, is FAIL). `--work` is
 emptied (`src`, `tree`, `results`, `test-results`, `facts`, `mutants-reports`) at the start; `R` must be a local directory.
@@ -26,7 +26,7 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `build` | in the tree: `uquery 'kind(ctest_results, //...)'`, then `build --keep-going --build-report` of all of them in `release` and in `toolchains//:linux_san`. Findings: `build-failed` (target, mode), `missing-output`, `query-failed`, `no-results-targets`. Always ends with `buck2 kill` in the tree. Metadata: executed/cached action counts (from `buck2 log what-ran`, column 3 `cache` = hit), stderr tail. |
 | `tests-release`, `tests-san` | the `tests` gate over the results artifacts of that mode, with `products/<p>/expected-tests.json` and, if present, `expected-tests.previous.json` (both next to `product.toml`, gate-owned). NOT_RUN if the build of that mode was not clean. |
 | `mutants` | mutation testing of every product module the policy puts at L2 or above (below). NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. |
-| verdict | `rigor verdict` over `gate/order.txt`; with `--sign-key`, `ssh-keygen -Y sign -n c-rigor-gate-verdict` writes `verdict.json.sig`. |
+| verdict | `rigor verdict` over `gate/order.txt`, plus `inputs`; with `--sign-key` (and a clean gate), `ssh-keygen -Y sign -n c-rigor-gate-verdict` writes `verdict.json.sig`. |
 
 ## Mutation testing in the pipeline (`mutants`, T008)
 `gate/rigor_lib/grade_mutants.py`. What is mutated, and against which tests, is decided by the gate alone:
@@ -77,10 +77,49 @@ generated files and product files).
 Buck2 is the gate's pinned wrapper (`tree/gate/tools/buck2` checks the binary's sha256), so the
 product's `tools/` is never consulted.
 
-## Verdict determinism
-`core` holds only gate id, status, findings count and the findings hash. Anything volatile (shas,
-paths, seconds, action counts, stderr) is in `metadata`. Two runs of the same inputs give the same
-`core_sha256`, whether the build was cold or fully cached.
+## Verdict determinism and bound inputs (T021)
+`core` holds the gate statuses (id, status, findings count, findings hash), `uncached`, and `inputs`.
+Anything volatile (paths, seconds, action counts, stderr) is in `metadata`. Two runs of the same inputs give
+the same `core_sha256`, whether the build was cold or fully cached; changing any single input below changes it.
+
+`core.inputs` (all values are lowercase hex or booleans; `null` only where noted):
+
+| Key | Is |
+|---|---|
+| `gate_sha`, `gate_clean` | commit of the gate checkout; `false` if tracked files differed (`--allow-dirty-gate`) |
+| `head`, `base`, `merge_base` | commits as resolved in the clone by the `clone` gate |
+| `product` | `name` from `product.toml` |
+| `task_sha256`, `product_toml_sha256`, `policy_sha256`, `expected_tests_sha256` | sha256 of the exact bytes of `--task`, `product.toml`, `policy.toml`, `expected-tests.json` |
+| `expected_tests_previous_sha256` | the same for `expected-tests.previous.json`; `null` if the file does not exist |
+| `approvals_sha256` | digest of the approvals bundle (sorted name, kind, content hash of every entry); `null` without `--approvals` |
+| `allowed_signers_sha256` | `gate/allowed_signers` as read at the start |
+| `order_sha256` | the bytes of `gate/order.txt` the verdict was built from |
+| `buckconfig_sha256` | the generated `.buckconfig` (from the `assemble` manifest) |
+| `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | `toolchains/BUCK`, the LLVM and sysroot archive pins in it, and the Buck2 binary pin (`tools/buck2.version`), all from the assembled tree and checked against the manifest |
+| `uncached` | the `--uncached` flag (also kept as `core.uncached`) |
+
+"Read from what the grade used": the task, product, policy, expected-tests files and the approvals directory are
+copied once into `<work>/inputs/` at the start and `args` are repointed at the copies, so the hash is of the bytes the
+gates read and a later edit of the originals changes nothing. The commits, buckconfig and pins come from the gate
+results the grade itself wrote. A missing optional file hashes as `null`; a required input that is `null` in a PASS is
+an internal error (exit 2), and in a FAIL it is just `null`.
+
+**Dirty gate.** Tracked files of the gate checkout that differ from `HEAD` make `rigor grade` exit 2. With
+`--allow-dirty-gate` it grades, records `gate_clean = false`, never signs the verdict, and `rigor verify` rejects it.
+
+## `rigor verify`: what a merge bot runs
+```
+gate/rigor verify --verdict verdict.json --allowed-signers SIGNERS \
+    --expect-head <40-hex head> --expect-gate <40-hex gate commit> --expect-policy-sha <sha256 of policy.toml> \
+    [--require-uncached] [--signature verdict.json.sig]
+```
+Exit 0 only for a trustworthy PASS; exit 1 prints every reason it was rejected (`REJECTED: ...`); exit 2 is an
+internal error (unreadable file, no `ssh-keygen`). It checks, in order: the SSH signature over the exact file bytes
+(`ssh-keygen -Y verify`, namespace `c-rigor-gate-verdict`; `SIGNERS` must allow that namespace, the approvals
+`gate/allowed_signers` does not), then `core_sha256` recomputed from `core`, `overall == PASS`, every required input
+present and well formed, `gate_clean == true`, `core.uncached == inputs.uncached`, and the `--expect-*` values.
+`--expect-policy-sha` is the sha256 of the policy file the merge bot trusts (`sha256sum products/<p>/policy.toml`).
+Trust is keyed on `core_sha256` only together with these expectations.
 
 ## Sealed environment
 `rigor grade` replaces its own environment, and gives Buck2, git and ssh-keygen only:
