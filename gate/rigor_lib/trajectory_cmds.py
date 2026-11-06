@@ -537,6 +537,55 @@ def _in_place(args):
                for a in args)
 
 
+_GREP_VALUE_OPTS = ("-A", "-B", "-C", "-m", "-g", "--glob", "-t", "--type", "--include", "--exclude", "--exclude-dir",
+                    "-d", "-D", "--max-count", "-e", "--regexp", "-f", "--file", "-T", "--type-add")
+_TAR_VALUE_OPTS = ("-f", "--file", "-C", "--directory", "-T", "--files-from", "-X", "--exclude-from", "--exclude", "-b",
+                   "-H", "--format", "-K", "-N", "-V", "-I", "--use-compress-program")
+_CP_VALUE_OPTS = ("-t", "--target-directory", "-S", "--suffix")
+_RSYNC_VALUE_OPTS = ("-e", "--rsh", "--exclude", "--include", "--filter", "-f", "--files-from", "--exclude-from",
+                     "--include-from", "--log-file", "--partial-dir", "--temp-dir", "-T", "--chmod", "--chown")
+
+
+def recursive_roots(name, argv):
+    """The argv indexes a recursive reader descends from (T052, R008 #7), [] when it defaults to the working
+    directory, None when the command is not a recursive read: `grep -r/-R`, rg/ag/ack, `find`, `tar -c`,
+    `cp -r/-R/-a`, rsync (sources), `du`, `ls -R`."""
+    args = argv[1:]
+    cluster = lambda letters: any(re.fullmatch(r"-[A-Za-z]*[%s][A-Za-z]*" % letters, a) for a in args)
+    if name in ("grep", "egrep", "fgrep"):
+        if not (cluster("rR") or any(a in ("--recursive", "--dereference-recursive", "--directories=recurse")
+                                     for a in args) or ("-d" in args and "recurse" in args)):
+            return None
+        return _after_pattern(args)
+    if name in ("rg", "ag", "ack"):
+        return _after_pattern(args)
+    if name == "find":
+        return [i + 1 for i in _find_roots(args)]
+    if name in ("du",) or (name == "ls" and (cluster("R") or "--recursive" in args)):
+        return [i + 1 for i in positionals(args)]
+    if name == "tar":
+        first = args[0] if args else ""
+        if not (cluster("c") or "--create" in args or (first and not first.startswith("-") and "c" in first)):
+            return None
+        plain = positionals(args, _TAR_VALUE_OPTS)
+        if first and not first.startswith("-"):  # `tar czf out.tgz DIR`: the old-style cluster and its f value
+            plain = plain[2:] if "f" in first else plain[1:]
+        return [i + 1 for i in plain]
+    if name == "cp" and (cluster("rRa") or any(a in ("--recursive", "--archive") for a in args)):
+        plain = positionals(args, _CP_VALUE_OPTS)
+        targeted = any(a in ("-t", "--target-directory") or a.startswith("--target-directory=") for a in args)
+        return [i + 1 for i in (plain if targeted else plain[:-1])]
+    if name == "rsync":
+        return [i + 1 for i in positionals(args, _RSYNC_VALUE_OPTS)[:-1]]
+    return None
+
+
+def _after_pattern(args):
+    plain = positionals(args, _GREP_VALUE_OPTS)
+    explicit = any(a in ("-e", "--regexp", "-f", "--file") or a.startswith(("--regexp=", "--file=")) for a in args)
+    return [i + 1 for i in (plain if explicit else plain[1:])]
+
+
 def _find_roots(args):
     roots = []
     for i, arg in enumerate(args):

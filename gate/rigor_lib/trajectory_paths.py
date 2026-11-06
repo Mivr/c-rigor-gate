@@ -15,6 +15,7 @@ _PROC_CWD_RE = re.compile(r"\A/proc/(?:self|thread-self|\d+)/cwd(?=/|\Z)")
 _PROC_ENVIRON_RE = re.compile(r"\A/proc/" + _PID + r"/(?:task/[^/]+/)?environ\Z")
 _HOME_PARENT_RE = re.compile(r"\A(?:/var/tmp|/root|/home/[^/]+|/Users/[^/]+)\Z")
 _WORKTREE_RE = re.compile(r"\A(/(?:[^/]+/)*?wt/[^/]+/[^/]+)(?:/|\Z)")
+_WT_ROOT_RE = re.compile(r"\A/(?:[^/]+/)*?wt(?:/[^/]+)?\Z")  # a dir that holds worktrees of other tasks
 _HIDDEN_RE = re.compile(r".+-hidden(?:\.git)?\Z|\Ahidden\Z")
 _SSH_FILES = ("id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "authorized_keys", "id_ed25519_sk", "id_ecdsa_sk")
 _SINKS = ("/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty")
@@ -166,6 +167,23 @@ class PathPolicy:
             return "read-other-worktree"
         sibling_root = posixpath.dirname(self.worktree)
         if "/wt/" in self.worktree + "/" and path.startswith(sibling_root.rstrip("/") + "/"):
+            return "read-other-worktree"
+        return None
+
+    def recursive_rule(self, root):
+        """Rule of a recursive read (grep -r, find, the Grep tool, ...) rooted at `root` (absolute, normalized, no
+        wildcard): the rule of a forbidden root it equals or contains (T052, R008 #7). Inside the agent's own dirs, or
+        a directory holding none of them, None."""
+        found = self.read_rule(root)
+        if found is not None or self.is_own(root):
+            return found
+        if _HOME_PARENT_RE.match(root) or root == self.home or any(
+                self._inside(root, parent) for parent in (self.home, "/var/tmp", "/root", "/home/x", "/Users/x")):
+            return "read-secret-dir"  # a home (or above one): .config, .claude*, .ssh are below
+        if self._inside(root, rules.CACHE_ROOT):
+            return "read-other-cache"
+        if _WT_ROOT_RE.match(root) or ("/wt/" in self.worktree + "/" and
+                                       self._inside(root, posixpath.dirname(self.worktree))):
             return "read-other-worktree"
         return None
 

@@ -434,6 +434,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         if item.job_dir is not None:
             self.write(item.job_dir, "create", raw)
         self._read_words(item, argv, raw, name, write_idx | data_skip | item.job_skip)
+        self._recursive_reads(argv, raw, name)
         self._secret_words(argv, raw, name, data_skip)
         for word in item.words[:len(item.words) - len(argv)]:
             for match in rules.SECRET_NAME_RE.finditer(word):
@@ -537,6 +538,37 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         for redirect in [] if item.wrapped else item.cmd.redirects:
             if redirect.op in ("<", "<>"):
                 self.read_word(self.expand(redirect.target, self.env_now), raw, name)
+
+    def _recursive_reads(self, argv, raw, name):
+        """Rule T052 (R008 #7): a recursive reader rooted at a directory that holds a forbidden root."""
+        roots = cmds.recursive_roots(name, argv)
+        if roots is None:
+            return
+        dirs = cmds.arg_dirs(name, argv, self.cwd, self.policy.normalize)
+        texts = [(argv[i], dirs[i] if dirs else self.cwd) for i in roots if i < len(argv)] or [(".", self.cwd)]
+        for text, cwd in texts:
+            self.recursive_root(text, cwd, raw)
+
+    def recursive_root(self, text, cwd, raw):
+        """Check one root of a recursive read. A wildcard root is the directory above its first wildcard component,
+        an unknown piece is left out (`/var/tmp/$X` descends from /var/tmp at least); an unknown working directory or
+        a path-leading unknown piece is left to the plain read (path-unresolved)."""
+        if is_url(text) or text.startswith(UNRESOLVED) or re.match(r"[\w.-]+@?[\w.-]*:", text):
+            return
+        parts = text.replace(UNRESOLVED, "").split("/")
+        for index, part in enumerate(parts):
+            if re.search(r"[*?\[]", part):
+                parts = parts[:index]
+                break
+        base = "/".join(parts) or ("/" if text.startswith("/") else ".")
+        for variant in expand_braces(base):
+            normal = self.policy.normalize(variant, cwd)
+            rule = self.policy.recursive_rule(normal) if normal is not None else None
+            if rule is not None:
+                token = text.replace(UNRESOLVED, "$(")
+                if (rule, excerpt_around(raw, token)) not in self.hits:
+                    self.add(rule, raw, token)
+                return
 
     def read_word(self, text, raw, name="", force=False):
         candidates = [text]

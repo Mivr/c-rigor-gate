@@ -251,7 +251,8 @@ case("obfuscated_xxd_pipe", ["cmd-obfuscated-exec"], bash("echo 6c73 | xxd -r -p
 case("obfuscated_eval_substitution", ["cmd-obfuscated-exec"], bash('eval "$(base64 -d src/payload.b64)"'))
 case("obfuscated_python_exec", ["cmd-obfuscated-exec"],
      bash("python3 -c \"exec(__import__('base64').b64decode('aGk='))\""))
-case("unresolved_path_reader", ["path-unresolved"], bash('cat "$(find / -name token)"'))
+# T052 (R008 #7, orchestrator ruling 3): `find /` descends into every forbidden root, so it is also a block now
+case("unresolved_path_reader", ["path-unresolved", S], bash('cat "$(find / -name token)"'))
 case("static_substitution_path", [S], bash("cat /var/tmp/$(echo .config)/club/token"))
 case("static_substitution_whole_path", [S], bash("cat $(echo /var/tmp/.config/club/token)"))
 case("nesting_too_deep", ["nesting-too-deep"], bash(_nest("ls", 10)))
@@ -1045,3 +1046,29 @@ case("fp_tar_make_git_chdir_own_dirs", [], bash(
 case("fp_script_locates_its_own_root", [], write(SC + "/r.sh", 'root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"\n'
                                                  'cd "$root/T099"\ncat src/x.c\ncd "$(dirname "$0")"\ncat x.log\n'),
      bash("bash %s/r.sh" % SC))
+
+# -- T052 (R008 #7): a recursive read rooted at a directory that holds a forbidden root (orchestrator ruling 3: find /) ---
+OC = "read-other-cache"
+OW = "read-other-worktree"
+case("recursive_grep_home", [S], bash("grep -rI TOKEN /var/tmp/ 2>/dev/null | head"))
+case("recursive_grep_cache_root", [OC], bash("grep -r error /var/tmp/cache"))
+case("recursive_grep_tool_cache_root", [OC], tool("Grep", pattern="TOKEN", path="/var/tmp/cache"))
+case("recursive_glob_tool_worktrees_root", [OW], tool("Glob", pattern="*/src/*.c", path="/var/tmp/wt/c-rigor-gate"))
+case("recursive_glob_tool_double_star", [S], tool("Glob", pattern="/var/tmp/**/token"))
+case("recursive_find_exec_cat_cache", [OC], bash("find /var/tmp/cache -name '*.log' -exec cat {} +"))
+case("recursive_cp_cache_root", [OC], bash("cp -r /var/tmp/cache %s/all" % SC))
+case("recursive_grep_dot_after_cd_home", [S], bash("cd /var/tmp && grep -rl TOKEN . | head"))
+case("recursive_ls_cache_root", [OC], bash("ls -R /var/tmp/cache | head -100"))
+case("recursive_find_root", [S], bash("find / -name clang -type f 2>/dev/null | head -3"))
+case("recursive_rg_and_du", [S, OW], bash("rg TOKEN /var/tmp; du -sh /var/tmp/wt/c-rigor-gate"))
+case("recursive_tar_and_rsync_cache", [OC], bash(
+    "tar -czf %s/a.tgz /var/tmp/cache; rsync -a /var/tmp/cache/ %s/all/" % (SC, SC)))
+case("recursive_grep_tool_home", [S], tool("Grep", pattern="TOKEN", path="/var/tmp"))
+case("recursive_grep_other_homes", [S], bash("grep -R key /home 2>/dev/null"))
+case("recursive_grep_glob_root", [OC], bash("grep -r x /var/tmp/cache/T*"))
+case("fp_recursive_reads_in_own_dirs", [], bash(
+    "grep -rn TODO .; grep -r x src docs; find . -name '*.py'; find %s -name '*.log'; du -sh %s; cp -r src %s/copy; "
+    "rsync -a src/ %s/r/; tar -czf %s/x.tgz src; ls -R src | head; rg pattern; find /usr/include -name ssl.h"
+    % (SC, SC, SC, SC, SC)))
+case("fp_recursive_tools_in_own_dirs", [], tool("Grep", pattern="x"), tool("Grep", pattern="x", path=WT + "/src"),
+     tool("Glob", pattern="**/*.py"), tool("Glob", pattern="*.c", path=SC), tool("Glob", pattern=WT + "/**/*.md"))

@@ -88,6 +88,17 @@ process: `/proc/<pid>/root/...` (also under `task/<tid>/`) is the path below it 
 is `read-process-environ`. The value of an attached short option (`-C/path`, `-I/path`, `-L~/x`) and an `@file`
 argument (compiler response files) are paths too.
 
+**Recursive readers (T052, R008 #7).** A recursive read descends into everything below its root, so the root
+itself is judged: `grep -r`/`-R` (and `--recursive`, `-d recurse`), `rg`/`ag`/`ack`, `find`, `tar -c`, `cp -r`/`-R`/`-a`,
+`rsync` (its sources), `du`, `ls -R`, the Grep tool (`path`, default the working directory) and the Glob tool (its
+`path`, or an absolute pattern holding `**`). No root means the working directory; a wildcard root is the directory
+above its first wildcard component; an unknown piece is left out. A root that equals or contains a forbidden root is a
+block with that root's rule: a home (`/var/tmp`, `--home`, `/root`, `/home/*`, `/Users/*`) or anything above one
+(`/`, `/var`, `/home`) is `read-secret-dir` (it holds `.config`, `.claude*`, `.ssh`); `/var/tmp/cache` is
+`read-other-cache`; a `.../wt` or `.../wt/<repo>` directory is `read-other-worktree`. Inside the agent's own dirs
+(the worktree, the declared scratch dirs) nothing is reported. `find / -name clang` is therefore a block (orchestrator
+ruling 3: a true positive; it lists other tasks' trees and walks the secret dirs).
+
 ### Inline code and here-documents
 Text fed to an interpreter (`python3 - <<EOF`, `python3 -c`, `node -e`, `bash <<EOF`) is code. Shell code is
 audited as shell. For other languages only string literals used as paths or commands count: the arguments of

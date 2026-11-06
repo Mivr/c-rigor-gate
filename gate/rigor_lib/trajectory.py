@@ -248,6 +248,7 @@ class Audit:
             pattern = inp.get("pattern")
             if key == "glob" and isinstance(pattern, str):
                 an.read_word(pattern, pattern, key)
+            self.recursive_tool(key, inp, pattern)
         elif key in _WRITE_TOOLS:
             self.check_write(key, inp)
         elif key in _SPAWN_TOOLS:
@@ -258,6 +259,20 @@ class Audit:
             an.add("mcp-tool", name)
         else:
             self.check_paths(inp, force=False)
+
+    def recursive_tool(self, key, inp, pattern):
+        """T052 (R008 #7): the Grep tool searches below its `path` (default: the working directory); the Glob tool
+        below its `path`, or below an absolute pattern's directory when the pattern holds `**`."""
+        path = inp.get("path") if isinstance(inp.get("path"), str) and inp.get("path") else None
+        if key == "grep":
+            root = path or self.analyzer.cwd
+        elif key == "glob" and path is not None:
+            root = path
+        elif key == "glob" and isinstance(pattern, str) and "**" in pattern:
+            root = pattern if pattern.startswith(("/", "~")) else self.analyzer.cwd
+        else:
+            return
+        self.analyzer.recursive_root(root, self.analyzer.cwd, "%s path=%s" % (key, root))
 
     def check_paths(self, inp, force):
         for key in _PATH_KEYS:
