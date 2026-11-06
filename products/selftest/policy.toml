@@ -21,7 +21,7 @@ allow = []
 allow = []
 
 [module."//util:util"]
-level = "L3"
+level = "L2"
 allow = ["malloc"]
 
 [module."//util:util_test"]

@@ -2,12 +2,12 @@
 
 int core_add(int a, int b) { return a + b; }
 
-int core_clamp(int value, int low, int high) {
-    if (value < low) {
-        return low;
+int core_sign(int value) {
+    if (value < 0) {
+        return -1;
     }
-    if (value > high) {
-        return high;
+    if (value > 0) {
+        return 1;
     }
-    return value;
+    return 0;
 }

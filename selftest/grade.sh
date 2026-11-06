@@ -95,8 +95,8 @@ edit_raw_rule() {  # buckfiles: a raw rule beside the macros (it is never built)
   printf '\nnative.cxx_library(name = "raw", srcs = ["core.c"])\n' >> core/BUCK
 }
 # Mutation testing (T008).
-edit_weak_test() {  # a check is gone: the mutants of core_clamp's upper bound survive
-  sed -i '/core_clamp(5, 0, 3), 3/d' core/core_test.c
+edit_weak_test() {  # a check is gone: the mutants around zero in core_sign survive
+  sed -i '/core_sign(0), 0/d' core/core_test.c
 }
 edit_hollow_module() {  # all logic moves into the header: the source has nothing left to mutate
   cat > core/core.h <<'EOT'
@@ -105,14 +105,14 @@ edit_hollow_module() {  # all logic moves into the header: the source has nothin
 
 extern const int core_marker;
 static inline int core_add(int a, int b) { return a + b; }
-static inline int core_clamp(int value, int low, int high) {
-    if (value < low) {
-        return low;
+static inline int core_sign(int value) {
+    if (value < 0) {
+        return -1;
     }
-    if (value > high) {
-        return high;
+    if (value > 0) {
+        return 1;
     }
-    return value;
+    return 0;
 }
 
 #endif
