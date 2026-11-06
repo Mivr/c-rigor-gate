@@ -46,6 +46,10 @@ c_library(name = "multi", srcs = ["multi_a.c", "sub/multi_b.c"], headers = ["mul
 c_test(name = "multi_test", srcs = ["multi_test.c"], deps = [":multi"])
 c_mutants(name = "multi_mutants", module = ":multi", tests = [":multi_test"])
 
+c_library(name = "macro", srcs = ["macro.c"], headers = ["macro.h"])
+c_test(name = "macro_test", srcs = ["macro_test.c"], deps = [":macro"])
+c_mutants(name = "macro_mutants", module = ":macro", tests = [":macro_test"])
+
 c_library(name = "hidden", srcs = ["hidden.c"], headers = ["hidden.h"])
 c_test(name = "hidden_test", srcs = ["hidden_test.c"], deps = [":hidden"])
 c_mutants(name = "hidden_mutants", module = ":hidden", tests = [":hidden_test"])
@@ -53,6 +57,53 @@ c_mutants(name = "hidden_mutants", module = ":hidden", tests = [":hidden_test"])
 c_library(name = "attr", srcs = ["attr.c"], headers = ["attr.h"])
 c_test(name = "attr_test", srcs = ["attr_test.c"], deps = [":attr"])
 c_mutants(name = "attr_mutants", module = ":attr", tests = [":attr_test"])
+EOF
+cat > macro.h <<'EOF'
+#ifndef MACRO_H
+#define MACRO_H
+int macro_sign(int x);
+int macro_over(int x);
+#endif
+EOF
+cat > macro.c <<'EOF'
+#include "macro.h"
+
+#define IS_NEG(x) ((x) < 0)
+#define LIMIT 10
+
+int macro_sign(int x)
+{
+    if (IS_NEG(x))
+        return -1;
+    return 1;
+}
+
+int macro_over(int x)
+{
+    if (x > LIMIT)
+        return 1;
+    return 0;
+}
+EOF
+cat > macro_test.c <<'EOF'
+#include "ctest/ctest.h"
+#include "macro.h"
+
+static void t_sign(ctest_t *t)
+{
+    CHECK_EQ_I64(t, macro_sign(-5), -1);
+    CHECK_EQ_I64(t, macro_sign(0), 1);
+    CHECK_EQ_I64(t, macro_sign(7), 1);
+}
+
+static void t_over(ctest_t *t)
+{
+    CHECK_EQ_I64(t, macro_over(11), 1);
+    CHECK_EQ_I64(t, macro_over(10), 0);
+    CHECK_EQ_I64(t, macro_over(0), 0);
+}
+
+CTEST_SUITE("macro", { "sign", t_sign }, { "over", t_over })
 EOF
 cat > pinned.h <<'EOF'
 #ifndef PINNED_H
@@ -65,8 +116,6 @@ int times_one(int x);
 EOF
 cat > pinned.c <<'EOF'
 #include "pinned.h"
-
-#define IS_NEG(x) ((x) < 0)
 
 int in_range(int x, int lo, int hi)
 {
@@ -86,7 +135,7 @@ int count_below(const int *a, int n, int limit)
 
 int sign(int x)
 {
-    if (IS_NEG(x))
+    if (x < 0)
         return -1;
     return 1;
 }
@@ -425,9 +474,9 @@ fi
 # build_all <log>: build the three modules and refresh $RES/<name>.json
 build_all() {
   local log="$1" name
-  run "$log" build "$pkg:pinned_mutants" "$pkg:weak_mutants" "$pkg:equiv_mutants" "$pkg:multi_mutants" "$pkg:hidden_mutants" "$pkg:attr_mutants" --show-full-output || return 1
+  run "$log" build "$pkg:pinned_mutants" "$pkg:weak_mutants" "$pkg:equiv_mutants" "$pkg:multi_mutants" "$pkg:macro_mutants" "$pkg:hidden_mutants" "$pkg:attr_mutants" --show-full-output || return 1
   mkdir -p "$RES"
-  for name in pinned weak equiv multi hidden attr; do
+  for name in pinned weak equiv multi macro hidden attr; do
     p="$(awk -v t="$pkg:${name}_mutants" '$1 == "root" t || index($1, t) {print $2}' "$log" | tail -1)"
     [ -f "$p" ] || { echo "no report for $name: '$p'" >&2; return 1; }
     cp "$p" "$RES/$name.json"
@@ -575,20 +624,15 @@ gate "$out/lost"
 echo "    gate: exit 1, $(json 'r["findings"][0]["definitions"]') definitions but $(json 'r["findings"][0]["listed"]') listed -> $(rules)"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
-begin "GREEN: the strongly pinned module has no survivor, has equivalents (TCE), and skipped the macro"
+begin "GREEN: the strongly pinned module has no survivor and has equivalents (TCE)"
 mkdir -p "$out/only_pinned"; cp "$RES/pinned.json" "$out/only_pinned/"
 gate "$out/only_pinned"
 [ "$GATE_CODE" = 0 ] || fail "$CUR: expected exit 0, got $GATE_CODE" "$out/gate.log"
 v="$(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
 echo "    $v"
-"${PY[@]}" - "$RES/pinned.json" "$scratch/m/pinned.c" <<'PY' || fail "$CUR: bad pinned report"
+"${PY[@]}" - "$RES/pinned.json" <<'PY' || fail "$CUR: bad pinned report"
 import json, sys
 d = json.load(open(sys.argv[1]))
-src = open(sys.argv[2]).read().split("\n")
-macro_use = next(i + 1 for i, l in enumerate(src) if "if (IS_NEG(x))" in l)
-macro_def = next(i + 1 for i, l in enumerate(src) if l.startswith("#define IS_NEG"))
-bad = [m for m in d["mutants"] if m["line"] in (macro_use, macro_def)]
-assert not bad, "mutants inside the macro expansion: %r" % bad
 ops = {m["operator"] for m in d["mutants"]}
 assert {"relational", "arithmetic", "logical", "condition", "integer-literal", "return-value",
         "increment", "function-body"} <= ops, ops
@@ -596,13 +640,45 @@ kinds = {}
 for m in d["mutants"]:
     s = m["compile"]["status"]
     kinds[s] = kinds.get(s, 0) + 1
-print("    compile statuses:", kinds, "- no mutant on the macro lines", macro_def, macro_use)
+print("    compile statuses:", kinds)
 PY
 "${PY[@]}" - "$out/result.json" <<'PY' || fail "$CUR: counts"
 import json, sys
 m = json.load(open(sys.argv[1]))["metadata"]["modules"].popitem()[1]
 assert m["verdicts"]["survived"] == 0 and m["verdicts"]["equivalent"] >= 1 and m["verdicts"]["killed-assert"] >= 10, m
 PY
+
+begin "RED: code a macro of the product writes is a finding (L3 error, L2 info); the constant macro next to an operator is not"
+mkdir -p "$out/only_macro"; cp "$RES/macro.json" "$out/only_macro/"
+printf '[module."%s:macro_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_macro"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: macro-hidden code passed L3 (exit $GATE_CODE)" "$out/gate.log"
+[ "$(rules)" = "['macro-hidden-code']" ] || fail "$CUR: unexpected rules $(rules)" "$out/gate.log"
+"${PY[@]}" - "$out/result.json" "$RES/macro.json" "$scratch/m/macro.c" <<'PY' || fail "$CUR: bad macro findings"
+import json, sys
+r = json.load(open(sys.argv[1]))
+d = json.load(open(sys.argv[2]))
+src = open(sys.argv[3]).read().split("\n")
+use = next(i + 1 for i, l in enumerate(src) if "if (IS_NEG(x))" in l)
+define = next(i + 1 for i, l in enumerate(src) if l.startswith("#define IS_NEG"))
+limit = next(i + 1 for i, l in enumerate(src) if "if (x > LIMIT)" in l)
+found = [(f["function"], f["macro"], f["line"], f["file"].rsplit("/", 1)[-1]) for f in r["findings"]]
+assert found == [("macro_sign", "IS_NEG", use, "macro.c")], found
+bad = [m for m in d["mutants"] if m["line"] in (use, define)]
+assert not bad, "mutants inside the macro expansion: %r" % bad
+assert [m["replacement"] for m in d["mutants"] if m["line"] == limit and m["operator"] == "relational"] == ["<=", ">="], \
+    "the operator next to the constant macro was not mutated"
+hidden = d["sources"][0]["hidden"]
+assert [(h["function"], h["macro"], h["line"]) for h in hidden] == [("macro_sign", "IS_NEG", use)], hidden
+print("    macro-hidden-code at line", use, "(IS_NEG); no mutant on lines", define, use, "; x > LIMIT (line", limit, ") mutated")
+PY
+printf '[module."%s:macro_mutants"]\nlevel = "L2"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_macro"
+[ "$GATE_CODE" = 0 ] || fail "$CUR: the macro finding must be info at L2 (exit $GATE_CODE)" "$out/gate.log"
+[ "$(json 'sorted({(f["rule"], f["severity"]) for f in r["findings"]})')" = "[('macro-hidden-code', 'info')]" ] \
+  || fail "$CUR: L2 findings: $(json 'r["findings"]')" "$out/gate.log"
+echo "    L2: exit 0, info"
+printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
 begin "GREEN: a module of two sources in two directories (the right object is swapped on relink)"
 mkdir -p "$out/only_multi"; cp "$RES/multi.json" "$out/only_multi/"

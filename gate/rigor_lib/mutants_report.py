@@ -33,6 +33,7 @@ class Source:
     unmutated: tuple      # of those, the names that carry the reason "no-mutable-token"
     definitions: int      # function definitions in the AST, counted independently of the above
     skipped: tuple  # of (name, file, reason): functions with a body that no mutant can reach
+    hidden: tuple   # of (function, macro, line, defined_in): uses of product macros in mutated functions
     baseline_status: str
     baseline_hash: str
     original_hash: str
@@ -104,8 +105,8 @@ def parse_run(path, run, what):
 
 
 def parse_source(path, entry):
-    _exact(path, entry, ("file", "sha256", "definitions", "functions", "skipped", "baseline", "original"),
-           "source")
+    _exact(path, entry, ("file", "sha256", "definitions", "functions", "skipped", "hidden", "baseline",
+                         "original"), "source")
     baseline = _exact(path, entry["baseline"], ("status", "hash"), "baseline")
     original = _exact(path, entry["original"], ("status", "hash"), "original")
     if not isinstance(entry["functions"], list):
@@ -115,7 +116,7 @@ def parse_source(path, entry):
     _, original_hash = _digest(path, original, "original")
     return Source(_text(path, entry["file"], "file"), names, unmutated,
                   _int(path, entry["definitions"], "definitions"), parse_skipped(path, entry["skipped"]),
-                  status, base_hash, original_hash)
+                  parse_hidden(path, entry["hidden"]), status, base_hash, original_hash)
 
 
 def parse_functions(path, entries):
@@ -144,6 +145,18 @@ def parse_skipped(path, entries):
         if entry["reason"] not in ("macro", "header"):
             _fail(path, "bad reason %r" % (entry["reason"],))
         found.append((_text(path, entry["name"], "name"), _text(path, entry["file"], "file"), entry["reason"]))
+    return tuple(found)
+
+
+def parse_hidden(path, entries):
+    """Uses of a product macro inside a function (R002 F1): {function, macro, line, defined_in}."""
+    if not isinstance(entries, list):
+        _fail(path, "hidden must be a list")
+    found = []
+    for entry in entries:
+        _exact(path, entry, ("function", "macro", "line", "defined_in"), "hidden code entry")
+        found.append((_text(path, entry["function"], "function"), _text(path, entry["macro"], "macro"),
+                      _int(path, entry["line"], "line"), _text(path, entry["defined_in"], "defined_in")))
     return tuple(found)
 
 

@@ -19,7 +19,10 @@ class ScheduleCase(unittest.TestCase):
         ids = runner.list_ids()
         first, slow, rest = runner.schedule(ids, runner.UNCACHED_DEFAULT)
         self.assertEqual(sorted(first + slow + rest), sorted(ids))
-        self.assertEqual(first, ["control"])
+        controls = [i for i in ids if runner.load_expect(i).get("control")]
+        self.assertTrue(controls)
+        self.assertEqual(sorted(first), sorted(controls))
+        self.assertNotIn(runner.UNCACHED_DEFAULT, first)
         self.assertEqual(slow, [runner.UNCACHED_DEFAULT])
 
     def test_rest_is_longest_first(self):

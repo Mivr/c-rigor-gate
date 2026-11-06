@@ -1,0 +1,4 @@
+{
+  "control": true,
+  "description": "R002 F3 green control: a tested `bool core_is_pos(int)` in an L3 module is mutated (not skipped as macro-made), has no survivor and raises no unmutated-function or macro-hidden-code. The pack has no other green canary kind, so it is a `control`."
+}
