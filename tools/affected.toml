@@ -189,6 +189,9 @@ selftests = []
 glob = "tools/affected.*"
 selftests = []
 [[rule]]
+glob = "tools/backlog_fold.py"
+selftests = []
+[[rule]]
 glob = "tools/validate.sh"
 selftests = []
 # tools/job is the orchestrator's lane launcher (T042).

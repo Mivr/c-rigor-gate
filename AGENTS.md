@@ -40,6 +40,7 @@ Every turn re-reads the whole context; a wasted turn is expensive. (Details: `do
 5. Read files by line range and filter command output (`| tail -40`). Use the Edit tool for small changes instead
    of rewriting whole files.
 6. Do not merge `main` into your branch unless the task says so or a real conflict blocks you.
+7. Never edit `plan/backlog.md`; add or edit `plan/backlog.d/B<N>.md` and run `tools/backlog_fold.py`.
 
 ## C rules (products)
 - C17, compiled only through the `gate//rules` macros. No raw `cxx_*` rules, no `compiler_flags`.
