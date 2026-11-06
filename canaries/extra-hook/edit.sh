@@ -1,5 +1,5 @@
 set -eu
-# R003 S6a shape: a writable hook is added to the module header, the implementation honours it, the tests never set it.
+# R003 S6a shape: a writable hook appears in the module header and is defined by the module; no test sets it.
+# (The implementation does not branch on it here: a branch would add survivors, and this canary is for `symbols`.)
 sed -i 's|^#endif$|extern int (*core_hook)(int);\n\n#endif|' core/core.h
 printf '\nint (*core_hook)(int) = 0;\n' >> core/core.c
-sed -i 's|^int core_sign(int value) {$|int core_sign(int value) {\n    if (core_hook != 0) {\n        return core_hook(value);\n    }|' core/core.c
