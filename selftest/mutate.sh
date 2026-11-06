@@ -857,7 +857,7 @@ import json, re, sys
 d = json.load(open(sys.argv[1]))
 runs = [(m["id"], t, r) for m in d["mutants"] for t, r in m["runs"].items()]
 assert runs, "no mutant of the kit's module ran"
-normal = re.compile(r"0 of 0 checks failed; first: \S+:\d+: CHECK_EQ_I64\(\(t\), uninit_slot\(i\), \(want\)\)")
+normal = re.compile(r"0 of 0 checks failed; first: \S+:\d+: CHECK_EQ_I64\(uninit_slot\([0-3]\), \([0-9]+\)\)")
 asserted = 0
 for mid, test, run in runs:
     assert run["rc"] in (0, 1, -1, -9), (mid, run["rc"])
@@ -866,11 +866,13 @@ for mid, test, run in runs:
         if "id" not in line:
             continue
         assert line["asserts"] in (0, 1), (mid, line)
-        if line["status"] == "fail" and line["reason"].startswith("0 of 0"):
-            assert normal.fullmatch(line["reason"]) or "CHECK_SLOT" in line["reason"], (mid, line["reason"])
+        if line["status"] != "fail":
+            continue
+        if line["reason"].startswith("0 of 0"):
+            assert normal.fullmatch(line["reason"]), (mid, line["reason"])  # the check is named, no observed value
             asserted += 1
-        elif line["status"] == "fail":
-            assert not re.search(r"[0-9]", line["reason"]) or "#" in line["reason"], (mid, line["reason"])
+        else:
+            assert not re.search(r"[0-9]", line["reason"]), (mid, line["reason"])
 assert asserted, "no mutant was killed by a failed check"
 print("    %d runs of %d live mutants, %d killed by a normalised failed check" % (len(runs), len({r[0] for r in runs}), asserted))
 PY
