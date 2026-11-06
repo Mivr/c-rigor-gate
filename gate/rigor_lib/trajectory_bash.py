@@ -29,6 +29,7 @@ _READERS = ("cat", "head", "tail", "less", "more", "grep", "rg", "ag", "sed", "a
             "base64", "cp", "ls", "find", "tar", "zip", "wc", "sort", "diff", "cmp", "file", "stat", "source", ".")
 _DATA_SKIP_OPTS = ("-m", "--message", "--author", "--date", "-S")
 _NON_PATH_OPTS = ("--pid=", "--lines=", "--bytes=", "--max-count=", "--sleep-interval=", "--max-unchanged-stats=")
+_ATTACHED_RE = re.compile(r"(?:-[A-Za-z]|@)((?:/|~|\.\.?/|" + UNRESOLVED + r"|\$).*)\Z", re.DOTALL)
 _TRIM_RE = re.compile(r"(%%|%|##|#)(.*)\Z", re.DOTALL)
 
 
@@ -479,6 +480,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         eq = re.match(r"(?:-[^=\s]*|of|if|file|path)=(.*)\Z", text, re.DOTALL)
         if eq is not None and not text.startswith(_NON_PATH_OPTS):
             candidates.append(eq.group(1))
+        attached = _ATTACHED_RE.match(text)  # `-C/path`, `-I/path`, `@file` (T052, R008 #5)
+        if attached is not None:
+            candidates.append(attached.group(1))
         for candidate in candidates:
             for variant in expand_braces(candidate):
                 self._read_candidate(variant, raw, name, force)
@@ -494,6 +498,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         if text.startswith("file://"):
             text = text[len("file://"):]
         if UNRESOLVED in text:
+            if self._unknown_piece_rule(text, raw):
+                return
             prefix = text.split(UNRESOLVED)[0]
             if prefix.startswith("/") and prefix.endswith("/") and len(prefix) > 1:
                 self._read_rule(self.policy.normalize(prefix, self.cwd), raw, text)
@@ -507,6 +513,21 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         rule = self.policy.read_rule(normal) or self.policy.glob_rule(text, self.cwd)
         if rule is not None:
             self.add(rule, raw, text)
+
+    def _unknown_piece_rule(self, text, raw):
+        """Rule of a path with unknown pieces (T052, R008 #5): each piece replaced by "" and by "*"; the first
+        variant that hits a forbidden root decides (block). True when one did."""
+        shown = text.replace(UNRESOLVED, "$(")
+        for fill in ("", "*"):
+            variant = text.replace(UNRESOLVED, fill)
+            if not variant.startswith(("/", "~")):
+                continue  # a path-leading unknown piece: the directory is unknown (path-unresolved), see below
+            normal = self.policy.normalize(variant, self.cwd)
+            rule = None if normal is None else self.policy.read_rule(normal) or self.policy.glob_rule(variant, self.cwd)
+            if rule is not None:
+                self.add(rule, raw, shown)
+                return True
+        return False
 
     def _read_rule(self, normal, raw, token):
         rule = self.policy.read_rule(normal) if normal else None

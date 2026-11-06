@@ -8,9 +8,11 @@ import re
 from rigor_lib import trajectory_rules as rules
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
 
-_PROC_ROOT_RE = re.compile(r"\A/proc/(?:self|thread-self|\d+)/root(?=/|\Z)")
+# a pid piece the audit cannot know (`$$`, `$PPID`, `$(...)`, a wildcard) is any process (T052, R008 #5)
+_PID = r"(?:self|thread-self|\d+|[^/]*[*?\[][^/]*)"
+_PROC_ROOT_RE = re.compile(r"\A/proc/" + _PID + r"/(?:task/[^/]+/)?root(?=/|\Z)")
 _PROC_CWD_RE = re.compile(r"\A/proc/(?:self|thread-self|\d+)/cwd(?=/|\Z)")
-_PROC_ENVIRON_RE = re.compile(r"\A/proc/(?:self|thread-self|\d+|[^/]*[*?\[][^/]*)/environ\Z")
+_PROC_ENVIRON_RE = re.compile(r"\A/proc/" + _PID + r"/(?:task/[^/]+/)?environ\Z")
 _HOME_PARENT_RE = re.compile(r"\A(?:/var/tmp|/root|/home/[^/]+|/Users/[^/]+)\Z")
 _WORKTREE_RE = re.compile(r"\A(/(?:[^/]+/)*?wt/[^/]+/[^/]+)(?:/|\Z)")
 _HIDDEN_RE = re.compile(r".+-hidden(?:\.git)?\Z|\Ahidden\Z")

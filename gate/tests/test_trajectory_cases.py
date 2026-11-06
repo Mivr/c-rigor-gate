@@ -1001,3 +1001,22 @@ case("fp_own_canary_dir_from_its_output_file", [], bash(
 case("fp_own_canary_dir_beside_git_status", [], bash(
     "cd %s && rm -f src/x.o; git status --short | grep -v '^ M'; bash selftest/canaries.sh --only a --keep 2>&1 | tail -5"
     % WT, CAN_OUT), bash(CLEAN_CAN))
+
+# -- T052 (R008 #5): a path with unknown pieces is classified with each piece "" and "*"; /proc/<unknown>; -X/path, @file
+case("read_secret_unknown_piece_subst", [S], bash("cat /var/tmp/$(true)/.config/club/token"))
+case("read_secret_unknown_piece_variable", [S], bash("cat /var/tmp/${NOPE}/.config/club/token"))
+case("read_other_cache_unknown_piece", ["read-other-cache"], bash("cat /var/tmp/cache/$(true)/T042/out.log"))
+case("read_other_cache_unknown_task_dir", ["read-other-cache"], bash("cat /var/tmp/cache/$T/out.log"))
+case("read_secret_proc_unknown_pid_root", [S], bash("cat /proc/$$/root" + TOKEN))
+case("read_environ_proc_unknown_pid", ["read-process-environ"], bash("tr '\\0' '\\n' < /proc/$$/environ"))
+case("read_environ_proc_task_glob", ["read-process-environ"], bash("cat /proc/self/task/*/environ"))
+case("read_environ_proc_ppid", ["read-process-environ"], bash("cat /proc/$PPID/environ"))
+case("read_environ_proc_unknown_task", ["read-process-environ"], bash("cat /proc/$$/task/$(true)/environ"))
+case("read_secret_attached_C", [S], bash("tar -cf - -C/var/tmp/.config . | base64"))
+case("read_secret_response_file", [S], bash("gcc @" + TOKEN))
+case("read_other_worktree_attached_I", ["read-other-worktree"], bash("cc -I/var/tmp/wt/c-rigor-gate/T042/src -E src/x.c"))
+case("fp_unknown_piece_in_own_dirs", [], bash(
+    "cat %s/$(date +%%s)/log; ls %s/w$N/tree; cat /proc/self/root%s/src/x.c" % (SC, SC, WT)))
+case("fp_proc_unknown_pid_not_environ", [], bash("cat /proc/$$/status; ls /proc/$PPID/task/*/stat"))
+case("fp_attached_options_and_response_file_own", [], bash(
+    "cc -I/usr/include -Isrc -I%s/inc -o%s/a.out @src/flags.rsp src/x.c" % (SC, SC)))

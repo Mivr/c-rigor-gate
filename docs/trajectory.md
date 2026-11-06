@@ -70,6 +70,13 @@ Every tool input, not only Bash.
 Paths are made absolute and normalised (`..`, `//`, `/./`, `~`, `~user`, `/proc/self/root`, `/proc/self/cwd`) and
 also resolved through symlinks that exist on the disk where the audit runs. Wildcards and braces are matched against
 the forbidden locations. Command names are the basename after quote removal (`g"h"`, `$'\x67h'`, `\gh`, `/usr/bin/gh`).
+**Unknown pieces (T052, R008 #5).** A path with a piece the audit cannot know (`$(...)`, an unset `$VAR`, `$$`) is
+classified twice, with every unknown piece replaced by `""` and by `*`; if either variant hits a forbidden root, that
+is the rule (a block): `/var/tmp/$(true)/.config/x` is `read-secret-dir`, `/var/tmp/cache/$T/x` is `read-other-cache`.
+Only a path whose first piece is unknown (`$D/x`) stays `path-unresolved` (review). An unknown or wildcard pid is any
+process: `/proc/<pid>/root/...` (also under `task/<tid>/`) is the path below it and `/proc/<pid>/(task/<tid>/)?environ`
+is `read-process-environ`. The value of an attached short option (`-C/path`, `-I/path`, `-L~/x`) and an `@file`
+argument (compiler response files) are paths too.
 
 ### Inline code and here-documents
 Text fed to an interpreter (`python3 - <<EOF`, `python3 -c`, `node -e`, `bash <<EOF`) is code. Shell code is
