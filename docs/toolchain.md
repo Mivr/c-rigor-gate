@@ -35,7 +35,8 @@ tools/buck2 build --target-platforms toolchains//:linux_cov //examples/hello:hel
 ```
 
 `c_binary` and `c_test` are incompatible with `fuzz` (libFuzzer supplies `main`); `c_fuzz` is only built in `fuzz`.
-`c_fuzz` is a test that runs `-seed=1 -runs=200000`; it fails when the fuzzer finds a crash.
+`c_fuzz` is a test that runs `-seed=1 -runs=200000` as a cacheable RE action (see "Fuzz runs" below); it fails when
+the fuzzer finds a crash.
 
 ## Sealed flags
 
@@ -49,9 +50,7 @@ flags. The macros `c_library`, `c_binary`, `c_test`, `c_fuzz` have no flag param
 - Tools (clang, lld, llvm-*) and test binaries dynamically load the worker image's glibc/libstdc++/libz/libxml2/ICU
   at run time. Headers, link libraries, crt files and sanitizer runtimes come only from the pinned archives.
 - `python_bootstrap` and `genrule` toolchains use the worker's `python3` and `/bin/sh` (script interpreters only).
-- Sanitizer reports in `<name>_results` are symbolized with the pinned `llvm-symbolizer` (see below). `c_fuzz` runs
-  (`buck2 test` of a fuzz target) still print unsymbolized reports: wiring the same environment into `c_fuzz` needs
-  `rules/c.bzl` (backlog B9).
+- Sanitizer reports in `<name>_results` and in `c_fuzz` runs are symbolized with the pinned `llvm-symbolizer` (see below).
 
 ## Sanitizer symbolization
 
@@ -61,5 +60,23 @@ exports `ASAN_SYMBOLIZER_PATH` and `LLVM_SYMBOLIZER_PATH` (absolute paths to it)
 `docs/ctest.md`): `symbolize=1`, `fast_unwind_on_malloc=0`, `strip_path_prefix=<exec root>/`, `log_path`, and the
 fatal settings `halt_on_error=1`, `abort_on_error=0`, `detect_leaks=1` (the compile flags keep
 `-fno-sanitize-recover=all`).
+
+## Fuzz runs
+
+`c_fuzz(name = "fz")` defines `fz__bin` (the libFuzzer binary) and `fz` (rule `fuzz_run`, rules/ctest.bzl). `fz` is a
+build action on RE with the same hermetic symbolizer and the same fatal sanitizer options as `<name>_results`
+(`sanitizer_env_lines`, no `log_path`; reports stay on stderr), running `fz__bin -seed=1 -runs=200000
+-artifact_prefix=<scratch>/`. It always produces its outputs; `buck2 test` of `fz` only reads the verdict.
+
+| Output | Command | Content |
+|---|---|---|
+| `fz[report]` (default output) | `tools/buck2 build --target-platforms toolchains//:linux_fuzz //x:fz[report] --show-output` | the symbolized sanitizer/libFuzzer report: `file:line function` frames, repo-relative paths, no PIDs, addresses (`0xADDR`) or worker paths, runtime-internal frames dropped |
+| `fz[crash]` | `... //x:fz[crash] --show-output` | the crash input (libFuzzer's `crash-*`/`timeout-*`/`oom-*`/`leak-*` file) as a file; empty when the run passed. Replay: `fz__bin <file>` |
+| `verdict` | | `pass`, or `fail rc=<exit status>` |
+
+The verdict is written by the action script after the target exits, from its exit status; it is `pass` only for exit 0
+and libFuzzer's own `Done 200000 runs` line. Nothing in the report or the crash file is read back by the test, so
+none can turn a fail into a pass. Outputs are byte-identical across cold runs (the report keeps only deterministic
+lines); a warm run executes 0 actions. Self-test: `selftest/fuzz.sh`.
 
 Self-test: `selftest/toolchain.sh`.

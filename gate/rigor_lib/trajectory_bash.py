@@ -8,11 +8,12 @@ from rigor_lib import trajectory_rules as rules
 from rigor_lib import trajectory_shell as shell
 from rigor_lib.trajectory_code import CodeMixin
 from rigor_lib.trajectory_flow import FlowMixin
+from rigor_lib.trajectory_git import GitMixin
 from rigor_lib.trajectory_paths import expand_braces, is_url
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
 
 _VAR_RE = re.compile(r"\$(?:\{([^}]*)\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@#?$!*-]))")
-_LIVE_RE = re.compile(r"\$\{?(!?)([A-Za-z_][A-Za-z0-9_]*)")
+_LIVE_RE = re.compile(r"\$(\{?)(!?)([A-Za-z_][A-Za-z0-9_]*)([*@]?)")
 _NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _CODE_LIKE = re.compile(r"[\s;()'\"]")
 _FRAGMENTS = (
@@ -63,7 +64,7 @@ class Prepared:
         self.cwd = cwd        # the working directory this command runs in
 
 
-class Analyzer(CodeMixin, FlowMixin):
+class Analyzer(CodeMixin, FlowMixin, GitMixin):
     def __init__(self, policy, task):
         self.policy = policy
         self.task = task
@@ -72,10 +73,12 @@ class Analyzer(CodeMixin, FlowMixin):
         self.created = set()
         self.read_set = set()
         self.env_now = {}
+        self.prefix_words = []  # assignments and wrappers in front of the command being analysed
         self.iterations = 0   # loop bodies run in this Bash call (bounded)
         self.files = {}       # normalized path -> content the agent wrote (for later execution)
         self.known_before = None  # the file the latest write touched, if its text was known just before
         self.dirty = set()    # files in `files` that were changed afterwards by something we did not model
+        self.clones = {}      # local clones the agent made: dir -> origin no longer proven (see GitMixin)
         self.cwd_stack = []   # working directories to return to when a `( ... )` subshell closes
 
     # -- plumbing ----------------------------------------------------------------------------
@@ -258,14 +261,19 @@ class Analyzer(CodeMixin, FlowMixin):
 
     def _live_secrets(self, word, raw):
         for match in _LIVE_RE.finditer(word.text):
-            if match.group(1) == "!" or rules.SECRET_NAME_RE.fullmatch(match.group(2)):
+            brace, bang, name, tail = match.groups()
+            if bang == "!" and brace and tail and re.search("[a-z]", name):
+                continue  # `${!r1_*}` lists variable names; a prefix with a lowercase letter lists no secret name
+            if bang == "!" or rules.SECRET_NAME_RE.fullmatch(name):
                 self.add("secret-env-access", raw, match.group(0))
 
     # -- analysis ----------------------------------------------------------------------------
     def analyze(self, item, flags, depth, env):
         command = item.cmd
         raw = command.raw
+        hits_before = len(self.hits)
         self.env_now = env
+        self.prefix_words = [n for n, _ in command.assigns] + item.words[:len(item.words) - len(item.argv)]
         self.cwd = item.cwd
         for rule in item.extra:
             self.add(rule, raw, "")
@@ -289,6 +297,8 @@ class Analyzer(CodeMixin, FlowMixin):
             for match in rules.SECRET_NAME_RE.finditer(word):
                 self.add("secret-env-mention", raw, match.group(0))
         self._run_code(item, argv, name, raw, depth, env)
+        if name == "git":
+            self.note_clone(argv, len(self.hits) == hits_before)
         self._heredocs(item, depth, flags, data_only=False)
 
     def _command_rules(self, argv, raw, name):
@@ -300,9 +310,12 @@ class Analyzer(CodeMixin, FlowMixin):
         if "--no-verify" in args:
             self.add("cmd-no-verify", raw, "--no-verify")
         if name == "git":
-            for rule in cmds.git_hits(argv):
-                self.add(rule, raw, "git")
-            if cmds.git_is_networked(argv) and not cmds.git_remote_ok(argv):
+            found = cmds.git_hits(argv)
+            self.git_taint(argv, found)
+            for rule in found:
+                if rule != "cmd-git-main" or not self.git_in_own_clone(argv):
+                    self.add(rule, raw, "git")
+            if cmds.git_is_networked(argv) and not (cmds.git_remote_ok(argv) or self.git_local_remote(argv)):
                 self.add("cmd-git-network", raw, "git")
         if cmds.install_hit(argv):
             self.add("cmd-install", raw, name)
@@ -440,6 +453,7 @@ class Analyzer(CodeMixin, FlowMixin):
         if normal is None:
             self.add("write-unresolved", raw, text)
             return
+        self.git_touch(normal)
         self.known_before = normal if normal in self.files and normal not in self.dirty else None
         if normal in self.files and op in ("rewrite", "edit", "delete"):
             self.dirty.add(normal)  # whatever else this was, it is not the text we remember

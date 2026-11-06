@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 
 from rigor_lib import jsonio, results_parse
-from rigor_lib.findings import finding
+from rigor_lib.findings import SEVERITY_INFO, finding
 
 VERDICTS = ("killed-assert", "killed-crash", "survived", "equivalent", "duplicate", "unviable", "unrun")
 CHECK_FAILURE = re.compile(r"[0-9]+ of [0-9]+ checks failed; first: ")
@@ -56,9 +56,44 @@ def outcome_of_run(run):
     return ("crash" if failed else "pass"), ids, ""
 
 
-def baseline_findings(report):
-    """The unmutated build must reproduce Buck2's objects and pass every test with assertions."""
+def accounting_findings(report):
+    """B19: every function definition of every source is accounted for. The generator counted the
+    definitions in the AST with code of its own (`definitions`); the lists it wrote must add up to that
+    count, name every function once, and agree with the mutants. A function that is neither mutated nor
+    given a reason, or a mutant of a function nobody listed, means the generator lost something."""
     found = []
+    for source in report.sources:
+        listed = list(source.functions) + [name for name, _, _ in source.skipped]
+        problems = {}
+        if len(listed) != source.definitions:
+            problems["listed"] = len(listed)
+        if len(set(source.functions)) != len(source.functions) \
+                or len(set(source.functions) & {name for name, _, _ in source.skipped}):
+            problems["duplicates"] = True
+        mutated = {m.function for m in report.mutants if m.file == source.file}
+        silent = sorted(set(source.functions) - mutated - set(source.unmutated))
+        stray = sorted(mutated - set(source.functions))
+        reasoned = sorted(set(source.unmutated) & mutated)
+        if silent:
+            problems["no mutant and no reason"] = silent
+        if stray:
+            problems["mutants of unlisted functions"] = stray
+        if reasoned:
+            problems["reason given although mutated"] = reasoned
+        if problems:
+            found.append(finding("unaccounted-function", module=report.label, file=source.file,
+                                 definitions=source.definitions, listed=len(listed),
+                                 problems=problems))
+        found.extend(finding("no-mutable-token", severity=SEVERITY_INFO, module=report.label,
+                             file=source.file, function=name)
+                     for name in source.unmutated if name not in mutated)
+    return found
+
+
+def baseline_findings(report):
+    """The unmutated build must reproduce Buck2's objects and pass every test with assertions
+    (and, first, every function definition must be accounted for)."""
+    found = accounting_findings(report)
     for source in report.sources:
         if source.baseline_status != "ok" or source.baseline_hash != source.original_hash:
             found.append(finding("harness-mismatch", module=report.label, file=source.file))

@@ -1,7 +1,10 @@
 {
   "bypass": "attribute behind a macro",
-  "description": "optnone built by token pasting: invisible to every line regex.",
+  "description": "optnone built by token pasting: invisible to every line regex. Since T017 the generator also mutates the pasted function, whose mutants survive (no test).",
   "fail": {
+    "mutants": [
+      "survived-mutant"
+    ],
     "semantic-suppressions": [
       "forbidden-attribute"
     ]
