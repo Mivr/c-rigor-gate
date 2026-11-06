@@ -1,0 +1,10 @@
+# The mutation tooling runs inside Buck2 actions (rules/mutate.bzl); this exposes it as inputs.
+export_file(
+    name = "gen.py",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "tool.py",
+    visibility = ["PUBLIC"],
+)

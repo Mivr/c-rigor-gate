@@ -9,6 +9,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:ctest.bzl", "ctest_results")
 load("@gate//rules:facts.bzl", "c_facts")
+load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 
 _SEALED = [
     "-std=c17",
@@ -102,6 +103,9 @@ def c_library(name, srcs = [], headers = [], deps = [], visibility = []):
     )
     _facts(name, "c_library", srcs, deps)
 
+    # What `c_mutants` needs to know about this module: its source files.
+    mutsrc(name = name + "_mutsrc", srcs = srcs, headers = headers, visibility = ["PUBLIC"])
+
 def c_binary(name, srcs = [], deps = []):
     _check("c_binary", srcs, [])
     native.cxx_binary(
@@ -171,3 +175,20 @@ def c_fuzz(name, srcs = [], deps = []):
         target_compatible_with = _RELEASE_ONLY,
     )
     _facts(name, "c_fuzz", srcs, deps, unit = ":" + name + "__facts_unit")
+
+def c_mutants(name, module, tests, deps = []):
+    """Mutation testing of a `c_library` through the given `c_test` targets (release mode only).
+
+    `deps` lists the other libraries the tests link besides the module and ctest.
+    """
+    if type(module) != "string" or not module.startswith(":") and ":" not in module:
+        fail("c_mutants: `module` must be a target label string, got {!r}".format(module))
+    c_mutants_rule(
+        name = name,
+        module = module,
+        module_src = module + "_mutsrc",
+        test_targets = tests,
+        deps = deps,
+        link_flags = _link_flags(),
+        target_compatible_with = _RELEASE_ONLY,
+    )
