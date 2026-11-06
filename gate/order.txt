@@ -6,6 +6,8 @@ buckfiles
 semantic-suppressions
 symbols
 build
+structure
+mode-divergence
 tests-release
 tests-san
 mutants

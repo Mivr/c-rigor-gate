@@ -31,7 +31,7 @@ DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+
 GATE_THIRD_PARTY = re.compile(r"//third_party[/:]")
 TEST_MACRO = "c_test"
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
-TEST_DERIVED = ("", "_facts", "_results", "_coverage")
+TEST_DERIVED = ("", "_facts", "_facts_san", "_results", "_coverage")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.
 FORBIDDEN_NAMES = ("TARGETS", "PACKAGE", ".buckconfig", ".buckconfig.local", ".buckroot",
