@@ -11,7 +11,7 @@ import ast
 import os
 import re
 
-from rigor_lib import jsonio
+from rigor_lib import facts_third_party, jsonio
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
 from rigor_lib.runner import gate_handler
@@ -23,7 +23,8 @@ MACROS = ("c_library", "c_binary", "c_test", "c_fuzz")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
-# (The macros add `gate//ctest:ctest` themselves.)
+# (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the
+# gate-owned allowlist `third_party/ALLOWED_LABELS` (see facts_third_party).
 DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+)")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.
@@ -48,8 +49,9 @@ def _is_value(node):
     return _is_string(node) or (isinstance(node, ast.List) and all(_is_string(e) for e in node.elts))
 
 
-def _is_dep_list(node):
-    return isinstance(node, ast.List) and all(DEP_LABEL.fullmatch(e.value) for e in node.elts)
+def _is_dep_list(node, allowed):
+    return isinstance(node, ast.List) and all(DEP_LABEL.fullmatch(e.value) or e.value in allowed
+                                              for e in node.elts)
 
 
 def load_findings(path, node):
@@ -62,7 +64,7 @@ def load_findings(path, node):
     return [finding("bad-load", path=path, line=node.lineno)]
 
 
-def call_findings(path, node):
+def call_findings(path, node, allowed):
     call = node.value
     if not isinstance(call.func, ast.Name) or call.func.id not in MACROS:
         return [finding("bad-call", path=path, line=node.lineno)]
@@ -74,12 +76,12 @@ def call_findings(path, node):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="keyword"))
         elif not _is_value(keyword.value):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
-        elif keyword.arg == "deps" and not _is_dep_list(keyword.value):
+        elif keyword.arg == "deps" and not _is_dep_list(keyword.value, allowed):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="dep"))
     return found
 
 
-def statement_findings(path, tree):
+def statement_findings(path, tree, allowed):
     found, loads = [], 0
     for node in tree.body:
         is_call = isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
@@ -89,22 +91,29 @@ def statement_findings(path, tree):
             if loads > 1:
                 found.append(finding("extra-load", path=path, line=node.lineno))
         elif is_call:
-            found.extend(call_findings(path, node))
+            found.extend(call_findings(path, node, allowed))
         else:
             found.append(finding("bad-statement", path=path, line=node.lineno,
                                  kind=type(node).__name__))
     return found
 
 
-def build_file_findings(path, data):
+def build_file_findings(path, data, allowed):
     try:
         tree = ast.parse(data.decode("utf-8"), filename=path, mode="exec")
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         return [finding("parse-error", path=path)]
-    return statement_findings(path, tree)
+    return statement_findings(path, tree, allowed)
 
 
-def walk_findings(root):
+def default_allowed_labels():
+    return facts_third_party.load_allowed_labels(
+        os.path.join(facts_third_party.DEFAULT_DIR, facts_third_party.ALLOWED_FILE))
+
+
+def walk_findings(root, allowed=None):
+    """`allowed`: exact cell-prefixed dep labels (default: the gate's own `third_party/ALLOWED_LABELS`)."""
+    allowed = default_allowed_labels() if allowed is None else allowed
     found = []
     for directory, subdirs, files in os.walk(root, followlinks=False):
         subdirs.sort()
@@ -116,7 +125,7 @@ def walk_findings(root):
             elif forbidden_name(name):
                 found.append(finding("forbidden-file", path=shown))
             elif name == BUILD_FILE:
-                found.extend(build_file_findings(shown, jsonio.read_bytes(full)))
+                found.extend(build_file_findings(shown, jsonio.read_bytes(full), allowed))
         for name in subdirs:
             if os.path.islink(os.path.join(directory, name)):
                 found.append(finding("symlink", path=os.path.relpath(
@@ -127,12 +136,14 @@ def walk_findings(root):
 def run(args):
     if not os.path.isdir(args.root):
         raise InternalError("not a directory: %s" % args.root)
-    return GateResult(GATE_ID, walk_findings(args.root), {})
+    allowed = None if args.allowed_labels is None else facts_third_party.load_allowed_labels(args.allowed_labels)
+    return GateResult(GATE_ID, walk_findings(args.root, allowed), {})
 
 
 def add_parser(subparsers):
     parser = subparsers.add_parser("buckfiles", allow_abbrev=False,
                                    help="product build files may only call the gate macros")
     parser.add_argument("--root", required=True)
+    parser.add_argument("--allowed-labels", help="override third_party/ALLOWED_LABELS (tests)")
     parser.add_argument("--out")
     parser.set_defaults(handler=gate_handler(run), gate_id=GATE_ID)

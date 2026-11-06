@@ -14,7 +14,7 @@ from rigor_lib.errors import InternalError
 SCHEMA = 1
 LABEL = re.compile(r"[A-Za-z0-9_.-]*//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+")
 SYMBOL = re.compile(r"[A-Za-z0-9_.$@]+")
-KINDS = ("c_library", "c_binary", "c_test", "c_fuzz")
+KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_third_party")
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@
 
 import argparse
 
-from rigor_lib import facts_data, facts_policy, facts_semantic, facts_symbols
+from rigor_lib import facts_data, facts_policy, facts_semantic, facts_symbols, facts_third_party
 from rigor_lib.errors import InternalError
 from rigor_lib.runner import gate_handler
 
@@ -20,11 +20,13 @@ class _GateChoice(argparse.Action):
 def run(args):
     facts = facts_data.load_facts_dir(args.facts)
     policy = facts_policy.load_policy(args.policy)
+    third = facts_third_party.load(args.third_party)
+    facts_third_party.check_policy(policy, third)
     if args.gate == facts_semantic.GATE_ID:
-        return facts_semantic.run(facts, policy)
+        return facts_semantic.run(facts, policy, third)
     if args.libc is None:
         raise InternalError("the symbols gate needs --libc")
-    return facts_symbols.run(facts, policy, facts_data.load_symbol_list(args.libc))
+    return facts_symbols.run(facts, policy, facts_data.load_symbol_list(args.libc), third)
 
 
 def add_parser(subparsers):
@@ -34,5 +36,7 @@ def add_parser(subparsers):
     parser.add_argument("--facts", required=True)
     parser.add_argument("--policy", required=True)
     parser.add_argument("--libc")
+    parser.add_argument("--third-party", help="directory with ALLOWED_LABELS and RESERVED_PREFIXES "
+                                              "(default: the gate's own third_party/)")
     parser.add_argument("--out")
     parser.set_defaults(handler=gate_handler(run))
