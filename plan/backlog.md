@@ -15,3 +15,4 @@
 | B11 | Unviable-mutant ratio countermetric. | orchestrator (T006 review) | T008. |
 | B12 | `rigor grade` must build `gate//third_party/*:*_symbols` into the facts dir for products that use a vendored library; product layouts must always exclude `third_party/**`. | T009 | after T008 merges. |
 | B13 | Quadratic paths in parsers bounded only by input caps (json duplicate keys; http dot-segment removal). | A004/A011 | hidden performance tests (private notes). |
+| B14 | **Layout is an include-list, so a new product directory is silently ungraded** (annas-c `http/`, `app/` and the coming `posix_*` were never graded). | P001 planner | T013: every BUCK file and C source in the product must be covered by `layout.include` or a gate-known non-code exclusion (`docs/`, `plan/`, `fixtures/`); anything else is a finding `ungraded-path`; complete annas-c layout + policy entries + levels for ports, http, annas, app, posix_*. After T008. |
