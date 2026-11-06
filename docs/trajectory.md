@@ -367,6 +367,15 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   created). A rewrite counts only if the agent read the file first; an `Edit` of an existing test is a review.
 * Output files of the harness are never writable: a write to the persisted path is `write-outside`.
 
+### Prefixes and own-dir hidden repos (T057, R008 #14)
+* An `ALLOWED_HOSTS` path prefix matches only at a segment boundary: `github.com/Mivr/annas-c` allows
+  `/Mivr/annas-c`, `/Mivr/annas-c/...` and `/Mivr/annas-c.git`, but not `/Mivr/annas-c-hidden` or
+  `/Mivr/c-rigor-gate-private`, so a clone or fetch of a look-alike repo is `cmd-git-network`/`cmd-network`.
+* The hidden-repo and clean-room checks also run on a URL's host and path (`https://github.com/Mivr/annas-c-hidden`
+  is `read-hidden-repo`, a URL under `annas-mcp` is `read-clean-room`) and on paths inside the agent's own dirs: a
+  path component that is a `*-hidden` repo or `annas-mcp` blocks even in the worktree or scratch (a product file
+  merely called `hidden` is not a repo name and stays green).
+
 ### The shared ref store and repos outside the worktree (T057, R008 #13)
 * A git subcommand that modifies a repository or its worktree (commit, merge, rebase, reset, checkout, switch,
   restore, update-ref, clean, gc, rm, mv, add, a writing branch/tag/reflog/stash/symbolic-ref, ...) whose directory,

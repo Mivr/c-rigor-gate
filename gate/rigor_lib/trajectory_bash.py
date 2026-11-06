@@ -707,6 +707,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                 return
 
     def read_word(self, text, raw, name="", force=False):
+        if is_url(text):
+            self._url_forbidden(text, raw)  # hidden-repo / clean-room checks on a URL path (T057, R008 #14)
         candidates = [text]
         eq = re.match(r"(?:-[^=\s]*|of|if|file|path)=(.*)\Z", text, re.DOTALL)
         if eq is not None and not text.startswith(_NON_PATH_OPTS):
@@ -719,6 +721,17 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                 self._read_candidate(variant, raw, name, force)
         if _CODE_LIKE.search(text):
             self.scan_fragments(text, raw)
+
+    def _url_forbidden(self, text, raw):
+        """A URL whose host or path names a `*-hidden` repo or `annas-mcp` (clean room) is a forbidden fetch."""
+        from urllib.parse import urlsplit
+        parts = urlsplit(text)
+        probe = "/" + (parts.hostname or "") + (parts.path or "")
+        for pattern, rule in _FRAGMENTS:
+            if rule in ("read-hidden-repo", "read-clean-room"):
+                match = pattern.search(probe)
+                if match is not None:
+                    self.add(rule, raw, match.group(0).strip(" '\"=:/"))
 
     def _read_candidate(self, text, raw, name, force=False):
         if text.startswith(UNRESOLVED) and name in _READERS and not force:

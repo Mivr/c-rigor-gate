@@ -582,8 +582,8 @@ def host_allowed(url_or_host, loopback_ok=True):
             continue
         if prefix == "":
             return True
-        if path and (path.startswith(prefix) or path == prefix.rstrip("/")
-                     or path.startswith(prefix.rstrip("/") + ".git")):
+        pfx = prefix.rstrip("/")  # the prefix must end at a path-segment boundary (T057, R008 #14)
+        if path and (path == pfx or path.startswith(pfx + "/") or path.startswith(pfx + ".git")):
             return True
     return False
 

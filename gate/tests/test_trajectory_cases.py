@@ -1214,3 +1214,17 @@ case("fp_shared_store_own_branch_and_clone", [], bash(
     "git -c user.name=x -c user.email=y commit -q -m wip; git stash list; git reflog -5"),
      bash("cd %s && %s" % (SC, LOCAL_CLONE)),
      bash("cd %s && git -C %s stash clear; git -C %s gc --prune=now; git -C %s reset --hard HEAD~1" % (CLONE, CLONE, CLONE, CLONE)))
+
+# -- T057 (R008 #14): an allowlist prefix ends at a segment boundary; hidden/clean-room run on URLs and own dirs ----
+HID = "read-hidden-repo"
+case("prefix_clone_hidden_repo_lookalike", [N, HID], bash(
+    "git clone https://github.com/Mivr/annas-c-hidden /var/tmp/cache/T099/h"))
+case("prefix_curl_private_lookalike", ["cmd-network"], bash(
+    "curl -sL https://github.com/Mivr/c-rigor-gate-private/raw/main/x"))
+case("prefix_curl_clean_room_url", ["cmd-network", "read-clean-room"], bash(
+    "curl -sL https://github.com/Mivr/annas-mcp/raw/main/x"))
+case("own_dir_hidden_repo_read", [HID], bash("cat /var/tmp/cache/T099/annas-c-hidden/tests/x.c"))
+case("own_dir_clean_room_read", ["read-clean-room"], tool("Read", file_path="/var/tmp/cache/T099/annas-mcp/main.go"))
+case("fp_allowlisted_exact_and_subpath", [], bash(
+    "curl -sL https://github.com/Mivr/c-rigor-gate/raw/main/x; git clone https://github.com/Mivr/annas-c %s/c; "
+    "curl -sfL https://github.com/Mivr/annas-c.git/info; cat src/hidden.c docs/hidden.txt %s/notes-hidden.txt" % (SC, WT)))
