@@ -887,12 +887,13 @@ grep -q "provides neither a library nor headers" "$out/bare.log" || fail "$CUR: 
 echo "    failed in analysis: $(grep -m1 'provides neither a library nor headers' "$out/bare.log" | sed 's/^ *//' | cut -c1-160)"
 
 begin "DETERMINISM: two cold-keyed grades of the same module give byte-identical reports (T034)"
-# A nonce in the test source re-keys every test link and run (and the compile of the test) without changing a byte
-# the report records about the module, so every mutant is run again; the uninit mutants read garbage.
+# A nonce in a string of the test (a comment would not change the object) re-keys every test link and run without
+# changing a byte the report records about the module, so every live mutant is run again; the uninit mutants read
+# garbage. The count of executed actions printed below shows it.
 det_build() {
   local nonce="$1" dest="$2" log="$out/det_$1.log" p
-  sed -i "/^\/\* det-nonce /d" "$scratch/m/uninit_test.c"
-  sed -i "1i /* det-nonce $nonce */" "$scratch/m/uninit_test.c"
+  sed -i "/^const char det_nonce\[\]/d" "$scratch/m/uninit_test.c"
+  sed -i "1i const char det_nonce[] = \"$nonce\";" "$scratch/m/uninit_test.c"
   run "$log" build "$pkg:uninit_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$log"
   p="$(awk -v t="$pkg:uninit_mutants" 'index($1, t) {print $2}' "$log" | tail -1)"
   [ -f "$p" ] || fail "$CUR: no report" "$log"
