@@ -1,0 +1,4 @@
+# Public keys trusted to sign rigor approvals (ssh-keygen allowed_signers format).
+# One line per signer:  <principal> namespaces="c-rigor-gate" <key-type> <base64-key>
+# This file is empty of keys on purpose: until the owner adds a line, every approval is rejected.
+# Only the owner changes this file; loosening any gate starts here.

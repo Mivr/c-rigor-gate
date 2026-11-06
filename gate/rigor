@@ -1,0 +1,13 @@
+#!/usr/bin/env -S python3 -I
+"""rigor: the c-rigor-gate decision kernel. Exit 0 = PASS, 1 = FAIL, 2 = internal error."""
+
+import os
+import sys
+
+# Isolated mode (-I) leaves the script directory off sys.path, so add it on purpose.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+from rigor_lib.cli import main  # noqa: E402
+
+sys.exit(main(sys.argv[1:]))
