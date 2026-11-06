@@ -1072,6 +1072,7 @@ exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_k
     "kw_use_transport", "main"]
 
 [module."//wire:wire"]
+level = "L2"
 allow = ["__errno_location", "close", "read", "write"]
 deny_exempt = ["clock_gettime", "open"]
 exports = ["wire_ca_load", "wire_deps_build", "wire_env_get", "wire_env_setup", "wire_io_libc",
