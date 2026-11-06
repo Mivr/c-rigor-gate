@@ -38,6 +38,9 @@ def _syntax_check_only(args):
 _ENV_WHOLE_RE = re.compile(r"\bos\.environ\b(?!\s*\[|\s*\.\s*(?:get|setdefault|pop)\b)|"
                            r"\bprocess\.env\b(?!\s*[.\[])|\bENV\.(?:to_h|each|keys|to_a)\b|\bgetenv\(\s*\)|"
                            r"%ENV\b")  # T062 (R008 #19): Perl's whole hash (`keys %ENV`), not one entry (`$ENV{X}`)
+# The Python-code subset: the forms that are Python (or JS/C) text, not Perl's `%ENV` or Ruby's `ENV.keys` (T066).
+_ENV_WHOLE_PY_RE = re.compile(r"\bos\.environ\b(?!\s*\[|\s*\.\s*(?:get|setdefault|pop)\b)|"
+                              r"\bprocess\.env\b(?!\s*[.\[])|\bgetenv\(\s*\)")
 # Ruby's ENV object itself (`p ENV`, `puts ENV.inspect`), not a lookup of one entry (T062, R008 #19)
 _RUBY_ENV_RE = re.compile(r"(?<![\w$@:.])ENV\b(?!\s*\[|\s*\.\s*(?:fetch|key\?|has_key\?|include\?|member\?|delete|"
                           r"store|assoc)(?!\w))")
@@ -59,17 +62,20 @@ _SINK_RE = re.compile(r"\bprint|\.write|dump|\blog(?:ging|ger)?\b|\bsys\.std|\.i
                       r"\brepr\(|format|\becho\b|\bjoin\(|\bfor\b")
 
 
-def whole_environment(text):
+def whole_environment(text, kind=None):
     """The first place `text` exposes the whole process environment, or None.
 
     `os.environ` itself, `dict(os.environ)` and the like are a dump. A *copy* of it that is only changed or
     read by key, or handed to a function this same text defines and that shows nothing
     (`env = dict(os.environ); env.update(X); run(args, env)`), is how a program builds the environment of a
     child, not a dump; any other use of the copy (printing it, iterating it, passing it to code we cannot
-    see) is."""
+    see) is.
+
+    `kind` is the interpreter when known. Perl's `%ENV` and Ruby's `ENV.keys` are program text of perl and ruby; in
+    Python code they are at most string data (documentation written by a heredoc, T066), so they do not count."""
     copies = {m.group(1) for m in _ENV_COPY_BOUND_RE.finditer(text)}
     rest = _ENV_COPY_KWARG_RE.sub("env={}", _ENV_COPY_BOUND_RE.sub(lambda m: m.group(1) + " = {}", text))
-    match = _ENV_WHOLE_RE.search(rest)
+    match = (_ENV_WHOLE_PY_RE if kind == "python" else _ENV_WHOLE_RE).search(rest)
     if match is not None:
         return match
     for name in sorted(copies):
@@ -295,7 +301,7 @@ class CodeMixin:
         for path, op in write_literals(text):  # T061 (R008 #16): a literal the code writes or deletes
             if "\n" not in path and path.strip():
                 self.write(path, op, raw)
-        match = None if self.clean_env else whole_environment(text)  # `env -i`: nothing inherited to dump
+        match = None if self.clean_env else whole_environment(text, cmds.interpreter_kind(lang or ""))  # `env -i`: nothing inherited to dump
         if match is None and not self.clean_env and cmds.interpreter_kind(lang or "") == "ruby":
             match = _RUBY_ENV_RE.search(text)
         if match is not None:

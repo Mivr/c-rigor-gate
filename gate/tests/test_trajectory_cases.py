@@ -1322,6 +1322,12 @@ case("fp_program_own_dirs_and_single_entries", [], bash(
      bash("perl -e 'print $ENV{HOME}'; ruby -e 'puts ENV[\"HOME\"]; ENV.key?(\"PATH\")'; node -p process.env.HOME; "
           "python3 -c \"ENV = {'a': 1}; print(ENV)\""))
 
+# -- T066: documentation text in a Python string literal is data, not perl/ruby/awk program text -------------------------
+case("fp_python_heredoc_writes_docs_naming_env_dumps", [], bash(
+    "python3 - <<'EOF'\nnew = \'\'\'Perl's %ENV, awk's ENVIRON and the printenv tool list the whole environment.\'\'\'\n"
+    "open('docs/x.md', 'w').write(new)\nEOF"))
+case("env_python_heredoc_still_dumps_os_environ", [E], bash("python3 - <<'EOF'\nimport os\nprint(os.environ)\nEOF"))
+
 # -- T062 (R008 #20): env dumps and kills under other names; `buck2 kill` in the agent's own dirs stays green ----------
 case("envdump_printenv_options_only", [E], bash("printenv -0 | tr '\\0' '\\n'"))
 case("envdump_declare_px", [E], bash("declare -px"))
