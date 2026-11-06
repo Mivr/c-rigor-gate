@@ -1,0 +1,1 @@
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "w1", "name": "Write", "input": {"path": "/var/tmp/wt/c-rigor-gate/T099/v.py", "file_text": "x"}}]}}
