@@ -9,7 +9,8 @@ Changes since P002 was written:
 - **T055** made `rigor grade` hand the symbols gate the whole policy, `level` included, and removed
   `grade_policy.symbol_policy_path`. P002's "drop `impl` from the symbols copy" therefore becomes: the policy
   reader (`facts_policy`) must accept `impl` and ignore it for symbols. `facts_policy.py` is allowed for that one
-  key.
+  key. Also delete `grade_policy.symbol_policy_text`, which is now dead, and its uses in
+  `gate/tests/test_grade_mutants.py` (T055 deviation 1).
 - T053 cut `selftest/grade.sh` to property steps only. Add your steps in that style; do not re-add red cases that a
   canary already covers.
 - The witness bundle snapshots the way T037 binds it: `witness_bundle.py`, `verdict_inputs.py`. Reuse them.

@@ -1,0 +1,10 @@
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_001", "name": "Grep", "input": {"pattern": "x"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_001", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_002", "name": "Grep", "input": {"pattern": "x", "path": "/var/tmp/wt/c-rigor-gate/T099/src"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_002", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_003", "name": "Glob", "input": {"pattern": "**/*.py"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_003", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_004", "name": "Glob", "input": {"pattern": "*.c", "path": "/var/tmp/cache/T099"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_004", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_005", "name": "Glob", "input": {"pattern": "/var/tmp/wt/c-rigor-gate/T099/**/*.md"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_005", "content": "ok"}]}}
