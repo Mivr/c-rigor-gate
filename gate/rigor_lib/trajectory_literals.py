@@ -287,3 +287,113 @@ def write_literals(text):
                     found.append((value.lstrip(">+<").strip(), "edit" if value.startswith(">>") else "rewrite"))
     reads = {value for value, op in found if op == "read"}
     return [(value, "edit" if op == "rewrite" and value in reads else op) for value, op in found if op != "read"]
+
+
+# -- concatenations folded before the scan (T062) -------------------------------------------
+_SIMPLE_RE = re.compile(r"(?:[rRbBuU]{1,2})?(?:'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\")")  # one line, not an f-string
+_ELEM_RE = re.compile(r"(?:" + _SIMPLE_RE.pattern + r")|\$?(?P<name>[A-Za-z_]\w*)(?![\w(\[.]|\s*\()")
+_PLUS_RE = re.compile(r"[ \t]*\+(?!=)\s*|\s+\+(?!=)\s*")
+_DOT_RE = re.compile(r"[ \t]+\.[ \t]+")      # Perl's `.` between strings (`'a' . 'b'`), spaced
+_ADJ_RE = re.compile(r"[ \t]+(?=[rRbBuU]{0,2}['\"])")  # Python's implicit concatenation (`'a' 'b'`)
+_JOIN_RE = re.compile(r"(?<![\w.])(?:os\.path|posixpath)\.join\s*\(")
+_PATH_DIV_RE = re.compile(r"(?<![\w.])((?:pathlib\.)?(?:Path|PurePath|PosixPath))\s*\(\s*(" + _SIMPLE_RE.pattern +
+                          r")\s*\)((?:\s*/\s*(?:" + _SIMPLE_RE.pattern + r"))+)")
+_MAX_ROUNDS = 4
+
+
+def _quoted(body):
+    if '"' not in body:
+        return '"' + body + '"'
+    return "'" + body.replace("'", "\\'") + "'"
+
+
+def _elem_value(match, names):
+    if match.group("name") is None:
+        return _unquote(match.group(0))
+    values = names.get(match.group("name"), ())
+    return values[0] if len(set(values)) == 1 else None
+
+
+def _fold_chains(text, names):
+    """One pass: `'a' + 'b'`, `x + 'b'` (x bound to one literal), Perl's `'a' . 'b'` and Python's `'a' 'b'` become one
+    literal. Strings and `#` comments are skipped whole, so a chain never starts inside one."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        char = text[i]
+        if char == "#" and (i == 0 or text[i - 1].isspace()):
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            out.append(text[i:end])
+            i = end
+            continue
+        prev = text[i - 1] if i else " "
+        string = _STRING_RE.match(text, i) if char in "'\"rRbBuUfF" else None
+        if string is not None and (_SIMPLE_RE.fullmatch(string.group(0)) is None or prev.isalnum() or prev == "_"):
+            out.append(string.group(0))  # a triple-quoted or f-string, or one glued to a name: skipped whole
+            i = string.end()
+            continue
+        first = _ELEM_RE.match(text, i) if not (prev.isalnum() or prev in "_.$") else None
+        if first is None:
+            string = _STRING_RE.match(text, i) if char in "'\"" else None
+            step = string.end() if string is not None else i + 1
+            out.append(text[i:step])
+            i = step
+            continue
+        values, end, strings = [_elem_value(first, names)], first.end(), first.group("name") is None
+        while True:
+            op = _PLUS_RE.match(text, end)
+            dot_or_adj = _DOT_RE.match(text, end) or _ADJ_RE.match(text, end)
+            nxt = _ELEM_RE.match(text, op.end()) if op is not None else None
+            if nxt is None and dot_or_adj is not None and values[-1] is not None:
+                nxt = _SIMPLE_RE.match(text, dot_or_adj.end())
+                nxt = _ELEM_RE.match(text, dot_or_adj.end()) if nxt is not None else None
+            if nxt is None:
+                break
+            values.append(_elem_value(nxt, names))
+            strings = strings or nxt.group("name") is None
+            end = nxt.end()
+        if len(values) > 1 and strings and all(v is not None for v in values):
+            out.append(_quoted("".join(values)))
+        else:
+            out.append(text[i:end])
+        i = end
+    return "".join(out)
+
+
+def _fold_joins(text):
+    """`os.path.join('a', 'b')` of literals only is `'a/b'`; `Path('a') / 'b'` is `Path('a/b')`."""
+    def join(match):
+        region = _args(text, match.end())
+        args = _split_args(region)
+        if not args or any(_SIMPLE_RE.fullmatch(a) is None for a in args):
+            return None
+        path = ""
+        for arg in args:
+            piece = _unquote(arg)
+            path = piece if piece.startswith("/") or not path else path.rstrip("/") + "/" + piece
+        return match.start(), match.end() + len(region) + 1, _quoted(path)
+    edits = [e for e in (join(m) for m in _JOIN_RE.finditer(text)) if e is not None]
+    for start, end, literal in reversed(edits):
+        if text[end - 1:end] == ")":
+            text = text[:start] + literal + text[end:]
+    def divide(match):
+        pieces = [_unquote(match.group(2))] + [_unquote(p) for p in re.findall(_SIMPLE_RE.pattern, match.group(3))]
+        return match.group(1) + "(" + _quoted("/".join(p.strip("/") if k else p.rstrip("/")
+                                                        for k, p in enumerate(pieces))) + ")"
+    return _PATH_DIV_RE.sub(divide, text)
+
+
+def fold_concat(text):
+    """`text` with literal concatenations folded into one literal, so that a path split into pieces
+    (`'/var/tmp/.co' + 'nfig/x'`, `p = base + 'x'`, `os.path.join('/var/tmp', '.config')`, `Path('/a') / 'b'`) is
+    scanned whole (T062). A name counts when it is bound to exactly one literal (`name = 'literal'`); a few rounds
+    resolve chains of such names."""
+    for _ in range(_MAX_ROUNDS):
+        names = {}
+        for match in _ASSIGN_RE.finditer(text):
+            names.setdefault(match.group(1), []).append(_unquote(match.group(2)))
+        folded = _fold_joins(_fold_chains(text, names))
+        if folded == text:
+            break
+        text = folded
+    return text

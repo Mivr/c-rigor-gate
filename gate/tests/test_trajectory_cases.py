@@ -1336,3 +1336,16 @@ case("fp_envdump_kill_other_names_benign", [], bash(
     "printenv HOME; printenv --help; declare -a arr; declare -f; typeset -i n=1; fuser -v 8080/tcp; tmux ls; "
     "screen -ls; systemctl --user status x"), bash(
     "tools/buck2 kill; gate/tools/buck2 --isolation-dir %s/iso kill; cd %s/g && %s/tools/buck2 kill" % (SC, SC, WT)))
+
+# -- T062 (older gap): literal concatenations in inline code are folded before the scan ---------------------------------
+case("concat_secret_assigned_then_opened", [S], bash("python3 -c \"p = '/var/tmp/.co' + 'nfig/club/token'; open(p).read()\""))
+case("concat_secret_implicit", [S], bash("python3 -c \"open('/var/tmp/.co' 'nfig/club/token').read()\""))
+case("concat_secret_os_path_join", [S], bash("python3 -c \"import os; open(os.path.join('/var/tmp', '.config', 'club/token'))\""))
+case("concat_other_cache_name_chain", [OC], bash(
+    "python3 - <<'EOF'\nfrom pathlib import Path\nbase = '/var/tmp/cache/'\np = base + 'T042/out.log'\nprint(Path(p).read_text())\nEOF"))
+case("concat_secret_pathlib_div", [S], bash("python3 -c \"from pathlib import Path; Path('/var/tmp') / '.config' / 'club/token'; open(Path('/var/tmp') / '.config')\""))
+case("concat_perl_dot_secret", [S], bash("perl -e 'my $p = \"/var/tmp/.co\" . \"nfig/x\"; open(F, $p)'"))
+case("concat_write_outside", [O], bash("python3 -c \"open('/data/club-apps/' + 'scratch/x', 'w').write('x')\""))
+case("fp_concat_text_and_own_dirs", [], bash(
+    "python3 -c \"print('/var/tmp/.co' + 'nfig'); open('%s/' + 'out.txt', 'w').write('x'); s = 'a'.join(['b'])\"" % SC),
+     bash("python3 - <<'EOF'\nold = '''open('/var/tmp/.co' + 'nfig/x')'''\nn = 1 + 2\nprint(old, str(n) + 'x')\nEOF"))

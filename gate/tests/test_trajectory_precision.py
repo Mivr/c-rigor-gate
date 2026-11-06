@@ -129,6 +129,28 @@ class LiteralTests(unittest.TestCase):
             literals.path_literals(code)
 
 
+class ConcatFoldTests(unittest.TestCase):
+    """T062: literal concatenations are folded before inline code is scanned."""
+
+    def test_literal_chains_fold_into_one_literal(self):
+        folded = {"open('/a/.co' + 'nfig')": 'open("/a/.config")', "open('/a/.co' 'nfig')": 'open("/a/.config")',
+                  "my $p = '/a' . '/b';": 'my $p = "/a/b";', "b = '/a'\nq = b + '/c'": "b = '/a'\nq = \"/a/c\"",
+                  "os.path.join('/a', 'b', 'c')": '"/a/b/c"', "os.path.join('/a', '/b')": '"/b"',
+                  "Path('/a') / 'b' / 'c'": 'Path("/a/b/c")', "r'/a' + r'/b'": '"/a/b"'}
+        for text, want in folded.items():
+            self.assertEqual(literals.fold_concat(text), want, text)
+
+    def test_strings_comments_and_computed_pieces_stay(self):
+        kept = ("s = \'\'\'open('/a' + '/b')\'\'\'", "# '/a' + '/b'\nx = 1", "f'/a' + '/b'", "x = a + b",
+                "'a'.join(['b'])", "e = d['k'] + 'z'", "s = 'a' + str(x)", "os.path.join(ROOT, 'x')")
+        for text in kept:
+            self.assertEqual(literals.fold_concat(text), text, text)
+
+    def test_unterminated_input_never_raises(self):
+        for text in ("'a' +", "'a' + '", "os.path.join('a'", "Path('a') /", "x = '", "#"):
+            literals.fold_concat(text)
+
+
 class EnvironmentCopyTests(unittest.TestCase):
     def found(self, text):
         match = code.whole_environment(text)
