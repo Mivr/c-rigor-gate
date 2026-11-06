@@ -13,6 +13,8 @@
   "not_run": [
     "semantic-suppressions",
     "symbols",
+    "structure",
+    "mode-divergence",
     "tests-release",
     "tests-san",
     "mutants"

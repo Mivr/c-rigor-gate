@@ -5,10 +5,12 @@ Each input is varied on its own and must change `core_sha256`; the files are sna
 
 import os
 import pathlib
+import shutil
 import subprocess
 from types import SimpleNamespace
+from unittest import mock
 
-from rigor_lib import grade_context, jsonio, verdict, verdict_inputs
+from rigor_lib import grade_context, jsonio, verdict, verdict_inputs, witness_bundle
 from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase, base_env
 
@@ -18,7 +20,9 @@ BUCK_TEXT = ('fetched_tree(\n    name = "llvm",\n    url = "u",\n    sha256 = "%
 LLVM, SYSROOT, BUCK2 = "1" * 64, "2" * 64, "3" * 64
 FILE_HASHES = {key: jsonio.sha256_hex(key.encode()) for key in
                ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
-                "expected_tests_previous_sha256", "approvals_sha256", "allowed_signers_sha256", "order_sha256")}
+                "expected_tests_previous_sha256", "approvals_sha256", "allowed_signers_sha256", "order_sha256",
+                "witness_sha256")}
+WITNESS_FIXTURE = GATE_DIR / "tests" / "fixtures" / "witness" / "good"
 
 
 class Fixture:
@@ -45,7 +49,7 @@ class Fixture:
                     ["gate/toolchains/BUCK", jsonio.sha256_hex(buck)],
                     ["gate/tools/buck2.version", jsonio.sha256_hex(version)]]
         documents = {"clone": {"metadata": dict(self.commits)}, "assemble": {"metadata": {"manifest": manifest}}}
-        g = SimpleNamespace(tree=self.tree, gate_sha=self.gate_sha, gate_clean=self.gate_clean,
+        g = SimpleNamespace(tree=self.tree, work=self.root, gate_sha=self.gate_sha, gate_clean=self.gate_clean,
                             product=SimpleNamespace(name=self.name), args=SimpleNamespace(uncached=self.uncached),
                             inputs=dict(self.file_hashes))
         return g, documents
@@ -144,7 +148,8 @@ class EveryInputChangesTheHash(TempDirTestCase):
     def test_malformed_values_are_reported(self):
         inputs = self.fixture.inputs()
         for key, value in (("head", "abc"), ("llvm_sha256", "xyz"), ("gate_clean", "yes"),
-                           ("product", ""), ("approvals_sha256", "short")):
+                           ("product", ""), ("approvals_sha256", "short"), ("witness_sha256", "short"),
+                           ("witness_sha256", "A" * 64)):
             broken = dict(inputs, **{key: value})
             self.assertEqual(verdict_inputs.missing_inputs(broken), [key], key)
         for key in verdict_inputs.OPTIONAL_KEYS:
@@ -244,6 +249,122 @@ class Snapshot(TempDirTestCase):
         os.symlink(self.tmp / "task.toml", self.product_dir / "policy.toml")
         _, hashes = self.snapshot()
         self.assertIsNone(hashes["policy_sha256"])
+
+
+class WitnessSnapshot(TempDirTestCase):
+    """T037: `--witness DIR` is copied once into <work>/inputs/witness, loaded from the copy, and hashed."""
+
+    def bundle(self, name="bundle"):
+        target = self.tmp / name
+        shutil.copytree(WITNESS_FIXTURE, target, symlinks=True)
+        return target
+
+    def snapshot(self, source):
+        destination = self.tmp / ("w%d" % len(list(self.tmp.glob("w*")))) / "inputs" / "witness"
+        destination.parent.mkdir(parents=True)
+        return verdict_inputs.snapshot_witness(None if source is None else str(source), str(destination)), \
+            destination
+
+    def core_sha256(self, witness_sha256):
+        fixture = Fixture(str(self.tmp))
+        fixture.file_hashes["witness_sha256"] = witness_sha256
+        return fixture.core_sha256()
+
+    def test_without_a_witness_it_is_null_and_nothing_is_written(self):
+        (bundle, sha), destination = self.snapshot(None)
+        self.assertEqual((bundle, sha), (None, None))
+        self.assertFalse(destination.exists())
+        fixture = Fixture(str(self.tmp))
+        fixture.file_hashes["witness_sha256"] = None
+        self.assertIsNone(fixture.inputs()["witness_sha256"])
+        self.assertEqual(verdict_inputs.missing_inputs(fixture.inputs()), [])
+
+    def test_the_copy_is_loaded_and_hashed(self):
+        source = self.bundle()
+        (bundle, sha), destination = self.snapshot(source)
+        self.assertEqual(sha, witness_bundle.digest(witness_bundle.load(str(source))))
+        self.assertEqual(sha, witness_bundle.digest(bundle))
+        self.assertEqual(witness_bundle.load(str(destination)), bundle)
+        self.assertEqual(sorted(str(p.relative_to(destination)) for p in destination.rglob("*")),
+                         sorted(str(p.relative_to(source)) for p in source.rglob("*")))
+
+    def test_changing_the_original_after_the_snapshot_changes_nothing(self):
+        source = self.bundle()
+        (bundle, sha), destination = self.snapshot(source)
+        (source / "files" / "core" / "core.c").write_text("int core_add(int a, int b) { return 0; }\n")
+        self.assertEqual(witness_bundle.digest(witness_bundle.load(str(destination))), sha)
+        self.assertNotEqual(self.snapshot(source)[0][1], sha)
+
+    def test_the_same_bundle_under_two_paths_gives_the_same_core(self):
+        (_, first), _ = self.snapshot(self.bundle("one"))
+        (_, second), _ = self.snapshot(self.bundle("elsewhere/two"))
+        self.assertEqual(first, second)
+        self.assertEqual(self.core_sha256(first), self.core_sha256(second))
+
+    def test_the_witness_changes_core_sha256_and_null_differs_from_any_bundle(self):
+        (_, sha), _ = self.snapshot(self.bundle())
+        other = self.bundle("other")
+        (other / "files" / "util" / "util.c").write_text("/* other witness */\n")
+        (_, changed), _ = self.snapshot(other)
+        digests = {self.core_sha256(None), self.core_sha256(sha), self.core_sha256(changed)}
+        self.assertEqual(len(digests), 3)
+
+    def assertRefused(self, source, needle):
+        with self.assertRaises(InternalError) as caught:
+            self.snapshot(source)
+        self.assertIn(needle, str(caught.exception))
+
+    def test_a_missing_bundle_is_an_error(self):
+        self.assertRefused(self.tmp / "nope", "witness bundle")
+
+    def test_a_symlinked_bundle_root_is_refused(self):
+        os.symlink(self.bundle(), self.tmp / "link")
+        self.assertRefused(self.tmp / "link", "symlink")
+
+    def test_a_symlinked_file_is_refused(self):
+        source = self.bundle()
+        os.symlink(source / "files" / "core" / "core.c", source / "files" / "core" / "alias.c")
+        self.assertRefused(source, "symlink files/core/alias.c")
+
+    def test_a_symlinked_manifest_is_refused(self):
+        source = self.bundle()
+        os.rename(source / "witness.toml", self.tmp / "manifest.toml")
+        os.symlink(self.tmp / "manifest.toml", source / "witness.toml")
+        self.assertRefused(source, "symlink witness.toml")
+
+    def test_a_symlinked_directory_is_refused(self):
+        source = self.bundle()
+        os.symlink(source / "files" / "core", source / "files" / "more")
+        self.assertRefused(source, "symlink files/more")
+
+    def test_a_fifo_is_refused(self):
+        source = self.bundle()
+        os.mkfifo(source / "files" / "core" / "pipe.c")
+        self.assertRefused(source, "special file files/core/pipe.c")
+
+    def test_format_defects_are_refused_by_the_loader_on_the_copy(self):
+        empty = self.bundle("empty")
+        (empty / "files" / "spare").mkdir()
+        self.assertRefused(empty, "empty directory")
+        extra = self.bundle("extra")
+        (extra / "README").write_text("x\n")
+        self.assertRefused(extra, "must hold exactly")
+        bad = self.bundle("bad")
+        (bad / "witness.toml").write_text("product = 1\n")
+        self.assertRefused(bad, "witness.toml")
+
+
+class PrepareWork(TempDirTestCase):
+    def test_it_clears_the_witness_tree_and_work_after_stopping_both_daemons(self):
+        for name in ("tree", grade_context.WITNESS_TREE, grade_context.WITNESS_WORK):
+            (self.sub(name) / "stale").write_text("x")
+        (self.sub("inputs/witness/files") / "old.c").write_text("x")
+        with mock.patch.object(grade_context, "kill_daemon") as kill:
+            grade_context.prepare_work(str(self.tmp))
+        self.assertEqual([c.args for c in kill.call_args_list],
+                         [(str(self.tmp / "tree"),), (str(self.tmp / "tree-witness"),)])
+        for name in ("tree", "tree-witness", "witness", "inputs"):
+            self.assertFalse((self.tmp / name).exists(), name)
 
 
 class DirtyGate(TempDirTestCase):

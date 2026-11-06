@@ -3,8 +3,8 @@
   "description": "A 90-line function in an L2 module (B2).",
   "fail": {
     "structure": [
-      "function-too-long"
+      "function-length",
+      "statement-count"
     ]
-  },
-  "pending": "T011"
+  }
 }

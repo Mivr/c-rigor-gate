@@ -187,6 +187,21 @@ for n in stmtexprrec stmtnest; do
   echo "    $n: refused by -Wpedantic -Werror (-Wgnu-statement-expression)"
 done
 
+begin "a wrapper unit (a source that only includes its implementation header) is scanned through the real rule"
+run "$out/wrap.log" build "$pkg/wrapper:wrap_s" --show-full-output || fail "$CUR: buck2 build failed" "$out/wrap.log"
+wpath="$(awk -v t="$pkg/wrapper:wrap_s" 'index($1, t) {print $2}' "$out/wrap.log" | tail -1)"
+[ -f "$wpath" ] || fail "$CUR: no facts for the wrapper: '$wpath'" "$out/wrap.log"
+"${PY[@]}" - "$wpath" <<'PY' || fail "$CUR: the wrapper's functions are not reported under the header"
+import json, sys
+unit = json.load(open(sys.argv[1]))["units"][0]
+assert unit["src"].endswith("wrapper/wrap.c"), unit["src"]
+names = {f["name"]: f for f in unit["functions"]}
+assert sorted(names) == ["wrap_sum", "wrap_twice"], sorted(names)
+assert all(f["file"].endswith("wrapimpl.h") for f in names.values()), names
+assert any(x["path"].endswith("wrap.c") and x["lines"] == 2 for x in unit["files"]), unit["files"]
+print("    wrap.c (2 lines) is listed; wrap_sum and wrap_twice are reported under wrapimpl.h")
+PY
+
 begin "WARM: an unchanged tree executes no action"
 build_all "$out/build2.log" || fail "$CUR: buck2 build failed" "$out/build2.log"
 WARM="$(executed "$out/build2.log")"

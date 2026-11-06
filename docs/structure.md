@@ -21,6 +21,11 @@ the build. A header-only module (no sources) has nothing to compile and gets no 
   `structure.json`. A source without a unit, or the reverse, fails the build.
 * Both are plain cacheable actions: an unchanged tree executes **0** actions; an edit to one source re-runs that
   source's unit and the join only.
+* **Wrapper units (T048).** A source the dump never names is normally a blind scan and fails. The one exception: its
+  text, with comments and whitespace removed, is only `#include "..."` lines (annas-c `tests/kit.c`), and the dump
+  has a location in each included non-system file. The included functions are reported under their own paths and the
+  main file is listed in `files`. Any other token (a `#define`, a `#pragma`, a declaration alone, an `#include <...>`
+  of a system header, an include that produced no location, an empty file) stays a `ScanError`.
 * Not product code, so not reported: files under the toolchain's `--system-root`s, and the gate's own third-party
   libraries (path contains `/art/<gate cell>/third_party/`; a directory of that name in a product is not exempt).
 
