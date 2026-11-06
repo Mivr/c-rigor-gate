@@ -34,11 +34,12 @@ def mutant(number, function="f", operator="relational", status="ok", digest=None
             "runs": {"t": KILLED} if runs is None and status == "ok" else (runs or {})}
 
 
-def report(mutants, functions=("f",), baseline=PASS, original=BASE, label=LABEL, tests=("t",), skipped=()):
+def report(mutants, functions=("f",), baseline=PASS, original=BASE, label=LABEL, tests=("t",), skipped=(), hidden=()):
     return {
         "schema": 1, "label": label, "tests": list(tests),
         "sources": [{"file": "m/a.c", "sha256": "0" * 64, "definitions": len(functions) + len(skipped),
                      "functions": [{"name": n, "line": 1} for n in functions], "skipped": list(skipped),
+                     "hidden": list(hidden),
                      "baseline": {"status": "ok", "hash": BASE}, "original": {"status": "ok", "hash": original}}],
         "baseline_runs": {t: baseline for t in tests}, "mutants": mutants,
     }
@@ -130,7 +131,7 @@ class MutantsTest(TempDirTestCase):
         document = report([mutant(1)])
         document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "definitions": 1,
                                     "functions": [{"name": "g", "line": 1}],
-                                    "skipped": [], "baseline": {"status": "ok", "hash": BASE},
+                                    "skipped": [], "hidden": [], "baseline": {"status": "ok", "hash": BASE},
                                     "original": {"status": "ok", "hash": BASE}})
         self.fails_with(document, "no-mutants", "unaccounted-function")
 
@@ -143,7 +144,7 @@ class MutantsTest(TempDirTestCase):
         document = report([], functions=())
         document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "definitions": 0,
                                     "functions": [],
-                                    "skipped": [], "baseline": {"status": "ok", "hash": BASE},
+                                    "skipped": [], "hidden": [], "baseline": {"status": "ok", "hash": BASE},
                                     "original": {"status": "ok", "hash": BASE}})
         self.fails_with(document, "no-mutants")
 
@@ -250,6 +251,37 @@ class MutantsTest(TempDirTestCase):
     def test_everything_unviable_fails(self):
         self.fails_with(report([mutant(1, status="unviable"), mutant(2, status="unviable")]),
                         "all-unviable", "no-assert-kill-function")
+
+    # -- R002 F1: code a product macro wrote inside a mutated function
+    def test_macro_hidden_code_fails_l3_with_file_line_and_macro_and_is_info_in_l2(self):
+        use = {"function": "f", "macro": "FAST_PATH", "line": 27, "defined_in": "m/a.c"}
+        result = self.fails_with(report([mutant(1)], hidden=[use]), "macro-hidden-code")
+        found = result["findings"][0]
+        self.assertEqual((found["file"], found["line"], found["macro"], found["function"], found["severity"]),
+                         ("m/a.c", 27, "FAST_PATH", "f", "error"))
+        self.write_policy("L2")
+        outcome, result = self.grade()
+        self.assertExit(outcome, 0)
+        self.assertEqual([(f["rule"], f["severity"]) for f in result["findings"]
+                          if f["rule"] == "macro-hidden-code"], [("macro-hidden-code", "info")])
+
+    def test_macro_hidden_code_in_an_unlisted_function_is_unaccounted(self):
+        use = {"function": "ghost", "macro": "M", "line": 2, "defined_in": "m/a.c"}
+        self.fails_with(report([mutant(1)], hidden=[use]), "macro-hidden-code", "unaccounted-function")
+
+    def test_a_malformed_hidden_list_is_exit_2(self):
+        for bad in ("x", [{"function": "f"}], [{"function": "f", "macro": "M", "line": "2",
+                                                "defined_in": "m/a.c"}]):
+            document = report([mutant(1)])
+            document["sources"][0]["hidden"] = bad
+            self.put(document)
+            self.assertExit(self.grade()[0], 2)
+
+    def test_a_report_without_the_hidden_list_is_exit_2(self):
+        document = report([mutant(1)])
+        del document["sources"][0]["hidden"]
+        self.put(document)
+        self.assertExit(self.grade()[0], 2)
 
     def test_a_function_no_mutant_can_reach_fails_l3_and_is_info_in_l2(self):
         hidden = [{"name": "made_by_macro", "file": "m/a.c", "reason": "macro"},

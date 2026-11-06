@@ -37,6 +37,44 @@ macro expansion (`spellingLoc`/`expansionLoc`) is skipped, and so is a binary op
 found, between blanks and comments only, exactly where the AST says it is. The effect: code in macros is
 never mis-mutated, and a mutant is always a precise byte replacement (`begin_offset`, `end_offset`,
 `original`, `replacement`). The mutant carries `operator`, `function`, `line` and a stable `id`.
+### Macros (R002 F1, F3; B24, B25)
+A node whose begin or end is a macro expansion has no plain span, so it is not mutated; before T028 that was silent,
+and a backdoor in a function-like macro defined in the module's own `.c` passed L3 with zero survivors (the function
+still had other mutants). The choice made is to **report, not to mutate inside the expansion**: a token that a macro
+spells has no source line of its own to replace (the same bytes serve every use), so a mutant could not be a precise
+byte replacement and could not be tied to one place; and a finding cannot be dodged by choosing a different macro shape.
+
+`gen.py` classifies, for every node inside a mutated function, each location that is an expansion by where its token
+is *spelled* (`Walker.note_macros`):
+| Spelled in | Meaning | Result |
+|---|---|---|
+| a `--system-root` directory (`stdbool.h`, `stdint.h`, `assert.h`, ...) | `NULL`, `bool`, `INT32_MAX`, `offsetof`, ... | nothing |
+| `<built-in>` | `__LINE__`, `__INT_MAX__` | nothing |
+| the main file, after the use's start | a macro **argument**: text the author wrote at the call | nothing (it is plain text) |
+| the main file before the use, a product header, `<command line>` | a body of a macro of the product | `hidden` entry |
+| `<scratch space>` (`##`, `#`) | names no macro | `hidden` entry, unless another token of the same macro proves it the toolchain's |
+
+Each entry is `{function, macro, line, defined_in}` (the macro name is read at the use, the line is that of the use).
+`rigor mutants` turns every entry into **`macro-hidden-code`**: error at L3 and above, info at L2, not approvable
+(move the code out of the macro: an inline function in a source file, or `enum`/`static const` for a constant).
+Not looked at, because they decide nothing alone: literals, casts, parentheses, names, declarations, attributes,
+compound literals, and any **constant expression** (literals, `sizeof`, enumerators and operators between them): a
+macro `#define N (4 * 1024)` is not a finding. A macro that writes an operator is found by another route: the
+generator looks for the operator token between its two operands (`operand_span`: an operand may be a macro use, or an
+argument, and still be located); if a macro wrote the operator (`a PLUS b`, `SUM(a, b)`), the token is not there and
+that is the same finding. The operator next to a macro constant (`x < LIMIT`) is plain text and **is mutated**
+(`x <= LIMIT`); before T028 it was skipped with the rest of the expression.
+Function-like macros that wrap *plain* code in their arguments (`assert(a < b)`) keep their arguments' operators
+mutated for the same reason; other node kinds inside such an argument (a call, a `?:` condition) are still not.
+Limit: a pure `##` product-header macro whose every token is pasted, in a node that is not a literal, is a finding only
+if its name is not proven the toolchain's by another of its tokens in the same source (`UINT64_C(5)` alone is a finding;
+`UINT64_MAX - d` is not).
+
+**F3.** "Made by a macro" is decided from where the function's *name* and its *body* are, never from `range.begin`
+(for `bool f(int)` that is the macro `bool`, and the function is an ordinary one). T017 had already moved the decision
+to the body; T028 adds the name (a name written by a macro, `DEF(n)` or `#define NAMED f`, is `skipped` with reason
+`macro` and an L3 `unmutated-function`).
+
 ### Accounting (B19)
 Every function **definition** (a non-implicit `FunctionDecl` with a `CompoundStmt` among its children, wherever
 among them: clang lists attributes such as `noinline` or `cold` after the body) outside the toolchain's own
@@ -105,6 +143,7 @@ L1 is "not mutated" and never appears here; `rigor grade` writes this policy, se
 | `survived-mutant` | L3 module, survivor not covered by an `equivalent-mutant` approval whose scope is the mutant id. L2: info `survivor` |
 | `no-mutants` | a source with functions but no mutants (the generator went blind), or a module none of whose sources produced a mutant at all, even without functions (a gate that mutates nothing must not pass; a pure-data module is L1 by policy). `gen.py` itself exits non-zero, failing the build, when no location of the AST names the source file |
 | `unviable-ratio` | more than 25 % of the module's generated mutants are `unviable` (code shaped to make mutants fail to compile, B11). L3+: error; L2: info. Not reported when all are unviable (`all-unviable`) |
+| `macro-hidden-code` | a function body uses code a macro of the product wrote (see Macros). L3: error; L2: info. Not approvable |
 | `unmutated-function` | L3 (info in L2): a function with a body that no mutant can reach, because a macro makes it or it is defined in a header of the product (not one of the toolchain's `--system-root`s). Move the code into a source file; not approvable |
 | `all-unviable` | every mutant of a module failed to compile |
 | `crash-only-function`, `no-assert-kill-function` | L3: a function with mutants none of which was killed by a failed check (only crashes, or only equivalent/unviable ones) |
@@ -120,7 +159,8 @@ Approvals never cover anything but a survivor.
 
 ## Limits and notes
 - Release mode only. The `san` mode would add sanitizer kills but doubles the compile and link work; not done.
-- Macro-heavy code is mutated less, by design (an expression that touches a macro is skipped).
+- Macro-heavy code is mutated less: an expression that touches a macro is not mutated as a whole, and the code a product
+  macro writes is a finding (`macro-hidden-code`), not a silent skip. `rigor mutants` reads `hidden` in the report; a report without it is exit 2.
 - Pointer-arithmetic and struct-valued returns are not mutated. File-scope initializers (constant tables)
   are not mutated; only function bodies are.
 - The 10 s per-test and 180 s per-binary limits are wall-clock, as in ctest.

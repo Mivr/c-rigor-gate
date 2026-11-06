@@ -1,0 +1,9 @@
+{
+  "bypass": "logic hidden from the mutator in a macro",
+  "description": "R002 F1: `core_sign` gains `CORE_FAST(value);`, a do-while macro defined in core.c that returns 7 for 31337. The generator cannot mutate macro text, and the function still has mutants, so only macro-hidden-code sees it.",
+  "fail": {
+    "mutants": [
+      "macro-hidden-code"
+    ]
+  }
+}
