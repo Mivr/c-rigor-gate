@@ -114,6 +114,55 @@ class SampleTest(unittest.TestCase):
         self.assertEqual(self.pairs("negate", "integer-literal"), [("0", "1"), ("3", "4")])
 
 
+def loc(offset, file=None, tok=1):
+    item = {"offset": offset, "col": 1, "tokLen": tok}
+    if file:
+        item["file"] = file
+    return item
+
+
+def function(name, begin, end, where, macro=None):
+    """A FunctionDecl with a body; `where` names the file of its `loc`, `macro` the file of its expansion."""
+    if macro:
+        place = {"spellingLoc": loc(begin + 4, where), "expansionLoc": loc(end + 50, macro)}
+        edge = {"spellingLoc": loc(begin, where), "expansionLoc": loc(end + 50, macro)}
+        tail = {"spellingLoc": loc(end, where), "expansionLoc": loc(end + 50, macro)}
+    else:
+        place, edge, tail = loc(begin + 4, where), loc(begin, where), loc(end, where)
+    body = {"kind": "CompoundStmt", "range": {"begin": dict(edge), "end": dict(tail)}}
+    return {"kind": "FunctionDecl", "name": name, "loc": place, "range": {"begin": edge, "end": tail},
+            "type": {"qualType": "int (void)"}, "inner": [body]}
+
+
+class UnreachableTest(unittest.TestCase):
+    SOURCE = b"int a(void) { return 1; }\n" + b" " * 200
+
+    def skipped(self, nodes, roots=()):
+        return gen.generate("a.c", self.SOURCE, {"inner": nodes}, roots)["skipped"]
+
+    def test_a_product_header_function_and_a_macro_made_function_are_listed(self):
+        nodes = [function("h", 0, 30, "inc/p.h"), function("a", 0, 24, "a.c"),
+                 function("m", 0, 24, "a.c", macro="a.c")]
+        self.assertEqual(self.skipped(nodes, ["sys/include"]),
+                         [{"name": "h", "file": "inc/p.h", "reason": "header"},
+                          {"name": "m", "file": "a.c", "reason": "macro"}])
+
+    def test_a_function_of_the_toolchain_headers_is_not(self):
+        nodes = [function("s", 0, 30, "sys/include/bits/x.h"), function("a", 0, 24, "a.c")]
+        self.assertEqual(self.skipped(nodes, ["sys/include"]), [])
+        self.assertEqual(self.skipped(nodes, ["sys/inc"]), [{"name": "s", "file": "sys/include/bits/x.h",
+                                                            "reason": "header"}])
+
+    def test_a_macro_defined_in_a_header_but_expanded_in_the_source_is_a_macro_function(self):
+        nodes = [function("m", 0, 24, "inc/p.h", macro="a.c"), function("a", 0, 24, "a.c")]
+        self.assertEqual(self.skipped(nodes), [{"name": "m", "file": "a.c", "reason": "macro"}])
+
+    def test_an_ast_that_never_names_the_source_file_is_a_blind_generator_and_an_error(self):
+        with self.assertRaises(SystemExit):
+            gen.generate("a.c", self.SOURCE, {"inner": [function("a", 0, 24, "other.c")]})
+        self.assertEqual(gen.generate("a.c", b"  \n", {"inner": []})["mutants"], [])
+
+
 class IdTest(unittest.TestCase):
     def make(self, offset, **fields):
         item = {"begin_offset": offset, "end_offset": offset + 1, "original": "<", "replacement": "<=",

@@ -218,6 +218,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
                 src,
                 "--out",
                 out.as_output(),
+                ctx.attrs._roots[RunInfo],
                 "--",
                 cfg.prefix,
                 "-Xclang",
@@ -272,6 +273,7 @@ c_mutants_rule = rule(
         "_ctest": attrs.dep(default = "gate//ctest:ctest"),
         "_gen": attrs.source(default = "gate//mutate:gen.py"),
         "_toolchain": attrs.toolchain_dep(default = "toolchains//:cxx", providers = [CxxToolchainInfo]),
+        "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
         "_tool": attrs.source(default = "gate//mutate:tool.py"),
     },
 )

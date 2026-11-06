@@ -80,7 +80,8 @@ hash, because `<`->`<=` and `<`->`>=` at one place would otherwise collide.)
 | Rule | When |
 |---|---|
 | `survived-mutant` | L3 module, survivor not covered by an `equivalent-mutant` approval whose scope is the mutant id. L2: info `survivor` |
-| `no-mutants` | a source with functions but no mutants (the generator went blind) |
+| `no-mutants` | a source with functions but no mutants (the generator went blind). `gen.py` itself exits non-zero, failing the build, when no location of the AST names the source file |
+| `unmutated-function` | L3 (info in L2): a function with a body that no mutant can reach, because a macro makes it or it is defined in a header of the product (not one of the toolchain's `--system-root`s). Move the code into a source file; not approvable |
 | `all-unviable` | every mutant of a module failed to compile |
 | `crash-only-function`, `no-assert-kill-function` | L3: a function with mutants none of which was killed by a failed check (only crashes, or only equivalent/unviable ones) |
 | `baseline-red` | the unmutated tests are not all passing with at least one assertion each |
@@ -96,7 +97,8 @@ Approvals never cover anything but a survivor.
 ## Limits and notes
 - Release mode only. The `san` mode would add sanitizer kills but doubles the compile and link work; not done.
 - Macro-heavy code is mutated less, by design (an expression that touches a macro is skipped).
-- Pointer-arithmetic and struct-valued returns are not mutated.
+- Pointer-arithmetic and struct-valued returns are not mutated. File-scope initializers (constant tables)
+  are not mutated; only function bodies are.
 - The 10 s per-test and 180 s per-binary limits are wall-clock, as in ctest.
 - Mull cross-check: not done. A Mull release for LLVM 19 would have to be fetched by a sha256 that is not
   known in advance, and the sandbox has no network apart from Buck2's pinned archives.

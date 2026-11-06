@@ -45,6 +45,10 @@ c_mutants(name = "equiv_mutants", module = ":equiv", tests = [":equiv_test"])
 c_library(name = "multi", srcs = ["multi_a.c", "sub/multi_b.c"], headers = ["multi.h", "sub/multi_b.h"])
 c_test(name = "multi_test", srcs = ["multi_test.c"], deps = [":multi"])
 c_mutants(name = "multi_mutants", module = ":multi", tests = [":multi_test"])
+
+c_library(name = "hidden", srcs = ["hidden.c"], headers = ["hidden.h"])
+c_test(name = "hidden_test", srcs = ["hidden_test.c"], deps = [":hidden"])
+c_mutants(name = "hidden_mutants", module = ":hidden", tests = [":hidden_test"])
 EOF
 cat > pinned.h <<'EOF'
 #ifndef PINNED_H
@@ -283,6 +287,42 @@ static void t_hi_bit(ctest_t *t)
 
 CTEST_SUITE("multi", { "add_wrap", t_add_wrap }, { "is_zero", t_is_zero }, { "hi_bit", t_hi_bit })
 EOF
+cat > hidden.h <<'EOF'
+#ifndef HIDDEN_H
+#define HIDDEN_H
+static inline int inl(int x)
+{
+    return x + 1;
+}
+int plain(int x);
+int twice(int x);
+#endif
+EOF
+cat > hidden.c <<'EOF'
+#include "hidden.h"
+
+#define MAKE(n) int n(int x) { return x * 2; }
+
+MAKE(twice)
+
+int plain(int x)
+{
+    return inl(x) + 2;
+}
+EOF
+cat > hidden_test.c <<'EOF'
+#include "ctest/ctest.h"
+#include "hidden.h"
+
+static void t_hidden(ctest_t *t)
+{
+    CHECK_EQ_I64(t, plain(1), 4);
+    CHECK_EQ_I64(t, plain(-5), -2);
+    CHECK_EQ_I64(t, twice(3), 6);
+}
+
+CTEST_SUITE("hidden", { "hidden", t_hidden })
+EOF
 cd "$root"
 if [ -n "${MUTATE_COLD:-}" ]; then
   nonce="$(date +%s%N)-$$"
@@ -292,9 +332,9 @@ fi
 # build_all <log>: build the three modules and refresh $RES/<name>.json
 build_all() {
   local log="$1" name
-  run "$log" build "$pkg:pinned_mutants" "$pkg:weak_mutants" "$pkg:equiv_mutants" "$pkg:multi_mutants" --show-full-output || return 1
+  run "$log" build "$pkg:pinned_mutants" "$pkg:weak_mutants" "$pkg:equiv_mutants" "$pkg:multi_mutants" "$pkg:hidden_mutants" --show-full-output || return 1
   mkdir -p "$RES"
-  for name in pinned weak equiv multi; do
+  for name in pinned weak equiv multi hidden; do
     p="$(awk -v t="$pkg:${name}_mutants" '$1 == "root" t || index($1, t) {print $2}' "$log" | tail -1)"
     [ -f "$p" ] || { echo "no report for $name: '$p'" >&2; return 1; }
     cp "$p" "$RES/$name.json"
@@ -398,6 +438,17 @@ print("    mutants per file with a run:", live)
 PY
 echo "    $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
 
+begin "RED: code no mutant can reach (a function made by a macro, an inline function in a header) fails L3"
+mkdir -p "$out/only_hidden"; cp "$RES/hidden.json" "$out/only_hidden/"
+printf '[module."%s:hidden_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_hidden"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: unreachable functions passed (exit $GATE_CODE)" "$out/gate.log"
+[ "$(rules)" = "['unmutated-function']" ] || fail "$CUR: unexpected rules $(rules)" "$out/gate.log"
+got="$(json '"\n".join(sorted("%s:%s" % (f["function"], f["reason"]) for f in r["findings"]))')"
+[ "$got" = "inl:header
+twice:macro" ] || fail "$CUR: unexpected functions: $got"
+echo "    $(echo $got | tr '\n' ' ')- and plain() was mutated: $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
+
 begin "RED: tampered reports fail closed (a live mutant without a run, a red baseline, a harness that is not the real build)"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 for case in missing-run baseline-red harness-mismatch; do
@@ -447,7 +498,7 @@ echo "    survivor $id: fails alone, passes with its signed approval, fails with
 
 begin "mutant ids do not depend on line numbers (a comment line is inserted at the top of equiv.c)"
 sed -i '1i /* an unrelated first line */' "$scratch/m/equiv.c"
-run "$out/build_ids.log" build "$pkg:equiv_mutants" "$pkg:multi_mutants" --show-full-output || fail "$CUR: build" "$out/build_ids.log"
+run "$out/build_ids.log" build "$pkg:equiv_mutants" "$pkg:multi_mutants" "$pkg:hidden_mutants" --show-full-output || fail "$CUR: build" "$out/build_ids.log"
 p="$(awk -v t="$pkg:equiv_mutants" 'index($1, t) {print $2}' "$out/build_ids.log" | tail -1)"
 mkdir -p "$out/shifted"; cp "$p" "$out/shifted/equiv.json"
 gate "$out/shifted"
@@ -470,7 +521,7 @@ sed -i "s|    CHECK_EQ_I64(t, double_it(0), 0);|    CHECK_EQ_I64(t, double_it(0)
 grep -q "double_it($k)" "$scratch/m/weak_test.c" || fail "$CUR: the test edit did not apply"
 build_all "$out/build3.log" || fail "$CUR: buck2 build failed" "$out/build3.log"
 n="$(executed "$out/build3.log")"
-echo "    executed $n actions; the weak module has $live live mutants (a cold build of all four modules is about 200 actions)"
+echo "    executed $n actions; the weak module has $live live mutants (a cold build of all five modules is about 200 actions)"
 # the live mutants of the weak module (one test each), plus the test's compile, the baseline run and the report
 [ "$n" -ge "$live" ] && [ "$n" -le $((live + 6)) ] || fail "$CUR: expected about $live actions" "$out/build3.log"
 printf '[module."%s:weak_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"

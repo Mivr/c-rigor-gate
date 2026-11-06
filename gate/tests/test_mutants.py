@@ -34,10 +34,11 @@ def mutant(number, function="f", operator="relational", status="ok", digest=None
             "runs": {"t": KILLED} if runs is None and status == "ok" else (runs or {})}
 
 
-def report(mutants, functions=("f",), baseline=PASS, original=BASE, label=LABEL, tests=("t",)):
+def report(mutants, functions=("f",), baseline=PASS, original=BASE, label=LABEL, tests=("t",), skipped=()):
     return {
         "schema": 1, "label": label, "tests": list(tests),
         "sources": [{"file": "m/a.c", "sha256": "0" * 64, "functions": [{"name": n, "line": 1} for n in functions],
+                     "skipped": list(skipped),
                      "baseline": {"status": "ok", "hash": BASE}, "original": {"status": "ok", "hash": original}}],
         "baseline_runs": {t: baseline for t in tests}, "mutants": mutants,
     }
@@ -128,7 +129,7 @@ class MutantsTest(TempDirTestCase):
     def test_a_source_with_functions_but_no_mutants_fails_even_if_others_have_some(self):
         document = report([mutant(1)])
         document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "functions": [{"name": "g", "line": 1}],
-                                    "baseline": {"status": "ok", "hash": BASE},
+                                    "skipped": [], "baseline": {"status": "ok", "hash": BASE},
                                     "original": {"status": "ok", "hash": BASE}})
         self.fails_with(document, "no-mutants")
 
@@ -140,6 +141,16 @@ class MutantsTest(TempDirTestCase):
     def test_everything_unviable_fails(self):
         self.fails_with(report([mutant(1, status="unviable"), mutant(2, status="unviable")]),
                         "all-unviable", "no-assert-kill-function")
+
+    def test_a_function_no_mutant_can_reach_fails_l3_and_is_info_in_l2(self):
+        hidden = [{"name": "made_by_macro", "file": "m/a.c", "reason": "macro"},
+                  {"name": "inline_fn", "file": "m/a.h", "reason": "header"}]
+        result = self.fails_with(report([mutant(1)], skipped=hidden), "unmutated-function", "unmutated-function")
+        self.assertEqual(sorted(f["function"] for f in result["findings"]), ["inline_fn", "made_by_macro"])
+        self.write_policy("L2")
+        outcome, result = self.grade()
+        self.assertExit(outcome, 0)
+        self.assertEqual({f["severity"] for f in result["findings"]}, {"info"})
 
     # -- verdicts ----------------------------------------------------------------------------
     def test_equal_object_to_the_baseline_is_equivalent_and_needs_no_run(self):

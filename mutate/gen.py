@@ -9,8 +9,11 @@ A mutant is a replacement of source bytes [begin_offset, end_offset) by text. On
 lie in the main file and in no macro expansion are used; a node whose operator token is not found
 exactly where the AST says it must be is skipped. Output (canonical JSON):
     {"schema": 1, "file": PATH, "sha256": ..., "functions": [{"name", "line"}...],
+     "skipped": [{"name", "file", "reason": "macro" | "header"}...],
      "mutants": [{"id", "file", "begin_offset", "end_offset", "original", "replacement",
                   "operator", "function", "line"}...]}
+`skipped` lists functions with a body that no mutant can reach: made by a macro in the main file, or
+defined in a header that is not one of the `--system-root` directories (the toolchain's own).
 `original` and `replacement` are the bytes decoded as latin-1 (lossless). Mutants are sorted by
 (begin, end, replacement, operator). The id is the first 16 hex digits of sha256 over
 file, function, operator, original, replacement and the ordinal among equal ones in the function.
@@ -93,32 +96,33 @@ class Source:
 
 def annotate(root, main_file):
     """Store `_span` on every node: the byte range [begin, end) if both ends are plain main-file
-    locations, else None. The walk follows clang's print order, which fixes what an elided `file`
+    locations, else None, and `_where` (file, in a macro expansion) of its `loc`. Returns whether
+    any location named the main file. The walk follows clang's print order, which fixes what an elided `file`
     means (the dump only names a file when it differs from the previous location it printed)."""
-    state = {"file": ""}
+    state = {"file": "", "main_seen": False}
 
     def bare(loc):
         if "file" in loc:
             state["file"] = loc["file"]
+        state["main_seen"] = state["main_seen"] or state["file"] == main_file
         return state["file"], loc.get("offset"), loc.get("tokLen", 0)
 
     def point(loc):
         if "spellingLoc" in loc or "expansionLoc" in loc:
-            for part in ("spellingLoc", "expansionLoc"):
-                if part in loc:
-                    bare(loc[part])
-            return None
-        return bare(loc)
+            places = [bare(loc[part]) for part in ("spellingLoc", "expansionLoc") if part in loc]
+            return None, places[-1][0]
+        return bare(loc), None
 
     def visit(node):
         if not isinstance(node, dict):
             return
         node["_span"] = None
         if "loc" in node:
-            point(node["loc"])
+            plain, expanded = point(node["loc"])
+            node["_where"] = (plain[0] if plain else expanded, plain is None)
         if "range" in node:
-            begin = point(node["range"]["begin"])
-            end = point(node["range"]["end"])
+            begin = point(node["range"]["begin"])[0]
+            end = point(node["range"]["end"])[0]
             if begin and end and begin[0] == main_file and end[0] == main_file \
                     and begin[1] is not None and end[1] is not None and begin[2] and end[2] \
                     and end[1] + end[2] >= begin[1]:
@@ -127,6 +131,7 @@ def annotate(root, main_file):
             visit(child)
 
     visit(root)
+    return state["main_seen"]
 
 
 def span_of(node):
@@ -134,11 +139,13 @@ def span_of(node):
 
 
 class Walker:
-    def __init__(self, source, main_file):
+    def __init__(self, source, main_file, system_roots=()):
         self.source = source
         self.main = main_file
+        self.system_roots = tuple(system_roots)
         self.mutants = []
         self.functions = []
+        self.skipped = []  # functions with a body that no mutant can reach, and why
 
     def add(self, ctx, operator, begin, end, replacement):
         original = self.source.data[begin:end]
@@ -167,14 +174,28 @@ class Walker:
 
     def enter_function(self, node, ctx):
         body = node["inner"][-1] if node.get("inner") else None
-        if span_of(node) is None or not body or body.get("kind") != "CompoundStmt" \
-                or node.get("isImplicit"):
+        if not body or body.get("kind") != "CompoundStmt" or node.get("isImplicit"):
+            return ctx
+        if span_of(node) is None or span_of(body) is None:
+            self.skip(node)
             return ctx
         params = [c.get("name") for c in node["inner"] if c.get("kind") == "ParmVarDecl"]
         name = node.get("name", "")
         self.functions.append({"name": name, "line": self.source.line(span_of(node)[0])})
         return {"function": name, "params": [p for p in params if p], "live": True,
                 "qual": node.get("type", {}), "body": body}
+
+    def skip(self, node):
+        """A function with a body that is not in the main file, or is made by a macro, can not be
+        mutated: record it unless it comes from the toolchain's own headers."""
+        file, macro = node.get("_where", (self.main, True))
+        if file == self.main:
+            reason = "macro"
+        elif any(file == root or file.startswith(root + "/") for root in self.system_roots):
+            return
+        else:
+            reason = "header"
+        self.skipped.append({"name": node.get("name", ""), "file": file, "reason": reason})
 
     def mutate(self, node, kind, children, ctx):
         span = span_of(node)
@@ -334,14 +355,17 @@ def assign_ids(mutants, file_path):
     return result
 
 
-def generate(file_path, data, ast):
-    annotate(ast, file_path)
+def generate(file_path, data, ast, system_roots=()):
+    if not annotate(ast, file_path) and data.strip():
+        raise SystemExit("gen.py: no location in the AST names %r; the generator would be blind"
+                         % file_path)
     source = Source(data)
-    walker = Walker(source, file_path)
+    walker = Walker(source, file_path, system_roots)
     for top in ast.get("inner", []):
         walker.visit(top, {"function": None, "live": True})
     return {"schema": SCHEMA, "file": file_path, "sha256": hashlib.sha256(data).hexdigest(),
-            "functions": walker.functions, "mutants": assign_ids(walker.mutants, file_path)}
+            "functions": walker.functions, "skipped": walker.skipped,
+            "mutants": assign_ids(walker.mutants, file_path)}
 
 
 def canonical(obj):
@@ -367,12 +391,13 @@ def main(argv):
     parser.add_argument("--src", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--ast")
+    parser.add_argument("--system-root", action="append", default=[])
     args = parser.parse_args(argv)
     if bool(args.ast) == bool(command):
         sys.exit("gen.py: give either --ast FILE or a clang command after --")
     with open(args.src, "rb") as handle:
         data = handle.read()
-    result = generate(args.src, data, read_ast(args.ast, command))
+    result = generate(args.src, data, read_ast(args.ast, command), args.system_root)
     with open(args.out, "wb") as handle:
         handle.write(canonical(result))
 

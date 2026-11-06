@@ -30,6 +30,7 @@ class Run:
 class Source:
     file: str
     functions: tuple
+    skipped: tuple  # of (name, file, reason): functions with a body that no mutant can reach
     baseline_status: str
     baseline_hash: str
     original_hash: str
@@ -101,7 +102,7 @@ def parse_run(path, run, what):
 
 
 def parse_source(path, entry):
-    _exact(path, entry, ("file", "sha256", "functions", "baseline", "original"), "source")
+    _exact(path, entry, ("file", "sha256", "functions", "skipped", "baseline", "original"), "source")
     baseline = _exact(path, entry["baseline"], ("status", "hash"), "baseline")
     original = _exact(path, entry["original"], ("status", "hash"), "original")
     if not isinstance(entry["functions"], list):
@@ -109,7 +110,20 @@ def parse_source(path, entry):
     names = tuple(_text(path, f["name"], "function name") for f in entry["functions"])
     status, base_hash = _digest(path, baseline, "baseline")
     _, original_hash = _digest(path, original, "original")
-    return Source(_text(path, entry["file"], "file"), names, status, base_hash, original_hash)
+    return Source(_text(path, entry["file"], "file"), names, parse_skipped(path, entry["skipped"]),
+                  status, base_hash, original_hash)
+
+
+def parse_skipped(path, entries):
+    if not isinstance(entries, list):
+        _fail(path, "skipped must be a list")
+    found = []
+    for entry in entries:
+        _exact(path, entry, ("name", "file", "reason"), "skipped function")
+        if entry["reason"] not in ("macro", "header"):
+            _fail(path, "bad reason %r" % (entry["reason"],))
+        found.append((_text(path, entry["name"], "name"), _text(path, entry["file"], "file"), entry["reason"]))
+    return tuple(found)
 
 
 def parse_mutant(path, item, tests):

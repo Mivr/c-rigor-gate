@@ -8,6 +8,8 @@ gate-owned policy:
 
 Findings: survived-mutant (L3; covered by an `equivalent-mutant` approval whose scope is the mutant
 id), no-mutants (a source with functions but no mutants: the generator went blind), all-unviable,
+unmutated-function (L3: a function made by a macro or defined in a product header, which no mutant
+can reach; info in L2),
 crash-only-function / no-assert-kill-function (L3 function whose mutants no check failure ever
 killed), baseline-red, harness-mismatch, missing-run, bad-results, module-not-in-policy,
 policy-module-without-report, no-reports. Survivors of L2 modules are info findings.
@@ -62,6 +64,18 @@ def blindness_findings(report, verdicts):
     return found
 
 
+def skipped_findings(report, level):
+    """A function the generator could not reach (made by a macro, or defined in a product header)
+    is code the tests are never judged on: not allowed in L3."""
+    found = []
+    for source in report.sources:
+        for name, file, reason in source.skipped:
+            found.append(finding("unmutated-function", module=report.label, source=source.file,
+                                 function=name, file=file, reason=reason,
+                                 severity="error" if level == "L3" else SEVERITY_INFO))
+    return found
+
+
 def function_findings(report, verdicts):
     """Every function with mutants needs a mutant that some test killed by a failed check."""
     by_function = {}
@@ -113,6 +127,7 @@ def module_findings(report, level, approval_set, used):
     verdicts, problems = mutants_verdict.derive(report, baseline_ids)
     found.extend(problems)
     found.extend(blindness_findings(report, verdicts))
+    found.extend(skipped_findings(report, level))
     found.extend(survivor_findings(report, level, verdicts, approval_set, used))
     if level == "L3":
         found.extend(function_findings(report, verdicts))
