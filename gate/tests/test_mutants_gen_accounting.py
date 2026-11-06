@@ -140,7 +140,8 @@ class OtherShapesTest(unittest.TestCase):
         self.assertEqual(names, ["proto", "proto2", "local_inline", "plain_inline", "kandr_less", "stmt_expr",
                                  "stmt_calls", "nested", "generic", "literal", "designated", "make_pt", "empty"])
         self.assertEqual(self.result["definitions"], len(names))
-        self.assertEqual({f["name"] for f in self.result["functions"] if "reason" in f}, {"make_pt"})
+        # T050: the struct-returning make_pt has mutants now; no function lacks one
+        self.assertEqual({f["name"] for f in self.result["functions"] if "reason" in f}, set())
 
     def test_prototypes_then_definitions_inline_and_static_inline_in_a_source(self):
         self.assertEqual(self.pairs("proto", "arithmetic"), [("+", "-")])

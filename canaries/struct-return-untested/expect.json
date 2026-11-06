@@ -1,0 +1,9 @@
+{
+  "bypass": "a struct-returning function that is only called, never checked",
+  "description": "R003 G4 (S1s): `struct core_pair core_pair(int, int)` is called by a test that checks nothing about the result. Before T050 a struct return had no body and no return mutant (info no-mutable-token), so L3 passed; now `return (struct core_pair){0}` survives.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}
