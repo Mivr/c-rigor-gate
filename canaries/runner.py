@@ -28,7 +28,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANARIES = os.path.join(ROOT, "canaries")
 GATE_ORDER = os.path.join(ROOT, "gate", "order.txt")
 UNCACHED_DEFAULT = "weak-test"
-DEFAULT_JOBS = 4
+DEFAULT_JOBS = 8
 EXPECT_KEYS = {"description", "bypass", "fail", "not_run", "exit", "pending", "control", "absent", "contains"}
 
 GIT_ENV = {
