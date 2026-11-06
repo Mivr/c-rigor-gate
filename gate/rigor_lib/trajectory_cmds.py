@@ -216,6 +216,59 @@ def env_wrappers(prefix):
     return assigns, clean
 
 
+def env_chdir(prefix):
+    """The directory of `env -C DIR` / `env --chdir=DIR` among the wrappers stripped in front of a command, or None."""
+    found, i = None, 0
+    while i < len(prefix):
+        if name_of(prefix[i]) == "env":
+            j = i + 1
+            while j < len(prefix) and prefix[j].startswith("-"):
+                arg = prefix[j]
+                if arg in ("-C", "--chdir") and j + 1 < len(prefix):
+                    found = prefix[j + 1]
+                    j += 1
+                elif arg.startswith("--chdir="):
+                    found = arg[len("--chdir="):]
+                elif arg.startswith("-C") and len(arg) > 2:
+                    found = arg[2:]
+                elif arg in ("-u", "-S", "--unset", "--split-string"):
+                    j += 1
+                j += 1
+            i = j
+        else:
+            i += 1
+    return found
+
+
+_CHDIR_OPTS = {"tar": ("-C", "--directory"), "make": ("-C", "--directory"), "gmake": ("-C", "--directory"),
+               "git": ("-C",)}
+
+
+def arg_dirs(name, argv, cwd, normalize):
+    """The directory each argument of `tar`/`make`/`git` is resolved in: a `-C DIR` (`-CDIR`, `--directory=DIR`)
+    applies to the arguments after it (T052, R008 #6). None for other commands."""
+    opts = _CHDIR_OPTS.get(name)
+    if opts is None:
+        return None
+    dirs, here, i = [], cwd, 0
+    while i < len(argv):
+        arg, value, skip = argv[i], None, False
+        if i > 0 and arg in opts and i + 1 < len(argv):
+            value, skip = argv[i + 1], True
+        elif i > 0 and "-C" in opts and arg.startswith("-C") and len(arg) > 2:
+            value = arg[2:]
+        elif i > 0 and arg.startswith("--directory=") and "--directory" in opts:
+            value = arg[len("--directory="):]
+        dirs.append(here)
+        if skip:
+            dirs.append(here)
+            i += 1
+        if value is not None:
+            here = normalize(value, here) or UNRESOLVED
+        i += 1
+    return dirs
+
+
 def clean_environment(assigns, clean):
     """True when `env -i` left an environment without a secret-looking variable name: not an env dump."""
     return clean and not any(rules.SECRET_NAME_RE.search(name) for name in assigns)
@@ -482,6 +535,55 @@ _VALUE_OPTS = {"cp": ("-t", "--target-directory", "-S", "--suffix"), "mv": ("-t"
 def _in_place(args):
     return any(a == "--in-place" or a.startswith("--in-place=") or re.fullmatch(r"-[a-zA-Z]*i[a-zA-Z.]*", a)
                for a in args)
+
+
+_GREP_VALUE_OPTS = ("-A", "-B", "-C", "-m", "-g", "--glob", "-t", "--type", "--include", "--exclude", "--exclude-dir",
+                    "-d", "-D", "--max-count", "-e", "--regexp", "-f", "--file", "-T", "--type-add")
+_TAR_VALUE_OPTS = ("-f", "--file", "-C", "--directory", "-T", "--files-from", "-X", "--exclude-from", "--exclude", "-b",
+                   "-H", "--format", "-K", "-N", "-V", "-I", "--use-compress-program")
+_CP_VALUE_OPTS = ("-t", "--target-directory", "-S", "--suffix")
+_RSYNC_VALUE_OPTS = ("-e", "--rsh", "--exclude", "--include", "--filter", "-f", "--files-from", "--exclude-from",
+                     "--include-from", "--log-file", "--partial-dir", "--temp-dir", "-T", "--chmod", "--chown")
+
+
+def recursive_roots(name, argv):
+    """The argv indexes a recursive reader descends from (T052, R008 #7), [] when it defaults to the working
+    directory, None when the command is not a recursive read: `grep -r/-R`, rg/ag/ack, `find`, `tar -c`,
+    `cp -r/-R/-a`, rsync (sources), `du`, `ls -R`."""
+    args = argv[1:]
+    cluster = lambda letters: any(re.fullmatch(r"-[A-Za-z]*[%s][A-Za-z]*" % letters, a) for a in args)
+    if name in ("grep", "egrep", "fgrep"):
+        if not (cluster("rR") or any(a in ("--recursive", "--dereference-recursive", "--directories=recurse")
+                                     for a in args) or ("-d" in args and "recurse" in args)):
+            return None
+        return _after_pattern(args)
+    if name in ("rg", "ag", "ack"):
+        return _after_pattern(args)
+    if name == "find":
+        return [i + 1 for i in _find_roots(args)]
+    if name in ("du",) or (name == "ls" and (cluster("R") or "--recursive" in args)):
+        return [i + 1 for i in positionals(args)]
+    if name == "tar":
+        first = args[0] if args else ""
+        if not (cluster("c") or "--create" in args or (first and not first.startswith("-") and "c" in first)):
+            return None
+        plain = positionals(args, _TAR_VALUE_OPTS)
+        if first and not first.startswith("-"):  # `tar czf out.tgz DIR`: the old-style cluster and its f value
+            plain = plain[2:] if "f" in first else plain[1:]
+        return [i + 1 for i in plain]
+    if name == "cp" and (cluster("rRa") or any(a in ("--recursive", "--archive") for a in args)):
+        plain = positionals(args, _CP_VALUE_OPTS)
+        targeted = any(a in ("-t", "--target-directory") or a.startswith("--target-directory=") for a in args)
+        return [i + 1 for i in (plain if targeted else plain[:-1])]
+    if name == "rsync":
+        return [i + 1 for i in positionals(args, _RSYNC_VALUE_OPTS)[:-1]]
+    return None
+
+
+def _after_pattern(args):
+    plain = positionals(args, _GREP_VALUE_OPTS)
+    explicit = any(a in ("-e", "--regexp", "-f", "--file") or a.startswith(("--regexp=", "--file=")) for a in args)
+    return [i + 1 for i in (plain if explicit else plain[1:])]
 
 
 def _find_roots(args):
