@@ -7,6 +7,7 @@ from rigor_lib import trajectory as trajectory_module
 from rigor_lib import trajectory_code as code
 from rigor_lib import trajectory_flow as flow
 from rigor_lib import trajectory_literals as literals
+from rigor_lib import trajectory_proc as proc
 from rigor_lib import trajectory_shell as shell
 from tests import test_trajectory_cases as cases
 from tests.test_trajectory import TrajectoryCase
@@ -127,6 +128,64 @@ class LiteralTests(unittest.TestCase):
     def test_unterminated_input_never_raises(self):
         for code in ("open('", "open(", "x = 'a", 'open("""', "#", "f'", "rb", "\"\"\"#"):
             literals.path_literals(code)
+
+
+class ConcatFoldTests(unittest.TestCase):
+    """T062: literal concatenations are folded before inline code is scanned."""
+
+    def test_literal_chains_fold_into_one_literal(self):
+        folded = {"open('/a/.co' + 'nfig')": 'open("/a/.config")', "open('/a/.co' 'nfig')": 'open("/a/.config")',
+                  "my $p = '/a' . '/b';": 'my $p = "/a/b";', "b = '/a'\nq = b + '/c'": "b = '/a'\nq = \"/a/c\"",
+                  "os.path.join('/a', 'b', 'c')": '"/a/b/c"', "os.path.join('/a', '/b')": '"/b"',
+                  "Path('/a') / 'b' / 'c'": 'Path("/a/b/c")', "r'/a' + r'/b'": '"/a/b"'}
+        for text, want in folded.items():
+            self.assertEqual(literals.fold_concat(text), want, text)
+
+    def test_strings_comments_and_computed_pieces_stay(self):
+        kept = ("s = \'\'\'open('/a' + '/b')\'\'\'", "# '/a' + '/b'\nx = 1", "f'/a' + '/b'", "x = a + b",
+                "'a'.join(['b'])", "e = d['k'] + 'z'", "s = 'a' + str(x)", "os.path.join(ROOT, 'x')")
+        for text in kept:
+            self.assertEqual(literals.fold_concat(text), text, text)
+
+    def test_unterminated_input_never_raises(self):
+        for text in ("'a' +", "'a' + '", "os.path.join('a'", "Path('a') /", "x = '", "#"):
+            literals.fold_concat(text)
+
+
+class ProcessCallTests(unittest.TestCase):
+    """T062: the commands inline code runs and the pids it signals."""
+
+    def test_commands_of_process_calls(self):
+        self.assertEqual(proc.commands("os.system('gh api user')"), ["gh api user"])
+        self.assertEqual(proc.commands("subprocess.run(['git', 'push'], check=True)"), ["'git' 'push'"])
+        self.assertEqual(proc.commands("a = ['pkill', 'x']\nsubprocess.Popen(a)"), ["'pkill' 'x'"])
+        self.assertEqual(proc.commands("subprocess.run('git push'.split())"), ["git push"])
+        self.assertEqual(proc.commands("subprocess.run(f'pkill {n}', shell=True)"), ["pkill " + proc.UNKNOWN])
+        self.assertEqual(proc.commands("system('gh', 'api')", "ruby"), ["'gh' 'api'"])
+        self.assertEqual(proc.commands("puts `gh api`", "ruby"), ["gh api"])
+        self.assertEqual(proc.commands("asyncio.create_subprocess_exec('git', 'push')"), ["'git' 'push'"])
+        self.assertEqual(proc.commands("os.execlp('pkill', 'pkill', 'x')"), ["'pkill' 'x'"])
+
+    def test_unknown_programs_text_and_python_exec_are_not_commands(self):
+        for text in ("subprocess.run(cmd)", "os.system(line)", "subprocess.run([prog, 'x'])", "exec('x = 1')",
+                     "s = \"os.system('gh api user')\"", "# os.system('gh api user')", "x = `a`"):
+            self.assertEqual(proc.commands(text), [], text)
+
+    def test_kill_targets_and_own_pids(self):
+        text = "p = subprocess.Popen(['x'])\nos.kill(p.pid, 9)\nos.killpg(os.getpgid(p.pid), 9)\nos.kill(4242, 9)"
+        self.assertEqual(proc.kill_targets(text), ["p.pid", "os.getpgid(p.pid)", "4242"])
+        self.assertEqual([proc.own_target(t, text, set()) for t in proc.kill_targets(text)], [True, True, False])
+        self.assertTrue(proc.own_target("4242", "", {"4242"}))
+        self.assertTrue(proc.own_target("pid", "pid = os.fork()", set()))
+        self.assertFalse(proc.own_target("int(sys.argv[1])", "", set()))
+        self.assertEqual(proc.kill_targets("Process.kill('TERM', 7, 8)"), ["7", "8"])
+        self.assertEqual(proc.kill_targets("kill 9, $pid;", "perl"), ["$pid"])
+        self.assertEqual(proc.kill_targets("killall(1); $p->kill(2)", "perl"), [])
+
+    def test_unterminated_input_never_raises(self):
+        for text in ("os.system(", "subprocess.run([", "os.kill(", "system '", "`", "Process.kill("):
+            proc.commands(text, "ruby")
+            proc.kill_targets(text, "perl")
 
 
 class EnvironmentCopyTests(unittest.TestCase):
