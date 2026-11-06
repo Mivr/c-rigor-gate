@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass
 
 from rigor_lib import buckfiles, facts_data, facts_policy, facts_semantic, facts_symbols
-from rigor_lib import grade_build, grade_context, grade_policy, grade_tree, paths, product_layout
+from rigor_lib import grade_build, grade_context, grade_policy, facts_third_party, grade_tree, paths, product_layout
 from rigor_lib.findings import GateResult, finding
 
 FACTS_KIND = "c_facts"
@@ -98,6 +98,8 @@ def _build_facts(g):
     if code != 0:
         return "query failed: %s" % err.strip()[-500:]
     labels = sorted(line.strip() for line in out.splitlines() if line.strip())
+    # B12: the facts of every gate-owned library a product may use (`<label>_symbols`), trusted by name.
+    labels += sorted(label + "_symbols" for label in facts_third_party.load().trusted)
     labels += [CTEST_FACTS, LIBC_TARGET]  # libc last: _copy_outputs relies on it
     report = os.path.join(g.work, "build-report-facts.json")
     flags = ["--no-remote-cache"] if g.args.uncached else []
