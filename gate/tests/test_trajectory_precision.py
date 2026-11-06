@@ -4,6 +4,7 @@ import sys
 import unittest
 
 from rigor_lib import trajectory as trajectory_module
+from rigor_lib import trajectory_code as code
 from rigor_lib import trajectory_flow as flow
 from rigor_lib import trajectory_literals as literals
 from rigor_lib import trajectory_shell as shell
@@ -38,6 +39,12 @@ class LexerTests(unittest.TestCase):
     def test_a_subshell_in_a_substitution_is_still_a_substitution(self):
         word = shell.parse("echo $((echo hi) )")[0].words[1]
         self.assertEqual(word.subs, ["(echo hi) "])
+
+
+    def test_subshell_depth_counts_parentheses_and_ignores_case_patterns(self):
+        found = shell.parse("a; (b; (c); d); e")
+        self.assertEqual([c.depth for c in found], [0, 1, 2, 1, 0])
+        self.assertEqual([c.depth for c in shell.parse("case $x in a) b;; esac; c")], [0, 0, 0, 0])
 
 
 class LoopTests(TrajectoryCase):
@@ -100,9 +107,43 @@ class LiteralTests(unittest.TestCase):
         self.assertEqual(literals.path_literals("open(os.path.join('/a', 'b'))"), ["/a", "b", "/ab"])
         self.assertEqual(literals.path_literals('Path("""/x""")'), ["/x"])
 
+    def test_variables_and_strings_are_joined_in_source_order(self):
+        code_text = "ROOT = '/a/b'\nshutil.rmtree(ROOT + '/_tmp')\n"
+        self.assertEqual(literals.path_literals(code_text), ["/a/b", "/_tmp", "/a/b/_tmp"])
+
     def test_unterminated_input_never_raises(self):
         for code in ("open('", "open(", "x = 'a", 'open("""'):
             literals.path_literals(code)
+
+
+class EnvironmentCopyTests(unittest.TestCase):
+    def found(self, text):
+        match = code.whole_environment(text)
+        return None if match is None else match.group(0)
+
+    def test_whole_environment_itself_is_a_dump(self):
+        for text in ("print(os.environ)", "x = os.environ", "print(dict(os.environ))", "f(os.environ.items())"):
+            self.assertIsNotNone(self.found(text), text)
+
+    def test_a_copy_used_for_a_child_is_not(self):
+        quiet = ("e = dict(os.environ)\ne.update(A)\ne['B'] = 1\nrun(x, env=e)\n",
+                 "run(x, env=dict(os.environ, A='1'))", "e = os.environ.copy()\ne.setdefault('A', 'b')",
+                 "e: dict = {**os.environ, 'A': 'b'}\nprint(e['A'], e.get('B'))",
+                 "def go(a, e):\n    return a\n\n\nenv = dict(os.environ)\ngo(1, env)\n")
+        for text in quiet:
+            self.assertIsNone(self.found(text), text)
+
+    def test_any_other_use_of_the_copy_is_a_dump(self):
+        loud = ("e = dict(os.environ)\nprint(e)", "e = dict(os.environ)\nfor k in e: pass",
+                "e = dict(os.environ)\nunknown.call(e)", "e = os.environ.copy()\nreturn e",
+                "def show(x):\n    print(x)\n\n\ne = dict(os.environ)\nshow(e)\n",
+                "def show(x):\n    for k in x: pass\n\n\ne = dict(os.environ)\nshow(e)\n")
+        for text in loud:
+            self.assertIsNotNone(self.found(text), text)
+
+    def test_a_deeply_nested_call_and_a_missing_callee_are_loud(self):
+        self.assertIsNotNone(self.found("e = dict(os.environ)\n" + "(" * 3 + "e"))
+        self.assertIsNotNone(self.found("e = dict(os.environ)\n[e]"))
 
 
 if __name__ == "__main__":

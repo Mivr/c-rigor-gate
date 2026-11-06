@@ -52,6 +52,16 @@ c_library(name = "dep_b", srcs = ["dep_b.c"], deps = [":dep_a"])
 c_library(name = "dep_c", srcs = ["dep_c.c"])
 c_test(name = "exittest", srcs = ["exittest.c"])
 c_fuzz(name = "fz", srcs = ["fz_fuzz.c"])
+c_library(name = "b_alloca", srcs = ["b_alloca.c"])
+c_library(name = "b_paste", srcs = ["b_paste.c"])
+c_library(name = "b_frame", srcs = ["b_frame.c"])
+c_library(name = "b_longjmp", srcs = ["b_longjmp.c"])
+c_library(name = "b_sync", srcs = ["b_sync.c"])
+c_library(name = "b_hidden", srcs = ["b_hidden.c"])
+c_library(name = "b_io", srcs = ["b_io.c"])
+c_library(name = "b_ovf", srcs = ["b_ovf.c"], headers = ["b_ovf.h"])
+c_library(name = "b_hdrs", srcs = ["b_hdrs.c"])
+c_library(name = "b_direct", srcs = ["b_direct.c"])
 EOF
 
 # --- green ---
@@ -166,6 +176,79 @@ cat > fz_fuzz.c <<EOF
 #include <stdint.h>
 #include <stdlib.h>
 int $entry(const uint8_t *data, size_t size) { (void)data; return getenv("HOME") != NULL && size > 0 ? 1 : 0; }
+EOF
+# --- builtins (T014): default-deny on the preprocessed text ---
+# The sealed flags make a call of a banned builtin a compile error, so these reds `#undef` the guard
+# first: the semantic gate must still see both the #undef and the builtin.
+cat > b_alloca.c <<'EOF'
+#undef __builtin_alloca
+int b_alloca_f(unsigned n) { char *p = __builtin_alloca(n); p[0] = 1; return p[0]; }
+EOF
+cat > b_paste.c <<'EOF'
+#undef __builtin_alloca
+#define CAT(a, b) a##b
+#define GROW(n) CAT(__builtin_, alloca)(n)
+int b_paste_f(unsigned n) { char *p = GROW(n); p[0] = 1; return p[0]; }
+EOF
+cat > b_frame.c <<'EOF'
+#undef __builtin_frame_address
+int b_frame_f(void) { return __builtin_frame_address(0) != 0; }
+EOF
+cat > b_longjmp.c <<'EOF'
+static void *b_buf[5];
+void b_longjmp_f(void) { __builtin_longjmp(b_buf, 1); }
+EOF
+cat > b_sync.c <<'EOF'
+int b_sync_f(int *p) { return __sync_fetch_and_add(p, 1); }
+EOF
+cat > b_hidden.c <<'EOF'
+#define JUMP(b) __builtin_longjmp((b), 1)
+static void *b_hidden_buf[5];
+void b_hidden_f(void) { JUMP(b_hidden_buf); }
+EOF
+# toolchain code a product names is charged to the product: inb() is an inline function of
+# <sys/io.h> whose body is inline asm
+cat > b_io.c <<'EOF'
+#include <sys/io.h>
+unsigned char b_io_f(void) { return inb(0x60); }
+EOF
+# green: what annas-c-like code expands to (offsetof, va_*, the overflow checkers)
+cat > b_ovf.h <<'EOF'
+#ifndef B_OVF_H
+#define B_OVF_H
+#include <stddef.h>
+int b_ovf_mul(size_t a, size_t b, size_t *out);
+size_t b_ovf_off(void);
+int b_ovf_sum(int n, ...);
+#endif
+EOF
+cat > b_ovf.c <<'EOF'
+#include <stdarg.h>
+#include "b_ovf.h"
+struct b_rec { int a; char b; };
+int b_ovf_mul(size_t a, size_t b, size_t *out) { return __builtin_mul_overflow(a, b, out) ? -1 : 0; }
+size_t b_ovf_off(void) { return offsetof(struct b_rec, b); }
+int b_ovf_sum(int n, ...) {
+    va_list ap;
+    int total = 0;
+    va_start(ap, n);
+    for (int i = 0; i < n; i++) { total += va_arg(ap, int); }
+    va_end(ap);
+    return total;
+}
+EOF
+# the guard must not break toolchain headers: a wide include set with _GNU_SOURCE (alloca.h too)
+{ echo '#define _GNU_SOURCE'
+  for h in alloca assert complex ctype errno fenv float inttypes iso646 limits locale math setjmp signal \
+           stdalign stdarg stdatomic stdbool stddef stdint stdio stdlib stdnoreturn string tgmath time \
+           uchar wchar wctype fcntl poll pthread sys/mman sys/random sys/select sys/socket sys/stat \
+           sys/types sys/wait netinet/in arpa/inet netdb unistd dirent byteswap endian x86intrin; do
+    echo "#include <$h.h>"
+  done
+  echo 'int b_hdrs_f(int x) { return (int)htonl((uint32_t)x) + isdigit(x) + abs(x); }'
+} > b_hdrs.c
+cat > b_direct.c <<'EOF'
+int b_direct_f(unsigned n) { char *p = __builtin_alloca(n); p[0] = 1; return p[0]; }
 EOF
 cd "$root"
 
@@ -304,7 +387,7 @@ done
 echo "  16 sources: line scan exit 0 on all"
 
 begin "facts actions build on RE for every target (release) and the libc export list exists"
-targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz)
+targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs)
 args=(); for t in "${targets[@]}"; do args+=("$pkg:${t}_facts"); done
 run "$out/facts.log" build "${args[@]}" //ctest:ctest_facts //examples/hello:lib_facts //examples/hello:hello_facts //examples/hello:hello_test_facts toolchains//:libc_symbols --show-output || fail "$CUR" "$out/facts.log"
 tool collect "$out/facts.log" "$out/facts" || fail "$CUR: collect"
@@ -398,6 +481,42 @@ cp "$out/facts/ctest.json" "$out/fd/hello/ctest.json"
 for g in $SEM $SYM; do
   "${RIGOR[@]}" facts --gate $g --facts "$out/fd/hello" --policy policy/hello.toml --libc "$out/libc.symbols" --out "$out/res/hello.$g.json" > "$out/res/hello.$g.txt" 2>&1 \
     || fail "$CUR: hello/$g" "$out/res/hello.$g.txt"
+done
+
+begin "builtins are default-deny: alloca (also pasted), frame_address, longjmp (also behind a macro), __sync"
+tool policy "$out/p_b.toml" b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs
+gate_case b_alloca $SEM 1 "$out/p_b.toml" b_alloca -- banned-builtin:__builtin_alloca "reserved-macro:#undef __builtin_alloca"
+gate_case b_paste $SEM 1 "$out/p_b.toml" b_paste -- banned-builtin:__builtin_alloca "reserved-macro:#undef __builtin_alloca"
+gate_case b_frame $SEM 1 "$out/p_b.toml" b_frame -- forbidden-builtin:__builtin_frame_address "reserved-macro:#undef __builtin_frame_address"
+gate_case b_longjmp $SEM 1 "$out/p_b.toml" b_longjmp -- forbidden-builtin:__builtin_longjmp
+gate_case b_hidden $SEM 1 "$out/p_b.toml" b_hidden -- forbidden-builtin:__builtin_longjmp
+gate_case b_sync $SEM 1 "$out/p_b.toml" b_sync -- forbidden-builtin:__sync_fetch_and_add
+for c in b_alloca b_paste b_frame b_longjmp b_hidden b_sync; do
+  tool policy "$out/p_$c.toml" "$c"
+  gate_case $c $SYM 0 "$out/p_$c.toml" $c --   # no symbol: why the symbols gate alone cannot see them
+done
+tool policy "$out/p_b_jmp.toml" "b_longjmp;exempt=longjmp"
+gate_case b_longjmp_exempt $SEM 0 "$out/p_b_jmp.toml" b_longjmp --
+tool policy "$out/p_b_alloca.toml" "b_alloca;builtins=__builtin_alloca"
+"${RIGOR[@]}" facts --gate $SEM --facts "$out/fd/b_alloca.$SEM" --policy "$out/p_b_alloca.toml" --out "$out/res/b_alloca_pol.json" > "$out/res/b_alloca_pol.txt" 2>&1
+rc=$?
+[ "$rc" = 2 ] || fail "$CUR: a policy allowing __builtin_alloca exited $rc, wanted 2" "$out/res/b_alloca_pol.txt"
+echo "  a policy naming __builtin_alloca in allow_builtins -> exit 2"
+
+begin "builtins: toolchain code the product names is charged to it; annas-c-like code and a wide header set pass"
+gate_case b_io $SEM 1 "$out/p_b.toml" b_io -- inline-asm:__asm__
+gate_case b_ovf $SEM 0 "$out/p_b.toml" b_ovf --
+tool policy "$out/p_b_ovf.toml" b_ovf
+gate_case b_ovf $SYM 0 "$out/p_b_ovf.toml" b_ovf --
+gate_case b_hdrs $SEM 0 "$out/p_b.toml" b_hdrs --
+
+begin "builtins: the sealed flags make a direct call of a banned builtin a compile error, and break no header"
+if run "$out/direct.log" build "$pkg:b_direct"; then fail "$CUR: b_direct.c built" "$out/direct.log"; fi
+grep -q "c_rigor_gate_bans___builtin_alloca" "$out/direct.log" || fail "$CUR: failed for the wrong reason" "$out/direct.log"
+for m in release san cov fuzz; do
+  run "$out/hdrs.$m.log" build --target-platforms ${PLAT}$m "$pkg:b_hdrs" "$pkg:b_ovf" //ctest:ctest //examples/hello:lib \
+    || fail "$CUR: the header set does not build in $m" "$out/hdrs.$m.log"
+  echo "  $m: wide header set, b_ovf, ctest and examples/hello build"
 done
 
 begin "buckfiles: assignment, native.cxx_library, second load, a .bzl file, BUCK.v2 and others are findings"
