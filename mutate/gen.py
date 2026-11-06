@@ -52,7 +52,7 @@ INCREMENT = {"++": "--", "--": "++"}
 BINARY_TABLES = (("relational", RELATIONAL), ("arithmetic", ARITHMETIC), ("logical", LOGICAL))
 OPERATORS = ("relational", "arithmetic", "logical", "not-removal", "compound-assignment",
              "increment", "integer-literal", "condition", "return-value", "statement-deletion",
-             "function-body")
+             "function-body", "enum-constant", "string-literal", "char-literal")
 IDENTIFIER = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*")
 BUILT_IN = "<built-in>"
 SCRATCH = "<scratch space>"
@@ -76,6 +76,9 @@ LITERAL = re.compile(rb"(0[xX][0-9a-fA-F]+|0|[1-9][0-9]*)([uUlL]*)")
 NO_MUTATION = ("ConstantExpr", "StaticAssertDecl", "EnumConstantDecl", "UnaryExprOrTypeTraitExpr",
                "DesignatedInitExpr", "FieldDecl")
 CONDITION_SLOT = {"IfStmt": 0, "WhileStmt": 0, "DoStmt": 1, "ForStmt": 2}
+# Contexts whose literals are not values: attribute arguments and assembler text (never mutated).
+NO_LITERALS = ("GCCAsmStmt", "MSAsmStmt", "AsmStmt")
+UNSIZED_ARRAY = re.compile(rb"\[\s*\]")
 NO_MUTABLE_TOKEN = "no-mutable-token"
 EXIT_ACCOUNTING = 2
 
@@ -264,6 +267,7 @@ class Walker:
         self.hidden = []  # code in live function bodies that a product macro makes (R002 F1)
         self.hidden_seen = set()
         self.known_system = set()  # macros seen with a token spelled in the toolchain's headers
+        self.enums = {}  # id of an enumerator -> name of the next one of its enum (wrapping); see `enum_successors`
         self.pasted = []  # (function, macro, offset) of tokens made by ## or #, spelled nowhere
 
     def add(self, ctx, operator, begin, end, replacement):
@@ -286,13 +290,19 @@ class Walker:
             child_ctx = self.enter_function(node, ctx)
         elif kind in NO_MUTATION:
             child_ctx = dict(ctx, live=False)
+        elif kind.endswith("Attr") or kind in NO_LITERALS:
+            child_ctx = dict(ctx, lits=False)
+        elif kind == "VarDecl" and self.unsized_array(node):
+            child_ctx = dict(ctx, strs=False)
         elif kind == "StmtExpr":
             for child in children:  # its last statement is the value: never replace it by (void)0
                 if isinstance(child, dict) and child.get("kind") == "CompoundStmt":
                     child["_value_last"] = True
         if ctx["function"] is not None and ctx["live"]:
             self.note_macros(node, ctx)
-            if span_of(node) is not None or (kind in OPERATOR_NODES and not constant_tree(node)):
+            if span_of(node) is not None or (kind in OPERATOR_NODES and not constant_tree(node)) \
+                    or (kind in CONDITION_SLOT and self.value_span(self.condition_of(kind, children)) is not None) \
+                    or (kind == "ReturnStmt" and len(children) == 1 and self.value_span(children[0]) is not None):
                 self.mutate(node, kind, children, ctx)  # an operator is found from its operands' text
         for child in children:
             self.visit(child, child_ctx)
@@ -390,6 +400,12 @@ class Walker:
             self.operator_between(node, children, ctx, "compound-assignment", COMPOUND)
         elif kind == "IntegerLiteral":
             self.literal(span, ctx)
+        elif kind == "DeclRefExpr":
+            self.enumerator(node, span, ctx)
+        elif kind == "StringLiteral" and ctx.get("lits", True) and ctx.get("strs", True):
+            self.string(span, ctx)
+        elif kind == "CharacterLiteral" and ctx.get("lits", True):
+            self.character(span, ctx)
         elif kind in CONDITION_SLOT:
             self.condition(kind, children, ctx)
         elif kind == "ReturnStmt":
@@ -484,10 +500,71 @@ class Walker:
             new = ("0x%x" % (value + 1)) if hexa else str(value + 1)
         self.add(ctx, "integer-literal", span[0], span[1], new + suffix)
 
-    def condition(self, kind, children, ctx):
+    @staticmethod
+    def condition_of(kind, children):
         slot = CONDITION_SLOT[kind]
         cond = children[slot] if len(children) > slot else {}
-        span = span_of(cond) if isinstance(cond, dict) and "valueCategory" in cond else None
+        return cond if isinstance(cond, dict) and "valueCategory" in cond else None
+
+    def value_span(self, node):
+        """Where an expression stands in the main file: its plain span, or, if it touches macros that are
+        all the toolchain's (`p == NULL`, `n < INT_MAX`, `ok == true`: R003 G2) or plain arguments, the text
+        from the first to the last token as the main file shows it (the macro's name at its use). The
+        text must be balanced, so a macro that swallows half an expression is not cut in the middle.
+        Product macros (T028's `macro-hidden-code`) give None."""
+        if not isinstance(node, dict):
+            return None
+        span = span_of(node)
+        if span is not None:
+            return span
+        shown = node.get("_xspan")
+        if shown is None or not self.toolchain_only(node) or not balanced(self.source.data[shown[0]:shown[1]]):
+            return None
+        return shown
+
+    def toolchain_only(self, node):
+        """True if every macro expansion below `node` is the toolchain's, the compiler's, or a macro argument."""
+        for _, spell_file, spell_at, _, exp_file, exp_at, _ in node.get("_origins", ()):
+            argument = spell_file == self.main and exp_file == self.main and None not in (spell_at, exp_at) \
+                and spell_at > exp_at
+            if not (argument or spell_file == BUILT_IN or in_roots(spell_file, self.system_roots)):
+                return False
+        return all(self.toolchain_only(c) for c in node.get("inner", ()) if isinstance(c, dict))
+
+    def unsized_array(self, node):
+        """`char buf[] = "text";` takes its size from the initializer: the literal is an array-size context."""
+        span = span_of(node)
+        if span is None:
+            return False
+        text = self.source.data[span[0]:span[1]]
+        return UNSIZED_ARRAY.search(text.split(b"=", 1)[0]) is not None
+
+    def enumerator(self, node, span, ctx):
+        """`enum-constant`: an enumerator used as a value becomes the next one of its enum (wrapping)."""
+        target = node.get("referencedDecl", {})
+        following = self.enums.get(target.get("id"))
+        if target.get("kind") == "EnumConstantDecl" and following and self.source.identifier(span[0]):
+            self.add(ctx, "enum-constant", span[0], span[1], following)
+
+    def string(self, span, ctx):
+        """`string-literal`: a non-empty literal becomes `""`; its first byte, incremented, is a second mutant."""
+        text = self.source.data[span[0]:span[1]]
+        if len(text) < 3 or not text.startswith(b'"') or not text.endswith(b'"') or text == b'""':
+            return
+        self.add(ctx, "string-literal", span[0], span[1], '""')
+        first = text[1]
+        if first + 1 < 0x7f and first not in (0x22, 0x5c) and first + 1 not in (0x22, 0x5c):
+            self.add(ctx, "string-literal", span[0] + 1, span[0] + 2, chr(first + 1))
+
+    def character(self, span, ctx):
+        """`char-literal`: `'a'` becomes `('a' + 1)`, whatever its spelling (`'\\n'`, `L'x'`)."""
+        text = self.source.data[span[0]:span[1]]
+        if text.endswith(b"'") and b"'" in text[:-1]:
+            self.add(ctx, "char-literal", span[0], span[1], "(" + text.decode("latin-1") + " + 1)")
+
+    def condition(self, kind, children, ctx):
+        cond = self.condition_of(kind, children)
+        span = self.value_span(cond)
         if span is not None:
             original = self.source.data[span[0]:span[1]].decode("latin-1")
             self.add(ctx, "condition", span[0], span[1], "!(" + original + ")")
@@ -501,11 +578,11 @@ class Walker:
         if not text or "complex" in text.lower() or deep == "void" \
                 or text.startswith(("struct ", "union ")) or deep.startswith(("struct ", "union ")):
             return
-        span = span_of(children[0])
+        span = self.value_span(children[0])
         if span is None:
             return
         original = self.source.data[span[0]:span[1]].decode("latin-1")
-        value = "1" if original == "0" else "0"
+        value = "1" if original == "0" or zero_constant(children[0]) else "0"
         if children[0].get("kind") != "IntegerLiteral":
             # Keep evaluating the expression: its parameters and variables stay used.
             value = "((void)(%s), (%s)%s)" % (original, text, value)
@@ -528,6 +605,55 @@ class Walker:
         uses = "".join("(void)%s; " % name for name in ctx["params"])
         self.add(ctx, "function-body", span[0], span[1],
                  "{ " + uses + ("}" if returns == "void" else "return 0; }"))
+
+
+def zero_constant(node):
+    """True if the expression is the integer constant 0 behind casts and parentheses (`false`, `NULL`)."""
+    while isinstance(node, dict) and node.get("kind") in ("ImplicitCastExpr", "CStyleCastExpr", "ParenExpr"):
+        node = (node.get("inner") or [None])[0]
+    return isinstance(node, dict) and node.get("kind") == "IntegerLiteral" and node.get("value") == "0"
+
+
+def balanced(text):
+    """True if the parentheses and brackets of C text close in order (strings and comments aside)."""
+    stack = []
+    pos = 0
+    pairs = {b")": b"(", b"]": b"["}
+    while pos < len(text):
+        byte = text[pos:pos + 1]
+        if byte in (b'"', b"'"):
+            pos += 1
+            while pos < len(text) and text[pos:pos + 1] != byte:
+                pos += 2 if text[pos:pos + 1] == b"\\" else 1
+        elif text.startswith(b"/*", pos):
+            pos = text.find(b"*/", pos + 2)
+            if pos < 0:
+                return False
+            pos += 1
+        elif byte in (b"(", b"["):
+            stack.append(byte)
+        elif byte in pairs and (not stack or stack.pop() != pairs[byte]):
+            return False
+        pos += 1
+    return not stack
+
+
+def enum_successors(ast):
+    """{id of an enumerator: name of the next enumerator of the same enum, wrapping}; enums of one value
+    have none. Found in the AST, wherever the enum is declared (the main file or a header)."""
+    found = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            members = [c for c in node.get("inner", ()) if isinstance(c, dict) and c.get("kind") == "EnumConstantDecl"]
+            if node.get("kind") == "EnumDecl" and len(members) > 1:
+                for index, member in enumerate(members):
+                    found[member.get("id")] = members[(index + 1) % len(members)].get("name")
+            for child in node.get("inner", ()):
+                walk(child)
+
+    walk(ast)
+    return found
 
 
 def constant_tree(node):
@@ -659,6 +785,7 @@ def generate(file_path, data, ast, system_roots=()):
                          % file_path)
     source = Source(data)
     walker = Walker(source, file_path, system_roots)
+    walker.enums = enum_successors(ast)
     for top in ast.get("inner", []):
         walker.visit(top, {"function": None, "live": True})
     walker.finish()

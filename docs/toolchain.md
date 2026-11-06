@@ -17,6 +17,34 @@ compiling or linking: no host clang, no `/usr/include`, no `/usr/lib`.
 the listed members, so the 7 GB LLVM release becomes a ~0.9 GB tree and each action sees only the sub-paths it
 names (`toolchains/tools.bzl`, `.project(...)`). A pattern that matches nothing fails the build.
 
+## Verified reuse for `--uncached` grades (T030)
+
+`--no-remote-cache` makes every action run, including `fetched_tree llvm` (single-threaded `tar -xJf` of the 1.6 GB
+archive, about two minutes, once per Buck2 daemon). The action cache is client-writable (backlog B4), so the tree
+cannot just be trusted from it. Design:
+
+- `toolchains/llvm.manifest` and `toolchains/sysroot.manifest` list every member of the extracted trees (directory,
+  file with exec bit, size and sha256, symlink with target). They are gate files (`toolchains/**`), covered by the
+  gate-clean check, and a change to one is a review item of its own.
+- Before every uncached `buck2 build` (`grade_build.run_buck`, `gate/rigor_lib/toolchain_verify.py`) the grader runs,
+  in the same daemon: (1) `build toolchains//:{llvm,sysroot}_ref`, cache allowed, nothing materialised, so the tree
+  comes from the action cache (the unpack runs only when the cache truly lacks it); (2) `build --no-remote-cache
+  toolchains//:{llvm,sysroot}_verified`: the `verified_tree` rule (`toolchains/fetch.bzl`) runs
+  `toolchains/verify_tree.py` on a worker, uncached, over the very tree of step 1 and compares every name, type,
+  exec bit, size, link target and sha256 with the manifest. Buck2 keeps that tree in the daemon, so the compile and
+  link actions of the build that follows consume the digest that was verified. Warm cost: about 8 s.
+- Any difference (flipped byte, mode, extra or missing file or directory, retargeted link, special file) fails the
+  verify action: the grader returns exit 1 for that build with a `TOOLCHAIN VERIFICATION FAILED ... Not re-fetching`
+  stderr tail, which surfaces as a `build-failed` finding (metadata `stderr_tail`) in `build` (facts and mutants
+  builds fail the same way). It never falls back to a re-fetch. The verify action being answered from a cache is
+  also refused (`log what-ran`).
+- Not covered: cached builds (`--uncached` absent) still trust the cache, as before; the worker's `python3` runs the
+  verifier; the fetched archive itself is sha256-pinned by `download_file`.
+- Regenerating the manifests: `toolchains/gen_manifests.sh` (a real, uncached unpack; deterministic, so a second
+  run leaves `git diff` empty). Bootstrapping a new pin needs empty `*.manifest` placeholder files first (the BUCK
+  file names them as sources).
+- Tests: `gate/tests/test_toolchain_verify.py`.
+
 ## Modes
 
 A mode is a target platform. The default (`[parser] target_platform_detector_spec`) is `release`.

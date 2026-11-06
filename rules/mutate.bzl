@@ -15,6 +15,7 @@ Pipeline (all on RE, release mode):
 """
 
 load("@prelude//cxx:cxx_toolchain_types.bzl", "CxxToolchainInfo")
+load("@prelude//cxx:preprocessor.bzl", "CPreprocessorInfo")
 
 MutSources = provider(fields = ["srcs", "headers"])
 
@@ -47,6 +48,26 @@ def _objects(dep: Dependency) -> dict[str, Artifact]:
         fail("{}: no [objects] sub-target".format(dep.label))
     every = subs["objects"][DefaultInfo].sub_targets
     return {name: unit[DefaultInfo].default_outputs[0] for name, unit in every.items() if not name.endswith(".pic.o")}
+
+def _own_headers(dep: Dependency) -> bool:
+    """Does this target export header files of its own?"""
+    info = dep.get(CPreprocessorInfo)
+    if info == None or info.set == None or info.set.value == None:
+        return False
+    return any([len(p.headers) > 0 or len(p.raw_headers) > 0 for p in info.set.value])
+
+def _link_inputs(label: Label, deps: list[Dependency]) -> list[Artifact]:
+    """The archives the tests link besides their own objects. A header-only kit (a `c_library` without
+    sources) has no archive: the tests were compiled against its headers by Buck2 and it adds nothing to
+    the link line. A dep that provides neither a library nor headers is a mistake, never dropped."""
+    libs = []
+    for d in deps:
+        outputs = d[DefaultInfo].default_outputs
+        if len(outputs) > 0:
+            libs.append(outputs[0])
+        elif not _own_headers(d):
+            fail("{}: dep {} provides neither a library nor headers".format(label, d.label))
+    return libs
 
 def _compile_prefix(ctx, headers, toolchain):
     """The module's exact compile command up to the source: toolchain clang, then its argsfile."""
@@ -200,7 +221,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
         "base_obj": {},
         "gens": {},
         "label": _label_text(ctx.label),
-        "libs": [d[DefaultInfo].default_outputs[0] for d in ctx.attrs.deps + [ctx.attrs._ctest]],
+        "libs": _link_inputs(ctx.label, ctx.attrs.deps + [ctx.attrs._ctest]),
         "link_flags": ctx.attrs.link_flags,
         "linker": toolchain.linker_info.linker,
         "original": {},

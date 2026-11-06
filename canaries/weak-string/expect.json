@@ -1,0 +1,9 @@
+{
+  "bypass": "tests check non-NULL, not the text",
+  "description": "R003 G3: `core_label` returns \"core\" and the test checks `!= NULL` only, so the literal can become \"\" or \"dore\" (`string-literal`). Before T035 the only mutant of the return was NULL, which `!= NULL` kills.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}

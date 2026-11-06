@@ -20,8 +20,9 @@ LIBC = "kill\nexit\nfopen\nmemcpy\nopen\nwrite\nprintf\n"
 
 
 def unit(name="a.c.o", defined=(), undefined=(), weak=(), pragmas=(), attributes=(), identifiers=(),
-         line_directives=()):
+         line_directives=(), mutable=()):
     return {"name": name, "defined": sorted(defined), "weak": sorted(weak), "undefined": sorted(undefined),
+            "mutable": sorted(mutable),
             "pragmas": [{"file": "p/a.c", "line": n, "text": t} for n, t in pragmas],
             "attributes": [{"name": a, "file": "p/a.c", "line": n} for a, n in attributes],
             "identifiers": [{"name": a, "file": "p/a.c", "line": n} for a, n in identifiers],

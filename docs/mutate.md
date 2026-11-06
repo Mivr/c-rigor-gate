@@ -16,6 +16,11 @@ verdict). `c_library` also defines `<name>_mutsrc` (its source files) which `c_m
 The product build-file guard (`rigor buckfiles`, T004) only admits the four product macros, so
 `c_mutants` targets are written by the grading driver in a gate-owned package, not by the product.
 
+A dep may be a **header-only test kit** (a `c_library` with `srcs = []`, as in annas-c): it has no archive, so it adds
+nothing to the link line (the tests were compiled against its headers by Buck2). A dep that has neither an archive nor
+headers of its own is an analysis error (`provides neither a library nor headers`), never silently dropped. Canary
+`header-only-kit`, selftest module `uninit`.
+
 ## Pipeline
 | Step | What | Where |
 |---|---|---|
@@ -24,6 +29,22 @@ The product build-file guard (`rigor buckfiles`, T004) only admits the four prod
 | 3 `mutant_compile` | `dynamic_output` over the lists: one action per mutant writes the mutated copy of the source and compiles it with the same command; result = sha256 of the object, or `unviable` | RE, cached |
 | 4 `mutant_run` | `dynamic_output` over the compile results: for every mutant whose object is new (not the baseline's, not an earlier mutant's) and every test, one action relinks the test with the mutated object and runs it with ctest (`--seed 1`) | RE, cached |
 | 5 `mutant_report` | one `report.json` with the raw facts of all of the above | RE |
+
+### Deterministic results (T034, B34)
+What `mutant_run` stores is a function of the verdict, not of the execution: a mutant that reads uninitialised memory
+or past an array must give the same stored text every time. `tool.py linkrun` therefore normalises before it writes:
+
+| Stored | Becomes |
+|---|---|
+| a failed-check reason `N of M checks failed; first: f.c:L: CHECK_X(a, b): got != want` | `0 of 0 checks failed; first: f.c:L: CHECK_X(a, b)` (place and text of the check kept; counts and observed values, numbers, strings, addresses dropped; the prefix still matches the verdict code) |
+| any other reason (`killed by signal 11`, `timeout after 10 s`, ...) | the same words with every number (decimal or `0x...`) turned into `#` |
+| `asserts` of a test line | 0 or 1 (the verdicts only ask for at least one) |
+| `rc` of the test binary | 0 or 1 as is, -9 for the timeout kill, -1 for any other way of dying |
+| a results line that is not a JSON object | the line `!`, which still does not parse |
+
+Normalising never turns a crash into a check failure or back, and keeps `status` and test ids, so no verdict changes
+(`gate/tests/test_mutate_tool.py` runs `outcome_of_run` before and after). `selftest/mutate.sh` builds the `uninit`
+module twice with different nonces in the test source (every mutant is run again) and requires byte-identical reports.
 
 An action is keyed on its inputs: the mutant spec and source for step 3, the objects for step 4. An
 unchanged tree executes **zero** actions; a changed test re-links and re-runs the live mutants of that
@@ -112,6 +133,32 @@ No mutation is made under `case` labels, enumerator values, bit-field widths, `_
 | `return-value` | `return e;` -> `return ((void)(e), (T)0);` with T the expression's type (`(T)1` when it was `0`); not for struct, union, complex or void; `e` is still evaluated, so no variable or parameter becomes unused |
 | `statement-deletion` | an expression statement that is a call -> `(void)0;` |
 | `function-body` | body of a scalar function -> `{ (void)p; ... return 0; }`, void -> `{ (void)p; ... }` (pseudo-tested function check) |
+| `enum-constant` | an enumerator used as a value (return, assignment, argument, comparison operand) -> the next enumerator of the same enum in declaration order, wrapping; none when the enum has one value |
+| `string-literal` | a non-empty `"..."` -> `""`; and its first byte incremented (second mutant; none when the byte is an escape start, non-ASCII, or the next byte would be `"` or `\\`) |
+| `char-literal` | `'c'` -> `('c' + 1)`, any spelling (`'\\n'`, `L'x'`) |
+
+### Toolchain macros in conditions and returns (T035; R003 G2, B28)
+A condition (`if`, `while`, `do`, `for`) or a `return` value that contains macros of the **toolchain** only
+(`NULL`, `true`/`false`, `INT_MAX`, `assert`, ...: spelled in a `--system-root`, in `<built-in>`, or a plain macro
+argument) has a main-file location even though its range ends in an expansion: the text from the first token to
+the last as the main file shows it (a macro's name at its use, a function-like macro's call up to its closing
+parenthesis; `visible_span`). That location is the **G2 location rule**. It gives the `condition` mutant
+(`if (a == NULL || b == NULL)` -> `if (!(a == NULL || b == NULL))`), and `return true;`/`return INT_MAX;` its
+`return-value` mutant (`false`, `NULL` and any constant 0 flip to 1). The text must have balanced parentheses, so a
+macro that swallows half an expression (`SYS_ID(x) > 3`) is not cut. Mutants rewrite main-file bytes around the macro
+token, never inside it. A single product macro anywhere below the expression (`IS_NULL(p)`) keeps the expression
+unmutated and under `macro-hidden-code`, as in T028 (unchanged). An `if` whose branch ends in a toolchain macro
+(`if (p == NULL) return NULL;`) is no longer skipped as a whole for its condition. The relational and logical
+operators next to such macros were already mutated by T028.
+
+### Literal operators (T035; R003 G3, B29)
+Kill semantics: `enum-constant` is killed by a test that pins *which* enumerator comes out (not just `!= OK`);
+`string-literal` by one that compares the text (not just `!= NULL`); `char-literal` by one that checks the character.
+Never mutated: case labels, enumerator values, bit-field widths, `_Static_assert`, `sizeof`/array sizes (a string
+that initialises an unsized array, `char buf[] = "..."`, sizes it), attribute arguments, assembler text, and
+literals a macro spells (a product macro's text is a finding; a toolchain's is not ours). A mutant that does not
+compile (a shadowed enumerator, a format check on `""`) is `unviable`, as for any operator, never a survivor; one whose
+object is identical (two enumerators of equal value) is `equivalent`.
 
 If two operators propose the same text change, one mutant is kept. Compile failure (including a warning
 that is an error under the sealed flags) = `unviable`.

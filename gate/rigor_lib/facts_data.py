@@ -27,6 +27,7 @@ class Unit:
     attributes: tuple   # of (name, file, line)
     identifiers: tuple  # of (name, file, line)
     line_directives: tuple  # of (name, file, line): a user `#line` that renames the file
+    mutable: frozenset = frozenset()  # defined external objects in a writable data/bss section (T033)
 
 
 @dataclass(frozen=True)
@@ -90,13 +91,20 @@ def _pragmas(path, entries):
     return tuple(found)
 
 
+UNIT_KEYS = ("name", "defined", "weak", "undefined", "pragmas", "attributes", "identifiers", "line_directives")
+
+
 def parse_unit(path, unit):
-    keys = ("name", "defined", "weak", "undefined", "pragmas", "attributes", "identifiers", "line_directives")
+    # `mutable` (T033) is written by every product scan; only the gate's own third-party facts lack it.
+    keys = UNIT_KEYS + (("mutable",) if isinstance(unit, dict) and "mutable" in unit else ())
     _exact(path, unit, keys, "unit")
     defined = _strings(path, unit["defined"], "defined")
     weak = _strings(path, unit["weak"], "weak")
     if not weak <= defined:
         _fail(path, "weak symbols must be defined symbols")
+    mutable = _strings(path, unit["mutable"], "mutable") if "mutable" in unit else frozenset()
+    if not mutable <= defined:
+        _fail(path, "mutable symbols must be defined symbols")
     return Unit(
         name=_text(path, unit["name"], "unit name"),
         defined=defined, weak=weak,
@@ -105,6 +113,7 @@ def parse_unit(path, unit):
         attributes=_located(path, unit["attributes"], "name", "attribute"),
         identifiers=_located(path, unit["identifiers"], "name", "identifier"),
         line_directives=_located(path, unit["line_directives"], "name", "line directive"),
+        mutable=mutable,
     )
 
 
@@ -124,6 +133,9 @@ def parse_facts(path, data):
     deps = _strings(path, document["deps"], "deps", LABEL)
     if not isinstance(document["units"], list):
         _fail(path, "units must be a list")
+    if document["kind"] != "c_third_party" and not all(isinstance(u, dict) and "mutable" in u
+                                                        for u in document["units"]):
+        _fail(path, "every unit of a product target needs `mutable`")
     units = tuple(parse_unit(path, unit) for unit in document["units"])
     if len({unit.name for unit in units}) != len(units):
         _fail(path, "duplicate unit names")

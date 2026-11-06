@@ -62,6 +62,10 @@ c_library(name = "b_io", srcs = ["b_io.c"])
 c_library(name = "b_ovf", srcs = ["b_ovf.c"], headers = ["b_ovf.h"])
 c_library(name = "b_hdrs", srcs = ["b_hdrs.c"])
 c_library(name = "b_direct", srcs = ["b_direct.c"])
+c_library(name = "x_ok", srcs = ["x_ok.c"])
+c_library(name = "x_func", srcs = ["x_func.c"])
+c_library(name = "x_mut", srcs = ["x_mut.c"])
+c_library(name = "x_const", srcs = ["x_const.c"])
 EOF
 
 # --- green ---
@@ -247,6 +251,28 @@ EOF
   done
   echo 'int b_hdrs_f(int x) { return (int)htonl((uint32_t)x) + isdigit(x) + abs(x); }'
 } > b_hdrs.c
+# T033 exports policy: the green module defines exactly x_f and x_g; each red twin adds one thing.
+cat > x_ok.c <<'EOF'
+int x_f(void) { return 1; }
+int x_g(void) { return 2; }
+EOF
+cat > x_func.c <<'EOF'
+int x_f(void) { return 1; }
+int x_g(void) { return 2; }
+int x_hook(void) { return 3; }
+EOF
+cat > x_mut.c <<'EOF'
+int x_f(void) { return 1; }
+int x_g(void) { return 2; }
+int (*x_hook)(void);
+int x_state = 5;
+EOF
+cat > x_const.c <<'EOF'
+int x_f(void) { return 1; }
+int x_g(void) { return 2; }
+const int x_table[4] = {1, 2, 3, 4};
+const char *const x_names[2] = {"a", "b"};
+EOF
 cat > b_direct.c <<'EOF'
 int b_direct_f(unsigned n) { char *p = __builtin_alloca(n); p[0] = 1; return p[0]; }
 EOF
@@ -269,6 +295,9 @@ def policy(dest, specs):
         text += '[module."%s"]\n' % (name if name.startswith("//") else PKG + name)
         for opt in opts:
             key, values = opt.split("=")
+            if key == "level":
+                text += 'level = "%s"\n' % values
+                continue
             key = {"exempt": "deny_exempt", "builtins": "allow_builtins"}.get(key, key)
             text += "%s = [%s]\n" % (key, ", ".join('"%s"' % v for v in values.split(",")))
         text += "\n"
@@ -422,7 +451,7 @@ done
 echo "  16 sources: line scan exit 0 on all"
 
 begin "facts actions build on RE for every target (release) and the libc export list exists"
-targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs)
+targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const)
 args=(); for t in "${targets[@]}"; do args+=("$pkg:${t}_facts"); done
 run "$out/facts.log" build "${args[@]}" //ctest:ctest_facts //examples/hello:lib_facts //examples/hello:hello_facts //examples/hello:hello_test_facts toolchains//:libc_symbols --show-output || fail "$CUR" "$out/facts.log"
 tool collect "$out/facts.log" "$out/facts" || fail "$CUR: collect"
@@ -517,6 +546,26 @@ for g in $SEM $SYM; do
   "${RIGOR[@]}" facts --gate $g --facts "$out/fd/hello" --policy policy/hello.toml --libc "$out/libc.symbols" --out "$out/res/hello.$g.json" > "$out/res/hello.$g.txt" 2>&1 \
     || fail "$CUR: hello/$g" "$out/res/hello.$g.txt"
 done
+
+begin "exports (T033): exact list green; extra function, extra mutable global, extra const table, missing key are red"
+tool policy "$out/p_x_ok.toml" "x_ok;level=L3;exports=x_f,x_g"
+gate_case x_ok $SYM 0 "$out/p_x_ok.toml" x_ok --
+tool policy "$out/p_x_func.toml" "x_func;level=L3;exports=x_f,x_g"
+gate_case x_func $SYM 1 "$out/p_x_func.toml" x_func -- unexpected-export:x_hook
+tool policy "$out/p_x_mut.toml" "x_mut;level=L3;exports=x_f,x_g"
+gate_case x_mut $SYM 1 "$out/p_x_mut.toml" x_mut -- unexpected-export:x_hook mutable-global-export:x_hook unexpected-export:x_state mutable-global-export:x_state
+tool policy "$out/p_x_mut_listed.toml" "x_mut;level=L3;exports=x_f,x_g,x_hook,x_state"
+gate_case x_mut_listed $SYM 1 "$out/p_x_mut_listed.toml" x_mut -- mutable-global-export:x_hook mutable-global-export:x_state
+tool policy "$out/p_x_const.toml" "x_const;level=L3;exports=x_f,x_g"
+gate_case x_const $SYM 1 "$out/p_x_const.toml" x_const -- unexpected-export:x_table unexpected-export:x_names
+tool policy "$out/p_x_const_ok.toml" "x_const;level=L3;exports=x_f,x_g,x_table,x_names"
+gate_case x_const_ok $SYM 0 "$out/p_x_const_ok.toml" x_const --
+tool policy "$out/p_x_nokey.toml" "x_ok;level=L3"
+gate_case x_nokey $SYM 1 "$out/p_x_nokey.toml" x_ok -- exports-missing
+tool policy "$out/p_x_l2.toml" "x_mut;level=L2;exports=x_f,x_g,x_hook,x_state"
+gate_case x_l2 $SYM 0 "$out/p_x_l2.toml" x_mut --
+tool policy "$out/p_x_l1.toml" "x_mut;level=L1"
+gate_case x_l1 $SYM 0 "$out/p_x_l1.toml" x_mut --
 
 begin "builtins are default-deny: alloca (also pasted), frame_address, longjmp (also behind a macro), __sync"
 tool policy "$out/p_b.toml" b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs

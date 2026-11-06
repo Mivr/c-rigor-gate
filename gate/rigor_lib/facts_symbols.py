@@ -14,7 +14,7 @@ A library that only tests may use (`ALLOWED_TEST_LABELS`) must not be reached by
 
 from rigor_lib import facts_third_party
 from rigor_lib.facts_policy import Module
-from rigor_lib.findings import GateResult, finding
+from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, finding
 
 GATE_ID = "symbols"
 
@@ -65,6 +65,31 @@ def unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes)
     return found
 
 
+def export_findings(facts, module):
+    """The exports policy (T033, R003 G7): what a module defines against its gate-owned `exports` list.
+
+    L1 is exempt. A module whose table has neither `level` nor `exports` is not checked (a legacy table;
+    `rigor grade` hands this gate a policy copy without `level`, so `exports` is what arms the check
+    there). Any `exports` key, or a declared level above L1, arms it; with no level declared the level is L3.
+    """
+    level = module.level or "L3"
+    if level == "L1" or (module.level is None and module.exports is None):
+        return []
+    strict = level != "L2"
+    severity = SEVERITY_ERROR if strict else SEVERITY_INFO
+    if module.exports is None:
+        # Fail closed at L3: no list means nothing can be compared, which is never a pass.
+        return [finding("exports-missing", severity=severity, target=facts.label)]
+    found = []
+    for unit in facts.units:
+        where = {"target": facts.label, "unit": unit.name}
+        for symbol in sorted(unit.defined - module.exports):
+            found.append(finding("unexpected-export", symbol=symbol, **where))
+        for symbol in sorted(unit.mutable):
+            found.append(finding("mutable-global-export", severity=severity, symbol=symbol, **where))
+    return found
+
+
 def run(facts_by_label, policy, libc, third=None):
     third = facts_third_party.load() if third is None else third
     facts_third_party.check_policy(policy, third)
@@ -88,4 +113,5 @@ def run(facts_by_label, policy, libc, third=None):
         for unit in facts.units:
             units += 1
             found.extend(unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes))
+        found.extend(export_findings(facts, module))
     return GateResult(GATE_ID, found, {"targets": len(products), "libraries": len(libs), "units": units})

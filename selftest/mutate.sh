@@ -57,6 +57,17 @@ c_mutants(name = "hidden_mutants", module = ":hidden", tests = [":hidden_test"])
 c_library(name = "attr", srcs = ["attr.c"], headers = ["attr.h"])
 c_test(name = "attr_test", srcs = ["attr_test.c"], deps = [":attr"])
 c_mutants(name = "attr_mutants", module = ":attr", tests = [":attr_test"])
+
+# T034: a test kit that is only headers (a library without sources has no archive), and a mutant that reads
+# uninitialised memory (its failure reason carries garbage that must not reach the report)
+c_library(name = "uninit", srcs = ["uninit.c"], headers = ["uninit.h"])
+c_library(name = "uninit_kit", headers = ["uninit_kit.h"], deps = [":uninit"])
+c_test(name = "uninit_test", srcs = ["uninit_test.c"], deps = [":uninit", ":uninit_kit"])
+c_mutants(name = "uninit_mutants", module = ":uninit", tests = [":uninit_test"], deps = [":uninit_kit"])
+
+# a dependency that provides neither a library nor a header is an error
+c_library(name = "bare_kit")
+c_mutants(name = "bare_mutants", module = ":uninit", tests = [":uninit_test"], deps = [":bare_kit", ":uninit_kit"])
 EOF
 cat > macro.h <<'EOF'
 #ifndef MACRO_H
@@ -422,6 +433,45 @@ int attr_macro(int x);
 #endif
 EOF
 # B19: clang lists the only attribute of these functions after their body
+cat > uninit.h <<'EOF'
+#ifndef UNINIT_H
+#define UNINIT_H
+int uninit_slot(int i);
+#endif
+EOF
+cat > uninit.c <<'EOF'
+#include "uninit.h"
+
+int uninit_slot(int i)
+{
+    int buf[4];
+    for (int k = 0; k < 4; k++) {
+        buf[k] = k * 10;
+    }
+    return buf[i];
+}
+EOF
+cat > uninit_kit.h <<'EOF'
+#ifndef UNINIT_KIT_H
+#define UNINIT_KIT_H
+#include "ctest/ctest.h"
+#include "uninit.h"
+#define CHECK_SLOT(t, i, want) CHECK_EQ_I64((t), uninit_slot(i), (want))
+#endif
+EOF
+cat > uninit_test.c <<'EOF'
+#include "uninit_kit.h"
+
+static void t_slots(ctest_t *t)
+{
+    CHECK_SLOT(t, 0, 0);
+    CHECK_SLOT(t, 1, 10);
+    CHECK_SLOT(t, 2, 20);
+    CHECK_SLOT(t, 3, 30);
+}
+
+CTEST_SUITE("uninit", { "slots", t_slots })
+EOF
 cat > attr.c <<'EOF'
 #include "attr.h"
 
@@ -474,9 +524,9 @@ fi
 # build_all <log>: build the three modules and refresh $RES/<name>.json
 build_all() {
   local log="$1" name
-  run "$log" build "$pkg:pinned_mutants" "$pkg:weak_mutants" "$pkg:equiv_mutants" "$pkg:multi_mutants" "$pkg:macro_mutants" "$pkg:hidden_mutants" "$pkg:attr_mutants" --show-full-output || return 1
+  run "$log" build "$pkg:pinned_mutants" "$pkg:weak_mutants" "$pkg:equiv_mutants" "$pkg:multi_mutants" "$pkg:macro_mutants" "$pkg:hidden_mutants" "$pkg:attr_mutants" "$pkg:uninit_mutants" --show-full-output || return 1
   mkdir -p "$RES"
-  for name in pinned weak equiv multi macro hidden attr; do
+  for name in pinned weak equiv multi macro hidden attr uninit; do
     p="$(awk -v t="$pkg:${name}_mutants" '$1 == "root" t || index($1, t) {print $2}' "$log" | tail -1)"
     [ -f "$p" ] || { echo "no report for $name: '$p'" >&2; return 1; }
     cp "$p" "$RES/$name.json"
@@ -680,6 +730,104 @@ gate "$out/only_macro"
 echo "    L2: exit 0, info"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
+begin "RED: a toolchain NULL in a condition, enumerators, strings and characters are mutated, and weak tests leave exactly their survivors (T035)"
+cat >> "$scratch/m/BUCK" <<'EOF'
+
+c_library(name = "lit", srcs = ["lit.c"], headers = ["lit.h"])
+c_test(name = "lit_test", srcs = ["lit_test.c"], deps = [":lit"])
+c_mutants(name = "lit_mutants", module = ":lit", tests = [":lit_test"])
+EOF
+cat > "$scratch/m/lit.h" <<'EOF'
+#ifndef LIT_H
+#define LIT_H
+typedef enum { LIT_OK = 0, LIT_ERR_LOW = 1, LIT_ERR_HIGH = 2 } lit_status;
+int lit_get(const int *p);
+lit_status lit_check(int v);
+const char *lit_name(void);
+char lit_letter(void);
+#endif
+EOF
+cat > "$scratch/m/lit.c" <<'EOF'
+#include "lit.h"
+
+#include <stddef.h>
+
+int lit_get(const int *p)
+{
+    int v = 0;
+    if (p != NULL) {
+        v = *p;
+    }
+    return v;
+}
+
+lit_status lit_check(int v)
+{
+    if (v < 0) {
+        return LIT_ERR_LOW;
+    }
+    if (v > 9) {
+        return LIT_ERR_HIGH;
+    }
+    return LIT_OK;
+}
+
+const char *lit_name(void) { return "lit"; }
+
+char lit_letter(void) { return 'q'; }
+EOF
+cat > "$scratch/m/lit_test.c" <<'EOF'
+#include "ctest/ctest.h"
+#include "lit.h"
+
+static void t_lit(ctest_t *t)
+{
+    int zero = 0;
+    CHECK_EQ_I64(t, lit_get(&zero), 0);
+    CHECK_EQ_I64(t, lit_check(0), LIT_OK);
+    CHECK_EQ_I64(t, lit_check(5), LIT_OK);
+    CHECK_EQ_I64(t, lit_check(9), LIT_OK);
+    CHECK(t, lit_check(-1) != LIT_OK);
+    CHECK(t, lit_check(10) != LIT_OK);
+    CHECK(t, lit_name() != NULL);
+    CHECK(t, lit_letter() != 0);
+}
+
+CTEST_SUITE("lit", { "lit", t_lit })
+EOF
+run "$out/build_lit.log" build "$pkg:lit_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_lit.log"
+p="$(awk -v t="$pkg:lit_mutants" 'index($1, t) {print $2}' "$out/build_lit.log" | tail -1)"
+[ -f "$p" ] || fail "$CUR: no report for lit"
+mkdir -p "$out/only_lit"; cp "$p" "$out/only_lit/lit.json"
+printf '[module."%s:lit_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_lit"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: expected exit 1, got $GATE_CODE" "$out/gate.log"
+got="$(json '"\n".join(sorted("%s|%s|%s|%s" % (f["function"], f["operator"], f["line"], f["replacement"]) for f in r["findings"] if f["rule"] == "survived-mutant"))')"
+want="$(cat <<'EOF'
+lit_check|enum-constant|17|LIT_ERR_HIGH
+lit_get|function-body|6|{ (void)p; return 0; }
+lit_get|integer-literal|7|1
+lit_letter|char-literal|27|('q' + 1)
+lit_name|string-literal|25|""
+lit_name|string-literal|25|m
+EOF
+)"
+[ "$got" = "$want" ] || fail "$CUR: survivors differ from the expected list" <(printf 'got:\n%s\nwant:\n%s\n' "$got" "$want")
+"${PY[@]}" - "$out/only_lit/lit.json" <<'PY' || fail "$CUR: bad lit report"
+import json, sys
+d = json.load(open(sys.argv[1]))
+ops = {}
+for m in d["mutants"]:
+    ops.setdefault(m["operator"], set()).add(m["function"])
+assert ops["condition"] >= {"lit_get"}, "the condition with NULL has no condition mutant"
+assert ops["enum-constant"] == {"lit_check"} and ops["string-literal"] == {"lit_name"} and ops["char-literal"] == {"lit_letter"}, ops
+assert not d["sources"][0]["hidden"], "a toolchain macro was reported as hidden code"
+print("    new operators:", {k: sorted(v) for k, v in sorted(ops.items()) if k in ("condition", "enum-constant", "string-literal", "char-literal")})
+PY
+# (the condition and relational mutants of `p != NULL` compile to the function-body mutant's object here: duplicates)
+echo "    survivors exactly as expected: $(printf '%s\n' "$got" | wc -l)"
+printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+
 begin "GREEN: a module of two sources in two directories (the right object is swapped on relink)"
 mkdir -p "$out/only_multi"; cp "$RES/multi.json" "$out/only_multi/"
 printf '[module."%s:multi_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
@@ -799,6 +947,62 @@ begin "WARM again"
 build_all "$out/build4.log" || fail "$CUR: buck2 build failed" "$out/build4.log"
 [ "$(executed "$out/build4.log")" = 0 ] || fail "$CUR: actions executed on an unchanged tree" "$out/build4.log"
 echo "    0 actions executed"
+
+begin "GREEN: tests that use a header-only kit are mutated (no archive of the kit is linked), failures carry normalised reasons only (T034)"
+mkdir -p "$out/only_uninit"; cp "$RES/uninit.json" "$out/only_uninit/"
+"${PY[@]}" - "$RES/uninit.json" <<'PY' || fail "$CUR: bad uninit report"
+import json, re, sys
+d = json.load(open(sys.argv[1]))
+runs = [(m["id"], t, r) for m in d["mutants"] for t, r in m["runs"].items()]
+assert runs, "no mutant of the kit's module ran"
+normal = re.compile(r"0 of 0 checks failed; first: \S+:\d+: CHECK_EQ_I64\(uninit_slot\([0-3]\), \([0-9]+\)\)")
+asserted = 0
+for mid, test, run in runs:
+    assert run["rc"] in (0, 1, -1, -9), (mid, run["rc"])
+    for raw in (run["results"] or "").splitlines():
+        line = json.loads(raw)
+        if "id" not in line:
+            continue
+        assert line["asserts"] in (0, 1), (mid, line)
+        if line["status"] != "fail":
+            continue
+        if line["reason"].startswith("0 of 0"):
+            assert normal.fullmatch(line["reason"]), (mid, line["reason"])  # the check is named, no observed value
+            asserted += 1
+        else:
+            assert not re.search(r"[0-9]", line["reason"]), (mid, line["reason"])
+assert asserted, "no mutant was killed by a failed check"
+print("    %d runs of %d live mutants, %d killed by a normalised failed check" % (len(runs), len({r[0] for r in runs}), asserted))
+PY
+printf '[module."%s:uninit_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_uninit"
+[ "$GATE_CODE" = 0 ] || [ "$GATE_CODE" = 1 ] || fail "$CUR: the gate did not grade the module (exit $GATE_CODE)" "$out/gate.log"
+echo "    graded: $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
+
+begin "RED: a dependency that provides neither a library nor a header is a build error, not silently dropped (T034)"
+if run "$out/bare.log" build "$pkg:bare_mutants"; then fail "$CUR: the build with a bare dependency succeeded" "$out/bare.log"; fi
+grep -q "provides neither a library nor headers" "$out/bare.log" || fail "$CUR: the build failed for another reason" "$out/bare.log"
+echo "    failed in analysis: $(grep -m1 'provides neither a library nor headers' "$out/bare.log" | sed 's/^ *//' | cut -c1-160)"
+
+begin "DETERMINISM: two cold-keyed grades of the same module give byte-identical reports (T034)"
+# A nonce in a string of the test (a comment would not change the object) re-keys every test link and run without
+# changing a byte the report records about the module, so every live mutant is run again; the uninit mutants read
+# garbage. The count of executed actions printed below shows it.
+det_build() {
+  local nonce="$1" dest="$2" log="$out/det_$1.log" p
+  sed -i "/^const char det_nonce\[\]/d" "$scratch/m/uninit_test.c"
+  sed -i "1i const char det_nonce[] = \"$nonce\";" "$scratch/m/uninit_test.c"
+  run "$log" build "$pkg:uninit_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$log"
+  p="$(awk -v t="$pkg:uninit_mutants" 'index($1, t) {print $2}' "$log" | tail -1)"
+  [ -f "$p" ] || fail "$CUR: no report" "$log"
+  cp "$p" "$dest"
+  echo "    nonce $nonce: executed $(executed "$log") actions"
+}
+n1="$(date +%s%N)-a"; n2="$(date +%s%N)-b"
+det_build "$n1" "$out/det_a.json"
+det_build "$n2" "$out/det_b.json"
+cmp -s "$out/det_a.json" "$out/det_b.json" || fail "$CUR: the two reports differ" <(diff <("${PY[@]}" -m json.tool "$out/det_a.json") <("${PY[@]}" -m json.tool "$out/det_b.json"))
+echo "    reports identical: $(wc -c < "$out/det_a.json") bytes, sha256 $(sha256sum "$out/det_a.json" | cut -c1-16)"
 
 echo "elapsed ${SECONDS}s"
 echo "selftest/mutate.sh: all checks passed in $SECONDS s"
