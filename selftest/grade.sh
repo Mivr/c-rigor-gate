@@ -87,12 +87,15 @@ edit_deleted_target() { sed -i '/^c_test(name = "util_test"/d' util/BUCK; }
 edit_heap_overflow() { sed -i 's/^    return ramp;/    ramp[count] = 0;\n    return ramp;/' util/util.c; }
 
 # ---------------------------------------------------------------------------------------
-# check_verdict <verdict.json> <expected failing gates, comma separated or empty> <exit code>
+# check_verdict <verdict.json> <expected "gate:rule" list, comma separated or empty> <exit code> [work dir]
+# Each expected failing gate must carry the named finding rule; any other FAIL or NOT_RUN is wrong.
 # ---------------------------------------------------------------------------------------
 check_verdict() {
-  python3 -I - "$1" "$2" "$3" <<'EOF'
+  python3 -I - "$1" "$2" "$3" "${4:-}" <<'EOF'
 import json, sys
-path, expected, code = sys.argv[1], set(filter(None, sys.argv[2].split(","))), int(sys.argv[3])
+path, code, work = sys.argv[1], int(sys.argv[3]), sys.argv[4]
+tokens = [t for t in sys.argv[2].split(",") if t]
+expected = {t.split(":")[0] for t in tokens}
 core = json.load(open(path))["core"]
 got = {g["id"]: g["status"] for g in core["gates"]}
 bad = {g for g, s in got.items() if s == "FAIL"}
@@ -102,6 +105,12 @@ want_not_run = {"tests-release", "tests-san"} if "build" in expected else set()
 want_code = 1 if expected else 0
 print("  " + " ".join("%s=%s" % (g, s) for g, s in got.items()) + "  overall=" + core["overall"])
 ok = bad == expected and not_run == want_not_run and code == want_code and (core["overall"] == "PASS") == (not expected)
+for token in tokens:
+    gate, rule = token.split(":")
+    rules = {f["rule"] for f in json.load(open("%s/results/%s.json" % (work, gate)))["findings"]}
+    if rule not in rules:
+        ok = False
+        print("  gate %s lacks finding rule %s (has %s)" % (gate, rule, sorted(rules)))
 if not ok:
     print("  EXPECTED failing gates %s (exit %d), got FAIL %s NOT_RUN %s (exit %d)" % (sorted(expected), want_code, sorted(bad), sorted(not_run), code))
     sys.exit(1)
@@ -141,7 +150,7 @@ run_case() {
   code=$?
   secs="$(elapsed "$started")"
   echo "  exit $code, ${secs}s"
-  check_verdict "$verdict" "$expected" "$code" || { tail -n 30 "$work/$name.log" >&2; fail "$name"; }
+  check_verdict "$verdict" "$expected" "$code" "$work/$name" || { tail -n 30 "$work/$name.log" >&2; fail "$name"; }
   [ -z "$(find_daemons "$work/$name")" ] || fail "$name: a process is still running in the grading tree"
   last_head="$head"
 }
@@ -177,16 +186,17 @@ ssh-keygen -Y check-novalidate -n c-rigor-gate -s "$work/warm.verdict.json.sig" 
 echo "  signature verifies (namespace c-rigor-gate-verdict only)"
 
 # 2. red cases: each must fail in exactly these gates
-run_case outside-contract contract
-run_case nolint suppressions
-run_case buckconfig-hidden build
-run_case buckconfig-plain suppressions,build
-run_case product-buck2 contract
+run_case outside-contract contract:outside-allowed
+run_case nolint suppressions:forbidden-pattern
+run_case buckconfig-hidden build:build-failed
+grep -q 'unused-variable' "$work/buckconfig-hidden/results/build.json" || fail "buckconfig-hidden: the build did not fail on the warning"
+run_case buckconfig-plain suppressions:forbidden-pattern,build:build-failed
+run_case product-buck2 contract:outside-allowed
 [ ! -e "$work/tools-buck2-ran" ] || fail "the product's tools/buck2 was executed"
-run_case failing-test tests-release,tests-san
-run_case removed-test tests-release,tests-san
-run_case deleted-target tests-release,tests-san
-run_case heap-overflow tests-san
+run_case failing-test tests-release:test-not-pass,tests-san:test-not-pass
+run_case removed-test tests-release:missing-test,tests-san:missing-test
+run_case deleted-target tests-release:missing-test,tests-san:missing-test
+run_case heap-overflow tests-san:test-not-pass
 
 # 3. an internal error (unreadable contract) is exit 2 and a FAIL verdict
 step=$((step + 1))
