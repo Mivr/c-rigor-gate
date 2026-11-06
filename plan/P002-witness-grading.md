@@ -1,7 +1,9 @@
 # P002: grading against the gate-held witness and the stubs (backlog B27, R003 G1)
 
+> Orchestrator note: task numbers renumbered at merge (the doc's T035-T040 are T036-T041; T035 is the G2/G3 generator task).
+
 Design only. It answers the six questions of `plan/tasks/P002-witness-grading-design.md` and ends in a task split
-(T035 to T040) and the decisions the owner has to make. Read against main `3c0ee72`. T021 (verdict inputs), T030
+(T036 to T041) and the decisions the owner has to make. Read against main `3c0ee72`. T021 (verdict inputs), T030
 (toolchain reuse), T032 (structure and mode-divergence wiring), T033 (exports) and T034 (header-only kits,
 deterministic mutants) are unmerged and in flight; the split below waits for whichever of them owns a file it needs.
 No farm run was made. The cost figures are R004's measured annas numbers, plus estimates from file counts that are
@@ -16,7 +18,7 @@ marked as estimates.
 | 3 | `witness-survived-mutant` | A **separate gate**, `mutants-witness`. It is not a union with the implementer's mutants, because a different party fixes it. It uses the same tests and the same rules, at the same levels (error at L3 and above, info at L2). It runs only for modules whose **test surface** changed in the graded diff, so an implementer grade normally runs nothing extra. Approvals use a distinct kind, `witness-equivalent-mutant`. |
 | 4 | Off-spec tests (S7b) | Witness grading cannot see a divergence that the tests and the witness share, and it cannot see code the witness itself left out. Both need **hidden tests** (B7) run against the witness *and* the head. The interface is fixed here: a second bundle (`--hidden`, bound as `hidden_sha256`), a gate-written `gate-hidden/` package, a fail-on-stub / pass-on-witness / pass-on-head rule, and redacted findings. Owner option: an independent witness author for L3 modules. |
 | 5 | Cost | An annas-size test-author grade gains one witness mutation run (about 900 compile and 10,000 run actions, about 17 min uncached; R004) and one witness-tree build (about 1,000 actions, estimate). The implementer grade gains nothing. A witness byte-identical to the head reuses the head's results (zero actions). Decisive grades stay `--uncached` in full. T030 is a prerequisite: without it each witness build command re-unpacks LLVM (about 120 s). |
-| 6 | Tasks | T035 (pure library, can start now), T036 (verdict binding, after T021), T037 (build and mutants steps take a tree, after T030), T038 (witness gates, after T032, T033, T034, T036, T037), T039 (canaries, stacked on T038 and merged with it), T040 (`tests-stub` and the test-author role). |
+| 6 | Tasks | T036 (pure library, can start now), T037 (verdict binding, after T021), T038 (build and mutants steps take a tree, after T030), T039 (witness gates, after T032, T033, T034, T037, T038), T040 (canaries, stacked on T039 and merged with it), T041 (`tests-stub` and the test-author role). |
 
 ## What changes in the two-context flow
 
@@ -218,7 +220,7 @@ What remains:
    means the implementer wrote behaviour the witness lacks. Either the code is extra, or the witness and tests are
    incomplete; the orchestrator triages.
 
-**Interface for B7** (designed here so that T035 to T038 build the right seams; the hidden tests themselves are a
+**Interface for B7** (designed here so that T036 to T039 build the right seams; the hidden tests themselves are a
 later task):
 - **Bundle:** `--hidden DIR`, with the same snapshot and digest code as the witness, bound as `hidden_sha256`.
   - It contains `hidden.toml` (`[module."//annas:annas"] tests = [...]`), `files/<n>/*_test.c` and
@@ -227,7 +229,7 @@ later task):
 - **Package:** the gate copies the files to `gate-hidden/<n>/` in each tree it judges and writes
   `gate-hidden/<n>/BUCK` itself: one `c_test` per entry, with `deps` equal to the module plus its link closure, loaded
   from `@gate//rules:c.bzl`.
-  - This is the same mechanism as `gate-mutants/`. T038 extracts the gate-package writer (including the root
+  - This is the same mechanism as `gate-mutants/`. T039 extracts the gate-package writer (including the root
     `PACKAGE`) into a shared helper.
   - Hidden tests include only the module's public header and `ctest/ctest.h`. Suite names are `hidden_<x>`.
 - **Rules:** fail on the stub head (role test-author), pass on the witness tree, pass on the head (every grade whose
@@ -259,7 +261,7 @@ later task):
   to the head, the witness tree *is* the head tree. `witness-tests` then reuses the head's results and
   `mutants-witness` reuses the head's per-module mutants result for the modules in W (info `witness-equals-head`),
   with zero actions. This is sound because T034 makes mutant results a deterministic function of their inputs, so
-  T038 waits for T034.
+  T039 waits for T034.
 - **Same-daemon reuse was considered and rejected.** Swapping the witness files into `<work>/tree` after the head's
   gates would let the live daemon skip unchanged actions even when uncached. But it would mutate a tree whose
   manifest is already in the verdict, and couple two gates through daemon state. Each tree keeps its own daemon:
@@ -274,7 +276,7 @@ later task):
   `core.uncached` covers both trees.
 - **T030** removes the 120 s LLVM unpack from each fresh uncached build command (it runs a verify action instead). The
   witness tree adds two build commands per decisive grade, so without T030 that is about 4 extra minutes on the
-  critical path. T037 and T038 come after T030.
+  critical path. T038 and T039 come after T030.
 
 ## The gate list and the verdict after this design
 
@@ -307,10 +309,10 @@ orchestrator audits.
     `gate/order.txt`, `selftest/grade.sh`, `selftest/grade_product/**`, `docs/grade.md`;
   - T033: `facts_*`, `products/annas-c/**`;
   - T034: `rules/mutate.bzl`, `mutate/**` except `gen.py`, `selftest/mutate.sh`.
-- Dependency order: T035 now; T036 after T021 and T035; T037 after T030 (parallel with T035 and T036); T038 after
-  T032, T033, T034, T036 and T037; T039 stacked on `task/T038` and merged in the same merge; T040 after T038 and T039.
+- Dependency order: T036 now; T037 after T021 and T036; T038 after T030 (parallel with T036 and T037); T039 after
+  T032, T033, T034, T037 and T038; T040 stacked on `task/T039` and merged in the same merge; T041 after T039 and T040.
 
-### T035: witness bundle, impl paths, scope and stub judge, as a pure library (Sonnet; can start now)
+### T036: witness bundle, impl paths, scope and stub judge, as a pure library (Sonnet; can start now)
 - **Allowed:**
   - new `gate/rigor_lib/witness_bundle.py`, `gate/rigor_lib/witness_scope.py` and `gate/rigor_lib/stub_judge.py`;
   - `gate/rigor_lib/contract.py` (the `role` key only);
@@ -350,12 +352,12 @@ orchestrator audits.
   6. `docs/witness.md`: the bundle format, the roles, W, and the test-author and orchestrator procedure of Q1, marked
      "not wired yet".
 - **Acceptance:** `selftest/gate.sh`. Then, on a scratch git repo of `canaries/_base/product` in
-  `/var/tmp/cache/T035`:
+  `/var/tmp/cache/T036`:
   - `witness.py from-commit` for `//core:core` with `core/core.c`;
   - `witness.py digest` twice, identical;
   - `witness.py check` passes, and fails with exit 2 after `ln -s` of a file into `files/`.
 
-### T036: bind the bundle into the verdict (Sonnet; after T021 and T035)
+### T037: bind the bundle into the verdict (Sonnet; after T021 and T036)
 - **Allowed:** `gate/rigor_lib/verdict_inputs.py`, `grade.py`, `grade_context.py`, `approvals.py` (a new kind),
   `gate/tests/test_verdict*.py`, `test_grade_verdict*.py`, `test_approvals*.py`, `docs/witness.md` (the binding
   section).
@@ -374,7 +376,7 @@ orchestrator audits.
 - **Acceptance:** `selftest/gate.sh`, `selftest/grade.sh` (unchanged steps still green; the grade without `--witness`
   has `witness_sha256: null`).
 
-### T037: the build and mutants steps run on a given tree (Sonnet; refactor only; after T030)
+### T038: the build and mutants steps run on a given tree (Sonnet; refactor only; after T030)
 - **Allowed:** `gate/rigor_lib/grade_build.py`, `grade_mutants.py`, `mutants_gate.py` (only an `approval_kind`
   argument, defaulting to `equivalent-mutant`), `gate/tests/test_grade_build*.py`, `test_grade_mutants*.py`,
   `test_mutants*.py` (only for the new argument).
@@ -388,7 +390,7 @@ orchestrator audits.
 - **Acceptance:** `selftest/gate.sh`; `selftest/grade.sh`, reporting that `core.gates` of every step is identical
   before and after (compare `gates` rather than `core_sha256`, which contains `gate_sha`).
 
-### T038: the witness gates (Sonnet, Opus line review; after T032, T033, T034, T036, T037)
+### T039: the witness gates (Sonnet, Opus line review; after T032, T033, T034, T037, T038)
 - **Allowed:**
   - new `gate/rigor_lib/grade_witness.py`;
   - `grade_pipeline.py`, `gate/order.txt` (only `witness-tests` and `mutants-witness`, after `mutants`);
@@ -403,7 +405,7 @@ orchestrator audits.
   - `plan/backlog.md` (B27: witness half).
 - **Requirements:**
   1. `witness-tests` and `mutants-witness` exactly as in "The gate list", for roles implementer and audit. Role
-     test-author is not accepted yet: a grade with it is exit 2 "role test-author needs T040", so it can never pass
+     test-author is not accepted yet: a grade with it is exit 2 "role test-author needs T041", so it can never pass
      early.
   2. W from `witness_scope.scope` over the head layout and `git diff --name-only merge_base head` in the clone.
   3. The witness tree is assembled from the clone at H plus the bundle **snapshot**. It gets its own manifest
@@ -420,12 +422,12 @@ orchestrator audits.
      - green: a test-surface change with a strong witness;
      - green: a pure impl change with a bundle, where the witness gates are not applicable;
      - green: a witness identical to the head (0 witness actions, cold and warm counts reported).
-  8. Report the annas-c effect (information only, scratch clone in `/var/tmp/cache/T038`): an audit grade of annas-c
+  8. Report the annas-c effect (information only, scratch clone in `/var/tmp/cache/T039`): an audit grade of annas-c
      main with a bootstrap bundle from `witness.py from-commit`. Report W and the actions executed.
-- **Acceptance:** `selftest/gate.sh`, `selftest/grade.sh`, and `selftest/canaries.sh` **from `task/T039`** (the pack
-  is only green with T039 on top).
+- **Acceptance:** `selftest/gate.sh`, `selftest/grade.sh`, and `selftest/canaries.sh` **from `task/T040`** (the pack
+  is only green with T040 on top).
 
-### T039: the witness canaries (Sonnet; branch from `task/T038`; merged together with T038)
+### T040: the witness canaries (Sonnet; branch from `task/T039`; merged together with T039)
 - **Allowed:**
   - `canaries/runner.py` (`--witness`: `canaries/<id>/witness/` if present, else `canaries/_base/witness/`);
   - new `canaries/_base/witness/**` (core and util, equal to the base sources);
@@ -454,7 +456,7 @@ orchestrator audits.
   - the wall-time change of the pack reported;
   - each changed `expect.json` justified line by line.
 
-### T040: the stub check and the test-author role (Sonnet; after T038 and T039)
+### T041: the stub check and the test-author role (Sonnet; after T039 and T040)
 - **Allowed:**
   - `grade_pipeline.py`, `gate/order.txt` (`tests-stub` after `tests-san`);
   - `grade_steps.py` (`tests_gate_for` takes the role);
@@ -468,8 +470,8 @@ orchestrator audits.
   - `docs/grade.md`, `docs/witness.md`;
   - `plan/backlog.md` (close B27).
 - **Requirements:**
-  1. `tests-stub` as in Q2. Role test-author without `expected-tests.previous.json` is exit 2. The "needs T040" refusal
-     from T038 is removed.
+  1. `tests-stub` as in Q2. Role test-author without `expected-tests.previous.json` is exit 2. The "needs T041" refusal
+     from T039 is removed.
   2. In role test-author:
      - `tests-release` and `tests-san` judge presence, but not status;
      - head `mutants` is not applicable;
@@ -491,12 +493,12 @@ orchestrator audits.
 - **Acceptance:** `selftest/gate.sh`, `selftest/grade.sh`, `selftest/canaries.sh`.
 
 ### Orchestrator steps (not contributor work)
-1. After T038 and T039 merge:
+1. After T039 and T040 merge:
    - create `c-rigor-hidden` (local, private), with `annas-c/witness/` produced by `gate/tools/witness.py from-commit`
-     at annas-c main for every L2+ module, using the `impl` keys T038 put in `products/annas-c/policy.toml`;
+     at annas-c main for every L2+ module, using the `impl` keys T039 put in `products/annas-c/policy.toml`;
    - grade annas-c main once with `role = "audit"`, uncached, and record the cost.
 2. From then on, every decisive annas-c grade passes `--witness`, and the merge bot passes `--expect-witness-sha`.
-3. After T040, change the annas-c test-author task template (`A<NNN>-*-tests`) to:
+3. After T041, change the annas-c test-author task template (`A<NNN>-*-tests`) to:
    - `role = "test-author"` in the contract;
    - the witness in bundle layout in `/var/tmp/cache/A<NNN>/witness/`;
    - acceptance by a cached `rigor grade --witness` against a scratch products copy (Q1, point 1);
