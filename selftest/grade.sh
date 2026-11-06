@@ -145,7 +145,7 @@ EOT
 edit_unviable_shape() {  # most mutants of this function trip -Werror (255 -> 256 in an unsigned char)
   sed -i 's/^#endif/unsigned core_sum_ff(void);\n\n#endif/' core/core.h
   { printf '\nunsigned core_sum_ff(void) {\n    static const unsigned char table[32] = {'
-    for i in $(seq 1 32); do printf '255, '; done
+    for i in $(seq 1 32); do if [ $(( (i - 1) % 8 )) = 0 ]; then printf '\n        '; fi; printf '255, '; done
     printf '};\n    unsigned total = 0;\n    for (unsigned i = 0; i < 32; i++) {\n        total += table[i];\n    }\n    return total;\n}\n'
   } >> core/core.c
   sed -i 's/^    CHECK_EQ_I64(t, core_add(-4, 4), 0);/&\n    CHECK_EQ_I64(t, core_sum_ff(), 8160);/' core/core_test.c
@@ -160,6 +160,16 @@ EOT
   printf '#ifndef EXTRA_H\n#define EXTRA_H\nint extra_twice(int a);\n#endif\n' > core/extra.h
   printf '#include "extra.h"\n\nint extra_twice(int a) { return a + a; }\n' > core/extra.c
   printf '#include "ctest/ctest.h"\n#include "extra.h"\n\nstatic void t_twice(ctest_t *t) {\n    CHECK_EQ_I64(t, extra_twice(4), 8);\n}\n\nCTEST_SUITE("extra", { "twice", t_twice })\n' > core/extra_test.c
+}
+# Structure and mode divergence (T032): each is caught by its own gate alone.
+edit_long_function() {  # structure: a 90-line function in util (L2 allows 80)
+  { printf '\nint util_long(int n);\nint util_long(int n) {\n    int total = 0;\n'
+    for i in $(seq 1 90); do printf '    total += n + %d;\n' "$i"; done
+    printf '    return total;\n}\n'; } >> util/util.c
+}
+edit_recursion() { printf '\nint util_fact(int n);\nint util_fact(int n) { return n <= 1 ? 1 : n * util_fact(n - 1); }\n' >> util/util.c; }
+edit_mode_divergent() {  # mode-divergence: code only the san compile sees, spelled so that the text scan cannot see it
+  printf '\n#define FEATURE(x) __has_feature(x)\n#if FEATURE(address_sanitizer)\nint core_san_only(void);\n#endif\n' >> core/core.c
 }
 edit_heap_overflow() { sed -i 's/^    return ramp;/    ramp[count] = 0;\n    return ramp;/' util/util.c; }
 
@@ -179,7 +189,8 @@ bad = {g for g, s in got.items() if s == "FAIL"}
 not_run = {g for g, s in got.items() if s == "NOT_RUN"}
 # A failed build means there are no results or facts to judge: those gates are NOT_RUN (still a failure).
 # Mutation testing needs a clean tree and green tests: it is NOT_RUN after any of these failed.
-want_not_run = {"tests-release", "tests-san", "semantic-suppressions", "symbols"} if "build" in expected else set()
+want_not_run = ({"tests-release", "tests-san", "semantic-suppressions", "symbols", "structure", "mode-divergence"}
+                if "build" in expected else set())
 if expected & {"assemble", "buckfiles", "build", "tests-release", "tests-san"}:
     want_not_run.add("mutants")
 want_code = 1 if expected else 0
@@ -259,6 +270,13 @@ exec_facts_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv
 [ "$exec_facts_warm" = 0 ] || fail "warm run executed $exec_facts_warm facts actions"
 exec_mut_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["mutants"]["executed_actions"])' "$work/warm.verdict.json")"
 [ "$exec_mut_warm" = 0 ] || fail "warm run executed $exec_mut_warm mutants actions"
+for gate in structure mode-divergence; do
+  cold_n="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"][sys.argv[2]]["executed_actions"])' "$cold_verdict" "$gate")"
+  warm_n="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"][sys.argv[2]]["executed_actions"])' "$work/warm.verdict.json" "$gate")"
+  echo "  $gate actions executed: cold $cold_n, warm $warm_n"
+  [ "$warm_n" = 0 ] || fail "warm run executed $warm_n $gate actions"
+  [ "$cold_n" -gt 0 ] || fail "cold run executed no $gate actions: the nonce did not reach them"
+done
 python3 -I - "$cold_verdict" <<'EOF2' || fail "cold: the mutants gate did not mutate the modules it should"
 import json, sys
 m = json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["mutants"]
@@ -317,6 +335,10 @@ import json, sys
 u, w = (json.load(open(p)) for p in sys.argv[1:])
 b = u["metadata"]["gate_metadata"]["build"]
 print("  uncached: executed %d, cached %d" % (b["executed_actions"], b["cached_actions"]))
+for gate in ("structure", "mode-divergence"):
+    n = u["metadata"]["gate_metadata"][gate]
+    print("  uncached %s: executed %d, cached %d" % (gate, n["executed_actions"], n["cached_actions"]))
+    assert n["executed_actions"] > 0 and n["cached_actions"] == 0, (gate, n)
 assert u["core"]["uncached"] is True and w["core"]["uncached"] is False
 assert b["executed_actions"] > 0 and b["cached_actions"] == 0, b
 mu = u["metadata"]["gate_metadata"]["mutants"]
@@ -349,6 +371,10 @@ run_case weak-test mutants:survived-mutant
 run_case hollow-module mutants:no-mutants,mutants:unmutated-function
 run_case unviable-shape mutants:unviable-ratio
 run_case new-module symbols:module-not-in-policy,mutants:level-missing
+# T032: the structure and mode-divergence gates.
+run_case long-function structure:function-length
+run_case recursion structure:recursion
+run_case mode-divergent mode-divergence:mode-divergent-code
 
 # Layout coverage: the product.toml variants live beside copies of the policy and expected tests.
 for variant in excl stale; do
