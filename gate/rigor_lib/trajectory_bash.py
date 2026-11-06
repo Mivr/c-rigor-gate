@@ -41,6 +41,8 @@ _TRIM_RE = re.compile(r"(%%|%|##|#)(.*)\Z", re.DOTALL)
 
 
 _DECLARERS = ("export", "declare", "typeset", "local", "readonly")
+# variables whose value a program runs as a command (T057, R008 #10)
+_COMMAND_VAR_RE = re.compile(r"\A(?:[A-Z0-9_]*_(?:PAGER|EDITOR)|PAGER|EDITOR|VISUAL|GIT_SSH_COMMAND|GIT_SSH)\Z")
 _DECLARED_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)\Z", re.DOTALL)
 
 
@@ -76,7 +78,8 @@ def excerpt_around(raw, token):
 
 
 class Prepared:
-    __slots__ = ("cmd", "argv", "extra", "words", "group", "cwd", "inner", "wrapped", "job_dir", "job_skip", "clean_env")
+    __slots__ = ("cmd", "argv", "extra", "words", "group", "cwd", "inner", "wrapped", "job_dir", "job_skip", "clean_env",
+                 "prefix_values", "env_values")
 
     def __init__(self, cmd, argv, extra, words, cwd):
         self.cmd = cmd
@@ -90,6 +93,8 @@ class Prepared:
         self.job_dir = None   # the job directory `tools/job run` writes (`--dir`, else `$TMPDIR/jobs`)
         self.job_skip = set()  # argv index of the `--dir` value: a write target, not a read
         self.clean_env = False  # `env -i` (with no secret-looking name) emptied the environment it runs in
+        self.prefix_values = []  # (NAME, value) of the `NAME=value` words in front of the command (T057, R008 #10)
+        self.env_values = []     # (NAME, value) of the `env NAME=value` wrappers stripped in front of this argv
 
 
 class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
@@ -108,6 +113,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self.dirty = set()    # files in `files` that were changed afterwards by something we did not model
         self.unknown = set()  # files the transcript wrote with a text the audit does not know (T049, R008 #3)
         self.clones = {}      # local clones the agent made: dir -> origin no longer proven (see GitMixin)
+        self.aliases = {}     # executable path the agent made -> source basename (cp/ln/install/mv, T057 R008 #12)
         self.cwd_stack = []   # working directories to return to when a `( ... )` subshell closes
         self.own_pids = set()  # process ids the agent started (printed by tools/job run, a background command)
         self.clean_env = False  # the command being analysed runs under `env -i`
@@ -116,6 +122,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self.facts = None     # CallFacts of the Bash call being analysed (trajectory_proof, T052)
         self.grade_outputs = set()  # stdout files of grade keep runs, not written by anything else since
         self.call_outputs = set()   # the same for canary keep runs, within the current call only
+        self.cmd_env = {}     # the environment the command being analysed sees, as far as it is known (T057)
 
     # -- plumbing ----------------------------------------------------------------------------
     def add(self, rule, raw, token=""):
@@ -331,11 +338,17 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         values = {name: self.expand(word, env) for name, word in command.assigns}
         if not command.words:
             env.update(values)
-            return Prepared(command, [], [], [], here)
+            item = Prepared(command, [], [], [], here)
+            item.prefix_values = list(values.items())
+            return item
         for word in command.words:
             self._live_secrets(word, command.raw)
         words = [self.expand(word, env) for word in command.words]
         item = self._unwrapped(command, words, here, values.get("TMPDIR", env.get("TMPDIR")), 0)
+        link = item
+        while link is not None:  # CMD of `tools/job run` inherits the prefix assignments too
+            link.prefix_values = list(values.items())
+            link = link.inner
         if item.argv and cmds.name_of(item.argv[0]) in ("cd", "pushd", "popd"):
             self._change_dir(item.argv, env, command.raw)
         elif item.argv and cmds.name_of(item.argv[0]) in _DECLARERS:
@@ -377,11 +390,13 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         if job is None:
             item = Prepared(command, argv, extra, words, here)
             item.clean_env = clean
+            item.env_values = list(assigns.items())
             return item
         dir_index, cut = job
         own = argv[:cut]
         item = Prepared(command, own, extra, words[:len(words) - len(argv)] + own, here)
         item.clean_env = clean
+        item.env_values = list(assigns.items())
         if dir_index is not None:
             item.job_skip = {dir_index}
             text = own[dir_index]
@@ -419,6 +434,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             self._redirect(command, redirect)
         argv = item.argv
         self.note_output(item, argv, depth, env)
+        self.cmd_env = dict(env)
+        self.cmd_env.update(item.prefix_values + item.env_values)
+        self._assignment_values(item, raw, depth, env)
         if not argv:
             if not item.wrapped:
                 self._heredocs(item, depth, flags, data_only=True)
@@ -431,6 +449,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         if item.group in flags["obfuscated"] and name in rules.INTERPRETERS + ("eval",):
             self.add("cmd-obfuscated-exec", raw, name)
         self._command_rules(argv, raw, name)
+        self._command_strings(item, argv, name, raw, depth, env)
         data_skip = self._data_indexes(argv, name, item.group in flags["sink"])
         write_idx = self._write_targets(item, argv, raw)
         if item.job_dir is not None:
@@ -446,6 +465,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self._run_code(item, argv, name, raw, depth, env)
         self.stdin_code(item, argv, name, raw, depth, flags)
         if name == "git":
+            self.git_config_code(argv, raw, depth, env)
+            self.git_exec_strings(argv, raw, depth, env)
+            self.git_shared_store(argv, raw)
             self.note_clone(argv, len(self.hits) == hits_before)
         self.clean_env = item.clean_env
         if not item.wrapped:
@@ -498,6 +520,37 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             return UNRESOLVED not in target  # a job of this shell (`kill %1`, `kill $!`)
         return digits.isdigit() and digits in self.own_pids
 
+    def _note_alias(self, argv):
+        """`cp`/`ln`/`install`/`mv SRC DST`: if DST is later executed, it runs SRC's program (T057, R008 #12)."""
+        name = cmds.name_of(argv[0])
+        args = argv[1:]
+        if any(a in ("-t", "--target-directory") or a.startswith("--target-directory=") for a in args):
+            return  # a directory target (`cp -t DIR ...`) is R008 #17, not modelled here
+        value_opts = {"cp": ("-S", "--suffix"), "mv": ("-S",), "install": ("-m", "-o", "-g", "-S"),
+                      "ln": ("-S",)}[name]
+        pos = cmds.positionals(args, value_opts)
+        if len(pos) != 2:
+            return
+        source, target = args[pos[0]], args[pos[1]]
+        normal = self.policy.normalize(target, self.cwd)
+        if normal is not None and UNRESOLVED not in source:
+            self.aliases[normal] = cmds.name_of(source)
+
+    def program_identity(self, path_text, alias, args, raw):
+        """Command rules for the real identity of an executed file (T057, R008 #12): the basename of an interpreted
+        file or the source basename of an alias is the command name; a path through a `claude-code`/spawn directory
+        is `cmd-spawn-agent`."""
+        before = len(self.hits)
+        pseudo = alias if alias is not None else cmds.name_of(path_text)
+        if pseudo:
+            self._command_rules([pseudo] + list(args), raw, pseudo)
+        if not any(rule == "cmd-spawn-agent" for rule, _ in self.hits[before:]):
+            for part in path_text.split("/"):
+                if part in rules.SPAWN_COMMANDS or "claude-code" in part:
+                    self.add("cmd-spawn-agent", raw, part)
+                    break
+        return len(self.hits) > before  # True when the file's real identity broke a rule
+
     def _command_rules(self, argv, raw, name):
         args = argv[1:]
         if name in rules.GH_COMMANDS:
@@ -506,8 +559,13 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             self.add("cmd-spawn-agent", raw, name)
         if "--no-verify" in args:
             self.add("cmd-no-verify", raw, "--no-verify")
+        if name == "ssh-add":
+            self.add("read-ssh-material", raw, name)  # lists or loads the agent's keys (T057, R008 #9)
+        if name.startswith("git-credential"):
+            self.add("cmd-git-credential", raw, name)
         if name == "git":
             self._note_git_add(argv)
+            argv = self.effective_git_argv(argv, self.cmd_env)  # GIT_CONFIG_*, --config-env are `-c` (T057)
             found = cmds.git_hits(argv)
             self.git_taint(argv, found)
             for rule in found:
@@ -515,6 +573,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                     self.add(rule, raw, "git")
             if cmds.git_is_networked(argv) and not (cmds.git_remote_ok(argv) or self.git_local_remote(argv)):
                 self.add("cmd-git-network", raw, "git")
+        if name in ("cp", "ln", "install", "mv"):
+            self._note_alias(argv)
         if cmds.install_hit(argv):
             self.add("cmd-install", raw, name)
         if cmds.env_dump(argv):
@@ -542,6 +602,60 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             skip.update(i for i, arg in enumerate(argv) if arg.startswith("--message=") or
                         re.fullmatch(r"-[a-zA-Z]+m.+", arg))
         return skip
+
+    # -- assignment values (T057, R008 #10) -------------------------------------------------------
+    def _assignment_values(self, item, raw, depth, env):
+        """Every value a program can consume: `NAME=value CMD`, `env NAME=value`, `export`/`declare`/`local NAME=value`
+        (a bare `NAME=value` is a shell variable: judged where it is used). Each is read-checked as a path list
+        (`PYTHONPATH=a:b`, `GIT_DIR=...`, `BASH_ENV=...`); the value of a variable a program runs as a command
+        (`*_PAGER`, `*_EDITOR`, `GIT_SSH_COMMAND`, ...) is audited as shell. The prefix values of a `tools/job run` CMD
+        are audited once, on the tools/job item."""
+        prefix = item.prefix_values if item.argv and not item.wrapped else []
+        pairs = prefix + item.env_values
+        if item.argv and cmds.name_of(item.argv[0]) in _DECLARERS:
+            pairs += list(_declared(item.argv[1:]).items())
+        for name, value in pairs:
+            if _COMMAND_VAR_RE.match(name) and value.strip():
+                self.bash(value, depth + 1, env)
+            if name == "PS4" and value.strip():  # PS4 is re-expanded at use (set -x); its $(...) run (R008 #11)
+                for sub in shell.body_expansions(value)[0]:
+                    self.bash(sub, depth + 1, env)
+            self.value_reads(value, raw)
+
+    # -- command strings run by wrappers and builtins (T057, R008 #11) ------------------------------
+    def _command_strings(self, item, argv, name, raw, depth, env):
+        """A command handed as a string to a wrapper or builtin runs as shell: `script -c`, `flock -c`, `su -c`,
+        `trap HANDLER`, `parallel`, awk `system("...")` and sed `e command`. (coproc is a keyword, already
+        stripped; git rebase -x / bisect run / submodule foreach are in git_exec_strings.)"""
+        args = argv[1:]
+        if item.wrapped:
+            return
+        if name in ("script", "flock", "su"):
+            code = cmds.opt_value(args, ("-c", "--command"))
+            if code is not None:
+                self.bash(code, depth + 1, env)
+        elif name == "trap" and args and args[0] not in ("-", "", "-p", "-l", "--"):
+            self.bash(args[0], depth + 1, env)
+        elif name == "parallel":
+            for code in cmds.parallel_commands(args):
+                if code.strip():
+                    self.bash(code, depth + 1, env)
+        elif name in ("awk", "gawk", "mawk", "nawk"):
+            for code in cmds.awk_system_calls(argv):
+                self.bash(code, depth + 1, env)
+        elif name in ("sed", "gsed"):
+            for code in cmds.sed_exec_commands(argv):
+                self.bash(code, depth + 1, env)
+
+    def value_reads(self, value, raw):
+        """Read-check a value that names paths (a `:`-separated list), without counting it as a read of a file."""
+        if is_url(value):
+            return
+        saved = set(self.read_set)
+        for piece in value.split(":") if ":" in value else [value]:
+            if piece:
+                self.read_word(piece, raw, "")
+        self.read_set = saved
 
     # -- reads -------------------------------------------------------------------------------
     def _read_words(self, item, argv, raw, name, skip):
@@ -592,7 +706,20 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                     self.add(rule, raw, token)
                 return
 
+    def socket_path(self, text, raw):
+        """Rule `cmd-network` for bash's `/dev/tcp/HOST/PORT` and `/dev/udp/...` (T060, R008 #15): a redirect or path
+        argument there opens a connection. An unknown host, or one not on the allowlist (loopback is fine, as for the
+        network tools), is `cmd-network`."""
+        normal = self.policy.normalize(text, self.cwd) if UNRESOLVED not in text else None
+        host = cmds.socket_host(normal if normal is not None else text)
+        if host is not None and (UNRESOLVED in host or not cmds.host_allowed(host)):
+            self.add("cmd-network", raw, text.replace(UNRESOLVED, "$("))
+        return host is not None
+
     def read_word(self, text, raw, name="", force=False):
+        self.socket_path(text, raw)
+        if is_url(text):
+            self._url_forbidden(text, raw)  # hidden-repo / clean-room checks on a URL path (T057, R008 #14)
         candidates = [text]
         eq = re.match(r"(?:-[^=\s]*|of|if|file|path)=(.*)\Z", text, re.DOTALL)
         if eq is not None and not text.startswith(_NON_PATH_OPTS):
@@ -605,6 +732,17 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                 self._read_candidate(variant, raw, name, force)
         if _CODE_LIKE.search(text):
             self.scan_fragments(text, raw)
+
+    def _url_forbidden(self, text, raw):
+        """A URL whose host or path names a `*-hidden` repo or `annas-mcp` (clean room) is a forbidden fetch."""
+        from urllib.parse import urlsplit
+        parts = urlsplit(text)
+        probe = "/" + (parts.hostname or "") + (parts.path or "")
+        for pattern, rule in _FRAGMENTS:
+            if rule in ("read-hidden-repo", "read-clean-room"):
+                match = pattern.search(probe)
+                if match is not None:
+                    self.add(rule, raw, match.group(0).strip(" '\"=:/"))
 
     def _read_candidate(self, text, raw, name, force=False):
         if text.startswith(UNRESOLVED) and name in _READERS and not force:
@@ -721,6 +859,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             self.dirty.discard(normal)
 
     def write(self, text, op, raw):
+        if self.socket_path(text, raw):
+            return  # a socket, not a file: judged as network only
         if UNRESOLVED in text:
             self._unresolved_write(text, raw)
             return
