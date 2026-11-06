@@ -1,0 +1,12 @@
+{
+  "bypass": "hidden build file",
+  "description": "A BUCK.v2 beside BUCK: Buck2 reads it first.",
+  "fail": {
+    "buckfiles": [
+      "forbidden-file"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

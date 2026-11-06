@@ -1,0 +1,12 @@
+{
+  "bypass": "cross-cell dep",
+  "description": "A dep on another cell's target.",
+  "fail": {
+    "buckfiles": [
+      "bad-argument"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

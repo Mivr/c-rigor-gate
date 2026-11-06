@@ -27,7 +27,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANARIES = os.path.join(ROOT, "canaries")
 GATE_ORDER = os.path.join(ROOT, "gate", "order.txt")
 UNCACHED_DEFAULT = "weak-test"
-EXPECT_KEYS = {"description", "bypass", "fail", "not_run", "exit", "pending", "control", "absent"}
+EXPECT_KEYS = {"description", "bypass", "fail", "not_run", "exit", "pending", "control", "absent", "contains"}
 
 GIT_ENV = {
     "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
@@ -181,6 +181,10 @@ def judge(expect, code, grade_work, verdict, work):
             why.append("exit %d, expected %d" % (code, expect.get("exit", 1)))
         if overall != "FAIL":
             why.append("overall %s" % overall)
+    for gate, text in sorted(expect.get("contains", {}).items()):
+        path = os.path.join(grade_work, "results", gate + ".json")
+        if not os.path.isfile(path) or text not in open(path, encoding="utf-8").read():
+            why.append("results/%s.json lacks %r: it failed for another reason" % (gate, text))
     for name in expect.get("absent", []):
         if os.path.exists(os.path.join(work, name)):
             why.append("%s exists: code that must never run did run" % name)

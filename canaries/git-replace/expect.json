@@ -1,0 +1,9 @@
+{
+  "bypass": "git replace",
+  "description": "refs/replace rewrites the parent of an out-of-contract commit.",
+  "fail": {
+    "contract": [
+      "outside-allowed"
+    ]
+  }
+}

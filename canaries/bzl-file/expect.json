@@ -1,0 +1,12 @@
+{
+  "bypass": "hidden build file",
+  "description": "A .bzl file in the product.",
+  "fail": {
+    "buckfiles": [
+      "forbidden-file"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

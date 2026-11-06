@@ -1,0 +1,9 @@
+{
+  "bypass": "pragma behind a line splice",
+  "description": "The same pragma with a line splice inside the directive: the text scan cannot see it.",
+  "fail": {
+    "semantic-suppressions": [
+      "pragma"
+    ]
+  }
+}

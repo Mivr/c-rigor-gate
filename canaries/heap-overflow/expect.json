@@ -1,0 +1,12 @@
+{
+  "bypass": "heap overflow seen only in san",
+  "description": "A one-element heap overflow: invisible in release, fatal under ASan.",
+  "fail": {
+    "tests-san": [
+      "test-not-pass"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

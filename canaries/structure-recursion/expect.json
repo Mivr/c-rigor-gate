@@ -1,0 +1,10 @@
+{
+  "bypass": "recursion",
+  "description": "Self-recursion in an L3 module (B1).",
+  "fail": {
+    "structure": [
+      "recursion"
+    ]
+  },
+  "pending": "T011"
+}

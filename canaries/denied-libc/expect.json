@@ -1,0 +1,9 @@
+{
+  "bypass": "denied libc symbol",
+  "description": "A product function calls kill().",
+  "fail": {
+    "symbols": [
+      "denied-symbol"
+    ]
+  }
+}
