@@ -325,7 +325,12 @@ command breaks exactly the rules the bare command breaks).
   text unknown: a redirect of command output (`python3 gen.py > f`, `sed '...' a > f`, `base64 -d > f`), `cp`, `mv`,
   `ln`, `tee` in a pipe, `curl -o`. When the file is run (`bash f`, `sh f`, `python3 f`, `./f`, `source f`,
   `bash < f`, `cat f | sh`), known text is audited as code and unknown text is `cmd-obfuscated-exec` (block).
-  `/dev/stdin`, `/dev/fd/0` and `/proc/self/fd/0` as the script are stdin, like `-` (a here-document is then code).
+  `/dev/stdin`, `/dev/fd/0` and `/proc/self/fd/0` as the script are stdin, like `-` (a here-document is then code). A shell
+  asked only to **check syntax** (`bash -n f`, `sh --noexec f`, `-o noexec`) runs nothing, so an unknown-content file
+  there is not `cmd-obfuscated-exec` (T052, ruling 6). A file **inside the worktree that git tracks** (on disk, or that
+  the agent staged with `git add` in this transcript) is the product's own code, reviewed in the merge diff: running it
+  is never `cmd-obfuscated-exec`, even when a writer the audit could not see rewrote it (T052, ruling 7). The block
+  stays for unknown-content files outside the worktree (scratch, cache) and for untracked ones.
 * **Code on an interpreter's stdin.** An interpreter that reads its code from stdin (`bash`, `sh -s`, `python3`,
   `python3 -`, `/dev/stdin`, ...) gets, in this order: a here-document on it; a here-string (`bash <<<'...'`) or
   `< f` on it; else the output of the pipeline stage just before it. Known text is audited as code in the reader's

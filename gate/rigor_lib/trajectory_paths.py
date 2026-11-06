@@ -4,6 +4,7 @@ import fnmatch
 import os
 import posixpath
 import re
+import subprocess
 
 from rigor_lib import trajectory_rules as rules
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
@@ -65,6 +66,7 @@ class PathPolicy:
         self.home = collapse(home)
         self.exempt = set()   # persisted tool-output files announced by the harness
         self.made = []        # scratch dirs a gate script the agent ran printed as its own (see Audit.own_dir)
+        self._tracked = None  # worktree paths git tracks on disk, read once (T052, ruling 7; None until needed)
 
     # -- resolving ---------------------------------------------------------------------------
     def normalize(self, text, cwd):
@@ -92,6 +94,20 @@ class PathPolicy:
 
     def real(self, path):
         return os.path.realpath(path)
+
+    def is_tracked(self, rel):
+        """True when `rel` (a worktree-relative path) is a file git tracks in the worktree on disk. Read once with
+        `git ls-files`; any failure (no repo, no git, a fixture worktree that does not exist) is an empty set, so a
+        file is then treated as untracked. Like the symlink resolution, this reads the disk the audit runs on."""
+        if self._tracked is None:
+            self._tracked = set()
+            try:
+                out = subprocess.run(["git", "-C", self.worktree, "ls-files", "-z"], stdin=subprocess.DEVNULL,
+                                     capture_output=True, timeout=30, check=True)
+                self._tracked = set(out.stdout.decode("utf-8", "surrogateescape").split("\0"))
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return rel in self._tracked
 
     # -- membership --------------------------------------------------------------------------
     @staticmethod

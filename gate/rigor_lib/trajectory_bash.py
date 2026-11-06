@@ -111,6 +111,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self.cwd_stack = []   # working directories to return to when a `( ... )` subshell closes
         self.own_pids = set()  # process ids the agent started (printed by tools/job run, a background command)
         self.clean_env = False  # the command being analysed runs under `env -i`
+        self.added_all = False  # the agent staged the whole worktree (`git add -A`/`.`/`-u`): all of it is tracked
+        self.added = set()    # worktree paths the agent staged with `git add PATH` (T052, ruling 7)
         self.facts = None     # CallFacts of the Bash call being analysed (trajectory_proof, T052)
         self.grade_outputs = set()  # stdout files of grade keep runs, not written by anything else since
         self.call_outputs = set()   # the same for canary keep runs, within the current call only
@@ -471,6 +473,25 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             if foreign or not targets:  # no target: `... | xargs kill`, the pids come from another command
                 self.add("kill-foreign", raw, name if not foreign or UNRESOLVED in foreign[0] else foreign[0])
 
+    def _note_git_add(self, argv):
+        """`git add` makes its worktree paths tracked (reviewed in the diff at merge), so running them later is not
+        obfuscated even with content the audit could not see (T052, ruling 7)."""
+        _, sub, sub_args = cmds.git_parts(argv)
+        if sub not in ("add", "stage"):
+            return
+        for arg in sub_args:
+            if arg in ("-A", "--all", "-u", "--update", ".", ":/", "*") or arg.startswith(":/"):
+                self.added_all = True
+            elif not arg.startswith("-"):
+                rel = self.policy.relative_to_worktree(self.policy.normalize(arg, self.cwd) or "")
+                if rel is not None:
+                    self.added.add(rel)
+
+    def worktree_tracked(self, normal):
+        """True when `normal` is a worktree file git tracks on disk or the agent staged in this transcript."""
+        rel = self.policy.relative_to_worktree(normal)
+        return rel is not None and (self.added_all or rel in self.added or self.policy.is_tracked(rel))
+
     def _own_target(self, target):
         digits = target.lstrip("-")
         if target.startswith("%"):
@@ -486,6 +507,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         if "--no-verify" in args:
             self.add("cmd-no-verify", raw, "--no-verify")
         if name == "git":
+            self._note_git_add(argv)
             found = cmds.git_hits(argv)
             self.git_taint(argv, found)
             for rule in found:

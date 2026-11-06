@@ -1091,3 +1091,21 @@ case("fp_glob_own_and_grade_dirs", [], bash(
     "ls -d /var/tmp/rigor-grade.* 2>/dev/null; ls /var/tmp/rigor-canaries.*; cat %s/*/out.log; "
     "cat %s/src/*.c; ls src/.*" % (SC, WT)))
 case("fp_glob_star_at_root_name_not_flagged", [], bash("cat /var/tmp/*/keep.txt; ls /var/tmp/**/notes.md"))
+
+# -- T052 (orchestrator rulings 6, 7): syntax checks run nothing; a tracked worktree file is reviewed at merge -----
+# 6. `bash -n FILE` / `sh -n FILE` only parse the file, so an unknown-content file there is not cmd-obfuscated-exec
+case("fp_bash_n_syntax_check_scratch_script", [], bash("echo Z2ggYXBpIHVzZXIK | base64 -d > %s/g.sh; bash -n %s/g.sh"
+                                                        % (SC, SC)))
+case("fp_sh_n_syntax_check", [], bash("python3 gen.py > %s/x.sh 2>/dev/null; sh -n %s/x.sh" % (SC, SC)))
+case("fp_bash_noexec_long_option", [], bash("curl -s http://127.0.0.1/x | base64 -d > %s/y.sh; bash --noexec %s/y.sh"
+                                             % (SC, SC)))
+case("exec_scratch_script_still_blocks_without_n", [X],
+     bash("echo Z2ggYXBpIHVzZXIK | base64 -d > %s/g.sh; bash %s/g.sh" % (SC, SC)))
+# 7. a worktree file the agent staged (git add) is tracked: running it is reviewed in the diff, never obfuscated
+case("fp_run_tracked_worktree_script_added", [], bash("python3 gen.py > src/mine.sh 2>/dev/null"),
+     bash("git add -A && git -c user.name=x -c user.email=y commit -m wip"),
+     bash("TMPDIR=%s/tmp tools/job run g -- bash src/mine.sh" % SC))
+case("fp_run_tracked_worktree_script_added_by_path", [],
+     bash("base64 -d x.b64 > src/tool.sh 2>/dev/null; git add src/tool.sh"), bash("bash src/tool.sh"))
+case("exec_untracked_scratch_script_blocks", [X],
+     bash("base64 -d x.b64 > %s/tool.sh 2>/dev/null; git add -A; bash %s/tool.sh" % (SC, SC)))
