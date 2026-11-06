@@ -10,7 +10,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import facts_policy, grade_mutants, grade_pipeline, grade_policy, verdict
+from rigor_lib import facts_policy, grade_context, grade_mutants, grade_pipeline, grade_policy, verdict
 from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase
 
@@ -218,6 +218,17 @@ class Levels(TempDirTestCase):
             out = self.tmp / (product + ".toml")
             out.write_text(grade_policy.symbol_policy_text(path), encoding="utf-8")
             facts_policy.load_policy(str(out))
+
+
+class WorkDirectory(TempDirTestCase):
+    def test_what_an_earlier_grading_left_in_the_work_directory_is_removed(self):
+        work = self.sub("work")
+        for name in ("facts", "mutants-reports", "tree"):
+            (work / name).mkdir()
+            (work / name / "stale.json").write_text("{}", encoding="utf-8")
+        with mock.patch("rigor_lib.grade_context.kill_daemon"):
+            grade_context.prepare_work(str(work))
+        self.assertEqual(sorted(p.name for p in work.iterdir()), ["home", "results", "tmp"])
 
 
 class Gate(TempDirTestCase):

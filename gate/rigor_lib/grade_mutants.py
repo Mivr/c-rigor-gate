@@ -194,6 +194,8 @@ def build_reports(g, modules):
     """Build every c_mutants target; copy the reports. Returns (findings, metadata, built indexes)."""
     labels = [target_label(i, m) for i, m in enumerate(modules)]
     report = os.path.join(g.work, "build-report-mutants.json")
+    if os.path.lexists(report):
+        os.unlink(report)  # never read a report an earlier run left
     flags = ["--no-remote-cache"] if g.args.uncached else []
     code, _, err = grade_build.run_buck(g.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
                                                  "--build-report", report] + flags + labels)
