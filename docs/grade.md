@@ -35,8 +35,9 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 - **Levels.** `products/<p>/policy.toml` (gate-owned) has `level = "L1".."L5"` per module table. Every `c_library`
   and `c_binary` of the product needs one (`level-missing`); a `level` on a test is `level-on-test`. L1: not
   mutated. L2: mutated, survivors are info. L3, L4, L5: zero survivors (and the per-function rules of
-  `docs/mutate.md`). A `c_binary` cannot be mutated: above L1 it is `unmutatable-module`. The `symbols` gates read
-  the same file without the `level` keys (`grade_policy.py` writes that copy; every other key is still checked).
+  `docs/mutate.md`). A `c_binary` cannot be mutated: above L1 it is `unmutatable-module`. The `symbols` and
+  `semantic-suppressions` gates read the same file whole (T055): the symbols gate uses the `level` to arm its
+  `exports` check (an L3 module without an `exports` list is `exports-missing`, an error).
 - **Nothing mutated is a failure.** No module at L2 or above is `no-mutated-modules`; a module whose sources
   produce no mutant at all is `no-mutants` (also inside `rigor mutants`); a module without tests is
   `module-without-tests`; a build that does not produce a report is `mutants-build-failed`.

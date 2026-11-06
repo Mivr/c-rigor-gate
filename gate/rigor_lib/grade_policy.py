@@ -1,14 +1,13 @@
-"""`products/<p>/policy.toml` as `rigor grade` reads it: one gate-owned file, two readers.
+"""`products/<p>/policy.toml` as `rigor grade` reads it: one gate-owned file, read whole by every consumer.
 
-The symbol and semantic-suppression gates (`facts_policy`) know `allow`, `deny_exempt` and
-`allow_builtins` per module. The mutants gate adds `level = "L1".."L5"` to the same module tables:
+The symbol and semantic-suppression gates read it with `facts_policy` (`allow`, `deny_exempt`, `allow_builtins`,
+`exports` and `level` per module; the symbols gate needs `level` to arm the `exports` check, T055). The mutants gate
+reads only the module levels, `level = "L1".."L5"`:
 
     [module."//core:core"]
     level = "L3"                 # L1: not mutated; L2: survivors are reported; L3..L5: zero survivors
     allow = ["memcpy"]
 
-`facts_policy` rejects keys it does not know, so it is given a copy without `level` (written into the
-work directory by `symbol_policy_path`); every other key is kept, so a typo is still rejected there.
 Any defect in the file is exit 2, as for the other gate-owned files.
 """
 
@@ -88,13 +87,3 @@ def symbol_policy_text(path):
         else:
             tables.append(_table(_key(name), value))
     return "\n".join(tables)
-
-
-def symbol_policy_path(g):
-    """Path of the copy of the policy for `facts_policy`; written once per grading."""
-    target = os.path.join(g.work, "tmp", "symbol-policy.toml")
-    if not os.path.isfile(target):
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "xb") as handle:
-            handle.write(symbol_policy_text(policy_path(g)).encode("utf-8"))
-    return target

@@ -123,6 +123,13 @@ with the same `product.toml` variant. The expectation is exact (grade.sh only ch
 The runner also ports grade.sh's leaked-daemon check (`find_daemons`): after each canary, a process whose working
 directory is under the canary's scratch dir makes that canary a miss.
 
+## Canary added by T055
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `exports-missing-l3` | a new L3 module whose policy table has no `exports` list | `symbols`: exports-missing | none |
+
+Its `policy.toml` is the `_base` policy plus L3 tables for `//core:extra` (no `exports`) and `//core:extra_test`.
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.

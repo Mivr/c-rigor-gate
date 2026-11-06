@@ -68,9 +68,8 @@ def unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes)
 def export_findings(facts, module):
     """The exports policy (T033, R003 G7): what a module defines against its gate-owned `exports` list.
 
-    L1 is exempt. A module whose table has neither `level` nor `exports` is not checked (a legacy table;
-    `rigor grade` hands this gate a policy copy without `level`, so `exports` is what arms the check
-    there). Any `exports` key, or a declared level above L1, arms it; with no level declared the level is L3.
+    L1 is exempt. A module whose table has neither `level` nor `exports` is not checked (a legacy table).
+    Any `exports` key, or a declared level above L1, arms it; with no level declared the level is L3.
     """
     level = module.level or "L3"
     if level == "L1" or (module.level is None and module.exports is None):
