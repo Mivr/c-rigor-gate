@@ -44,12 +44,26 @@ def result_targets(tree):
     return 0, labels, err
 
 
-def executed_actions(tree):
-    """Number of actions the last Buck2 command executed (cache hits are not listed)."""
+def action_counts(tree):
+    """(executed, cached) action counts of the last Buck2 command, from `log what-ran`.
+
+    Column 3 is the executor: `cache` for an action-cache hit, otherwise where it really ran.
+    """
     code, out, err = run_buck(tree, ["log", "what-ran"])
     if code != 0:
         raise InternalError("buck2 log what-ran failed: %s" % err.strip()[-500:])
-    return sum(1 for line in out.splitlines() if line.strip() and not line.startswith("Showing"))
+    executed = cached = 0
+    for line in out.splitlines():
+        if not line.strip() or line.startswith("Showing"):
+            continue
+        fields = line.split("\t")
+        if len(fields) < 4:
+            raise InternalError("odd what-ran line: %r" % line)
+        if fields[2] == "cache":
+            cached += 1
+        else:
+            executed += 1
+    return executed, cached
 
 
 def _read_report(path):
@@ -99,7 +113,8 @@ def build_mode(g, mode, labels):
         os.unlink(report)
     code, _, err = run_buck(g.tree, ["build", "--target-platforms", "toolchains//:linux_" + mode,
                                      "--keep-going", "--build-report", report] + labels)
-    metadata = {"executed_actions": executed_actions(g.tree), "exit_code": code}
+    executed, cached = action_counts(g.tree)
+    metadata = {"executed_actions": executed, "cached_actions": cached, "exit_code": code}
     out_dir = os.path.join(g.test_results, mode)
     found = collect_mode(g.tree, mode, labels, report, out_dir)
     if code != 0 and not found:
