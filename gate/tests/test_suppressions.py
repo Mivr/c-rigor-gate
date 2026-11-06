@@ -452,13 +452,13 @@ class SuppressionErrorTests(SuppressionCase):
 class TreeScanTests(SuppressionCase):
     """The grade-time scan of every graded file at head (T054, R001 R5)."""
 
-    def run_scan(self, head, graded, approvals_dir=None):
+    def run_scan(self, head, graded, base=None):
         from argparse import Namespace
         from rigor_lib import grade_tree, suppressions
         entries = [e for e in grade_tree.list_tree(str(self.repo.root), head)
                    if e.path.decode() in graded]
-        args = Namespace(repo=str(self.repo.root), base=self.base, head=head,
-                         approvals=approvals_dir, allowed_signers=None)
+        args = Namespace(repo=str(self.repo.root), base=base or self.base, head=head,
+                         approvals=None, allowed_signers=None)
         return suppressions.run(args, entries)
 
     def triples_of(self, result):
@@ -466,13 +466,12 @@ class TreeScanTests(SuppressionCase):
 
     def test_ancestor_hit_is_reported_with_the_tree_rule(self):
         self.repo.write("src/a.c", "int a;\nint b; // NOLINT\nint c;\n")
-        old = self.repo.commit("ungraded ancestor")
+        graded_base = self.repo.commit("ungraded ancestor")
         self.repo.write("README.md", "changed\n")
         head = self.repo.commit("work")
-        result = self.run_scan(head, {"src/a.c"})
+        result = self.run_scan(head, {"src/a.c"}, base=graded_base)
         self.assertEqual(self.triples_of(result),
                          [("forbidden-pattern-in-tree", "src/a.c", 2, "nolint")])
-        self.assertNotEqual(old, head)
 
     def test_hit_in_the_diff_is_reported_once_with_the_diff_rule(self):
         self.repo.write("src/a.c", "int a;\nint b; // NOLINT\n")
@@ -482,17 +481,17 @@ class TreeScanTests(SuppressionCase):
 
     def test_files_the_layout_does_not_grade_are_not_scanned(self):
         self.repo.write("src/a.c", "int a; // NOLINT\n")
-        self.repo.commit("ungraded ancestor")
+        graded_base = self.repo.commit("ungraded ancestor")
         self.repo.write("README.md", "changed\n")
         head = self.repo.commit("work")
-        self.assertEqual(self.run_scan(head, set()).findings, [])
+        self.assertEqual(self.run_scan(head, set(), base=graded_base).findings, [])
 
     def test_approved_ancestor_hit_is_not_a_finding(self):
         signer = Signer(self.tmp / "keys")
         allowed = signer.write_allowed_signers(self.tmp / "allowed_signers")
         approvals_dir = self.sub("approvals")
         self.repo.write("src/a.c", "int a;\nint b; // NOLINT\n")
-        self.repo.commit("ungraded ancestor")
+        graded_base = self.repo.commit("ungraded ancestor")
         self.repo.write("README.md", "changed\n")
         head = self.repo.commit("work")
         outcome = run_rigor(["approve", "--kind", "suppression", "--scope",
@@ -503,7 +502,7 @@ class TreeScanTests(SuppressionCase):
         from rigor_lib import grade_tree, suppressions
         entries = [e for e in grade_tree.list_tree(str(self.repo.root), head)
                    if e.path == b"src/a.c"]
-        result = suppressions.run(Namespace(repo=str(self.repo.root), base=self.base, head=head,
+        result = suppressions.run(Namespace(repo=str(self.repo.root), base=graded_base, head=head,
                                             approvals=approvals_dir, allowed_signers=allowed), entries)
         self.assertEqual(result.findings, [])
         self.assertEqual(len(result.metadata["approvals_used"]), 1)
