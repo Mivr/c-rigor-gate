@@ -1,0 +1,12 @@
+{
+  "absent": [
+    "ran"
+  ],
+  "bypass": "product-supplied build tool",
+  "description": "The product ships its own tools/buck2; it must never run and is outside the contract.",
+  "fail": {
+    "contract": [
+      "outside-allowed"
+    ]
+  }
+}

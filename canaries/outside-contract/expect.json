@@ -1,0 +1,9 @@
+{
+  "bypass": "files outside the contract",
+  "description": "A file outside the task contract's allowed paths.",
+  "fail": {
+    "contract": [
+      "outside-allowed"
+    ]
+  }
+}

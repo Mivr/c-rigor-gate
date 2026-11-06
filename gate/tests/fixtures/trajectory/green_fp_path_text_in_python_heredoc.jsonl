@@ -1,0 +1,2 @@
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_001", "name": "Bash", "input": {"command": "python3 - <<'EOF'\n# never read /var/tmp/.config or ~/.ssh\nprint('docs mention /var/tmp/.config, annas-mcp and foo-hidden')\ns = open('src/a.c').read()\nEOF"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_001", "content": "ok"}]}}

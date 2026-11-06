@@ -1,0 +1,13 @@
+load("@gate//rules:c.bzl", "c_library", "c_test")
+
+c_library(
+    name = "util",
+    srcs = ["util.c"],
+    headers = ["util.h"],
+    deps = ["//core:core"],
+    visibility = ["PUBLIC"],
+)
+
+c_test(name = "util_test", srcs = ["util_test.c"], deps = [":util"])
+
+c_test(name = "core_test", srcs = ["util_core_test.c"], deps = [":util", "//core:core"])

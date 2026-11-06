@@ -1,0 +1,10 @@
+{
+  "bypass": "function lost by the mutant generator",
+  "description": "A function with a trailing attribute and no test: the mutation generator drops it silently (B19).",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  },
+  "pending": "T017"
+}
