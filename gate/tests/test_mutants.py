@@ -37,8 +37,8 @@ def mutant(number, function="f", operator="relational", status="ok", digest=None
 def report(mutants, functions=("f",), baseline=PASS, original=BASE, label=LABEL, tests=("t",), skipped=()):
     return {
         "schema": 1, "label": label, "tests": list(tests),
-        "sources": [{"file": "m/a.c", "sha256": "0" * 64, "functions": [{"name": n, "line": 1} for n in functions],
-                     "skipped": list(skipped),
+        "sources": [{"file": "m/a.c", "sha256": "0" * 64, "definitions": len(functions) + len(skipped),
+                     "functions": [{"name": n, "line": 1} for n in functions], "skipped": list(skipped),
                      "baseline": {"status": "ok", "hash": BASE}, "original": {"status": "ok", "hash": original}}],
         "baseline_runs": {t: baseline for t in tests}, "mutants": mutants,
     }
@@ -124,14 +124,15 @@ class MutantsTest(TempDirTestCase):
 
     # -- red: blind generator ----------------------------------------------------------------
     def test_a_generator_that_found_no_mutants_fails(self):
-        self.fails_with(report([]), "no-mutants")
+        self.fails_with(report([]), "no-mutants", "unaccounted-function")
 
     def test_a_source_with_functions_but_no_mutants_fails_even_if_others_have_some(self):
         document = report([mutant(1)])
-        document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "functions": [{"name": "g", "line": 1}],
+        document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "definitions": 1,
+                                    "functions": [{"name": "g", "line": 1}],
                                     "skipped": [], "baseline": {"status": "ok", "hash": BASE},
                                     "original": {"status": "ok", "hash": BASE}})
-        self.fails_with(document, "no-mutants")
+        self.fails_with(document, "no-mutants", "unaccounted-function")
 
     def test_a_module_that_has_no_mutants_at_all_fails_even_without_functions(self):
         # T008: a gate that silently mutates nothing must fail. A pure-data module is L1, by policy.
@@ -140,10 +141,58 @@ class MutantsTest(TempDirTestCase):
 
     def test_a_module_whose_every_source_is_empty_fails_even_if_a_second_report_has_mutants(self):
         document = report([], functions=())
-        document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "functions": [],
+        document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "definitions": 0,
+                                    "functions": [],
                                     "skipped": [], "baseline": {"status": "ok", "hash": BASE},
                                     "original": {"status": "ok", "hash": BASE}})
         self.fails_with(document, "no-mutants")
+
+    # -- B19: every function definition is accounted for (the count comes from the generator's own AST audit)
+    def test_a_function_the_generator_lost_fails_even_if_other_functions_have_mutants(self):
+        document = report([mutant(1)])
+        document["sources"][0]["definitions"] = 2  # the audit saw two definitions, the lists name one
+        result = self.fails_with(document, "unaccounted-function")
+        self.assertEqual(result["findings"][0]["problems"], {"listed": 1})
+        self.write_policy("L2")
+        outcome, _ = self.grade()
+        self.assertExit(outcome, 1)  # not a matter of level
+
+    def test_a_function_with_neither_a_mutant_nor_a_reason_fails(self):
+        result = self.fails_with(report([mutant(1)], functions=("f", "g")), "unaccounted-function")
+        self.assertEqual(result["findings"][0]["problems"], {"no mutant and no reason": ["g"]})
+
+    def test_a_function_with_the_reason_no_mutable_token_is_accounted_for_and_reported_as_info(self):
+        document = report([mutant(1)], functions=("f", "g"))
+        document["sources"][0]["functions"][1]["reason"] = "no-mutable-token"
+        self.put(document)
+        outcome, result = self.grade()
+        self.assertExit(outcome, 0)
+        self.assertEqual([(f["rule"], f["severity"], f["function"]) for f in result["findings"]],
+                         [("no-mutable-token", "info", "g")])
+
+    def test_a_reason_for_a_function_that_has_mutants_is_a_lie(self):
+        document = report([mutant(1)])
+        document["sources"][0]["functions"][0]["reason"] = "no-mutable-token"
+        self.fails_with(document, "unaccounted-function")
+
+    def test_a_mutant_of_a_function_nobody_listed_fails(self):
+        result = self.fails_with(report([mutant(1), mutant(2, function="ghost")]), "unaccounted-function")
+        self.assertEqual(result["findings"][0]["problems"], {"mutants of unlisted functions": ["ghost"]})
+
+    def test_a_function_listed_twice_or_listed_and_skipped_fails(self):
+        self.fails_with(report([mutant(1)], functions=("f", "f")), "unaccounted-function")
+        both = [{"name": "f", "file": "m/a.c", "reason": "macro"}]
+        self.fails_with(report([mutant(1)], skipped=both), "unaccounted-function", "unmutated-function")
+
+    def test_a_report_without_the_count_or_with_a_bad_function_entry_is_exit_2(self):
+        for tamper in (lambda s: s.pop("definitions"), lambda s: s.update(definitions="1"),
+                       lambda s: s["functions"][0].update(reason="why not"),
+                       lambda s: s["functions"][0].update(extra=1)):
+            document = report([mutant(1)])
+            tamper(document["sources"][0])
+            self.put(document)
+            outcome, _ = self.grade()
+            self.assertExit(outcome, 2)
 
     # -- unviable-ratio (B11): code shaped so that mutants do not compile escapes mutation ------
     def unviable_report(self, unviable, total):
