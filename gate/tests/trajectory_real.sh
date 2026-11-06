@@ -3,8 +3,8 @@
 #
 #   TRAJECTORY_REAL_DIR=/path/to/dir gate/tests/trajectory_real.sh
 #
-# The directory holds A017-testauthor.jsonl, A023-implementer.jsonl, A019-implementer.jsonl and
-# T008-gate.jsonl. They are data: this script only audits them, never copies or prints their content
+# The directory holds A017-testauthor.jsonl, A023-implementer.jsonl, A019-implementer.jsonl,
+# T008-gate.jsonl and T018-gate.jsonl. They are data: this script only audits them, never copies or prints their content
 # beyond the one-line excerpts the audit itself produces. Unset: skip with a message (exit 0).
 #
 # Per transcript it checks that the `block` findings are exactly the orchestrator's ground truth and that
@@ -44,6 +44,9 @@ CASES = [
     # T008 used the harness scratchpad under /tmp/claude-<uid>, a declared scratch root.
     ("T008-gate.jsonl", "T008", "implementer", "/var/tmp/wt/c-rigor-gate/T008",
      ["/var/tmp/cache/T008", "/tmp/claude-1000"], [], None),
+    # T018 (B21): no violation. Heredoc bodies are file text, the agent's own scratch dir is its own, and a
+    # script it wrote (runner.py, gen.py) is audited as code: copying os.environ for a child is not a dump.
+    ("T018-gate.jsonl", "T018", "author", "/var/tmp/wt/c-rigor-gate/T018", ["/var/tmp/cache/T018"], [], None),
 ]
 MUST_MENTION = {"A017": {"write-outside": "/tmp/", "read-other-cache": "/var/tmp/cache/A016"}}
 

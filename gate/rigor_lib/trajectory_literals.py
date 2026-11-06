@@ -52,6 +52,22 @@ def _unquote(literal):
     return body
 
 
+def _pieces(region, names):
+    """The strings of a call's arguments, and the literals its variables name, in source order, so that
+    `ROOT + "/tmp"` is joined as `<ROOT>/tmp` and not as `/tmp<ROOT>`."""
+    found, at = [], 0
+    for match in _STRING_RE.finditer(region):
+        found.extend(_variables(region[at:match.start()], names))
+        found.append(_unquote(match.group(0)))
+        at = match.end()
+    found.extend(_variables(region[at:], names))
+    return found
+
+
+def _variables(text, names):
+    return [value for name in _NAME_RE.findall(text) for value in names.get(name, ())]
+
+
 def path_literals(text):
     """The literals found in the arguments of file and process calls (variables resolved one step)."""
     names = {}
@@ -60,9 +76,7 @@ def path_literals(text):
     found = []
     for call in _CALL_RE.finditer(text):
         region = _args(text, call.end())
-        literals = [_unquote(m.group(0)) for m in _STRING_RE.finditer(region)]
-        for name in _NAME_RE.findall(_STRING_RE.sub(" ", region)):
-            literals.extend(names.get(name, ()))
+        literals = _pieces(region, names)
         found.extend(literals)
         if len(literals) > 1:
             found.append("".join(literals))  # 'a/' + '.ssh' written as separate pieces
