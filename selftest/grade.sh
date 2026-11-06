@@ -95,12 +95,15 @@ import json, sys
 path, expected, code = sys.argv[1], set(filter(None, sys.argv[2].split(","))), int(sys.argv[3])
 core = json.load(open(path))["core"]
 got = {g["id"]: g["status"] for g in core["gates"]}
-bad = {g for g, s in got.items() if s != "PASS"}
+bad = {g for g, s in got.items() if s == "FAIL"}
+not_run = {g for g, s in got.items() if s == "NOT_RUN"}
+# A failed build means there are no results to judge: the tests gates are NOT_RUN (still a failure).
+want_not_run = {"tests-release", "tests-san"} if "build" in expected else set()
 want_code = 1 if expected else 0
 print("  " + " ".join("%s=%s" % (g, s) for g, s in got.items()) + "  overall=" + core["overall"])
-ok = bad == expected and code == want_code and (core["overall"] == "PASS") == (not expected)
+ok = bad == expected and not_run == want_not_run and code == want_code and (core["overall"] == "PASS") == (not expected)
 if not ok:
-    print("  EXPECTED failing gates %s (exit %d), got %s (exit %d)" % (sorted(expected), want_code, sorted(bad), code))
+    print("  EXPECTED failing gates %s (exit %d), got FAIL %s NOT_RUN %s (exit %d)" % (sorted(expected), want_code, sorted(bad), sorted(not_run), code))
     sys.exit(1)
 EOF
 }
