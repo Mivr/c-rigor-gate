@@ -1,7 +1,12 @@
-cxx_library(
+load("@gate//rules:c.bzl", "c_binary", "c_library", "c_test")
+
+c_library(
     name = "lib",
     srcs = ["hello.c"],
-    exported_headers = ["hello.h"],
+    headers = ["hello.h"],
     visibility = ["PUBLIC"],
 )
-cxx_binary(name = "hello", srcs = ["main.c"], deps = [":lib"])
+
+c_binary(name = "hello", srcs = ["main.c"], deps = [":lib"])
+
+c_test(name = "hello_test", srcs = ["hello_test.c"], deps = [":lib"])

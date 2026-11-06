@@ -36,6 +36,8 @@ def _cc_impl(ctx: AnalysisContext) -> list[Provider]:
         llvm.project("bin/clang-" + ctx.attrs.llvm_major),
         "--target=" + _TRIPLE,
         "-nostdinc",
+        "-fdebug-compilation-dir=.",
+        "-fcoverage-compilation-dir=.",
         cmd_args(clang_headers, format = "-resource-dir={}", parent = 1),
         "-isystem",
         clang_headers,
@@ -73,7 +75,7 @@ def _ld_impl(ctx: AnalysisContext) -> list[Provider]:
     args = cmd_args(
         llvm.project("bin/clang-" + major),
         "--target=" + _TRIPLE,
-        cmd_args(runtimes[0], format = "-resource-dir={}", parent = 4),
+        cmd_args(runtimes[0], format = "-resource-dir={}", parent = 3),
         cmd_args(sysroot.project("lib64"), format = "--sysroot={}", parent = 1),
         cmd_args(gcc_dir, format = "--gcc-install-dir={}"),
         "-fuse-ld=lld",

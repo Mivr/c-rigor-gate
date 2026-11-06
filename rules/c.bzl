@@ -4,6 +4,10 @@ The macros take no flag arguments of any kind. Mode flags are chosen by the targ
 platform's mode constraint; the sealed warning profile is appended last.
 """
 
+
+
+load("@gate//rules:cov.bzl", "cov_report")
+
 _SEALED = [
     "-std=c17",
     "-Wall",
@@ -82,6 +86,13 @@ def c_test(name, srcs = [], deps = []):
         compiler_flags = _compile_flags(),
         linker_flags = _link_flags(),
         target_compatible_with = _NOT_IN_FUZZ,
+    )
+
+    # `<name>_coverage` renders the line/branch/MC-DC report; only built in the cov mode.
+    cov_report(
+        name = name + "_coverage",
+        test = ":" + name,
+        target_compatible_with = ["toolchains//:cov"],
     )
 
 def c_fuzz(name, srcs = [], deps = []):

@@ -5,6 +5,7 @@
   none = none
 
 [cell_aliases]
+  gate = root
   config = prelude
   ovr_config = prelude
   fbcode = none

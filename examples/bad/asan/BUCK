@@ -1,0 +1,4 @@
+load("@gate//rules:c.bzl", "c_test")
+
+# Must fail under the san mode: heap buffer overflow.
+c_test(name = "asan", srcs = ["asan.c"])

@@ -1,3 +1,5 @@
+load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
+load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
 load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
 load(":fetch.bzl", "fetched_tree")
@@ -156,6 +158,8 @@ fetched_tree(
         _GCC + "crtendS.o",
         _GCC + "libgcc.a",
         _GCC + "libgcc_s.so",
+        _GCC + "libstdc++.so",
+        _UL + "libstdc++.so.6*",
     ],
     visibility = ["PUBLIC"],
 )
@@ -169,7 +173,7 @@ clang_cc(name = "cc", llvm = ":llvm", llvm_major = "19", sysroot = ":sysroot")
 clang_ld(name = "ld", llvm = ":llvm", llvm_major = "19", runtimes = RUNTIMES, sysroot = ":sysroot")
 
 [
-    llvm_bin(name = "llvm-" + t, bin = "bin/llvm-" + t, llvm = ":llvm")
+    llvm_bin(name = "llvm-" + t, bin = "bin/llvm-" + t, llvm = ":llvm", visibility = ["PUBLIC"])
     for t in ["ar", "nm", "objcopy", "objdump", "ranlib", "strip", "cov", "profdata", "symbolizer"]
 ]
 
@@ -198,3 +202,26 @@ cxx_toolchain(
 
 system_genrule_toolchain(name = "genrule", visibility = ["PUBLIC"])
 system_python_bootstrap_toolchain(name = "python_bootstrap", visibility = ["PUBLIC"])
+
+
+noop_test_toolchain(name = "test", visibility = ["PUBLIC"])
+
+remote_test_execution_toolchain(
+    name = "remote_test_execution",
+    default_profile = "rbe",
+    profiles = {
+        "rbe": {
+            "capabilities": {
+                "OSFamily": "linux",
+                "cpu_arch": "x86_64",
+                "container-image": "",
+                "sb-gate": "1",
+                "cpu_count": "1",
+            },
+            "use_case": "buck2-default",
+            "local_enabled": False,
+            "remote_cache_enabled": True,
+        },
+    },
+    visibility = ["PUBLIC"],
+)
