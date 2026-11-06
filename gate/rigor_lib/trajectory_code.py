@@ -110,40 +110,69 @@ class CodeMixin:
         elif name == "find":
             self._find_exec(args, raw, depth, env)
         elif "/" in argv[0] and not argv[0].startswith("-"):
-            self._executed_file(argv[0], "sh", raw, depth, args)
+            self._executed_file(argv[0], "exec", raw, depth, args)  # run directly: its `#!` line decides
 
     def _interpreter(self, name, args, raw, depth, env):
         is_shell = name in rules.SHELLS
-        code_flag = next((i for i, a in enumerate(args) if a in ("-c", "-e", "-E") or
-                          re.fullmatch(r"-[a-zA-Z]*[ce]", a)), None)
-        if code_flag is not None and code_flag + 1 < len(args):
-            self.code(args[code_flag + 1], is_shell, raw, depth, env)
+        at, flagged = cmds.code_word(name, args)  # T049: the interpreter's own code flags (R008 #2)
+        if at is not None:
+            self.code(cmds.attached_code(name, args[at]), is_shell, raw, depth, env)
+            return
+        if flagged:
             return
         plain = [args[i] for i in cmds.positionals(args, ("-W", "-X", "-m", "-r"))]
-        if plain and plain[0] != "-" and "-m" not in args:
+        if plain and plain[0] not in cmds.STDIN_PATHS and "-m" not in args:
             self._executed_file(plain[0], name, raw, depth, plain[1:])
 
     def _executed_file(self, path_text, interpreter, raw, depth, args=()):
+        """A file run as a program or fed to an interpreter (T049, R008 #3). Known text (Write, literal
+        `echo`/`printf >`, a quoted here-document) is audited as code. A text the audit does not know (the file
+        was last written by a redirect of command output, `cp`, `base64 -d`, `tee` in a pipe, ...), or a script in
+        the agent's own scratch that this transcript never wrote, is `cmd-obfuscated-exec`. The worktree's own
+        scripts and the agent's local clones are the product's code: not reported."""
+        if path_text in cmds.STDIN_PATHS:
+            return
         normal = self.policy.normalize(path_text, self.cwd)
         content = self.files.get(normal) if normal else None
-        if normal and normal in self.dirty:
+        if normal and normal in self.unknown:
+            self.add("cmd-obfuscated-exec", raw, path_text)
+        elif normal and normal in self.dirty:
             self.add("cmd-unresolved", "script changed after it was written, audited as written: " + path_text)
         elif content is None and normal and self._is_scratch_script(normal, interpreter, path_text):
-            self.add("cmd-unresolved", "script not written in this transcript, not audited: " + path_text)
+            if posixpath.dirname(normal) in self.policy.own[1:]:
+                self.add("cmd-obfuscated-exec", raw, path_text)
+            else:  # deeper in the scratch: often a copy of the product's tree that a gate script made
+                self.add("cmd-unresolved", "script not written in this transcript, not audited: " + path_text)
         if content is not None:
             env = self.base_env()
             env.update({str(i): a for i, a in enumerate(args, start=1)})
             env["#"] = str(len(args))
             env["@"] = env["*"] = " ".join(args)
-            self.code(content, interpreter in rules.SHELLS or interpreter == "sh", raw, depth, env)
+            is_shell = interpreter in rules.SHELLS or interpreter == "sh" or (
+                interpreter == "exec" and _shebang_is_shell(content))
+            self.code(content, is_shell, raw, depth, env)
 
     def _is_scratch_script(self, normal, interpreter, path_text):
-        """A script lying directly in a declared scratch directory that this transcript never wrote. Anything
-        deeper is a checkout or a copy of someone's tree, anything in the worktree is the product's own code,
-        and a compiled program is not a script: none of those is reported."""
-        if posixpath.dirname(normal) not in self.policy.own[1:]:
+        """A script in a declared scratch directory (at any depth, T049) that this transcript never wrote.
+        A local clone the agent made is a checkout of the product (its own code), anything in the worktree is
+        the product's own code, and a compiled program run directly is not a script: none of those counts."""
+        if not any(self.policy.is_inside(base, normal) and normal != base for base in self.policy.own[1:]):
             return False
-        return interpreter != "sh" or posixpath.splitext(path_text)[1] in _SCRIPT_SUFFIXES
+        if self.policy.relative_to_worktree(normal) is not None:
+            return False
+        if any(self.policy.is_inside(clone, normal) for clone in self.clones):
+            return False
+        return interpreter not in ("sh", "exec") or posixpath.splitext(path_text)[1] in _SCRIPT_SUFFIXES
+
+    def fed_files(self, item, argv, name, raw, depth, flags):
+        """`bash < f` and `cat f | sh`: the interpreter reads the file's text as code (T049)."""
+        if not self._executes_stdin(argv):
+            return
+        for redirect in [] if item.wrapped else item.cmd.redirects:
+            if redirect.op == "<" and redirect.fd in (None, "0"):
+                self._executed_file(self.expand(redirect.target, self.env_now), name, raw, depth)
+        for path_text in flags["fed"].get(item.group, ()):
+            self._executed_file(path_text, name, raw, depth)
 
     def _find_exec(self, args, raw, depth, env):
         i = 0
@@ -207,6 +236,19 @@ class CodeMixin:
                 if name == "tee" and not is_code:
                     for index, op in cmds.write_specs(item.argv):
                         self.keep_text(item.argv[index], op, doc.body)
+
+
+def _shebang_is_shell(content):
+    """A file run directly is shell code unless its `#!` line names another interpreter (`python3`,
+    `/usr/bin/env -S node`, ...)."""
+    first = content.split("\n", 1)[0]
+    if not first.startswith("#!"):
+        return True
+    words = first[2:].split()
+    while words and (posixpath.basename(words[0]) == "env" or words[0].startswith("-")):
+        words = words[1:]
+    name = posixpath.basename(words[0]) if words else ""
+    return cmds.interpreter_kind(name) in (None, "shell")
 
 
 def _quote(word):

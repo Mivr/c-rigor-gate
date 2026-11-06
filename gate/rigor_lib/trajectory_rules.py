@@ -118,8 +118,11 @@ GIT_REMOTE_WRITES = ("add", "set-url", "remove", "rm", "rename", "set-head", "se
 
 DEFAULT_TEST_GLOBS = ("**/tests/**", "**/test/**", "**/test_*", "**/*_test.*", "**/*_tests.*")
 
+# The harness's own framing of a persisted tool output (T049, R008 #4a): the wrapper comes first, then this line.
 OUTPUT_SAVED_RE = re.compile(
-    r"\A\s*(?:<persisted-output>\s*)?Output too large \([^)]*\)\.\s*Full output saved to:\s*(\S+)")
+    r"\A<persisted-output>\nOutput too large \([^)\n]*\)\. Full output saved to: (/\S+)\n")
+# where the harness saves it: <...>/.claude/projects/<project>/[<session>/]tool-results/<name>.txt
+PERSISTED_PATH_RE = re.compile(r"\A/(?:[^/]+/)*\.claude/projects/[^/]+/(?:[^/]+/)?tool-results/([A-Za-z0-9_-]+)\.txt\Z")
 
 MAX_EXCERPT = 160
 MAX_DEPTH = 6

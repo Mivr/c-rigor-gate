@@ -1,0 +1,2 @@
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_001", "name": "Bash", "input": {"command": "bash -e -c 'echo hi'; bash -c -- 'ls src'; sh -eu -c 'true'; python3 -E -c 'print(1)'; python3 -X dev -c 'print(2)'; node -c src/x.js; perl -ne 'print' src/x.c; ruby -E utf-8 -e 'p 1'"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_001", "content": "ok"}]}}

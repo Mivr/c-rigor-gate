@@ -139,6 +139,53 @@ def nested_subs(body):
     return found
 
 
+_BODY_VAR_RE = re.compile(r"\$(?:\{|[A-Za-z_]|[0-9@#?$!*-])")
+
+
+def body_expansions(body):
+    """(substitution texts, expansion texts) of an unquoted here-document body (T049, R008 #1).
+
+    The shell expands `$(...)`, backticks, `$((...))` and `$NAME`/`${...}` in such a body; quotes are plain
+    text there and only a backslash before `$`, a backtick, a backslash or a newline escapes. The expansions are
+    returned as `$NAME` / `${...}` texts for the secret-variable rules."""
+    subs, names, i = [], [], 0
+    while i < len(body):
+        char = body[i]
+        if char == "\\":
+            i += 2 if body[i + 1:i + 2] in ("$", "`", "\\", "\n") else 1
+        elif char == "$" and arith_end(body, i) > 0:
+            end = arith_end(body, i)
+            subs.extend(nested_subs(body[i + 3:end - 2]))
+            i = end
+        elif body.startswith("$(", i):
+            end = _balanced(body, i + 2, "(", ")")
+            subs.append(body[i + 2:end - 1])
+            i = end
+        elif body.startswith("${", i):
+            end = _balanced(body, i + 2, "{", "}")
+            names.append(body[i:end])
+            i = end
+        elif char == "$" and _BODY_VAR_RE.match(body, i):
+            match = re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|.)", body[i:])
+            names.append(match.group(0))
+            i += match.end()
+        elif char == "`":
+            end = i + 1
+            while end < len(body) and body[end] != "`":
+                end += 2 if body[end] == "\\" else 1
+            subs.append(body[i + 1:end])
+            i = end + 1
+        else:
+            i += 1
+    return subs, names
+
+
+def body_is_literal(body):
+    """True when an unquoted here-document body expands nothing (its text is what gets written)."""
+    subs, names = body_expansions(body)
+    return not subs and not names
+
+
 class Lexer:
     def __init__(self, text):
         self.text = text

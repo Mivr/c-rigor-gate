@@ -38,6 +38,111 @@ def positionals(args, value_opts=()):
     return found
 
 
+# -- interpreters: where the code is (T049, R008 #2) ------------------------------------------
+class _Flags:
+    __slots__ = ("code", "valued", "attached", "stop", "long_code", "long_valued")
+
+    def __init__(self, code, valued="", attached="", stop="", long_code=(), long_valued=()):
+        self.code = code                # short letters that take the code (alone or inside a cluster)
+        self.valued = valued            # short letters whose value is the rest of the cluster, else the next word
+        self.attached = attached        # short letters whose (optional) value can only be attached
+        self.stop = stop                # short letters after which options end (`python -m mod`)
+        self.long_code = long_code      # long code flags (`--eval CODE`, `--eval=CODE`)
+        self.long_valued = long_valued  # long options that take the next word
+
+
+_CODE_FLAGS = {
+    "shell": _Flags("c", valued="oO", long_valued=("--rcfile", "--init-file")),
+    "python": _Flags("c", valued="WX", stop="m"),
+    "node": _Flags("ep", valued="r", long_code=("--eval", "--print"),
+                   long_valued=("--require", "--import", "--loader", "--input-type", "--env-file")),
+    "perl": _Flags("eE", attached="IMmxil0CdDV"),
+    "ruby": _Flags("e", valued="IrCE", attached="x0lFKTW"),
+    "php": _Flags("r", valued="dcfz"),
+    "lua": _Flags("e", valued="l"),
+}
+STDIN_PATHS = ("-", "/dev/stdin", "/dev/fd/0", "/proc/self/fd/0")
+
+
+def interpreter_kind(name):
+    if name in rules.SHELLS:
+        return "shell"
+    if re.fullmatch(r"python[0-9.]*", name):
+        return "python"
+    return name if name in _CODE_FLAGS else None
+
+
+def _cluster(flags, arg):
+    """('code', attached code or None) | ('value', True when the next word is the value) | ('stop', _) |
+    ('plain', _) for one single-dash (or `+`) option word."""
+    body = arg[1:]
+    for k, char in enumerate(body):
+        rest = body[k + 1:]
+        if char in flags.code:
+            return "code", (rest if rest and arg[0] == "-" and flags is not _CODE_FLAGS["shell"] else None)
+        if char in flags.valued:
+            return "value", rest == ""
+        if char in flags.attached:
+            return "value", False
+        if char in flags.stop:
+            return "stop", rest == ""
+    return "plain", False
+
+
+def code_word(name, args):
+    """(index into args of the inline code, True when a code flag was given) for an interpreter command.
+
+    The code flag comes from the interpreter's table: a short flag alone (`-c`) or inside a cluster (`-ec`,
+    `-ne`), or a long one (`--eval`). The code is the first plain word after it, skipping other options, the
+    values of options that take one, and `--`; `-cCODE` and `--eval=CODE` carry it in the same word (the index of
+    that word; attached_code() cuts it out). (None, False): no code flag (a script file, stdin, `-m`);
+    (None, True): a code flag with no code after it."""
+    kind = interpreter_kind(name)
+    if kind is None:
+        return None, False
+    flags = _CODE_FLAGS[kind]
+    i, flagged = 0, False
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            if flagged and i + 1 < len(args):
+                return i + 1, True
+            return None, flagged
+        if arg == "-" or not arg.startswith(("-", "+")) or (arg[0] == "+" and kind != "shell"):
+            return (i, True) if flagged else (None, False)
+        if arg.startswith("--"):
+            key = arg.split("=", 1)[0]
+            if key in flags.long_code:
+                if "=" in arg:
+                    return i, True
+                flagged = True
+            elif arg in flags.long_valued:
+                i += 1
+        else:
+            what, extra = _cluster(flags, arg)
+            if what == "code":
+                if extra:
+                    return i, True
+                flagged = True
+            elif what == "value" and extra:
+                i += 1
+            elif what == "stop":
+                return None, flagged
+        i += 1
+    return None, flagged
+
+
+def attached_code(name, word):
+    """The code text of the word code_word() pointed at (`-cCODE`, `--eval=CODE`, or a plain word)."""
+    kind = interpreter_kind(name)
+    if kind is None or word == "-" or not word.startswith("-"):
+        return word
+    if word.startswith("--"):
+        return word.split("=", 1)[1] if "=" in word else word
+    what, extra = _cluster(_CODE_FLAGS[kind], word)
+    return extra if what == "code" and extra else word
+
+
 # -- wrappers --------------------------------------------------------------------------------
 def _skip_options(argv, start, with_value):
     i = start
@@ -430,3 +535,61 @@ def decodes_input(argv):
     if name == "openssl":
         return "-d" in args or "-base64" in args or "-a" in args
     return name in ("rev", "uudecode", "unhex")
+
+
+# -- literal output of echo / printf (T049, R008 #3) ----------------------------------------
+def _decode(text):
+    from rigor_lib.trajectory_shell import DOLLAR, ansi_decode
+    return ansi_decode(text).replace(DOLLAR, "$")
+
+
+def echo_text(argv):
+    """The text `echo ARGS` prints, or None when it is not known. Without `-e`/`-E` a backslash is read both
+    ways (bash prints it, dash's echo decodes it): both texts are returned, one after the other."""
+    args, newline, escapes = argv[1:], True, None
+    while args and re.fullmatch(r"-[neE]+", args[0]):
+        newline = newline and "n" not in args[0]
+        escapes = "e" in args[0] if "e" in args[0] or "E" in args[0] else escapes
+        args = args[1:]
+    text = " ".join(args)
+    if UNRESOLVED in text:
+        return None
+    end = "\n" if newline else ""
+    if escapes:
+        return _decode(text) + end
+    if escapes is None and "\\" in text and _decode(text) != text:
+        return text + "\n" + _decode(text) + end
+    return text + end
+
+
+def printf_text(argv):
+    """The text `printf FORMAT ARGS` prints, or None when it is not known (`-v`, a directive other than %s, %b,
+    %d, %i, %c and %%, an unknown piece)."""
+    args = argv[1:]
+    if args[:1] == ["--"]:
+        args = args[1:]
+    if not args or args[0].startswith("-") or any(UNRESOLVED in a for a in args):
+        return None
+    fmt, values = args[0], args[1:]
+    directive = re.compile(r"%(?:%|[-+ #0]*\d*(?:\.\d+)?([sbdic]))|%")
+    out, rounds = [], 0
+    while True:
+        pieces, pos, used = [], 0, 0
+        for match in directive.finditer(fmt):
+            pieces.append(_decode(fmt[pos:match.start()]))
+            pos = match.end()
+            if match.group(0) == "%%":
+                pieces.append("%")
+                continue
+            kind = match.group(1)
+            if kind is None:
+                return None
+            value = values[used] if used < len(values) else ""
+            used += 1
+            pieces.append(_decode(value) if kind == "b" else value[:1] if kind == "c" else value)
+        pieces.append(_decode(fmt[pos:]))
+        out.append("".join(pieces))
+        values = values[used:]
+        rounds += 1
+        if not values or used == 0 or rounds > 64:
+            return "".join(out) if not values or used == 0 else None

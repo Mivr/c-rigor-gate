@@ -114,13 +114,15 @@ class PathPolicy:
     # -- forbidden reads ---------------------------------------------------------------------
     def read_rule(self, path):
         """The rule id a read of `path` breaks, or None. `path` is absolute and normalized."""
-        if path in self.exempt:
-            return None
         found = self._classify(path)
+        if found == "read-claude-state" and path in self.exempt:
+            found = None  # an announced persisted output lifts this rule and no other (T049)
         if found is None:
             real = self.real(path)
-            if real != path and real not in self.exempt:
+            if real != path:
                 found = self._classify(real)
+                if found == "read-claude-state" and real in self.exempt:
+                    found = None
         return found
 
     def _classify(self, path):
