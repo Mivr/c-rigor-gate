@@ -24,5 +24,8 @@ allow = []
 level = "L2"
 allow = ["malloc"]
 
+[module."//util:core_test"]
+allow = []
+
 [module."//util:util_test"]
 allow = ["free"]

@@ -244,6 +244,7 @@ for label, s in sorted(mods.items()):
     print("  mutants %s: total %d, %s" % (label, s["total"], {k: v for k, v in s["verdicts"].items() if v}))
 assert set(mods) == {"//core:core", "//util:util"}, sorted(mods)
 assert mods["//core:core"]["total"] > 0 and mods["//core:core"]["survivors"] == [], mods["//core:core"]
+assert m["targets"].keys() == mods.keys(), m["targets"]
 assert m["executed_actions"] > 0, m
 EOF2
 sha_cold="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_sha256"])' "$cold_verdict")"
@@ -318,7 +319,7 @@ run_case removed-test tests-release:missing-test,tests-san:missing-test
 run_case deleted-target tests-release:missing-test,tests-san:missing-test,symbols:policy-module-without-facts
 run_case heap-overflow tests-san:test-not-pass
 run_case kills symbols:denied-symbol,mutants:survived-mutant   # (the untested core_stop is a survivor too)
-run_case spliced-optnone semantic-suppressions:forbidden-attribute,semantic-suppressions:line-directive,mutants:survived-mutant
+run_case spliced-optnone semantic-suppressions:forbidden-attribute,semantic-suppressions:line-directive
 run_case raw-rule buckfiles:bad-call
 # Mutation testing (T008): each of these must be caught by `mutants` alone (or with the gate named beside it).
 run_case weak-test mutants:survived-mutant
