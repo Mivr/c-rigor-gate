@@ -1,6 +1,7 @@
 """The Bash-tool analysis of `rigor trajectory`, plus the shared stateful analyzer."""
 
 import fnmatch
+import os
 import posixpath
 import re
 
@@ -124,6 +125,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         self.grade_outputs = set()  # stdout files of grade keep runs, not written by anything else since
         self.call_outputs = set()   # the same for canary keep runs, within the current call only
         self.cmd_env = {}     # the environment the command being analysed sees, as far as it is known (T057)
+        self.dirs = set()     # directories the transcript made (mkdir, tar -C, unzip -d): copy targets (T061)
 
     # -- plumbing ----------------------------------------------------------------------------
     def add(self, rule, raw, token=""):
@@ -529,7 +531,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         name = cmds.name_of(argv[0])
         args = argv[1:]
         if any(a in ("-t", "--target-directory") or a.startswith("--target-directory=") for a in args):
-            return  # a directory target (`cp -t DIR ...`) is R008 #17, not modelled here
+            return  # a directory target (`cp -t DIR ...`, T061) keeps the source's basename: judged by name
         value_opts = {"cp": ("-S", "--suffix"), "mv": ("-S",), "install": ("-m", "-o", "-g", "-S"),
                       "ln": ("-S",)}[name]
         pos = cmds.positionals(args, value_opts)
@@ -829,12 +831,65 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
 
     # -- writes ------------------------------------------------------------------------------
     def _write_targets(self, item, argv, raw):
+        """Write every file the command names. A copy, move, install or link into a directory (`-t DIR`,
+        `--target-directory=DIR`, several sources, or a target that is `.`, ends in `/` or is a known directory)
+        writes `DIR/basename(source)` for each source (T061, R008 #17)."""
         indexes = set()
+        layout = writers.transfer(argv)
+        carried = self._carried_texts(argv, layout)
+        if layout is not None and not (layout["dir"] or self.is_dir(layout["text"])):
+            layout = None
         for index, op, text in writers.write_targets(argv):
             if index < len(argv):
                 indexes.add(index)
+                if layout is not None and index == layout["target"] and UNRESOLVED not in text:
+                    for source in layout["sources"]:
+                        self.write(writers.into_dir(text, argv[source]), op, raw)
+                        self._carry(carried.get(source), writers.into_dir(text, argv[source]))
+                    continue
                 self.write(re.sub(r"\Aof=", "", text), op, raw)
+                if carried and op == "rewrite":
+                    self._carry(next(iter(carried.values())) if len(carried) == 1 else None, text)
+        if layout is not None and layout["target"] is None:  # `ln -s TARGET` links ./basename(TARGET)
+            self.write(writers.into_dir(".", argv[layout["sources"][0]]), "rewrite", raw)
+        if cmds.name_of(argv[0]) == "mkdir":
+            self.dirs.update(n for n in (self.policy.normalize(argv[i], self.cwd) for i in indexes) if n)
         return indexes
+
+    def _carried_texts(self, argv, layout):
+        """{argv index of a source: (text, dirty)} for the sources of `cp`/`mv`/`install` whose text the audit knows:
+        the copy has the same text (T061; a copy of the agent's own script run in a scratch dir is audited as code)."""
+        if layout is None or cmds.name_of(argv[0]) not in ("cp", "mv", "install"):
+            return {}
+        found = {}
+        for index in layout["sources"]:
+            normal = self.policy.normalize(argv[index], self.cwd)
+            if normal is not None and normal in self.files and normal not in self.unknown:
+                found[index] = (self.files[normal], normal in self.dirty)
+        return found
+
+    def _carry(self, known, target):
+        normal = self.policy.normalize(target, self.cwd)
+        if known is None or normal is None:
+            return
+        self.record_file(normal, known[0])
+        if known[1]:
+            self.dirty.add(normal)
+
+    def is_dir(self, text):
+        """True when a copy target is a directory: `.`, `..`, a trailing `/`, the working directory or one of the
+        agent's roots, a directory the transcript made or wrote files into, or a directory on the disk."""
+        if text in (".", "..") or text.endswith(("/", "/.", "/..")):
+            return True
+        normal = self.policy.normalize(text, self.cwd)
+        if normal is None:
+            return False
+        if normal == self.cwd or normal in self.policy.own or normal in self.dirs:
+            return True
+        inside = normal.rstrip("/") + "/"
+        if any(f.startswith(inside) for f in self.files) or any(f.startswith(inside) for f in self.created):
+            return True
+        return os.path.isdir(self.policy.real(normal))
 
     def _redirect(self, command, redirect):
         if redirect.op in ("<", "<<", "<<-", "<<<", "<&"):

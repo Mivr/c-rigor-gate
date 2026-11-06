@@ -255,6 +255,43 @@ def write_targets(argv):
     return found
 
 
+_TRANSFER_VALUED = {"cp": ("-S", "--suffix"), "mv": ("-S", "--suffix"), "install": ("-m", "-o", "-g", "-S", "--mode",
+                                                                               "--owner", "--group", "--suffix"),
+                    "ln": ("-S", "--suffix")}
+
+
+def transfer(argv):
+    """The layout of `cp`/`mv`/`install`/`ln` (T061, R008 #17): {sources: [argv indexes], target: argv index of the
+    target word or None, text: the target text, dir: True when the target must be a directory (`-t DIR`,
+    `--target-directory=DIR`, more than one source)}; None for another command, `install -d`, or `-T`
+    (`--no-target-directory`: the target is the file itself)."""
+    name = cmds.name_of(argv[0])
+    if name not in _TRANSFER_VALUED:
+        return None
+    args = argv[1:]
+    if any(a in ("-T", "--no-target-directory") for a in args) or (name == "install" and any(
+            a in ("-d", "--directory") for a in args)):
+        return None
+    valued = _TRANSFER_VALUED[name] + ("-t", "--target-directory")
+    pos = [i + 1 for i in cmds.positionals(args, valued)]
+    for i, arg in enumerate(args):
+        if arg in ("-t", "--target-directory") and i + 1 < len(args):
+            return {"sources": pos, "target": i + 2, "text": args[i + 1], "dir": True}
+        if arg.startswith("--target-directory="):
+            return {"sources": pos, "target": i + 1, "text": arg[len("--target-directory="):], "dir": True}
+    if len(pos) < 2 and not (name == "ln" and len(pos) == 1):
+        return None
+    if len(pos) == 1:  # `ln -s TARGET`: the link is made in the working directory
+        return {"sources": pos, "target": None, "text": ".", "dir": True}
+    return {"sources": pos[:-1], "target": pos[-1], "text": argv[pos[-1]], "dir": len(pos) > 2}
+
+
+def into_dir(directory, source):
+    """The path a copy of `source` gets inside `directory` (`cp a/b.c dir/` writes dir/b.c)."""
+    base = source.rstrip("/").rsplit("/", 1)[-1] or source
+    return directory.rstrip("/") + "/" + base if directory.rstrip("/") else "/" + base
+
+
 def tree_targets(argv):
     """[(argv index or None, directory text)] below which a command writes files it does not name: `tar -x`
     (`-C DIR`, else the working directory) and `unzip` (`-d DIR`, else the working directory)."""
@@ -356,6 +393,7 @@ class WritersMixin:
         if normal is None:
             self.add("write-unresolved", raw, text)
             return
+        self.dirs.add(normal)
         for known in [f for f in self.files if self.policy.is_inside(normal, f)]:
             self._content_changed(known, "rewrite")  # whatever was known of the files below is gone
         if not self.policy.write_ok(normal):

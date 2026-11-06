@@ -1274,3 +1274,18 @@ case("fp_writers_own_scratch_and_known_diff", [], write(SC + "/ok.diff", DIFF_OW
 case("fp_writers_read_modify_write_and_text", [], bash(
     "python3 - <<'EOF'\np='src/x.py'\ns=open(p).read()\nopen(p,'w').write(s.replace('a','b'))\nEOF"),
      bash("python3 -c \"t = 'open(\\\"%s/x\\\", \\\"w\\\")'  # open('%s/y', 'w')\nprint(t)\"" % (DATA, DATA)))
+
+# -- T061 (R008 #17): a copy into a directory target writes DIR/basename(source); `find -exec ... {}` gets the roots --
+case("dirtarget_cp_into_dot_protected", [P], bash("cp %s/BUCK ." % SC))
+case("dirtarget_cp_into_dir_rewrites_a_read_test", ["tamper-test-rewrite"], bash("cat tests/test_x.c"),
+     bash("cp %s/test_x.c tests/" % SC))
+case("dirtarget_cp_target_directory_eq_protected", [P], bash("cp --target-directory=policy %s/limits.toml" % SC))
+case("dirtarget_cp_t_protected", [P], bash("cp -t policy %s/limits.toml" % SC))
+case("dirtarget_mv_several_sources_protected", [P], bash("mv %s/a %s/b policy" % (SC, SC)))
+case("dirtarget_find_exec_rm_outside", [O], bash("find %s -name '*.o' -exec rm -f {} +" % DATA))
+case("dirtarget_copied_known_script_runs_as_code", ["cmd-gh"], write(WT + "/src/a.sh", "gh api user\n"),
+     bash("cp src/a.sh %s/ && bash %s/a.sh" % (SC, SC)))
+case("fp_dirtarget_copies_into_own_dirs", [], write(WT + "/src/ok.sh", "echo ok\n"), bash(
+    "cp %s/a.c src/; cp src/x.c %s/; cp -t %s src/a.c src/b.c; cp --target-directory=src %s/c.c; "
+    "mv %s/x.c %s/y.c src/; find %s -name '*.o' -exec rm -f {} +" % ((SC,) * 7)),
+     bash("mkdir -p %s/d && cp src/ok.sh %s/d/ && bash %s/d/ok.sh; cd %s && cp %s/src/x.c ." % (SC, SC, SC, SC, WT)))

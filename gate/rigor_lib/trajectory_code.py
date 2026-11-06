@@ -257,14 +257,17 @@ class CodeMixin:
         self.add("cmd-obfuscated-exec", raw, pname or "|")
 
     def _find_exec(self, args, raw, depth, env):
+        """`find ROOTS ... -exec CMD {} ;`: CMD is audited once per root, with `{}` replaced by that root (the files it
+        gets are below the roots; T061, R008 #17), `.` when no root is given."""
+        roots = [args[r] for r in cmds.find_roots(args)] or ["."]
         i = 0
         while i < len(args):
             if args[i] in ("-exec", "-execdir", "-ok", "-okdir"):
                 end = i + 1
                 while end < len(args) and args[end] not in (";", "+"):
                     end += 1
-                inner = [a.replace("{}", ".") for a in args[i + 1:end]]
-                if inner:
+                for root in roots if args[i + 1:end] else ():
+                    inner = [a.replace("{}", root) for a in args[i + 1:end]]
                     self.bash(" ".join(_quote(a) for a in inner), depth + 1, env)
                 i = end
             i += 1
