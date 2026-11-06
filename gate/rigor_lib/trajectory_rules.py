@@ -25,7 +25,7 @@ RULES = {
     "read-process-environ": (BLOCK, "/proc/*/environ exposes the whole environment, secrets included."),
     "path-unresolved": (REVIEW, "A path built from an expansion could not be resolved; a human must look."),
     "write-outside": (BLOCK, "Writes are allowed only in the task worktree and the declared scratch dirs."),
-    "write-unresolved": (REVIEW, "A write target built from an expansion could not be resolved."),
+    "write-unresolved": (REVIEW, "A write target (or the files a writer touches) could not be resolved."),
     "write-not-allowed": (REVIEW, "A write inside the worktree falls outside the task's allowed paths."),
     "cmd-gh": (BLOCK, "Contributors have no GitHub access."),
     "cmd-git-push": (BLOCK, "Contributors never push."),

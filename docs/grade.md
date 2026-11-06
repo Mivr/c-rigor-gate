@@ -35,8 +35,9 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 - **Levels.** `products/<p>/policy.toml` (gate-owned) has `level = "L1".."L5"` per module table. Every `c_library`
   and `c_binary` of the product needs one (`level-missing`); a `level` on a test is `level-on-test`. L1: not
   mutated. L2: mutated, survivors are info. L3, L4, L5: zero survivors (and the per-function rules of
-  `docs/mutate.md`). A `c_binary` cannot be mutated: above L1 it is `unmutatable-module`. The `symbols` gates read
-  the same file without the `level` keys (`grade_policy.py` writes that copy; every other key is still checked).
+  `docs/mutate.md`). A `c_binary` cannot be mutated: above L1 it is `unmutatable-module`. The `symbols` and
+  `semantic-suppressions` gates read the same file whole (T055): the symbols gate uses the `level` to arm its
+  `exports` check (an L3 module without an `exports` list is `exports-missing`, an error).
 - **Nothing mutated is a failure.** No module at L2 or above is `no-mutated-modules`; a module whose sources
   produce no mutant at all is `no-mutants` (also inside `rigor mutants`); a module without tests is
   `module-without-tests`; a build that does not produce a report is `mutants-build-failed`.
@@ -223,3 +224,17 @@ Its 24 red cases were duplicated by canaries and ran cold every time. They are n
 | `stale-include` | `stale-include` | |
 | `third-party-copy` | `third-party-copy` | also `contract`: `outside-allowed` |
 | `case-collision` | `case-collision` | |
+
+## Audit grade of annas-c (T059)
+An audit grades the whole product at one head with `products/annas-c/tasks/whole-repo.toml` (`allowed = ["**"]`).
+The `contract` gate fails `submodule` for any gitlink in the diff, and annas-c's `gate` submodule pointer is bumped
+from time to time. So the **base must be the last commit that changed the `gate` pointer** (the pointer is then equal
+at base and head, and nothing under `gate` is in the diff): find it with `git log -1 --format=%h -- gate` in the
+product repo at the head. It is `596f56b` (gate bump to `67c2230`) for annas-c main `81012ea` and `f990233`. The commit
+that added the submodule (`ce5fb09`) is not usable once the pointer has been bumped. The other gates read the whole
+tree at the head, whatever the base, and the in-diff gates only see changes after the base: for a first audit that
+must also cover earlier changes use the product's root commit and expect the single `submodule` finding on `gate`.
+```sh
+gate/rigor grade --product-repo annas-c-clone --base $(git -C annas-c-clone log -1 --format=%h -- gate) --head HEAD \
+    --task products/annas-c/tasks/whole-repo.toml --product products/annas-c/product.toml --work WORK --out verdict.json
+```

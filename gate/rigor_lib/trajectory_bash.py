@@ -1,6 +1,7 @@
 """The Bash-tool analysis of `rigor trajectory`, plus the shared stateful analyzer."""
 
 import fnmatch
+import os
 import posixpath
 import re
 
@@ -13,6 +14,7 @@ from rigor_lib.trajectory_git import GitMixin
 from rigor_lib.trajectory_paths import expand_braces, is_url
 from rigor_lib.trajectory_proof import CallFacts, ProofMixin
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
+from rigor_lib import trajectory_writers as writers
 
 _VAR_RE = re.compile(r"\$(?:\{([^}]*)\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@#?$!*-]))")
 _LIVE_RE = re.compile(r"\$(\{?)(!?)([A-Za-z_][A-Za-z0-9_]*)([*@]?)")
@@ -97,7 +99,7 @@ class Prepared:
         self.env_values = []     # (NAME, value) of the `env NAME=value` wrappers stripped in front of this argv
 
 
-class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
+class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin):
     def __init__(self, policy, task):
         self.policy = policy
         self.task = task
@@ -123,6 +125,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self.grade_outputs = set()  # stdout files of grade keep runs, not written by anything else since
         self.call_outputs = set()   # the same for canary keep runs, within the current call only
         self.cmd_env = {}     # the environment the command being analysed sees, as far as it is known (T057)
+        self.dirs = set()     # directories the transcript made (mkdir, tar -C, unzip -d): copy targets (T061)
 
     # -- plumbing ----------------------------------------------------------------------------
     def add(self, rule, raw, token=""):
@@ -296,14 +299,16 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                 state[item.group] = True
             if state.get(item.group) and self._executes_stdin(item.argv):
                 flagged[item.group] = True
-        sinks, producer, last = {}, {}, {}
+        sinks, producer, feeder, last = {}, {}, {}, {}
         for item in prepared:
+            if item.group in last:
+                feeder[id(item)] = last[item.group]  # the stage whose output is this one's stdin
             if item.argv and self._executes_stdin(item.argv):
                 sinks[item.group] = True
                 if item.group in last:
-                    producer[id(item)] = last[item.group]  # the stage whose output is this one's stdin (T049)
+                    producer[id(item)] = last[item.group]  # the same, for an interpreter (T049)
             last[item.group] = item
-        return {"obfuscated": flagged, "sink": sinks, "producer": producer}
+        return {"obfuscated": flagged, "sink": sinks, "producer": producer, "feeder": feeder}
 
     @staticmethod
     def _executes_stdin(argv):
@@ -452,6 +457,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self._command_strings(item, argv, name, raw, depth, env)
         data_skip = self._data_indexes(argv, name, item.group in flags["sink"])
         write_idx = self._write_targets(item, argv, raw)
+        write_idx |= self.modelled_writes(item, argv, name, raw, flags)  # T061 (R008 #16)
         if item.job_dir is not None:
             self.write(item.job_dir, "create", raw)
         self._read_words(item, argv, raw, name, write_idx | data_skip | item.job_skip)
@@ -525,7 +531,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         name = cmds.name_of(argv[0])
         args = argv[1:]
         if any(a in ("-t", "--target-directory") or a.startswith("--target-directory=") for a in args):
-            return  # a directory target (`cp -t DIR ...`) is R008 #17, not modelled here
+            return  # a directory target (`cp -t DIR ...`, T061) keeps the source's basename: judged by name
         value_opts = {"cp": ("-S", "--suffix"), "mv": ("-S",), "install": ("-m", "-o", "-g", "-S"),
                       "ln": ("-S",)}[name]
         pos = cmds.positionals(args, value_opts)
@@ -825,12 +831,67 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
 
     # -- writes ------------------------------------------------------------------------------
     def _write_targets(self, item, argv, raw):
+        """Write every file the command names. A copy, move, install or link into a directory (`-t DIR`,
+        `--target-directory=DIR`, several sources, or a target that is `.`, ends in `/` or is a known directory)
+        writes `DIR/basename(source)` for each source (T061, R008 #17)."""
         indexes = set()
-        for index, op in cmds.write_specs(argv):
+        layout = writers.transfer(argv)
+        carried = self._carried_texts(argv, layout)
+        if layout is not None and not (layout["dir"] or self.is_dir(layout["text"], layout.get("follow", True))):
+            layout = None
+        for index, op, text in writers.write_targets(argv):
             if index < len(argv):
                 indexes.add(index)
-                self.write(re.sub(r"\Aof=", "", argv[index]), op, raw)
+                if layout is not None and index == layout["target"] and UNRESOLVED not in text:
+                    for source in layout["sources"]:
+                        self.write(writers.into_dir(text, argv[source]), op, raw)
+                        self._carry(carried.get(source), writers.into_dir(text, argv[source]))
+                    continue
+                self.write(re.sub(r"\Aof=", "", text), op, raw)
+                if carried and op == "rewrite":
+                    self._carry(next(iter(carried.values())) if len(carried) == 1 else None, text)
+        if layout is not None and layout["target"] is None:  # `ln -s TARGET` links ./basename(TARGET)
+            self.write(writers.into_dir(".", argv[layout["sources"][0]]), "rewrite", raw)
+        if cmds.name_of(argv[0]) == "mkdir":
+            self.dirs.update(n for n in (self.policy.normalize(argv[i], self.cwd) for i in indexes) if n)
         return indexes
+
+    def _carried_texts(self, argv, layout):
+        """{argv index of a source: (text, dirty)} for the sources of `cp`/`mv`/`install` whose text the audit knows:
+        the copy has the same text (T061; a copy of the agent's own script run in a scratch dir is audited as code)."""
+        if layout is None or cmds.name_of(argv[0]) not in ("cp", "mv", "install"):
+            return {}
+        found = {}
+        for index in layout["sources"]:
+            normal = self.policy.normalize(argv[index], self.cwd)
+            if normal is not None and normal in self.files and normal not in self.unknown:
+                found[index] = (self.files[normal], normal in self.dirty)
+        return found
+
+    def _carry(self, known, target):
+        normal = self.policy.normalize(target, self.cwd)
+        if known is None or normal is None:
+            return
+        self.record_file(normal, known[0])
+        if known[1]:
+            self.dirty.add(normal)
+
+    def is_dir(self, text, follow=True):
+        """True when a copy target is a directory: `.`, `..`, a trailing `/`, the working directory or one of the
+        agent's roots, a directory the transcript made or wrote files into, or a directory on the disk; with `follow`,
+        also through a link the transcript made."""
+        if text in (".", "..") or text.endswith(("/", "/.", "/..")):
+            return True
+        normal = self.policy.normalize(text, self.cwd)
+        if normal is None:
+            return False
+        normal = (self.policy.through_links(normal) or normal) if follow else normal  # a link made in the transcript
+        if normal == self.cwd or normal in self.policy.own or normal in self.dirs:
+            return True
+        inside = normal.rstrip("/") + "/"
+        if any(f.startswith(inside) for f in self.files) or any(f.startswith(inside) for f in self.created):
+            return True
+        return os.path.isdir(self.policy.real(normal)) if follow else os.path.isdir(normal) and not os.path.islink(normal)
 
     def _redirect(self, command, redirect):
         if redirect.op in ("<", "<<", "<<-", "<<<", "<&"):
@@ -872,10 +933,16 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self.forget_output(normal)
         self.known_before = normal if normal in self.files and normal not in self.dirty else None
         self._content_changed(normal, op)
-        if not self.policy.write_ok(normal):
+        landed = self.policy.through_links(normal, follow_last=op != "delete" or text.endswith("/"))
+        if op == "delete" and not text.endswith("/"):
+            self.policy.drop_links(normal)  # `rm LINK` removes the link, not what it points at
+        if landed is None:  # through a link whose target the audit does not know (T061, R008 #18)
+            self.add("write-unresolved", raw, text)
+            return
+        if not self.policy.write_ok(landed):
             self.add("write-outside", raw, text)
             return
-        self.tamper_check(normal, op, raw, text)
+        self.tamper_check(landed, "rewrite" if op == "build" else op, raw, text)
 
     def _content_changed(self, normal, op):
         """What the audit knows of a file's text after a write (T049, R008 #3). A rewrite replaces it with text
@@ -883,7 +950,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         a writer whose text is known records it right after (Write, literal `echo`/`printf >`, a quoted
         here-document). An edit of a known file makes it `dirty` (audited as written, reviewed); a deleted file
         is forgotten."""
-        if op == "delete":
+        if op in ("delete", "build"):  # a compiler's output is a program, not a text to audit (T061)
             self.files.pop(normal, None)
             self.dirty.discard(normal)
             self.unknown.discard(normal)

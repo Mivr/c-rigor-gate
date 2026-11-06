@@ -29,7 +29,7 @@ class Module:
     deny_exempt: frozenset = frozenset()
     allow_builtins: frozenset = frozenset()
     third_party: frozenset = frozenset()
-    level: str = None       # None: not declared (`rigor grade` hands this reader a copy without `level`)
+    level: str = None       # None: not declared
     exports: frozenset = None   # None: no `exports` key
 
 

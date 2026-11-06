@@ -123,6 +123,12 @@ with the same `product.toml` variant. The expectation is exact (grade.sh only ch
 The runner also ports grade.sh's leaked-daemon check (`find_daemons`): after each canary, a process whose working
 directory is under the canary's scratch dir makes that canary a miss.
 
+## Canary added by T055
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `exports-missing-l3` | a new L3 module whose policy table has no `exports` list | `symbols`: exports-missing | none |
+
+Its `policy.toml` is the `_base` policy plus L3 tables for `//core:extra` (no `exports`) and `//core:extra_test`.
 ## Canaries replacing the rest of `selftest/grade.sh`'s red cases (T053)
 All 24 remaining red cases of `selftest/grade.sh` are canaries; the table is in `docs/grade.md`. Only one was missing:
 `ungraded-module` (the `extra/` directory the layout does not list, `buckfiles`: `ungraded-path`, NOT_RUN mutants).

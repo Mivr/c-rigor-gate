@@ -18,7 +18,8 @@ Changes since P002 was written:
 **Allowed paths:** exactly P002's T039 list, plus `gate/rigor_lib/facts_policy.py` (the `impl` key only),
 `gate/tests/test_facts*.py`, and the backlog fragment `plan/backlog.d/B27.md` (the witness half only) instead of
 `plan/backlog.md`.
-**In flight in parallel:** T057 (`trajectory*`). T040 branches from your branch after you report, so keep your
+**In flight in parallel:** T061/T062 (`trajectory*`), T063 (`structure*`, `grade_structure.py`), T059 (being merged:
+`products/annas-c/**`; add your `impl` keys in their own commit so a conflict is trivial). T040 branches from your branch after you report, so keep your
 commits clean.
 
 ## Acceptance
