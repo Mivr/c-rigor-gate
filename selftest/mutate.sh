@@ -49,6 +49,10 @@ c_mutants(name = "multi_mutants", module = ":multi", tests = [":multi_test"])
 c_library(name = "hidden", srcs = ["hidden.c"], headers = ["hidden.h"])
 c_test(name = "hidden_test", srcs = ["hidden_test.c"], deps = [":hidden"])
 c_mutants(name = "hidden_mutants", module = ":hidden", tests = [":hidden_test"])
+
+c_library(name = "attr", srcs = ["attr.c"], headers = ["attr.h"])
+c_test(name = "attr_test", srcs = ["attr_test.c"], deps = [":attr"])
+c_mutants(name = "attr_mutants", module = ":attr", tests = [":attr_test"])
 EOF
 cat > pinned.h <<'EOF'
 #ifndef PINNED_H
@@ -360,6 +364,58 @@ static void t_hidden(ctest_t *t)
 
 CTEST_SUITE("hidden", { "hidden", t_hidden })
 EOF
+cat > attr.h <<'EOF'
+#ifndef ATTR_H
+#define ATTR_H
+int attr_strong(int x);
+int attr_weak(int x);
+int attr_macro(int x);
+#endif
+EOF
+# B19: clang lists the only attribute of these functions after their body
+cat > attr.c <<'EOF'
+#include "attr.h"
+
+__attribute__((noinline)) int attr_strong(int x)
+{
+    return x + 2;
+}
+
+__attribute__((cold, noinline)) int attr_weak(int x)
+{
+    return x + x;
+}
+
+/* ... and a macro that starts the function's range without being its body (B19, found on annas-c) */
+#define NOINLINE __attribute__((noinline))
+NOINLINE int attr_macro(int x)
+{
+    return x - 4;
+}
+EOF
+cat > attr_test.c <<'EOF'
+#include "ctest/ctest.h"
+#include "attr.h"
+
+static void t_strong(ctest_t *t)
+{
+    CHECK_EQ_I64(t, attr_strong(0), 2);
+    CHECK_EQ_I64(t, attr_strong(5), 7);
+}
+
+static void t_weak(ctest_t *t)
+{
+    CHECK_EQ_I64(t, attr_weak(0), 0);
+}
+
+static void t_macro(ctest_t *t)
+{
+    CHECK_EQ_I64(t, attr_macro(10), 6);
+    CHECK_EQ_I64(t, attr_macro(0), -4);
+}
+
+CTEST_SUITE("attr", { "strong", t_strong }, { "weak", t_weak }, { "macro", t_macro })
+EOF
 cd "$root"
 if [ -n "${MUTATE_COLD:-}" ]; then
   nonce="$(date +%s%N)-$$"
@@ -369,9 +425,9 @@ fi
 # build_all <log>: build the three modules and refresh $RES/<name>.json
 build_all() {
   local log="$1" name
-  run "$log" build "$pkg:pinned_mutants" "$pkg:weak_mutants" "$pkg:equiv_mutants" "$pkg:multi_mutants" "$pkg:hidden_mutants" --show-full-output || return 1
+  run "$log" build "$pkg:pinned_mutants" "$pkg:weak_mutants" "$pkg:equiv_mutants" "$pkg:multi_mutants" "$pkg:hidden_mutants" "$pkg:attr_mutants" --show-full-output || return 1
   mkdir -p "$RES"
-  for name in pinned weak equiv multi hidden; do
+  for name in pinned weak equiv multi hidden attr; do
     p="$(awk -v t="$pkg:${name}_mutants" '$1 == "root" t || index($1, t) {print $2}' "$log" | tail -1)"
     [ -f "$p" ] || { echo "no report for $name: '$p'" >&2; return 1; }
     cp "$p" "$RES/$name.json"
@@ -443,8 +499,81 @@ PY
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 gate "$out/blind"
 [ "$GATE_CODE" = 1 ] || fail "$CUR: a blind generator passed (exit $GATE_CODE)" "$out/gate.log"
-[ "$(rules)" = "['no-mutants']" ] || fail "$CUR: unexpected rules $(rules)" "$out/gate.log"
-echo "    exit 1, rule no-mutants"
+[ "$(rules)" = "['no-mutants', 'unaccounted-function']" ] || fail "$CUR: unexpected rules $(rules)" "$out/gate.log"
+echo "    exit 1, rules $(rules): the same blindness found twice, independently"
+
+begin "GREEN: functions whose only attribute follows the body are mutated, killed or surviving as their tests dictate (B19)"
+mkdir -p "$out/only_attr"; cp "$RES/attr.json" "$out/only_attr/"
+printf '[module."%s:attr_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_attr"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: expected the weak attributed function to leave survivors (exit $GATE_CODE)" "$out/gate.log"
+[ "$(rules)" = "['survived-mutant']" ] || fail "$CUR: unexpected rules $(rules)" "$out/gate.log"
+[ "$(json 'sorted({f["function"] for f in r["findings"]})')" = "['attr_weak']" ] || fail "$CUR: survivors outside attr_weak" "$out/gate.log"
+"${PY[@]}" - "$RES/attr.json" <<'PY' || fail "$CUR: bad attr report"
+import json, sys
+d = json.load(open(sys.argv[1]))
+s = d["sources"][0]
+assert s["definitions"] == 3 and [f["name"] for f in s["functions"]] == ["attr_strong", "attr_weak", "attr_macro"], s
+assert not any("reason" in f for f in s["functions"]) and s["skipped"] == [], s
+by = {}
+for m in d["mutants"]:
+    by[m["function"]] = by.get(m["function"], 0) + 1
+assert by.get("attr_strong", 0) >= 3 and by.get("attr_weak", 0) >= 3 and by.get("attr_macro", 0) >= 3, by
+print("    definitions 3, functions", [f["name"] for f in s["functions"]], "mutants per function", by)
+PY
+echo "    attr_strong: no survivor; attr_weak: $(json 'len(r["findings"])') survivors"
+
+begin "RED: a generator that loses a function fails closed, in the generator (exit 2) and again in the gate"
+"${PY[@]}" - "$root" "$out" <<'PY' || fail "$CUR: the broken generator was not refused"
+import importlib.util, json, os, subprocess, sys
+root, out = sys.argv[1], sys.argv[2]
+fix = os.path.join(root, "gate/tests/fixtures/mutate")
+runner = os.path.join(out, "broken_gen.py")
+with open(runner, "w") as handle:
+    handle.write("""
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("gen", sys.argv[1])
+gen = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gen)
+def broken(self, node, ctx):  # gen.py as it was before B19: the body is the last child
+    body = node["inner"][-1] if node.get("inner") else None
+    if not body or body.get("kind") != "CompoundStmt" or node.get("isImplicit"):
+        return ctx
+    return gen.Walker.fixed_enter_function(self, node, ctx)
+gen.Walker.fixed_enter_function = gen.Walker.enter_function
+gen.Walker.enter_function = broken
+gen.main(sys.argv[2:])
+""")
+common = ["--src", "attributes.c", "--ast", os.path.join(fix, "attributes.ast.json")]
+gen_py = os.path.join(root, "mutate/gen.py")
+good = subprocess.run([sys.executable, "-I", "-B", gen_py] + common + ["--out", os.path.join(out, "good.json")],
+                      cwd=fix, capture_output=True, text=True)
+assert good.returncode == 0, good.stderr
+bad = subprocess.run([sys.executable, "-I", "-B", runner, gen_py] + common + ["--out", os.path.join(out, "bad.json")],
+                     cwd=fix, capture_output=True, text=True)
+assert bad.returncode == 2, (bad.returncode, bad.stderr)
+assert not os.path.exists(os.path.join(out, "bad.json"))
+assert "after_noinline" in bad.stderr and "accounting failed" in bad.stderr, bad.stderr
+print("    fixed generator: exit 0 with %d definitions; broken generator: exit 2, writes nothing" %
+      json.load(open(os.path.join(out, "good.json")))["definitions"])
+print("   ", bad.stderr.strip()[:200])
+PY
+# the gate's own cross-check: a report whose generator dropped a function (and lied about nothing else)
+mkdir -p "$out/lost"
+"${PY[@]}" - "$RES/attr.json" "$out/lost/attr.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+s = d["sources"][0]
+s["functions"] = [f for f in s["functions"] if f["name"] != "attr_weak"]
+d["mutants"] = [m for m in d["mutants"] if m["function"] != "attr_weak"]
+json.dump(d, open(sys.argv[2], "w"))
+PY
+printf '[module."%s:attr_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/lost"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: a report that lost a function passed (exit $GATE_CODE)" "$out/gate.log"
+[ "$(rules)" = "['unaccounted-function']" ] || fail "$CUR: unexpected rules $(rules)" "$out/gate.log"
+echo "    gate: exit 1, $(json 'r["findings"][0]["definitions"]') definitions but $(json 'r["findings"][0]["listed"]') listed -> $(rules)"
+printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
 begin "GREEN: the strongly pinned module has no survivor, has equivalents (TCE), and skipped the macro"
 mkdir -p "$out/only_pinned"; cp "$RES/pinned.json" "$out/only_pinned/"
