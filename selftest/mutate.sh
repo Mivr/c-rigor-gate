@@ -1020,5 +1020,76 @@ det_build "$n2" "$out/det_b.json"
 cmp -s "$out/det_a.json" "$out/det_b.json" || fail "$CUR: the two reports differ" <(diff <("${PY[@]}" -m json.tool "$out/det_a.json") <("${PY[@]}" -m json.tool "$out/det_b.json"))
 echo "    reports identical: $(wc -c < "$out/det_a.json") bytes, sha256 $(sha256sum "$out/det_a.json" | cut -c1-16)"
 
+begin "RED/GREEN: a mutation the optimiser folds to the baseline object at -O2 is not equivalent unless it is at -O0 too (T051, B15)"
+cat >> "$scratch/m/BUCK" <<'EOF'
+
+c_library(name = "fold", srcs = ["fold.c"], headers = ["fold.h"])
+c_test(name = "fold_test", srcs = ["fold_test.c"], deps = [":fold"])
+c_mutants(name = "fold_mutants", module = ":fold", tests = [":fold_test"])
+EOF
+printf '#ifndef FOLD_H\n#define FOLD_H\nint fold_flag(int a);\nint fold_unit(void);\n#endif\n' > "$scratch/m/fold.h"
+# `a + 1 < a` is false for every int that is defined: signed overflow is undefined, so the optimiser assumes the branch never
+# runs and deletes it. A mutation in that branch (7 -> 8) therefore compiles to the baseline object at -O2. Without the
+# optimiser the addition wraps, the branch runs for INT_MAX, and the mutation changes what the function returns.
+cat > "$scratch/m/fold.c" <<'EOF'
+#include "fold.h"
+
+int fold_flag(int a)
+{
+    return (a + 1 < a) ? 7 : 3;
+}
+
+int fold_unit(void)
+{
+    return 1 * 1;
+}
+EOF
+cat > "$scratch/m/fold_test.c" <<'EOF'
+#include "ctest/ctest.h"
+#include "fold.h"
+
+static void t_fold(ctest_t *t)
+{
+    CHECK_EQ_I64(t, fold_flag(0), 3);
+    CHECK_EQ_I64(t, fold_flag(2147483647), 3);
+    CHECK_EQ_I64(t, fold_unit(), 1);
+}
+
+CTEST_SUITE("fold", { "fold", t_fold })
+EOF
+run "$out/build_fold.log" build "$pkg:fold_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_fold.log"
+p="$(awk -v t="$pkg:fold_mutants" 'index($1, t) {print $2}' "$out/build_fold.log" | tail -1)"
+[ -f "$p" ] || fail "$CUR: no report for fold"
+echo "    built, executed $(executed "$out/build_fold.log") actions"
+mkdir -p "$out/only_fold"; cp "$p" "$out/only_fold/fold.json"
+"${PY[@]}" - "$out/only_fold/fold.json" <<'PY' || fail "$CUR: bad fold report"
+import json, sys
+d = json.load(open(sys.argv[1]))
+base, base0 = d["sources"][0]["baseline"]["hash"], d["sources"][0]["baseline_o0"]["hash"]
+folded = [m for m in d["mutants"] if m["function"] == "fold_flag" and m["original"] == "7" and m["replacement"] == "8"][0]
+assert folded["compile"]["hash"] == base, "the -O2 optimiser no longer folds the mutation to the baseline object"
+assert folded["compile"]["o0"]["hash"] != base0 and folded["runs"], "the folded mutation was not compiled and run at -O0"
+unit = [m for m in d["mutants"] if m["function"] == "fold_unit" and m["operator"] == "arithmetic"][0]
+assert unit["compile"]["hash"] == base and unit["compile"]["o0"]["hash"] == base0 and not unit["runs"], unit["compile"]
+print("    fold_flag 7 -> 8: -O2 object == baseline, -O0 object differs, ran;  fold_unit 1 * 1 -> 1 / 1: identical at both, no run")
+count = sum(1 for m in d["mutants"] if "o0" in m["compile"])
+print("    -O0 compiles in this report: %d of %d mutants, plus %d baseline" % (count, len(d["mutants"]), len(d["sources"])))
+PY
+printf '[module."%s:fold_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_fold"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: expected exit 1, got $GATE_CODE" "$out/gate.log"
+got="$(json '"\n".join(sorted("%s|%s|%s" % (f["function"], f["operator"], f["replacement"]) for f in r["findings"]))')"
+want='fold_flag|integer-literal|0'
+[ "$got" = "$want" ] || fail "$CUR: findings differ from the expected list" <(printf 'got:\n%s\nwant:\n%s\n' "$got" "$want")
+"${PY[@]}" - "$out/result.json" <<'PY' || fail "$CUR: tce metadata"
+import json, sys
+m = json.load(open(sys.argv[1]))["metadata"]["modules"].popitem()[1]
+t = m["tce"]
+assert 0 < t["equivalent_o0"] < t["equivalent_o2"] and m["verdicts"]["equivalent"] == t["equivalent_o0"], m
+assert m["verdicts"]["killed-assert"] >= 2 and m["verdicts"]["survived"] == 1, m
+print("    tce:", t, " verdicts:", {k: v for k, v in m["verdicts"].items() if v})
+PY
+echo "    the folded mutants ran at -O0: the INT_MAX check kills the ones that change the result, 1 -> 0 survives (it returns 3 like the optimised build); fold_unit stays equivalent"
+
 echo "elapsed ${SECONDS}s"
 echo "selftest/mutate.sh: all checks passed in $SECONDS s"
