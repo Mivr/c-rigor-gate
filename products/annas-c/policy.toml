@@ -14,10 +14,46 @@ deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace",
 trusted = ["gate//ctest:ctest"]
 
 [module."//core:core"]
-allow = []
+allow = ["bcmp", "memcpy", "strlen"]
 
 [module."//url:url"]
 allow = []
 
 [module."//fsname:fsname"]
+allow = ["memcpy"]
+
+[module."//core:arena_test"]
 allow = []
+
+[module."//core:buf_test"]
+allow = ["strlen"]
+
+[module."//core:parse_test"]
+allow = []
+
+[module."//core:str_test"]
+allow = []
+
+[module."//fsname:fsname_prop_test"]
+allow = ["memchr", "memcpy", "memset", "strstr"]
+
+[module."//fsname:fsname_test"]
+allow = ["memchr", "memcpy", "memset"]
+
+[module."//fsname:fsname_utf8_test"]
+allow = ["memset"]
+
+[module."//url:url_base_test"]
+allow = ["memset"]
+
+[module."//url:url_build_test"]
+allow = ["memset", "strlen"]
+
+[module."//url:url_ident_test"]
+allow = []
+
+[module."//url:url_pct_test"]
+allow = ["memchr", "memset"]
+
+[module."//url:url_redact_test"]
+allow = ["memcpy", "memset"]
