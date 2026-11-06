@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 
 from rigor_lib import jsonio, results_parse
-from rigor_lib.findings import SEVERITY_INFO, finding
+from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, finding
 
 VERDICTS = ("killed-assert", "killed-crash", "survived", "equivalent", "duplicate", "unviable", "unrun")
 CHECK_FAILURE = re.compile(r"[0-9]+ of [0-9]+ checks failed; first: ")
@@ -37,6 +37,9 @@ def _line_reasons(text):
     return reasons
 
 
+STRICT_LEVELS = ("L3", "L4", "L5")  # as mutants_gate: a survivor fails the gate
+
+
 def outcome_of_run(run):
     """('assert' | 'crash' | 'pass' | 'bad', ids, why) for one test binary run of one mutant."""
     if run.timed_out or run.rc not in (0, 1) or not run.results:
@@ -56,7 +59,7 @@ def outcome_of_run(run):
     return ("crash" if failed else "pass"), ids, ""
 
 
-def accounting_findings(report):
+def accounting_findings(report, level=None):
     """B19: every function definition of every source is accounted for. The generator counted the
     definitions in the AST with code of its own (`definitions`); the lists it wrote must add up to that
     count, name every function once, and agree with the mutants. A function that is neither mutated nor
@@ -87,16 +90,17 @@ def accounting_findings(report):
             found.append(finding("unaccounted-function", module=report.label, file=source.file,
                                  definitions=source.definitions, listed=len(listed),
                                  problems=problems))
-        found.extend(finding("no-mutable-token", severity=SEVERITY_INFO, module=report.label,
+        found.extend(finding("no-mutable-token", severity=SEVERITY_ERROR if level in STRICT_LEVELS else SEVERITY_INFO,
+                             module=report.label,
                              file=source.file, function=name)
                      for name in source.unmutated if name not in mutated)
     return found
 
 
-def baseline_findings(report):
+def baseline_findings(report, level=None):
     """The unmutated build must reproduce Buck2's objects and pass every test with assertions
     (and, first, every function definition must be accounted for)."""
-    found = accounting_findings(report)
+    found = accounting_findings(report, level)
     for source in report.sources:
         if source.baseline_status != "ok" or source.baseline_hash != source.original_hash:
             found.append(finding("harness-mismatch", module=report.label, file=source.file))

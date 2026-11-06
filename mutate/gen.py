@@ -267,6 +267,7 @@ class Walker:
         self.hidden = []  # code in live function bodies that a product macro makes (R002 F1)
         self.hidden_seen = set()
         self.known_system = set()  # macros seen with a token spelled in the toolchain's headers
+        self.typedefs = {}  # typedef name -> "record", "complex", or the name of the typedef it aliases; see `typedef_kinds`
         self.enums = {}  # id of an enumerator -> name of the next one of its enum (wrapping); see `enum_successors`
         self.pasted = []  # (function, macro, offset) of tokens made by ## or #, spelled nowhere
 
@@ -575,6 +576,13 @@ class Walker:
         typ = children[0].get("type", {})
         text = typ.get("qualType", "")
         deep = typ.get("desugaredQualType", text)
+        qual = ctx["qual"]
+        declared = qual.get("desugaredQualType", qual.get("qualType", ""))
+        by_function = return_class(qual.get("qualType", declared), self.typedefs) == "struct" \
+            or return_class(declared, self.typedefs) == "struct"
+        if by_function:
+            self.returned_record(children[0], qual.get("qualType", declared), ctx)
+            return
         if not text or "complex" in text.lower() or deep == "void" \
                 or text.startswith(("struct ", "union ")) or deep.startswith(("struct ", "union ")):
             return
@@ -588,6 +596,18 @@ class Walker:
             value = "((void)(%s), (%s)%s)" % (original, text, value)
         self.add(ctx, "return-value", span[0], span[1], value)
 
+    def returned_record(self, expr, function_type, ctx):
+        """R003 G4: `return e;` of a struct or union (through any typedef chain) becomes
+        `return ((void)(e), (T){0});`, T being the declared return type; not when e already is `(T){0}`."""
+        span = self.value_span(expr)
+        spelled = return_type(function_type)
+        if span is None or spelled is None:
+            return
+        original = self.source.data[span[0]:span[1]].decode("latin-1")
+        if re.fullmatch(r"\(\s*%s\s*\)\s*\{\s*0?\s*\}" % re.escape(spelled).replace(r"\ ", r"\s+"), original):
+            return
+        self.add(ctx, "return-value", span[0], span[1], "((void)(%s), (%s){0})" % (original, spelled))
+
     def deletions(self, children, ctx):
         for child in children:
             span = span_of(child)
@@ -599,12 +619,16 @@ class Walker:
 
     def whole_body(self, span, ctx):
         qual = ctx["qual"]
-        returns = return_class(qual.get("desugaredQualType", qual.get("qualType", "")))
+        written = qual.get("qualType", "")
+        returns = return_class(written, self.typedefs) or return_class(qual.get("desugaredQualType", written), self.typedefs)
         if returns is None or not self.source.token_at(span[0], b"{"):
             return
         uses = "".join("(void)%s; " % name for name in ctx["params"])
-        self.add(ctx, "function-body", span[0], span[1],
-                 "{ " + uses + ("}" if returns == "void" else "return 0; }"))
+        if returns == "struct":
+            tail = "return (%s){0}; }" % return_type(written)
+        else:
+            tail = "}" if returns == "void" else "return 0; }"
+        self.add(ctx, "function-body", span[0], span[1], "{ " + uses + tail)
 
 
 def zero_constant(node):
@@ -683,8 +707,9 @@ def pointerish(node):
     return "*" in both or "[" in both
 
 
-def return_class(function_type):
-    """'void', 'scalar' or None (struct, union, complex, function pointer returns) from "R (P)"."""
+def return_type(function_type):
+    """The return type of "R (P)" as written, without storage and qualifier words; None for a function type
+    whose text has no parameter list or whose return type is a function pointer or array."""
     text = function_type.strip()
     if not text.endswith(")"):
         return None
@@ -698,9 +723,71 @@ def return_class(function_type):
         return None
     for word in ("static", "inline", "extern", "const", "volatile", "restrict"):
         text = re.sub(r"\b%s\b" % word, "", text).strip()
-    if "(" in text or "complex" in text.lower() or text.startswith(("struct ", "union ")) or not text:
+    text = re.sub(r"\s+", " ", text)
+    if "(" in text or not text:
         return None
+    return text
+
+
+def record_through(name, typedefs):
+    """True if the typedef `name` is a struct or union through any chain of typedefs ("complex" and
+    unknown names are not); the chain is cut at 64 links."""
+    for _ in range(64):
+        kind = typedefs.get(name)
+        if kind == "record":
+            return True
+        if kind is None or kind == "complex":
+            return False
+        name = kind
+    return False
+
+
+def return_class(function_type, typedefs=None):
+    """'void', 'scalar', 'struct' or None (complex, function pointer returns) from "R (P)". A typedef is
+    resolved through `typedefs` (see `typedef_kinds`): a struct or union behind any chain is 'struct'."""
+    text = return_type(function_type)
+    if text is None or "complex" in text.lower():
+        return None
+    if text.startswith(("struct ", "union ")):
+        return "struct"
+    if typedefs and re.fullmatch(r"[A-Za-z_]\w*", text):
+        if record_through(text, typedefs):
+            return "struct"
+        if typedefs.get(text) == "complex":
+            return None
     return "void" if text == "void" else "scalar"
+
+
+def typedef_kinds(ast):
+    """{typedef name: "record" | "complex" | name of the typedef it is an alias of | "other"}, read from the
+    `TypedefDecl` nodes (the main file's and the headers', wherever declared)."""
+    found = {}
+
+    def underlying(node):
+        while isinstance(node, dict):
+            kind = node.get("kind", "")
+            if kind == "RecordType":
+                return "record"
+            if kind == "ComplexType":
+                return "complex"
+            if kind == "TypedefType":
+                return (node.get("decl") or {}).get("name") or "other"
+            if kind in ("ElaboratedType", "ParenType", "AttributedType"):
+                inner = node.get("inner") or [None]
+                node = inner[0]
+                continue
+            return "other"
+        return "other"
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("kind") == "TypedefDecl" and node.get("name"):
+                found[node["name"]] = underlying((node.get("inner") or [None])[0])
+            for child in node.get("inner", ()):
+                walk(child)
+
+    walk(ast)
+    return found
 
 
 def assign_ids(mutants, file_path):
@@ -786,6 +873,7 @@ def generate(file_path, data, ast, system_roots=()):
     source = Source(data)
     walker = Walker(source, file_path, system_roots)
     walker.enums = enum_successors(ast)
+    walker.typedefs = typedef_kinds(ast)
     for top in ast.get("inner", []):
         walker.visit(top, {"function": None, "live": True})
     walker.finish()
