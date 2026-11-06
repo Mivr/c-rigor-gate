@@ -9,6 +9,7 @@ environment) ends the proof for that clone.
 """
 
 import posixpath
+import re
 
 from rigor_lib import trajectory_cmds as cmds
 from rigor_lib import trajectory_rules as rules
@@ -38,8 +39,83 @@ def _refused_clone_option(args):
     return False
 
 
+_PARAM_RE = re.compile(r"\s*'((?:[^']|'\\'')*)'(?:=('(?:[^']|'\\'')*'))?")
+_CONFIG_FILES = ("GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM")
+# config keys whose value git runs as a shell command (T057, R008 #10); `alias.*` is handled apart
+_COMMAND_KEYS = ("core.pager", "core.sshcommand", "core.editor", "sequence.editor")
+
+
+def _env_confs(genv):
+    """The `-c KEY=VALUE` overrides git takes from its environment: GIT_CONFIG_COUNT/KEY_<n>/VALUE_<n>,
+    GIT_CONFIG_PARAMETERS, and a config file named by GIT_CONFIG(_GLOBAL|_SYSTEM) (its content is unknown)."""
+    confs = []
+    count = genv.get("GIT_CONFIG_COUNT")
+    if count is not None:
+        number = int(count) if count.isdigit() else -1
+        for index in range(min(number, 64) if number >= 0 else 0):
+            key = genv.get("GIT_CONFIG_KEY_%d" % index, UNRESOLVED)
+            confs.append(key + "=" + genv.get("GIT_CONFIG_VALUE_%d" % index, ""))
+        if number < 0:
+            confs.append(UNRESOLVED + "=")
+    params = genv.get("GIT_CONFIG_PARAMETERS")
+    if params is not None:
+        pos = 0
+        while pos < len(params.rstrip()):
+            match = _PARAM_RE.match(params, pos)
+            if match is None or match.end() == pos:
+                confs.append(UNRESOLVED + "=")
+                break
+            key = match.group(1).replace("'\\''", "'")
+            value = (match.group(2) or "''")[1:-1].replace("'\\''", "'")
+            confs.append(key + "=" + value)
+            pos = match.end()
+    for name in _CONFIG_FILES:
+        if name in genv:
+            confs.append("include.path=" + genv[name])
+    return confs
+
+
 class GitMixin:
     """State and decisions about the agent's own local clones; mixed into the Analyzer."""
+
+    def effective_git_argv(self, argv, genv):
+        """`argv` with the environment's config overrides as leading `-c` pairs and `--config-env=KEY=VAR` turned into
+        `-c KEY=<value of VAR>` (T057, R008 #10): they are judged exactly like `-c`."""
+        out, i = [argv[0]], 1
+        for conf in _env_confs(genv):
+            out += ["-c", conf]
+        while i < len(argv) and argv[i].startswith("-"):
+            arg = argv[i]
+            spec = None
+            if arg.startswith("--config-env="):
+                spec = arg[len("--config-env="):]
+            elif arg == "--config-env" and i + 1 < len(argv):
+                spec, i = argv[i + 1], i + 1
+            if spec is None:
+                out.append(arg)
+                if arg in ("-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix") \
+                        and i + 1 < len(argv):
+                    out.append(argv[i + 1])
+                    i += 1
+            else:
+                key, _, var = spec.partition("=")
+                out += ["-c", key + "=" + genv.get(var, UNRESOLVED)]
+            i += 1
+        return out + argv[i:]
+
+    def git_config_code(self, argv, raw, depth, env):
+        """The value of an `alias.*` (`!CMD` is shell, else git arguments), `core.pager`, `pager.*`, `core.sshCommand`
+        or an editor key, from `-c` or the environment, is audited as the command it runs (T057, R008 #10)."""
+        confs, _, _ = cmds.git_parts(self.effective_git_argv(argv, self.cmd_env))
+        for conf in confs:
+            key, _, value = conf.partition("=")
+            key = key.lower()
+            if not value.strip():
+                continue
+            if key.startswith("alias."):
+                self.bash(value[1:] if value.startswith("!") else "git " + value, depth + 1, env)
+            elif key in _COMMAND_KEYS or key.startswith("pager."):
+                self.bash(value, depth + 1, env)
 
     def git_dir_of(self, argv):
         """The directory a git command acts in (cwd plus `-C`), or None when it cannot be known."""

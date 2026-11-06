@@ -376,6 +376,19 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   is a `.env` anywhere under a home outside the agent's own dirs (a `.env` the worktree or the scratch holds is its
   own). `ssh-add` (it lists or loads the agent's keys) is `read-ssh-material`.
 
+### Assignment values (T057, R008 #10)
+* The value of every assignment a program receives is read-checked as a `:`-separated path list: `NAME=value CMD`,
+  `env NAME=value CMD`, and `export`/`declare`/`typeset`/`local`/`readonly NAME=value` (`GIT_DIR=<other worktree>/.git`,
+  `BASH_ENV=<secret>`, `PYTHONPATH=gate:/var/tmp/cache/T042`, `TMPDIR=<another cache>` all block). A bare `NAME=value;`
+  is a shell variable and is judged where it is used. Checking a value does not count as reading a file (tamper rules).
+* git's environment is `-c`: `GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>`/`GIT_CONFIG_VALUE_<n>`, the pairs of
+  `GIT_CONFIG_PARAMETERS`, and `--config-env=KEY=VAR` (the value of VAR) are overrides exactly like `-c KEY=VALUE`
+  (`core.hooksPath` is `cmd-no-verify`, any other key not on the identity list is `git-config-override`). A config
+  file named by `GIT_CONFIG`, `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` is an override of unknown content (review).
+* Values that run as commands are audited as shell, from `-c` or the environment: `alias.*` (`!CMD` is shell, any
+  other alias is `git ARGS`), `core.pager`, `pager.*`, `core.sshCommand`, `core.editor`, `sequence.editor`, and the
+  variables `*_PAGER`, `*_EDITOR`, `PAGER`, `EDITOR`, `VISUAL`, `GIT_SSH_COMMAND`, `GIT_SSH`.
+
 ## Limits (be honest about them)
 * The lexer is not a shell: functions, aliases, `source`d files the agent did not write, arithmetic, `printf '\057'`
   style computed paths and code inside languages other than shell are not interpreted. Computed command names and
