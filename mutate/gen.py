@@ -41,9 +41,10 @@ OPERATORS = ("relational", "arithmetic", "logical", "not-removal", "compound-ass
              "increment", "integer-literal", "condition", "return-value", "statement-deletion",
              "function-body")
 LITERAL = re.compile(rb"(0[xX][0-9a-fA-F]+|0|[1-9][0-9]*)([uUlL]*)")
-# Node kinds below which an integer literal is a constant the language requires.
-NO_LITERAL = ("ConstantExpr", "StaticAssertDecl", "EnumConstantDecl", "UnaryExprOrTypeTraitExpr",
-              "DesignatedInitExpr", "FieldDecl")
+# Node kinds below which nothing is mutated: constants the language requires (case labels, bit-field
+# widths, enumerator values, static assertions) and operands of sizeof, which are not evaluated.
+NO_MUTATION = ("ConstantExpr", "StaticAssertDecl", "EnumConstantDecl", "UnaryExprOrTypeTraitExpr",
+               "DesignatedInitExpr", "FieldDecl")
 CONDITION_SLOT = {"IfStmt": 0, "WhileStmt": 0, "DoStmt": 1, "ForStmt": 2}
 
 
@@ -157,9 +158,9 @@ class Walker:
         child_ctx = ctx
         if kind == "FunctionDecl":
             child_ctx = self.enter_function(node, ctx)
-        elif kind in NO_LITERAL:
-            child_ctx = dict(ctx, literals=False)
-        if ctx["function"] is not None and span_of(node) is not None:
+        elif kind in NO_MUTATION:
+            child_ctx = dict(ctx, live=False)
+        if ctx["function"] is not None and ctx["live"] and span_of(node) is not None:
             self.mutate(node, kind, children, ctx)
         for child in children:
             self.visit(child, child_ctx)
@@ -172,7 +173,7 @@ class Walker:
         params = [c.get("name") for c in node["inner"] if c.get("kind") == "ParmVarDecl"]
         name = node.get("name", "")
         self.functions.append({"name": name, "line": self.source.line(span_of(node)[0])})
-        return {"function": name, "params": [p for p in params if p], "literals": True,
+        return {"function": name, "params": [p for p in params if p], "live": True,
                 "qual": node.get("type", {}), "body": body}
 
     def mutate(self, node, kind, children, ctx):
@@ -183,7 +184,7 @@ class Walker:
             self.unary(node, span, ctx)
         elif kind == "CompoundAssignOperator":
             self.operator_between(node, children, ctx, "compound-assignment", COMPOUND)
-        elif kind == "IntegerLiteral" and ctx["literals"]:
+        elif kind == "IntegerLiteral":
             self.literal(span, ctx)
         elif kind in CONDITION_SLOT:
             self.condition(kind, children, ctx)
@@ -338,7 +339,7 @@ def generate(file_path, data, ast):
     source = Source(data)
     walker = Walker(source, file_path)
     for top in ast.get("inner", []):
-        walker.visit(top, {"function": None, "literals": True})
+        walker.visit(top, {"function": None, "live": True})
     return {"schema": SCHEMA, "file": file_path, "sha256": hashlib.sha256(data).hexdigest(),
             "functions": walker.functions, "mutants": assign_ids(walker.mutants, file_path)}
 
