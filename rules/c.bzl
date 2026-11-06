@@ -57,7 +57,23 @@ _NOT_IN_FUZZ = select({
     "DEFAULT": [],
 })
 
+def _plain_files(macro, attr, items, suffix):
+    # Plain file names only: a ("a.c", ["-Wno-error"]) tuple would carry per-file flags that
+    # come after the sealed profile, and a dict or a target label could smuggle in more.
+    if type(items) != "list":
+        fail("{}: `{}` must be a list of plain file names, got {}".format(macro, attr, type(items)))
+    for item in items:
+        if type(item) != "string":
+            fail("{}: `{}` entries must be plain strings, got {}: {}".format(macro, attr, type(item), item))
+        if not item.endswith(suffix) or ":" in item or item.startswith("//") or item.startswith("@"):
+            fail("{}: `{}` entries must be plain file names ending in {}, got {!r}".format(macro, attr, suffix, item))
+
+def _check(macro, srcs, headers):
+    _plain_files(macro, "srcs", srcs, ".c")
+    _plain_files(macro, "headers", headers, ".h")
+
 def c_library(name, srcs = [], headers = [], deps = [], visibility = []):
+    _check("c_library", srcs, headers)
     native.cxx_library(
         name = name,
         srcs = srcs,
@@ -69,6 +85,7 @@ def c_library(name, srcs = [], headers = [], deps = [], visibility = []):
     )
 
 def c_binary(name, srcs = [], deps = []):
+    _check("c_binary", srcs, [])
     native.cxx_binary(
         name = name,
         srcs = srcs,
@@ -79,6 +96,7 @@ def c_binary(name, srcs = [], deps = []):
     )
 
 def c_test(name, srcs = [], deps = []):
+    _check("c_test", srcs, [])
     native.cxx_test(
         name = name,
         srcs = srcs,
@@ -96,6 +114,7 @@ def c_test(name, srcs = [], deps = []):
     )
 
 def c_fuzz(name, srcs = [], deps = []):
+    _check("c_fuzz", srcs, [])
     native.cxx_test(
         name = name,
         srcs = srcs,

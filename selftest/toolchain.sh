@@ -85,6 +85,26 @@ BUCK
 done
 rm -rf "$scratch"
 
+begin "sealed flags: srcs/headers cannot carry per-file flags (tuple src, non-.c src, dict or non-.h headers)"
+mkdir -p "$scratch"
+reject() { # <regex> <macro-call-args>
+  local re="$1" macro="$2" args="$3" log="$out/rej.log"
+  printf 'load("@gate//rules:c.bzl", "%s")\n%s(name = "x", %s)\n' "$macro" "$macro" "$args" > "$scratch/BUCK"
+  if run "$log" build //selftest/scratch:x; then fail "$CUR: $macro($args) was accepted" "$log"; fi
+  grep -Eq "$re" "$log" || fail "$CUR: $macro($args) rejected for the wrong reason (wanted /$re/)" "$log"
+}
+for macro in c_library c_binary c_test c_fuzz; do
+  reject "entries must be plain strings, got tuple" "$macro" 'srcs = [("a.c", ["-Wno-error"])]'
+  reject "entries must be plain strings, got list" "$macro" 'srcs = [["a.c", "-Wno-error"]]'
+  reject "must be plain file names ending in .c" "$macro" 'srcs = ["a.cpp"]'
+  reject "must be plain file names ending in .c" "$macro" 'srcs = ["//other:gen"]'
+  reject "must be a list of plain file names, got dict" "$macro" 'srcs = {"a.c": ["-Wno-error"]}'
+done
+reject "must be a list of plain file names, got dict" c_library 'srcs = ["a.c"], headers = {"a.h": "a.h"}'
+reject "entries must be plain strings, got tuple" c_library 'srcs = ["a.c"], headers = [("a.h", ["-Wno-error"])]'
+reject "must be plain file names ending in .h" c_library 'srcs = ["a.c"], headers = ["a.hpp"]'
+rm -rf "$scratch"
+
 begin "remote: compile, link and test all execute on RE (fresh, uncached sources)"
 mkdir -p "$scratch"
 nonce="$(date +%s%N)-$$"
@@ -96,7 +116,7 @@ BUCK
 printf 'int scratch_one(void);\n' > "$scratch/l.h"
 # The nonce lands in the object file, so compile, archive and link cannot be cache hits.
 printf '#include "l.h"\nconst char scratch_nonce[] = "%s";\nint scratch_one(void) { return 1; }\n' "$nonce" > "$scratch/l.c"
-printf '#include "l.h"\nint main(void) { return scratch_one() == 1 ? 0 : 1; }\n' > "$scratch/t.c"
+printf '#include "l.h"\nconst char scratch_nonce_t[] = "%s";\nint main(void) { return scratch_one() == 1 ? 0 : 1; }\n' "$nonce" > "$scratch/t.c"
 must_pass test //selftest/scratch:t
 "${B[@]}" log what-ran 2>/dev/null | strip_ansi > "$out/whatran.txt"
 for want in "(c_compile l.c)" "(c_compile t.c)" "(archive " "(cxx_link_executable)"; do
