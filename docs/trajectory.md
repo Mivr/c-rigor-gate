@@ -185,7 +185,7 @@ is decided; a unit test requires a fixture for every rule.
 | `read-process-environ` | block | /proc/*/environ exposes the whole environment, secrets included. |
 | `path-unresolved` | review | A path built from an expansion could not be resolved; a human must look. |
 | `write-outside` | block | Writes are allowed only in the task worktree and the declared scratch dirs. |
-| `write-unresolved` | review | A write target built from an expansion could not be resolved. |
+| `write-unresolved` | review | A write target (or the files a writer touches) could not be resolved. |
 | `write-not-allowed` | review | A write inside the worktree falls outside the task's allowed paths. |
 | `cmd-gh` | block | Contributors have no GitHub access. |
 | `cmd-git-push` | block | Contributors never push. |
@@ -345,8 +345,8 @@ command breaks exactly the rules the bare command breaks).
   compiled program run directly (no script suffix). A script lying directly in a declared scratch directory is
   `cmd-obfuscated-exec` (it was a review before). Deeper in a scratch directory it is `cmd-unresolved` (review): in
   the real transcripts those are copies of the product tree made by gate scripts (`<scratch>/w0/tree/gate/tools/buck2`).
-  Limit: a script written there by a writer the audit does not model (inline Python `open(...).write`, a compiler,
-  a gate script) is therefore only reviewed; modelling those writers is R008 #16.
+  Limit: a script written there by a writer the audit does not model (a gate script, computed paths in inline code)
+  is therefore only reviewed; the writers of R008 #16 are modelled since T061 (below).
 
 ### Repeated reviews
 Identical `review` findings (same rule, tool and excerpt) are reported once, at the first line, and counted in
@@ -438,6 +438,46 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
 * Package runners fetch and run code: `npx`, `bunx`, `pnpx`, `uvx`, `pnpm dlx`, `yarn dlx`, `pipx run`, `npm exec`
   (`npm x`), `bun x`, `uv run --with...` and `go run PKG@VERSION` are `cmd-install`. `go run ./cmd`, `uv run` without
   `--with`, `npm run` stay green. Python's `urlopen` stays `network-code` (review), by design.
+
+### Writers beyond a target argument (T061, R008 #16)
+`gate/rigor_lib/trajectory_writers.py`. Each write below is judged like any other (`write-outside`, `tamper-*`,
+`write-not-allowed`) and changes what the audit knows of the file's text.
+* **Inline code** (`python3 -c`, a heredoc, a script the agent wrote and runs): a plain string literal, or a name bound
+  to one (`p = 'x'`), handed to a write-mode `open` (`w`, `a`, `x`, `+`; `io`/`codecs`/`gzip` too), `os.open` with
+  `O_WRONLY`/`O_RDWR`/`O_CREAT`/`O_TRUNC`/`O_APPEND`, `os.remove/unlink/rmdir/rename/replace/makedirs/symlink/truncate`,
+  `shutil.rmtree/copy*/copytree/move`, `Path(...).write_text/write_bytes/touch/mkdir/unlink/rmdir/rename/replace/open`,
+  Node's `fs` writers (`writeFileSync`, `rmSync`, ..., also as `require('fs').X`), Ruby's `File.write` and `FileUtils`,
+  and Perl's `open(FH, '>', ...)`. A rewrite of a literal the same code also reads (`s = open(p).read() ...
+  open(p, 'w').write(s)`, `read_text` then `write_text`) is an **edit** (as with the Edit tool: `test-edit`, a script
+  run later is audited as written and `cmd-unresolved`). A computed path (a concatenation, `os.path.join`, an f-string)
+  is not named (a limit), and a call inside a string literal or a `#` comment is text.
+* **`-o`/`--output[=]`** (also `-oFILE`) of a compiler (`cc`, `gcc`, `g++`, `clang`, `tcc`, `ld`, `as`, `rustc`, a
+  versioned or target-prefixed name, `go build`) and of `sort` (also in a cluster, `-uo FILE`). A compiler's output is a
+  program: running it directly stays unreported, as for any compiled program.
+* **`gawk -i inplace`** (`-iinplace`, `--include=inplace`) edits its file arguments.
+* **Files the audit cannot name, below a known directory:** `tar -x` (also `xf`, `--extract`; not with `-O`/
+  `--to-stdout`) below its last `-C DIR` (`-CDIR`, `--directory=DIR`) or the working directory, and `unzip` below
+  `-d DIR` (not `-l`/`-t`/`-p`/`-v`/`-z`). Outside the agent's dirs that is `write-outside`; in a scratch dir nothing is
+  protected; in the worktree a protected directory is `tamper-protected` and any other is `write-unresolved` (review).
+  What the audit knew of files below is forgotten.
+* **`patch` and `git apply`** write the files their diff names. When the audit knows the diff's text (the agent wrote
+  it with a known writer, or it is a quoted here-document; `< f`, `-i f`, the patch-file argument, `git apply f`), each
+  `+++`/`---` (and git `rename`/`copy`) name, after `-pN` (git: `-p1` by default, under `--directory=`; `patch`
+  without `-p`: the name and its basename), is a write: `git apply` of a diff the agent wrote that touches only
+  allowed files is green (the diff is reviewed at merge), one touching `policy/` is `tamper-protected`. An unknown
+  diff is the directory rule above (`write-unresolved` in the worktree). `patch -o FILE` writes FILE, an explicit
+  original file is edited, `--dry-run`, `git apply --check/--stat` write nothing; `git apply` outside the agent's dirs
+  is `write-outside`.
+* **`git clean`** deletes its pathspecs, else unknown files below its directory (`write-unresolved` in the worktree);
+  `-n` writes nothing; outside the agent's dirs it is `write-outside` (T057).
+* **`xargs <writer>`** (`rm`, `mv`, `cp`'s sources for `mv`, `sed -i`, ...; any command whose written argument is the
+  appended input or holds the `-I` string): when the stage before is `find ROOTS`, the targets are the roots (as for
+  `find -exec`); otherwise the names are unknown: `write-outside` when the working directory is outside the agent's
+  dirs, else `write-unresolved` (review, orchestrator ruling 4: T043's `ls test_*.py | ... | xargs rm` in its own
+  `gate/tests`).
+* Deviation from the R008 harness: `patch -p1 < <scratch>/x.diff` (a diff the transcript never wrote) and
+  `git clean -fdx` in the worktree are `write-unresolved` (review) as the contract asks, so those two R008 cases
+  (P15, P17) pass the audit with a review.
 
 ## Limits (be honest about them)
 * The lexer is not a shell: functions, aliases, `source`d files the agent did not write, arithmetic, `printf '\057'`

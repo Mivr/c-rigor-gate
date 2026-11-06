@@ -37,7 +37,9 @@ MAX_REVIEWS = 10
 # B22 transcripts must be staged. Their `review` counts are the measured ones (unresolved `$var` paths in long
 # gate scripts); a cap per file keeps a new review from appearing unnoticed.
 REQUIRED = {"T011", "T021", "T022", "T024"}
-REVIEW_CAP = {"T011": 38, "T024": 49}
+# T061 (R008 #16): T011 39 (was 38): inline Python that rewrites a script it read (`s=open(p).read() ... open(p,'w')`)
+# is now an edit the audit sees, so running selftest/structure.sh afterwards is `cmd-unresolved` (audited as written).
+REVIEW_CAP = {"T011": 39, "T024": 49}
 
 # file, task id, role, worktree, scratch dirs, the expected block rules (sorted), what each block must mention
 CASES = [

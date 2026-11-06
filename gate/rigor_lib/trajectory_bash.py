@@ -13,6 +13,7 @@ from rigor_lib.trajectory_git import GitMixin
 from rigor_lib.trajectory_paths import expand_braces, is_url
 from rigor_lib.trajectory_proof import CallFacts, ProofMixin
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
+from rigor_lib import trajectory_writers as writers
 
 _VAR_RE = re.compile(r"\$(?:\{([^}]*)\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@#?$!*-]))")
 _LIVE_RE = re.compile(r"\$(\{?)(!?)([A-Za-z_][A-Za-z0-9_]*)([*@]?)")
@@ -97,7 +98,7 @@ class Prepared:
         self.env_values = []     # (NAME, value) of the `env NAME=value` wrappers stripped in front of this argv
 
 
-class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
+class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin):
     def __init__(self, policy, task):
         self.policy = policy
         self.task = task
@@ -296,14 +297,16 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
                 state[item.group] = True
             if state.get(item.group) and self._executes_stdin(item.argv):
                 flagged[item.group] = True
-        sinks, producer, last = {}, {}, {}
+        sinks, producer, feeder, last = {}, {}, {}, {}
         for item in prepared:
+            if item.group in last:
+                feeder[id(item)] = last[item.group]  # the stage whose output is this one's stdin
             if item.argv and self._executes_stdin(item.argv):
                 sinks[item.group] = True
                 if item.group in last:
-                    producer[id(item)] = last[item.group]  # the stage whose output is this one's stdin (T049)
+                    producer[id(item)] = last[item.group]  # the same, for an interpreter (T049)
             last[item.group] = item
-        return {"obfuscated": flagged, "sink": sinks, "producer": producer}
+        return {"obfuscated": flagged, "sink": sinks, "producer": producer, "feeder": feeder}
 
     @staticmethod
     def _executes_stdin(argv):
@@ -452,6 +455,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         self._command_strings(item, argv, name, raw, depth, env)
         data_skip = self._data_indexes(argv, name, item.group in flags["sink"])
         write_idx = self._write_targets(item, argv, raw)
+        write_idx |= self.modelled_writes(item, argv, name, raw, flags)  # T061 (R008 #16)
         if item.job_dir is not None:
             self.write(item.job_dir, "create", raw)
         self._read_words(item, argv, raw, name, write_idx | data_skip | item.job_skip)
@@ -826,10 +830,10 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
     # -- writes ------------------------------------------------------------------------------
     def _write_targets(self, item, argv, raw):
         indexes = set()
-        for index, op in cmds.write_specs(argv):
+        for index, op, text in writers.write_targets(argv):
             if index < len(argv):
                 indexes.add(index)
-                self.write(re.sub(r"\Aof=", "", argv[index]), op, raw)
+                self.write(re.sub(r"\Aof=", "", text), op, raw)
         return indexes
 
     def _redirect(self, command, redirect):
@@ -875,7 +879,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         if not self.policy.write_ok(normal):
             self.add("write-outside", raw, text)
             return
-        self.tamper_check(normal, op, raw, text)
+        self.tamper_check(normal, "rewrite" if op == "build" else op, raw, text)
 
     def _content_changed(self, normal, op):
         """What the audit knows of a file's text after a write (T049, R008 #3). A rewrite replaces it with text
@@ -883,7 +887,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
         a writer whose text is known records it right after (Write, literal `echo`/`printf >`, a quoted
         here-document). An edit of a known file makes it `dirty` (audited as written, reviewed); a deleted file
         is forgotten."""
-        if op == "delete":
+        if op in ("delete", "build"):  # a compiler's output is a program, not a text to audit (T061)
             self.files.pop(normal, None)
             self.dirty.discard(normal)
             self.unknown.discard(normal)
