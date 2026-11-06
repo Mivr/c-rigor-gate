@@ -1,0 +1,65 @@
+"""`<name>_facts`: what the compiler and the linker actually saw, as one cacheable JSON file.
+
+Built in the release mode only. For every source of the target the prelude already produces, with
+the very same compile command, the `clang -E` output (`[objects][<unit>][preprocessed]`) and the
+release object. A gate-owned Python script (`gate/rigor_lib/cscan.py`) scans the former and lists
+the symbols of the latter with the pinned `llvm-nm`. The file is data; `rigor facts` decides.
+"""
+
+def _label_text(label: Label, name: str | None = None) -> str:
+    cell = "" if label.cell == "root" else label.cell
+    return "{}//{}:{}".format(cell, label.package, name if name else label.name)
+
+def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
+    subs = ctx.attrs.unit[DefaultInfo].sub_targets
+    every = subs["objects"][DefaultInfo].sub_targets if "objects" in subs else {}
+
+    # A library has a position-independent twin of each object; the plain one is what gets linked.
+    objects = {name: unit for name, unit in every.items() if not name.endswith(".pic.o")}
+    if len(objects) != len(ctx.attrs.srcs):
+        fail("{}: expected {} compiled units, the compiler produced {}".format(
+            ctx.label, len(ctx.attrs.srcs), len(objects),
+        ))
+    facts = ctx.actions.declare_output("facts.json")
+    cmd = cmd_args(
+        "/usr/bin/env",
+        "python3",
+        "-I",
+        "-B",
+        ctx.attrs._scanner,
+        "--label",
+        _label_text(ctx.label, ctx.attrs.facts_name),
+        "--kind",
+        ctx.attrs.kind,
+        "--nm",
+        ctx.attrs._nm[RunInfo],
+        ctx.attrs._roots[RunInfo],
+        "--out",
+        facts.as_output(),
+    )
+    for dep in ctx.attrs.facts_deps:
+        cmd.add("--dep", _label_text(dep.label))
+    for name in sorted(objects.keys()):
+        unit = objects[name][DefaultInfo]
+        cmd.add(
+            "--unit",
+            name,
+            unit.sub_targets["preprocessed"][DefaultInfo].default_outputs[0],
+            unit.default_outputs[0],
+        )
+    ctx.actions.run(cmd, category = "c_facts")
+    return [DefaultInfo(default_output = facts)]
+
+c_facts = rule(
+    impl = _facts_impl,
+    attrs = {
+        "facts_deps": attrs.list(attrs.dep(), default = []),
+        "facts_name": attrs.string(),
+        "kind": attrs.string(),
+        "srcs": attrs.list(attrs.string(), default = []),
+        "unit": attrs.dep(),
+        "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
+        "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
+        "_scanner": attrs.source(default = "root//gate/rigor_lib:cscan.py"),
+    },
+)

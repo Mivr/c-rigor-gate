@@ -8,6 +8,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:ctest.bzl", "ctest_results")
+load("@gate//rules:facts.bzl", "c_facts")
 
 _SEALED = [
     "-std=c17",
@@ -73,6 +74,21 @@ def _check(macro, srcs, headers):
     _plain_files(macro, "srcs", srcs, ".c")
     _plain_files(macro, "headers", headers, ".h")
 
+# `<name>_facts` exists in the release mode only: the preprocessed text and the symbols of the
+# release objects (see rules/facts.bzl). `unit` is the target whose compile actions are read.
+_RELEASE_ONLY = ["toolchains//:release"]
+
+def _facts(name, kind, srcs, deps, unit = None):
+    c_facts(
+        name = name + "_facts",
+        unit = unit if unit else ":" + name,
+        facts_name = name,
+        kind = kind,
+        srcs = srcs,
+        facts_deps = deps,
+        target_compatible_with = _RELEASE_ONLY,
+    )
+
 def c_library(name, srcs = [], headers = [], deps = [], visibility = []):
     _check("c_library", srcs, headers)
     native.cxx_library(
@@ -84,6 +100,7 @@ def c_library(name, srcs = [], headers = [], deps = [], visibility = []):
         compiler_flags = _compile_flags(),
         link_style = "static",
     )
+    _facts(name, "c_library", srcs, deps)
 
 def c_binary(name, srcs = [], deps = []):
     _check("c_binary", srcs, [])
@@ -95,6 +112,7 @@ def c_binary(name, srcs = [], deps = []):
         linker_flags = _link_flags(),
         target_compatible_with = _NOT_IN_FUZZ,
     )
+    _facts(name, "c_binary", srcs, deps)
 
 # `<name>_results` is built in release and san only (cov and fuzz do not produce verdicts).
 _RELEASE_OR_SAN = select({
@@ -113,6 +131,8 @@ def c_test(name, srcs = [], deps = []):
         linker_flags = _link_flags(),
         target_compatible_with = _NOT_IN_FUZZ,
     )
+
+    _facts(name, "c_test", srcs, deps + ["gate//ctest:ctest"])
 
     # `<name>_results`: the ctest JSON Lines, produced on RE as a cacheable artifact.
     ctest_results(
@@ -139,3 +159,15 @@ def c_fuzz(name, srcs = [], deps = []):
         args = ["-seed=1", "-runs=200000", "-artifact_prefix=/tmp/"],
         target_compatible_with = _ONLY_FUZZ,
     )
+
+    # The fuzz target itself only builds in the fuzz mode; its facts are read from a release-mode
+    # twin that compiles the same sources with the same deps and flags.
+    native.cxx_library(
+        name = name + "__facts_unit",
+        srcs = srcs,
+        deps = deps,
+        compiler_flags = _compile_flags(),
+        link_style = "static",
+        target_compatible_with = _RELEASE_ONLY,
+    )
+    _facts(name, "c_fuzz", srcs, deps, unit = ":" + name + "__facts_unit")

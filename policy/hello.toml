@@ -1,0 +1,23 @@
+# Symbol policy for examples/hello (T004). Gate-owned.
+[global]
+deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace", "_exit", "_Exit",
+        "exit", "quick_exit", "abort_handler_s", "signal", "sigaction", "raise", "dlopen", "dlsym",
+        "syscall", "getppid", "setjmp", "longjmp", "_setjmp", "sigsetjmp", "siglongjmp", "atexit",
+        "at_quick_exit", "system", "popen", "mprotect", "prctl", "unlink", "rename", "remove",
+        "rand", "srand", "random", "time", "clock_gettime", "gettimeofday", "getenv",
+        "fopen", "open", "openat", "creat", "socket", "connect", "dup2", "dup3", "pipe", "pipe2",
+        # Same powers by another name (T004 additions to the contract's list).
+        "environ", "__environ", "_environ", "secure_getenv", "putenv", "setenv", "unsetenv",
+        "clearenv", "execle", "execlp", "execvpe", "fexecve", "posix_spawn", "posix_spawnp",
+        "clone", "killpg", "pthread_kill", "tgkill", "tkill", "sigqueue", "_longjmp"]
+# The ctest runtime forks, kills and exits by design; it is the gate's own code.
+trusted = ["//ctest:ctest"]
+
+[module."//examples/hello:lib"]
+allow = []
+
+[module."//examples/hello:hello"]
+allow = ["printf"]
+
+[module."//examples/hello:hello_test"]
+allow = []

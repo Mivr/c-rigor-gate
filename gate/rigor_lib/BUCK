@@ -1,0 +1,5 @@
+# The fact scanner runs inside a Buck2 action (rules/facts.bzl); this exposes it as an input.
+export_file(
+    name = "cscan.py",
+    visibility = ["PUBLIC"],
+)

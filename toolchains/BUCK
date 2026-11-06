@@ -4,7 +4,7 @@ load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
 load(":fetch.bzl", "fetched_tree")
 load(":platforms.bzl", "exec_platform", "target_platform")
-load(":tools.bzl", "clang_cc", "clang_ld", "llvm_bin")
+load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "system_roots")
 
 WORKER_IMAGE = read_root_config("rbe", "worker_image_digest", "")
 
@@ -171,6 +171,15 @@ fetched_tree(
 clang_cc(name = "cc", llvm = ":llvm", llvm_major = "19", sysroot = ":sysroot")
 
 clang_ld(name = "ld", llvm = ":llvm", llvm_major = "19", runtimes = RUNTIMES, sysroot = ":sysroot")
+
+system_roots(name = "system-roots", llvm = ":llvm", llvm_major = "19", sysroot = ":sysroot", visibility = ["PUBLIC"])
+
+libc_symbols(
+    name = "libc_symbols",
+    libs = ["libc.so.6", "libm.so.6", "libpthread.so.0", "libdl.so.2", "librt.so.1", "libutil.so.1", "libresolv.so.2", "libmvec.so.1"],
+    sysroot = ":sysroot",
+    visibility = ["PUBLIC"],
+)
 
 [
     llvm_bin(name = "llvm-" + t, bin = "bin/llvm-" + t, llvm = ":llvm", visibility = ["PUBLIC"])
