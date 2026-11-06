@@ -28,7 +28,39 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `mode-divergence` | `rigor facts --modes` (T023, B3; `docs/product-checks.md` "Modes") over the release facts of every `kind(c_facts, //...)` target and the `san` twins `kind(c_san_facts, //...)`, each with its `[calls]` output. A target without a twin (either way) is `missing-san-twin` / `missing-release-twin`, one that does not build is `modes-build-failed`; in both cases no comparison is made. Malformed or one-sided directories are exit 2. Same preconditions, caching and metadata as `structure`. Both gates sit right after `build` and before the tests: they only need a tree that compiles, they are cheap next to `mutants`, and a failing test does not hide them. |
 | `tests-release`, `tests-san` | the `tests` gate over the results artifacts of that mode, with `products/<p>/expected-tests.json` and, if present, `expected-tests.previous.json` (both next to `product.toml`, gate-owned). NOT_RUN if the build of that mode was not clean. |
 | `mutants` | mutation testing of every product module the policy puts at L2 or above (below). NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. |
+| `witness-tests`, `mutants-witness` | the witness gates (T039; `docs/witness.md`, P002), below. |
 | verdict | `rigor verdict` over `gate/order.txt`, plus `inputs`; with `--sign-key` (and a clean gate), `ssh-keygen -Y sign -n c-rigor-gate-verdict` writes `verdict.json.sig`. |
+
+## The witness gates (`witness-tests`, `mutants-witness`, T039)
+`gate/rigor_lib/grade_witness.py`. They judge the tests against the gate-held witness (`--witness DIR`, bound as
+`witness_sha256`; format, roles and procedure in `docs/witness.md`) for the modules W, computed from the head's layout
+(`uquery`) and the paths changed in `merge_base..head` (`witness_scope.scope`, by the contract's `role`). They come
+after `mutants`, so the head's mutants result exists for the identical-tree reuse. The role `test-author` is exit 2
+("role test-author needs T041") until `tests-stub` exists; so is a bundle for another product or with a file outside
+the policy's `impl` globs (checked in the `contract` step, before any build).
+- `impl = ["core/core.c"]` per module in `products/<p>/policy.toml` (globs; the paths an implementer may write and a
+  witness replaces). An L2+ module without it is `impl-missing` (error at L3 and above, info at L2). The symbols and
+  semantic-suppression readers accept the key and ignore it.
+- **`witness-tests`** needs `assemble` and `buckfiles` PASS (not the head's tests). Info `witness-scope` (role, W, the
+  modules with a bundle entry). A module of W without a bundle entry is `witness-missing` (error at L3 and above, info
+  at L2); with an error so far nothing is built. Otherwise `<work>/tree-witness` is assembled exactly like the head
+  tree (`grade_steps.assemble_tree`) except that the head files matching the impl globs of the judged modules are
+  left out and the bundle's files written (info `witness-manifest`: sha256 of its product files), and built in both
+  modes with its own daemon (`--no-remote-cache` with `--uncached`; findings `witness-build-failed` with the original
+  rule as `kind`; compiler output is not kept). Every expected test is then judged in both modes: `witness-test-not-pass`
+  (rename of `test-not-pass`), `no-assertions`, `missing-test`, `unexpected-failing-test`, each with its `mode`.
+- **`mutants-witness`** needs `witness-tests` PASS. It plans the head's layout with the head's levels, keeps the modules
+  of W with a bundle entry, and runs the same generator, tests and rules as `mutants` on the witness tree
+  (`gate-mutants/` in `tree-witness`), judged with the approval kind `witness-equivalent-mutant`. `survived-mutant`
+  is `witness-survived-mutant` (L3 and above) and the L2 info `survivor` is `witness-survivor`.
+- **Not applicable** (PASS, info `witness-scope`): W = {} or no module of W with a bundle entry. A grade of a pure
+  implementation change runs one `uquery`, no action.
+- **Identical tree.** If the witness tree's product files are byte-identical to the head's (same manifest sha256) and
+  the head built in both modes, `witness-tests` judges the head's results (info `witness-equals-head`, zero actions)
+  and `mutants-witness` reuses the head's per-module `mutants` findings and summaries (also zero actions) unless the
+  head result used an approval, whose kind is the implementer's.
+- **No source text.** Mutant findings and survivor summaries lose `original` and `replacement`; full reports stay in
+  `<work>/witness/mutants-reports/`.
 
 ## Mutation testing in the pipeline (`mutants`, T008)
 `gate/rigor_lib/grade_mutants.py`. What is mutated, and against which tests, is decided by the gate alone:
