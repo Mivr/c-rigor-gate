@@ -143,7 +143,8 @@ def build_gate(g):
             mode_found, mode_metadata = build_mode(g, mode, labels)
             found.extend(mode_found)
             metadata[mode] = mode_metadata
-        metadata["executed_actions"] = sum(metadata[m]["executed_actions"] for m in grade_context.MODES)
+        for counter in ("executed_actions", "cached_actions"):
+            metadata[counter] = sum(metadata[m][counter] for m in grade_context.MODES)
         return GateResult("build", found, metadata)
     finally:
         grade_context.kill_daemon(g.tree)
