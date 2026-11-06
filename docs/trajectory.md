@@ -79,7 +79,12 @@ Every tool input, not only Bash.
 
 Paths are made absolute and normalised (`..`, `//`, `/./`, `~`, `~user`, `/proc/self/root`, `/proc/self/cwd`) and
 also resolved through symlinks that exist on the disk where the audit runs. Wildcards and braces are matched against
-the forbidden locations. Command names are the basename after quote removal (`g"h"`, `$'\x67h'`, `\gh`, `/usr/bin/gh`).
+the forbidden locations. **Glob holes (T052, R008 #8):** under a home parent (`/var/tmp`, `--home`, `/root`,
+`/home/*`), a component that starts with a literal `.` and can match `.config`, `.claude*` or `.ssh` is that rule; and
+a wildcard that can reach another task's cache (`/var/tmp/c*/T042/x`), another worktree (`/var/tmp/w?/<repo>/T0*/x`), a
+`*-hidden` repo (`annas-c-h*`) or `annas-mcp` is its rule, but only under `/var/tmp`, `/data` and `/home` (orchestrator
+ruling 4: `/usr/include/a*` and other system globs stay green). A bare `*`/`**`/`?` aligned with a cache or worktree
+root name is left to the recursive-reader rule, and a glob whose literal prefix is the agent's own task dir is own. Command names are the basename after quote removal (`g"h"`, `$'\x67h'`, `\gh`, `/usr/bin/gh`).
 **Unknown pieces (T052, R008 #5).** A path with a piece the audit cannot know (`$(...)`, an unset `$VAR`, `$$`) is
 classified twice, with every unknown piece replaced by `""` and by `*`; if either variant hits a forbidden root, that
 is the rule (a block): `/var/tmp/$(true)/.config/x` is `read-secret-dir`, `/var/tmp/cache/$T/x` is `read-other-cache`.

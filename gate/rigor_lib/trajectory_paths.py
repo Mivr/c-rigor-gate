@@ -44,6 +44,15 @@ def expand_braces(text, limit=rules.MAX_BRACES):
     return results
 
 
+def _hidden_stem(literal):
+    """True when a glob's literal text trends toward a `*-hidden` repo name (T052, R008 #8): it contains `hidden`,
+    or its last `-`-separated segment is a non-empty prefix of `hidden` after at least one `-` (`annas-c-h`)."""
+    if "hidden" in literal:
+        return True
+    segments = literal.split("-")
+    return len(segments) >= 2 and bool(segments[-1]) and "hidden".startswith(segments[-1])
+
+
 def is_url(text):
     return _URL_RE.match(text) is not None and not text.startswith("file://")
 
@@ -189,23 +198,68 @@ class PathPolicy:
 
     # -- glob words --------------------------------------------------------------------------
     def glob_rule(self, text, cwd):
-        """Forbidden-read rule a wildcard path word could expand to, or None."""
+        """Forbidden-read rule a wildcard path word could expand to, or None (T052, R008 #8). A `.`-starting
+        component under a home parent that can match `.config`/`.claude*`/`.ssh` blocks; a pattern that can reach
+        another task's cache or worktree, a `*-hidden` repo or `annas-mcp` blocks, but only under /var/tmp, /data
+        and /home (orchestrator ruling 4: `/usr/include/a*` and other system globs stay green)."""
         normal = self.normalize(text, cwd)
         if normal is None or not re.search(r"[*?\[]", normal):
             return None
         if _PROC_ENVIRON_RE.match(normal):
             return "read-process-environ"
-        pattern = normal.split("/")
-        for example, rule in self._glob_examples():
-            want = example.split("/")
-            if len(pattern) < len(want) or not all(
-                    fnmatch.fnmatchcase(w, p) for w, p in zip(want, pattern)):
+        parts = normal.split("/")[1:]
+        wild = next((i for i, p in enumerate(parts) if re.search(r"[*?\[]", p)), len(parts))
+        parent = "/" + "/".join(parts[:wild])  # the literal directory above the first wildcard component
+        comp = parts[wild] if wild < len(parts) else ""
+        rule = self._hidden_glob(parent, comp)
+        if rule is not None:
+            return rule
+        return self._restricted_glob(parts) if self._under_restricted(parent) else None
+
+    @staticmethod
+    def _literals(comp):
+        return re.sub(r"[*?\[\]]", "", comp)
+
+    def _hidden_glob(self, parent, comp):
+        """A `.`-starting glob component under a home parent that can match `.config`/`.claude*`/`.ssh`."""
+        if not comp.startswith(".") or not (_HOME_PARENT_RE.match(parent) or parent == self.home):
+            return None
+        if fnmatch.fnmatchcase(".config", comp):
+            return "read-secret-dir"
+        if fnmatch.fnmatchcase(".claude", comp) or fnmatch.fnmatchcase(".claude.json", comp):
+            return "read-claude-state"
+        if fnmatch.fnmatchcase(".ssh", comp):
+            return "read-ssh-material"
+        return None
+
+    def _under_restricted(self, parent):
+        roots = ("/var/tmp", "/data", "/home", "/root", "/Users", self.home)
+        return any(parent == r or parent.startswith(r.rstrip("/") + "/") for r in roots)
+
+    def _restricted_glob(self, parts):
+        """A glob (its full component list `parts`) reaching another cache, worktree, `*-hidden` repo or `annas-mcp`.
+        A `*-hidden`/`annas-mcp` hole is a wildcard component with >= 2 literals that can match such a name; the cache
+        and worktree roots match by descending the whole pattern against each forbidden directory, requiring every
+        aligned component to carry a literal (a bare `*`/`**`/`?` matching a root name is left to the recursive rule)."""
+        for piece in parts:
+            if not re.search(r"[*?\[]", piece) or len(self._literals(piece)) < 2:
                 continue
-            literals = len(re.sub(r"[*?\[\]]", "", pattern[len(want) - 1]))
-            if literals >= 2 and pattern[:len(want) - 1] == want[:-1]:
+            if _hidden_stem(self._literals(piece)):
+                return "read-hidden-repo"
+            if "annas" in self._literals(piece) and fnmatch.fnmatchcase("annas-mcp", piece):
+                return "read-clean-room"
+        for root, rule in self._glob_roots():
+            want = root.split("/")[1:]
+            if len(parts) < len(want) or not all(
+                    fnmatch.fnmatchcase(w, p) and self._literals(p) for w, p in zip(want, parts)):
+                continue
+            below = [re.split(r"[*?\[]", p, 1)[0] for p in parts[:len(want) + 1]]  # the forbidden dir and one below
+            if not self.is_own(collapse("/" + "/".join(below))):
                 return rule
         return None
 
-    def _glob_examples(self):
-        return (("/var/tmp/.config", "read-secret-dir"), ("/var/tmp/.claude", "read-claude-state"),
-                (self.home + "/.config", "read-secret-dir"), (self.home + "/.ssh", "read-ssh-material"))
+    def _glob_roots(self):
+        roots = [(rules.CACHE_ROOT.rstrip("/"), "read-other-cache")]
+        if "/wt/" in self.worktree + "/":
+            roots.append((posixpath.dirname(self.worktree), "read-other-worktree"))
+        return roots
