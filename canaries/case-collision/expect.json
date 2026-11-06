@@ -1,0 +1,9 @@
+{
+  "bypass": "case-colliding paths",
+  "description": "core/Twin.c and core/twin.c (mirrors grade.sh step case-collision).",
+  "fail": {
+    "buckfiles": [
+      "case-collision"
+    ]
+  }
+}

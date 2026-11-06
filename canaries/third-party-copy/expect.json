@@ -1,0 +1,9 @@
+{
+  "bypass": "vendored third_party copy",
+  "description": "A copy of a library under third_party inside the product (mirrors grade.sh step third-party-copy).",
+  "fail": {
+    "buckfiles": [
+      "ignored-code"
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "bypass": "code under an excluded path",
+  "description": "A C file under core/docs, which product.toml excludes (mirrors grade.sh step excluded-code).",
+  "fail": {
+    "buckfiles": [
+      "excluded-code"
+    ]
+  }
+}
