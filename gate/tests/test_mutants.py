@@ -7,6 +7,7 @@ from tests.helpers import Repo, Signer, TempDirTestCase, read_json, run_rigor
 LABEL = "//m:mod_mutants"
 H = ["%064x" % n for n in range(1, 40)]  # distinct object hashes
 BASE = H[0]
+BASE0 = H[30]  # the unmodified source at -O0
 
 
 def results(*lines):
@@ -27,11 +28,15 @@ TIMEOUT = {"rc": 1, "timed_out": False, "results": results(("fail", 1, "timeout 
 KILLED_BY_WATCHDOG = {"rc": -9, "timed_out": True, "results": None}
 
 
-def mutant(number, function="f", operator="relational", status="ok", digest=None, runs=None, line=3):
-    return {"id": "%016x" % number, "file": "m/a.c", "begin_offset": number, "end_offset": number + 1,
+def mutant(number, function="f", operator="relational", status="ok", digest=None, runs=None, line=3, o0=None):
+    """`o0`: the hash of the mutant compiled again at -O0, given for a candidate for equivalent / duplicate."""
+    item = {"id": "%016x" % number, "file": "m/a.c", "begin_offset": number, "end_offset": number + 1,
             "original": "<", "replacement": "<=", "operator": operator, "function": function, "line": line,
             "compile": {"status": status, "hash": "" if status == "unviable" else (digest or H[number])},
             "runs": {"t": KILLED} if runs is None and status == "ok" else (runs or {})}
+    if o0 is not None:
+        item["compile"]["o0"] = {"status": "ok", "hash": o0}
+    return item
 
 
 def report(mutants, functions=("f",), baseline=PASS, original=BASE, label=LABEL, tests=("t",), skipped=(), hidden=()):
@@ -40,7 +45,8 @@ def report(mutants, functions=("f",), baseline=PASS, original=BASE, label=LABEL,
         "sources": [{"file": "m/a.c", "sha256": "0" * 64, "definitions": len(functions) + len(skipped),
                      "functions": [{"name": n, "line": 1} for n in functions], "skipped": list(skipped),
                      "hidden": list(hidden),
-                     "baseline": {"status": "ok", "hash": BASE}, "original": {"status": "ok", "hash": original}}],
+                     "baseline": {"status": "ok", "hash": BASE}, "baseline_o0": {"status": "ok", "hash": BASE0},
+                     "original": {"status": "ok", "hash": original}}],
         "baseline_runs": {t: baseline for t in tests}, "mutants": mutants,
     }
 
@@ -132,6 +138,7 @@ class MutantsTest(TempDirTestCase):
         document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "definitions": 1,
                                     "functions": [{"name": "g", "line": 1}],
                                     "skipped": [], "hidden": [], "baseline": {"status": "ok", "hash": BASE},
+                                    "baseline_o0": {"status": "ok", "hash": BASE0},
                                     "original": {"status": "ok", "hash": BASE}})
         self.fails_with(document, "no-mutants", "unaccounted-function")
 
@@ -145,6 +152,7 @@ class MutantsTest(TempDirTestCase):
         document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "definitions": 0,
                                     "functions": [],
                                     "skipped": [], "hidden": [], "baseline": {"status": "ok", "hash": BASE},
+                                    "baseline_o0": {"status": "ok", "hash": BASE0},
                                     "original": {"status": "ok", "hash": BASE}})
         self.fails_with(document, "no-mutants")
 
@@ -295,19 +303,19 @@ class MutantsTest(TempDirTestCase):
 
     # -- verdicts ----------------------------------------------------------------------------
     def test_equal_object_to_the_baseline_is_equivalent_and_needs_no_run(self):
-        self.put(report([mutant(1), mutant(2, digest=BASE, runs={})]))
+        self.put(report([mutant(1), mutant(2, digest=BASE, o0=BASE0, runs={})]))
         outcome, result = self.grade()
         self.assertExit(outcome, 0)
         self.assertEqual(result["metadata"]["modules"][LABEL]["verdicts"]["equivalent"], 1)
 
     def test_equal_object_to_an_earlier_mutant_is_a_duplicate_of_it(self):
-        self.put(report([mutant(1), mutant(2, digest=H[1], runs={})]))
+        self.put(report([mutant(1, o0=H[20]), mutant(2, digest=H[1], o0=H[20], runs={})]))
         outcome, result = self.grade()
         self.assertExit(outcome, 0)
         self.assertEqual(result["metadata"]["modules"][LABEL]["verdicts"]["duplicate"], 1)
 
     def test_a_duplicate_of_a_survivor_does_not_hide_it(self):
-        result = self.fails_with(report([mutant(1, runs={"t": PASS}), mutant(2, digest=H[1], runs={})]),
+        result = self.fails_with(report([mutant(1, runs={"t": PASS}, o0=H[20]), mutant(2, digest=H[1], o0=H[20], runs={})]),
                                  "survived-mutant")
         self.assertEqual(result["findings"][0]["id"], "%016x" % 1)
 
@@ -321,17 +329,76 @@ class MutantsTest(TempDirTestCase):
         self.assertExit(outcome, 0)
 
     def test_a_function_whose_mutants_are_all_equivalent_fails(self):
-        self.fails_with(report([mutant(1, digest=BASE, runs={})]), "no-assert-kill-function")
+        self.fails_with(report([mutant(1, digest=BASE, o0=BASE0, runs={})]), "no-assert-kill-function")
 
     def test_a_duplicate_counts_with_the_verdict_of_the_mutant_it_duplicates(self):
         # g's only mutant makes the same object as f's, which a test killed by a failed check
-        self.put(report([mutant(1), mutant(2, function="g", digest=H[1], runs={})], functions=("f", "g")))
+        self.put(report([mutant(1, o0=H[20]), mutant(2, function="g", digest=H[1], o0=H[20], runs={})],
+                        functions=("f", "g")))
         outcome, _ = self.grade()
         self.assertExit(outcome, 0)
         # ... and as one that only a crash killed
-        self.fails_with(report([mutant(1, runs={"t": CRASH}), mutant(2, function="g", digest=H[1], runs={}),
+        self.fails_with(report([mutant(1, runs={"t": CRASH}, o0=H[20]), mutant(2, function="g", digest=H[1], o0=H[20], runs={}),
                                 mutant(3, function="h")], functions=("f", "g", "h")),
                         "crash-only-function", "crash-only-function")
+
+    # -- B15 (R001 R2): equivalent / duplicate must hold at -O0 too ---------------------------------
+    def tce(self, result):
+        return result["metadata"]["modules"][LABEL]["tce"]
+
+    def test_equal_at_o2_but_different_at_o0_is_live_and_killed_by_a_check(self):
+        self.put(report([mutant(1), mutant(2, digest=BASE, o0=H[21])]))
+        outcome, result = self.grade()
+        self.assertExit(outcome, 0)
+        verdicts = result["metadata"]["modules"][LABEL]["verdicts"]
+        self.assertEqual((verdicts["equivalent"], verdicts["killed-assert"]), (0, 2))
+        self.assertEqual(self.tce(result), {"equivalent_o2": 1, "equivalent_o0": 0})
+
+    def test_equal_at_o2_but_different_at_o0_and_untested_is_a_survivor(self):
+        result = self.fails_with(report([mutant(1), mutant(2, digest=BASE, o0=H[21], runs={"t": PASS})]),
+                                 "survived-mutant")
+        self.assertEqual(result["findings"][0]["id"], "%016x" % 2)
+
+    def test_equal_at_both_levels_stays_equivalent_and_is_counted(self):
+        self.put(report([mutant(1), mutant(2, digest=BASE, o0=BASE0, runs={}),
+                         mutant(3, digest=BASE, o0=H[21]), mutant(4, digest=BASE, o0=BASE0, runs={})]))
+        outcome, result = self.grade()
+        self.assertExit(outcome, 0)
+        self.assertEqual(result["metadata"]["modules"][LABEL]["verdicts"]["equivalent"], 2)
+        self.assertEqual(self.tce(result), {"equivalent_o2": 3, "equivalent_o0": 2})
+
+    def test_a_candidate_without_a_usable_o0_result_is_unrun_never_equivalent(self):
+        self.fails_with(report([mutant(1), mutant(2, digest=BASE, runs={})]), "missing-o0")
+        failed = mutant(2, digest=BASE, runs={})
+        failed["compile"]["o0"] = {"status": "unviable", "hash": ""}
+        self.fails_with(report([mutant(1), failed]), "missing-o0")
+        dup = mutant(2, digest=H[1], runs={})
+        self.fails_with(report([mutant(1, o0=H[20]), dup]), "missing-o0")
+
+    def test_equal_at_o2_to_an_earlier_mutant_but_different_at_o0_is_live(self):
+        result = self.fails_with(report([mutant(1, o0=H[20]), mutant(2, digest=H[1], o0=H[21], runs={"t": PASS})]),
+                                 "survived-mutant")
+        self.assertEqual(result["findings"][0]["id"], "%016x" % 2)
+
+    def test_two_o2_folded_mutants_with_the_same_o0_object_are_duplicates_of_each_other(self):
+        self.put(report([mutant(1), mutant(2, digest=BASE, o0=H[21]), mutant(3, digest=BASE, o0=H[21], runs={})]))
+        outcome, result = self.grade()
+        self.assertExit(outcome, 0)
+        verdicts = result["metadata"]["modules"][LABEL]["verdicts"]
+        self.assertEqual((verdicts["duplicate"], verdicts["killed-assert"], verdicts["equivalent"]), (1, 2, 0))
+
+    def test_the_o0_fields_are_required_and_checked(self):
+        no_base = report([mutant(1)])
+        del no_base["sources"][0]["baseline_o0"]
+        bad_status = report([mutant(1, o0=H[20])])
+        bad_status["mutants"][0]["compile"]["o0"] = {"status": "ok", "hash": "xyz"}
+        extra = report([mutant(1, o0=H[20])])
+        extra["mutants"][0]["compile"]["o0"]["detail"] = "x"
+        for what, document in {"no baseline_o0": no_base, "bad o0 hash": bad_status, "extra o0 key": extra}.items():
+            self.put(document)
+            outcome, result = self.grade()
+            self.assertExit(outcome, 2)
+            self.assertEqual(self.rules(result), ["internal-error"], what)
 
     def test_the_function_rule_does_not_apply_to_l2(self):
         self.write_policy("L2")
