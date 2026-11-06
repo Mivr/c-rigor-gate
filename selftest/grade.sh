@@ -17,7 +17,7 @@ product=products/selftest/product.toml
 
 kill_daemons() {
   local t
-  for t in "$work"/*/tree; do
+  for t in "$work"/*/tree "$work"/*/tree-witness; do
     [ -f "$t/gate/tools/buck2" ] && (cd "$t" && bash gate/tools/buck2 kill >/dev/null 2>&1)
   done
   return 0
@@ -192,6 +192,42 @@ for gate in structure mode-divergence; do
     || fail "cold run executed no $gate actions: the nonce did not reach them"
 done
 
+# ---------------------------------------------------------------------------------------
+# Witness steps (T039). A test-surface change (a comment in core_test.c) puts //core:core in the witness
+# scope. The commits are made here, one after the other (they share $repo); the gradings run in parallel below.
+# Witness bundles are made with gate/tools/witness.py from the commits: `bundle-base` is core.c of $base,
+# `bundle-strong` the same plus a comment (a different file with the same behaviour), `bundle-head` the
+# witness the head itself would give (identical to the head).
+# Red witness cases (a witness that fails a test, a witness survivor, no bundle entry) are canaries (T040).
+# ---------------------------------------------------------------------------------------
+witness_tool=(python3 -I gate/tools/witness.py)
+make_bundle() {  # make_bundle <commit> <out dir>
+  "${witness_tool[@]}" from-commit --repo "$repo" --commit "$1" --module //core:core --paths core/core.c \
+      --product selftest --out "$2" > "$2.log" 2>&1 || { cat "$2.log" >&2; fail "witness.py from-commit"; }
+}
+make_bundle "$base" "$work/bundle-base"
+cp -r "$work/bundle-base" "$work/bundle-strong"
+printf '\n/* witness: the same behaviour, another file */\n' >> "$work/bundle-strong/files/core/core.c"
+git -C "$repo" checkout -q -f -B case-witness-tests "$base"
+git -C "$repo" clean -q -fdx
+printf '\n/* test-surface change %s */\n' "$$" >> "$repo/core/core_test.c"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m witness-tests
+witness_head="$(git -C "$repo" rev-parse HEAD)"
+make_bundle "$witness_head" "$work/bundle-head"
+
+# grade_witness <name> <head> <bundle dir or "-" for none> [extra rigor args]: a grading that must pass
+grade_witness() {
+  local name="$1" head="$2" bundle="$3" args=(); shift 3
+  [ "$bundle" = "-" ] || args=(--witness "$bundle")
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$head" --task "$work/task.toml" \
+      --product "$product" --work "$work/$name" --out "$work/$name.verdict.json" "${args[@]}" "$@" \
+      > "$work/$name.log" 2>&1
+  local code=$?
+  check_verdict "$work/$name.verdict.json" "" "$code" "$work/$name" || { tail -n 30 "$work/$name.log" >&2; return 1; }
+  [ -z "$(find_daemons "$work/$name")" ] || { echo "$name: a process is still running" >&2; return 1; }
+}
+
 # Steps that depend on nothing but the cold run run in parallel, each in its own work subdir (and so its
 # own Buck2 daemon). Each writes its transcript to $work/<name>.out; they are printed in order afterwards.
 
@@ -266,8 +302,59 @@ EOF3
   [ -z "$(find_daemons "$work/internal")" ] || fail "internal-error: a process is still running"
 }
 
-names=(warm hostile uncached internal)
-labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error")
+step_witness_na() {  # a pure impl change with a bundle: the witness gates are not applicable, nothing extra runs
+  grade_witness witness-na "$last_head" "$work/bundle-base" || fail "witness-na"
+  python3 -I - "$work/witness-na.verdict.json" <<'EOF5' || fail "witness-na: wrong witness gates"
+import json, sys
+v = json.load(open(sys.argv[1]))
+m = v["metadata"]["gate_metadata"]
+assert v["core"]["inputs"]["witness_sha256"] is not None
+for gate in ("witness-tests", "mutants-witness"):
+    assert m[gate]["scope"] == [] if gate == "witness-tests" else m[gate]["modules"] == {}, m[gate]
+    assert "executed_actions" not in m[gate], m[gate]
+print("  witness scope is empty: the witness gates ran no action")
+EOF5
+}
+
+step_witness_strong() {  # a test-surface change with a strong witness (another file, same behaviour)
+  grade_witness witness-strong "$witness_head" "$work/bundle-strong" || fail "witness-strong"
+  python3 -I - "$work/witness-strong.verdict.json" <<'EOF6' || fail "witness-strong: wrong witness gates"
+import json, sys
+m = json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]
+t, u = m["witness-tests"], m["mutants-witness"]
+print("  witness-tests: executed %d, cached %d; mutants-witness: executed %d, cached %d"
+      % (t["executed_actions"], t["cached_actions"], u["executed_actions"], u["cached_actions"]))
+assert t["judged"] == ["//core:core"] and t["equals_head"] is False, t
+assert t["executed_actions"] > 0 and u["executed_actions"] > 0, (t, u)
+s = u["modules"]["//core:core"]
+assert s["total"] > 0 and s["survivors"] == [], s
+EOF6
+}
+
+step_witness_equal() {  # a witness identical to the head: its results are the head's, with zero actions (cold, then warm)
+  local pass
+  for pass in cold warm; do
+    grade_witness "witness-equal-$pass" "$witness_head" "$work/bundle-head" || fail "witness-equal-$pass"
+    python3 -I - "$work/witness-equal-$pass.verdict.json" "$pass" <<'EOF7' || fail "witness-equal-$pass: wrong witness gates"
+import json, sys
+v = json.load(open(sys.argv[1]))
+m = v["metadata"]["gate_metadata"]
+t, u = m["witness-tests"], m["mutants-witness"]
+print("  %s: head build executed %d cached %d; witness-tests executed %d cached %d; mutants-witness executed %d cached %d"
+      % (sys.argv[2], m["build"]["executed_actions"], m["build"]["cached_actions"], t["executed_actions"],
+         t["cached_actions"], u["executed_actions"], u["cached_actions"]))
+assert t["equals_head"] is True and u["equals_head"] is True, (t, u)
+assert (t["executed_actions"], t["cached_actions"], u["executed_actions"], u["cached_actions"]) == (0, 0, 0, 0)
+assert u["modules"]["//core:core"]["total"] > 0
+if sys.argv[2] == "warm":
+    assert m["build"]["executed_actions"] == 0 and m["mutants"]["executed_actions"] == 0
+EOF7
+  done
+}
+
+names=(warm hostile uncached internal witness_na witness_strong witness_equal)
+labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error"
+        "pure impl change with a witness bundle (witness gates not applicable)" "test-surface change with a strong witness" "test-surface change with a witness identical to the head (cold, warm)")
 pids=()
 parallel_started="$(now)"
 for n in "${names[@]}"; do
@@ -306,5 +393,15 @@ assert f["executed_actions"] > 0 and f["cached_actions"] == 0, f
 assert u["core_sha256"] != w["core_sha256"]
 EOF4
 
-echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal) ${parallel_secs}s"
+python3 -I - "$work/warm.verdict.json" "$work/witness-na.verdict.json" <<'EOF8' || fail "witness-na: the head gates differ from the grading without --witness"
+import json, sys
+a, b = (json.load(open(p))["metadata"]["gate_metadata"] for p in sys.argv[1:])
+for gate in ("build", "symbols", "mutants", "structure", "mode-divergence"):
+    ca = (a[gate]["executed_actions"], a[gate]["cached_actions"])
+    cb = (b[gate]["executed_actions"], b[gate]["cached_actions"])
+    print("  %-16s executed/cached without --witness %s, with %s" % (gate, ca, cb))
+    assert ca == cb, gate
+EOF8
+
+echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness) ${parallel_secs}s"
 echo "selftest/grade.sh: all $step steps passed"
