@@ -11,6 +11,7 @@ import sys
 import time
 
 from rigor_lib import grade_context, grade_pipeline, jsonio, product_layout, runner, verdict
+from rigor_lib import approval_args, verdict_inputs
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
 
@@ -74,24 +75,38 @@ def start_grading(args):
     absolute_arguments(args)
     discard(args.verdict_out)  # no stale verdict, and none if we die before writing a new one
     discard(args.verdict_out + ".sig")
-    product = product_layout.load_product(args.product)
-    gate_sha = grade_context.gate_checkout_sha()
+    gate_sha, gate_clean = grade_context.gate_checkout_state(args.allow_dirty_gate)
     grade_context.prepare_work(args.work)
     # From here on every subprocess (git, ssh-keygen, Buck2) inherits only the sealed environment.
     grade_context.seal_process_environment(args.work)
     work = args.work
+    # Read every input file once. The grade uses the copies; the verdict hashes the same bytes.
+    inputs = verdict_inputs.snapshot_inputs(args, work)
+    inputs["allowed_signers_sha256"] = file_sha256(approval_args.DEFAULT_ALLOWED_SIGNERS)
+    order_bytes = jsonio.read_bytes(grade_context.ORDER_FILE)
+    inputs["order_sha256"] = jsonio.sha256_hex(order_bytes)
+    product = product_layout.load_product(args.product)
     return grade_context.Grading(
         args=args, product=product, gate_sha=gate_sha, work=work,
         src=os.path.join(work, "src"), tree=os.path.join(work, "tree"),
-        results=os.path.join(work, "results"), test_results=os.path.join(work, "test-results"))
+        results=os.path.join(work, "results"), test_results=os.path.join(work, "test-results"),
+        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean)
+
+
+def file_sha256(path):
+    return jsonio.sha256_hex(jsonio.read_bytes(path))
 
 
 def write_verdict(g):
-    """`rigor verdict` over the results, plus `uncached` in the hashed core."""
-    order = verdict.read_order(grade_context.ORDER_FILE)
+    """`rigor verdict` over the results, plus the bound inputs (and `uncached`) in the hashed core."""
+    order = verdict.parse_order(g.order_bytes)
     documents = verdict.load_results(g.results, order)
     core = verdict.build_core(order, documents)
     core["uncached"] = bool(g.args.uncached)
+    core["inputs"] = verdict_inputs.build_inputs(g, documents)
+    if core["overall"] == verdict.STATUS_PASS and verdict_inputs.missing_inputs(core["inputs"]):
+        raise InternalError("a PASS without every input bound: %s"
+                            % verdict_inputs.missing_inputs(core["inputs"]))
     document = verdict.build_verdict(core, grade_context.ORDER_FILE, g.results, order, documents)
     jsonio.write_atomic(g.args.verdict_out, jsonio.canonical_dumps(document))
     for entry in core["gates"]:
@@ -109,7 +124,9 @@ def run(args):
     code = write_verdict(g)
     if failure is not None:
         raise InternalError("grading stopped by an internal error: %s" % (failure,))
-    if args.sign_key is not None:
+    if args.sign_key is not None and not g.gate_clean:
+        print("rigor grade: dirty gate: the verdict is left unsigned", file=sys.stderr)
+    elif args.sign_key is not None:
         try:
             sign_verdict(args.verdict_out, args.sign_key)
         except InternalError:
@@ -129,6 +146,9 @@ def add_parser(subparsers):
     parser.add_argument("--approvals")
     parser.add_argument("--sign-key")
     parser.add_argument("--work", required=True)
+    parser.add_argument("--allow-dirty-gate", action="store_true",
+                        help="grade although tracked gate files differ from HEAD; the verdict records "
+                             "gate_clean=false, is never signed and never verifies")
     parser.add_argument("--uncached", action="store_true",
                         help="no remote action-cache reads or writes: every action runs on a worker")
     # Not `dest="out"`: cli.report_internal_error deletes args.out, but a failed grading must

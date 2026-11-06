@@ -1,0 +1,10 @@
+# A witness bundle in the shape of canaries/_base/product (core and util).
+product = "canary"
+
+[module."//core:core"]
+origin = "A001"
+written_against = "0123456789abcdef0123456789abcdef01234567"
+
+[module."//util:util"]
+origin = "A002"
+written_against = "89abcdef0123456789abcdef0123456789abcdef"

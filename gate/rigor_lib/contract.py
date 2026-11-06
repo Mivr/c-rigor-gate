@@ -8,18 +8,23 @@ from rigor_lib.findings import GateResult, finding
 from rigor_lib.runner import gate_handler
 
 GATE_ID = "contract"
-_KNOWN_KEYS = {"id", "allowed", "protected", "max_files"}
+_KNOWN_KEYS = {"id", "allowed", "protected", "max_files", "role"}
+ROLE_IMPLEMENTER = "implementer"   # the default: an implementation against fixed tests
+ROLE_TEST_AUTHOR = "test-author"   # a stubbed head: new tests plus failing stubs (P002, Q2)
+ROLE_AUDIT = "audit"               # a periodic or bootstrap grade of every module
+ROLES = (ROLE_IMPLEMENTER, ROLE_TEST_AUTHOR, ROLE_AUDIT)
 _PLAIN_MODES = {"100644", "100755", "000000"}  # 000000 = side where the path does not exist
 _SYMLINK_MODE = "120000"
 _SUBMODULE_MODE = "160000"
 
 
 class Contract:
-    def __init__(self, contract_id, allowed, protected, max_files):
+    def __init__(self, contract_id, allowed, protected, max_files, role=ROLE_IMPLEMENTER):
         self.contract_id = contract_id
         self.allowed = allowed      # list of (pattern text, compiled glob)
         self.protected = protected  # list of (pattern text, compiled glob)
         self.max_files = max_files  # int or None
+        self.role = role            # one of ROLES
 
 
 def _string_list(table, key, required):
@@ -46,6 +51,15 @@ def _max_files(table):
     return value
 
 
+def _role(table):
+    if "role" not in table:
+        return ROLE_IMPLEMENTER
+    value = table["role"]
+    if not isinstance(value, str) or value not in ROLES:
+        raise InternalError("contract key 'role' must be one of %s" % ", ".join(ROLES))
+    return value
+
+
 def load_contract(path):
     table = tomllib.loads(jsonio.read_bytes(path).decode("utf-8"))
     unknown = sorted(set(table) - _KNOWN_KEYS)
@@ -57,7 +71,8 @@ def load_contract(path):
     return Contract(contract_id,
                     _compile_all(_string_list(table, "allowed", required=True)),
                     _compile_all(_string_list(table, "protected", required=False)),
-                    _max_files(table))
+                    _max_files(table),
+                    _role(table))
 
 
 def _mode_findings(entry, shown):
