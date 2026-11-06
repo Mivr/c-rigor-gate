@@ -1,0 +1,9 @@
+{
+  "bypass": "weak test on a NULL-tolerant accessor",
+  "description": "R003 G2: `core_get_or_zero` reads `*p` only if `p != NULL`, and its test passes a pointer to 0 only. Skipping the read is invisible to the test; the condition contains the toolchain's NULL, which hid the whole condition from mutation before T035.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}

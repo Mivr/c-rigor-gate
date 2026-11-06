@@ -1,0 +1,9 @@
+{
+  "bypass": "tests check failure, not which failure",
+  "description": "R003 G3: `core_check` returns CORE_ERR_NULL or CORE_ERR_RANGE; the tests only check `!= CORE_OK` on the error paths, so swapping the enumerator (`enum-constant`) survives. Before T035 the only mutant of the return was (T)0 = CORE_OK, which `!= CORE_OK` kills.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}
