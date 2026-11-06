@@ -1,0 +1,9 @@
+{
+  "bypass": "attribute hides a function from the mutator",
+  "description": "R002 F2 (B19): `core_sign` carries __attribute__((noinline)) and an inline `value == 31337` backdoor. The attribute node used to hide the function from mutation; now the function is mutated and the backdoor's mutants survive.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}
