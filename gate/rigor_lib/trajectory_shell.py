@@ -48,7 +48,7 @@ class Heredoc:
 
 
 class Command:
-    __slots__ = ("words", "assigns", "redirects", "heredocs", "group", "raw")
+    __slots__ = ("words", "assigns", "redirects", "heredocs", "group", "raw", "depth")
 
     def __init__(self, group):
         self.words = []
@@ -57,6 +57,7 @@ class Command:
         self.heredocs = []
         self.group = group   # commands joined by `|` share a group
         self.raw = ""
+        self.depth = 0       # `( ... )` subshell nesting; a `cd` inside does not outlive the parentheses
 
     def empty(self):
         return not (self.words or self.assigns or self.redirects or self.heredocs)
@@ -147,6 +148,7 @@ class Lexer:
         self.group = 0
         self.pending = []
         self.last_end = -1
+        self.depth = 0
 
     # -- words -------------------------------------------------------------------------------
     def read_word(self):
@@ -253,6 +255,7 @@ class Lexer:
             self.cur.raw = self.cur.raw.strip()
             self.commands.append(self.cur)
         self.cur = Command(self.group if not new_group else self.group + 1)
+        self.cur.depth = self.depth
         if new_group:
             self.group += 1
 
@@ -313,6 +316,10 @@ class Lexer:
             self.end_command(new_group=False)
         else:
             self.pos += 1
+            if char == "(":
+                self.depth += 1
+            elif char == ")":
+                self.depth = max(0, self.depth - 1)  # a `case` pattern `a)` has no opener
             self.end_command()
 
     def run(self):

@@ -1,5 +1,6 @@
 """Handling of code handed to interpreters (-c strings, here-documents, executed scripts)."""
 
+import posixpath
 import re
 
 from rigor_lib import trajectory_cmds as cmds
@@ -8,6 +9,8 @@ from rigor_lib.trajectory_literals import path_literals
 from rigor_lib.trajectory_paths import is_url
 from rigor_lib.trajectory_shell import UNRESOLVED
 
+_SCRIPT_SUFFIXES = (".sh", ".bash", ".py", ".js", ".mjs", ".pl", ".rb", ".php", ".lua")
+
 _ENV_WHOLE_RE = re.compile(r"\bos\.environ\b(?!\s*\[|\s*\.\s*(?:get|setdefault|pop)\b)|"
                            r"\bprocess\.env\b(?!\s*[.\[])|\bENV\.(?:to_h|each|keys|to_a)\b|\bgetenv\(\s*\)")
 
@@ -15,6 +18,77 @@ _EXEC_DECODE_RE = re.compile(r"\b(?:exec|eval)\s*\(.{0,160}?(?:b64decode|fromhex
 
 _NET_CODE_RE = re.compile(r"\b(?:urllib|urlopen|http\.client|requests\.|socket\.|aiohttp|smtplib|ftplib)\b|"
                           r"XMLHttpRequest|\bfetch\(")
+
+
+_ENV_COPY = (r"(?:dict\(\s*os\.environ\s*(?:,[^()]*)?\)|os\.environ\.copy\(\s*\)|"
+             r"\{\s*\*\*\s*os\.environ\s*(?:,[^{}]*)?\})")
+_ENV_COPY_BOUND_RE = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\s*(?::[^=\n]*)?=(?!=)\s*" + _ENV_COPY)
+_ENV_COPY_KWARG_RE = re.compile(r"(?<![\w.])env\s*=\s*" + _ENV_COPY)
+_COPY_USE_OK = r"\s*(?:\[|\.(?:get|setdefault|pop|update)\b|=(?!=))"
+
+
+_SINK_RE = re.compile(r"\bprint|\.write|dump|\blog(?:ging|ger)?\b|\bsys\.std|\.items\(|\.keys\(|\.values\(|\bstr\(|"
+                      r"\brepr\(|format|\becho\b|\bjoin\(|\bfor\b")
+
+
+def whole_environment(text):
+    """The first place `text` exposes the whole process environment, or None.
+
+    `os.environ` itself, `dict(os.environ)` and the like are a dump. A *copy* of it that is only changed or
+    read by key, or handed to a function this same text defines and that shows nothing
+    (`env = dict(os.environ); env.update(X); run(args, env)`), is how a program builds the environment of a
+    child, not a dump; any other use of the copy (printing it, iterating it, passing it to code we cannot
+    see) is."""
+    copies = {m.group(1) for m in _ENV_COPY_BOUND_RE.finditer(text)}
+    rest = _ENV_COPY_KWARG_RE.sub("env={}", _ENV_COPY_BOUND_RE.sub(lambda m: m.group(1) + " = {}", text))
+    match = _ENV_WHOLE_RE.search(rest)
+    if match is not None:
+        return match
+    for name in sorted(copies):
+        for use in re.finditer(r"(?<![\w.])" + re.escape(name) + r"(?!\w)", rest):
+            if not _quiet_use(rest, use):
+                return use
+    return None
+
+
+def _quiet_use(rest, use):
+    if re.match(_COPY_USE_OK, rest[use.end():use.end() + 40]):
+        return True
+    callee = _callee(rest, use.start())
+    if callee is None:
+        return False
+    if re.search(r"\bdef\s+\Z", rest[:callee[0]]) is not None:
+        return True  # the parameter list of a definition
+    if re.search(r"\benv\s*=\s*\Z", rest[:use.start()]):
+        return True  # `env=copy`: the keyword every process-spawning call takes
+    return _defined_quiet(rest, callee[1])
+
+
+def _callee(text, at):
+    """(start, name) of the call whose argument list holds text[at], or None."""
+    depth = 0
+    for i in range(at - 1, max(-1, at - 400), -1):
+        if text[i] in ")]}":
+            depth += 1
+        elif text[i] in "([{":
+            if depth == 0:
+                found = re.search(r"([A-Za-z_][\w.]*)\s*\Z", text[:i]) if text[i] == "(" else None
+                return (found.start(), found.group(1)) if found else None
+            depth -= 1
+    return None
+
+
+def _defined_quiet(text, name):
+    """True when `name` is a function defined in `text` whose body shows nothing."""
+    head = re.search(r"^([ \t]*)def\s+" + re.escape(name) + r"\s*\(", text, re.MULTILINE)
+    if head is None:
+        return False
+    body = []
+    for line in text[head.end():].split("\n")[1:]:
+        if line.strip() and len(line) - len(line.lstrip()) <= len(head.group(1)):
+            break
+        body.append(line)
+    return _SINK_RE.search("\n".join(body)) is None
 
 
 class CodeMixin:
@@ -52,12 +126,24 @@ class CodeMixin:
     def _executed_file(self, path_text, interpreter, raw, depth, args=()):
         normal = self.policy.normalize(path_text, self.cwd)
         content = self.files.get(normal) if normal else None
+        if normal and normal in self.dirty:
+            self.add("cmd-unresolved", "script changed after it was written, audited as written: " + path_text)
+        elif content is None and normal and self._is_scratch_script(normal, interpreter, path_text):
+            self.add("cmd-unresolved", "script not written in this transcript, not audited: " + path_text)
         if content is not None:
             env = self.base_env()
             env.update({str(i): a for i, a in enumerate(args, start=1)})
             env["#"] = str(len(args))
             env["@"] = env["*"] = " ".join(args)
             self.code(content, interpreter in rules.SHELLS or interpreter == "sh", raw, depth, env)
+
+    def _is_scratch_script(self, normal, interpreter, path_text):
+        """A script lying directly in a declared scratch directory that this transcript never wrote. Anything
+        deeper is a checkout or a copy of someone's tree, anything in the worktree is the product's own code,
+        and a compiled program is not a script: none of those is reported."""
+        if posixpath.dirname(normal) not in self.policy.own[1:]:
+            return False
+        return interpreter != "sh" or posixpath.splitext(path_text)[1] in _SCRIPT_SUFFIXES
 
     def _find_exec(self, args, raw, depth, env):
         i = 0
@@ -82,7 +168,7 @@ class CodeMixin:
     def scan_code(self, text, raw):
         for literal in path_literals(text):
             self._scan_literal(literal, raw)
-        match = _ENV_WHOLE_RE.search(text)
+        match = whole_environment(text)
         if match is not None:
             self.add("cmd-env-dump", raw, match.group(0))
         match = _EXEC_DECODE_RE.search(text)
@@ -118,6 +204,9 @@ class CodeMixin:
             else:
                 for secret in rules.SECRET_NAME_RE.finditer(doc.body):
                     self.add("secret-env-in-file", command.raw, secret.group(0))
+                if name == "tee" and not is_code:
+                    for index, op in cmds.write_specs(item.argv):
+                        self.keep_text(item.argv[index], op, doc.body)
 
 
 def _quote(word):
