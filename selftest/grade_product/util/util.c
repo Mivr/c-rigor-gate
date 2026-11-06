@@ -1,6 +1,6 @@
 #include <stdlib.h>
 
-#include "core.h"
+#include "core/core.h"
 #include "util.h"
 
 int util_sum(const int *values, size_t count) {
