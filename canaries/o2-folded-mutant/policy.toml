@@ -1,4 +1,5 @@
 # Symbol policy for the selftest product (T007). Gate-owned; deny list as policy/hello.toml.
+
 [global]
 deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace", "_exit", "_Exit",
         "exit", "quick_exit", "abort_handler_s", "signal", "sigaction", "raise", "dlopen", "dlsym",
@@ -16,16 +17,21 @@ trusted = ["gate//ctest:ctest"]
 [module."//core:core"]
 level = "L3"
 allow = []
+exports = ["core_add", "core_flag", "core_sign"]
 
 [module."//core:core_test"]
 allow = []
+exports = ["main"]
 
 [module."//util:util"]
 level = "L2"
 allow = ["malloc"]
+exports = ["util_make_ramp", "util_sum"]
 
 [module."//util:core_test"]
 allow = []
+exports = ["main"]
 
 [module."//util:util_test"]
 allow = ["free"]
+exports = ["main"]

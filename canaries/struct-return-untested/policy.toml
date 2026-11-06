@@ -16,16 +16,21 @@ trusted = ["gate//ctest:ctest"]
 [module."//core:core"]
 level = "L3"
 allow = []
+exports = ["core_add", "core_pair", "core_sign"]
 
 [module."//core:core_test"]
 allow = []
+exports = ["main"]
 
 [module."//util:util"]
 level = "L2"
 allow = ["malloc"]
+exports = ["util_make_ramp", "util_sum"]
 
 [module."//util:core_test"]
 allow = []
+exports = ["main"]
 
 [module."//util:util_test"]
 allow = ["free"]
+exports = ["main"]

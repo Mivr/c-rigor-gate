@@ -110,9 +110,10 @@ binary lists `main`). Nothing in the product can change it: the policy file is g
   facts, which are never checked, may omit it).
 * **Where the check is armed.** A module table with neither `level` nor `exports` is not checked (legacy table). An
   `exports` key arms the check even without a level (the level is then taken as L3). `rigor grade` hands the symbols
-  gate a copy of the policy without `level` (`grade_policy.symbol_policy_text`), so in a grade a module is checked
-  exactly when it has an `exports` key, and always as L3. Giving the gate the real level, so that a missing list at L3
-  is found there too, needs `grade_policy` to keep `level` for this gate (a follow-up outside T033).
+  gate the policy whole, `level` included (T055), so it checks as `rigor facts` does: L1 is exempt, a missing list at
+  L2 is `exports-missing` (info), a missing list at L3 and above is `exports-missing` (error) and fails the gate. A
+  `level` that is not `L1`..`L5` is an internal error (exit 2), never "unchecked". The canary `exports-missing-l3`
+  pins it end to end.
 * **Generating the first list.** Build the product's facts as `rigor grade` does (`<name>_facts` in the release
   platform) and print what each module defines; review the output against the module's public header before pasting it:
   ```sh

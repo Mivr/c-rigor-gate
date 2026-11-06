@@ -2,8 +2,8 @@
 
 They run after `assemble` and before `build`. `buckfiles` reads the product files of the tree (not
 the gate's own). The two fact gates share one Buck2 build of every `*_facts` target (release) plus
-the gate's `ctest_facts` and the libc export list; the policy is `products/<p>/policy.toml` (minus
-its `level` keys, see grade_policy), next to `product.toml` (gate-owned, never read from the product). If the facts cannot be built (for example
+the gate's `ctest_facts` and the libc export list; the policy is `products/<p>/policy.toml` (both gates
+read it whole, `level` included: the symbols gate needs it for `exports`), next to `product.toml` (gate-owned, never read from the product). If the facts cannot be built (for example
 the product does not compile) the fact gates are NOT_RUN, which fails the verdict; the `build` gate
 reports why.
 """
@@ -126,7 +126,7 @@ def _fact_gate(g, run):
     if isinstance(built, str):
         return None
     facts = facts_data.load_facts_dir(built.directory)
-    policy = facts_policy.load_policy(grade_policy.symbol_policy_path(g))
+    policy = facts_policy.load_policy(grade_policy.policy_path(g))
     result = run(facts, policy, built)
     result.metadata.update(built.metadata)
     return result

@@ -1,0 +1,9 @@
+{
+  "bypass": "new L3 module without an exports list",
+  "description": "A new library at L3 in the policy whose table has no `exports` key: the symbols gate must fail closed (T055, B32).",
+  "fail": {
+    "symbols": [
+      "exports-missing"
+    ]
+  }
+}
