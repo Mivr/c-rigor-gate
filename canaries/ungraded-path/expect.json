@@ -1,10 +1,12 @@
 {
   "bypass": "silently ungraded directory",
-  "description": "A new module directory the layout does not include (B14).",
+  "description": "A new module directory the layout does not include (B14). T013 checks layout coverage in the buckfiles gate, before mutants.",
   "fail": {
-    "assemble": [
+    "buckfiles": [
       "ungraded-path"
     ]
   },
-  "pending": "T013"
+  "not_run": [
+    "mutants"
+  ]
 }
