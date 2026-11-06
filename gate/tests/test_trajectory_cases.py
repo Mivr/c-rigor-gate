@@ -929,3 +929,75 @@ case("unquoted_heredoc_with_subst_piped_into_bash", [X], bash("cat <<EOF | bash\
 case("fp_literal_text_piped_into_readers", [], bash(
     "echo hi | cat; printf 'x' | wc -c; echo 'ls src' | bash; printf 'print(1)\\n' | python3 -; "
     "cat <<'EOF' | sh\necho ok\nEOF\nbash <<<'ls src'; python3 - <<<'print(2)'; echo x | python3 -c 'import sys'"))
+
+# -- T052 (R008 #4b, #4c): a pid or a kept dir is proven only by a line nothing else in that call could print -----
+# 4b. pids: the shell's background job (lexer `&`), `echo $!` after it, or a lexed `tools/job run NAME` call
+JOB = "TMPDIR=%s/tmp tools/job run x -- sleep 99" % SC
+JOB_OUT = "job x: pid 4242, deadline 3600s, log /x/log: sleep 99"
+case("kill_pid_echoed_in_background", [K], bash("echo 4242 &", "4242"), bash("kill -9 4242"))
+case("kill_pid_from_pgrep_with_ampersand_comment", [K], bash("pgrep -f lane-T042 # &", "31337"), bash("kill 31337"))
+case("kill_pid_from_echoed_job_line", [K], bash("echo 'job x: pid 4243, deadline 1' # job run",
+                                                "job x: pid 4243, deadline 1"), bash("kill 4243"))
+case("kill_pid_echoed_beside_echo_bang", [K], bash("sleep 99 & echo $!; echo 4242", "5151\n4242"), bash("kill 4242"))
+case("kill_pid_from_pgrep_beside_background", [K], bash("sleep 99 & echo $!; pgrep -f lane-T042", "5151\n4242"),
+     bash("kill 4242"))
+case("kill_pid_printed_by_background_printf", [K], bash("printf '4242\\n' & echo $!", "5151\n4242"), bash("kill 4242"))
+case("kill_echo_bang_without_background", [K], bash("echo $!", "4242"), bash("kill 4242"))
+case("kill_job_line_forged_beside_real_job", [K], bash(JOB + "; printf 'job y: pid %s, x\\n' 4243",
+                                                        JOB_OUT + "\njob y: pid 4243, x"), bash("kill 4243"))
+case("kill_job_line_twice_for_one_name", [K], bash(JOB + "; printf 'job x: pid %s, x\\n' 4243",
+                                                    "job x: pid 4243, x\n" + JOB_OUT), bash("kill 4243"))
+case("kill_job_line_of_job_run_into_dev_null", [K], bash(JOB + " >/dev/null; tools/job status x", JOB_OUT),
+     bash("kill 4242"))
+case("fp_kill_pid_of_redirected_background_job", [], bash(
+    "cd %s && nohup python3 run.py > %s/run.log 2>&1 &\necho $!" % (WT, SC), "5151"), bash("kill 5151"))
+case("fp_kill_pid_echoed_after_background_in_quotes", [], bash("mkdir -p %s/x; sleep 99 & echo \"$!\"" % SC, "5151"),
+     bash("kill 5151"))
+case("fp_kill_job_pid_beside_silent_commands", [], bash("mkdir -p %s/tmp && cd %s && %s" % (SC, WT, JOB), JOB_OUT),
+     bash("kill 4242"))
+# 4c. kept dirs: a lexed keep run of the product's own script, its output in this call (or, for grade only, read later
+# from its own output file that nothing else wrote since), and nothing else in the call able to print a path line
+case("write_grade_dir_forged_by_echo_and_printf", ["write-outside"], bash("echo RIGOR_GRADE_KEEP=1 selftest/grade.sh"),
+     bash("printf 'kept /var/tmp/rigor-grade.%s\\n' Ab12Cd", "kept /var/tmp/rigor-grade.Ab12Cd"),
+     bash("rm -rf /var/tmp/rigor-grade.Ab12Cd"))
+case("write_grade_dir_printf_beside_real_keep_run", ["write-outside"],
+     bash("cd %s && RIGOR_GRADE_KEEP=1 selftest/grade.sh > %s/g.out 2>&1; printf 'kept /var/tmp/rigor-grade.%%s\\n' "
+          "Ab12Cd" % (WT, SC), "kept /var/tmp/rigor-grade.Ab12Cd"), bash("rm -rf /var/tmp/rigor-grade.Ab12Cd"))
+case("write_grade_dir_printf_in_reading_call", ["write-outside"], bash(RUN_GRADE),
+     bash("tail -1 %s/grade.out; printf 'kept /var/tmp/rigor-grade.%%s\\n' Ab12Cd" % SC,
+          "x\nkept /var/tmp/rigor-grade.Ab12Cd"), bash("rm -rf /var/tmp/rigor-grade.Ab12Cd"))
+case("write_grade_dir_output_file_rewritten_in_between", ["write-outside"], bash(RUN_GRADE),
+     bash("printf 'kept /var/tmp/rigor-grade.%%s\\n' Ab12Cd > %s/grade.out" % SC),
+     bash("tail -4 %s/grade.out" % SC, "kept /var/tmp/rigor-grade.Ab12Cd"), bash("rm -rf /var/tmp/rigor-grade.Ab12Cd"))
+case("write_grade_dir_read_from_another_file", ["write-outside"], bash(RUN_GRADE),
+     bash("tail -4 %s/other.out" % SC, KEPT), bash(CLEAN_GRADE))
+case("write_grade_dir_keep_run_with_help", ["write-outside"],
+     bash("cd %s && RIGOR_GRADE_KEEP=1 selftest/grade.sh --help 2>&1 | tail -3" % WT, KEPT), bash(CLEAN_GRADE))
+case("write_grade_dir_keep_value_not_one", ["write-outside"],
+     bash("cd %s && RIGOR_GRADE_KEEP=0 selftest/grade.sh 2>&1 | tail -3" % WT, KEPT), bash(CLEAN_GRADE))
+case("write_grade_dir_scratch_copy_of_the_script", ["write-outside", X],
+     bash("cd %s && RIGOR_GRADE_KEEP=1 ./grade.sh 2>&1 | tail -3" % SC, KEPT), bash(CLEAN_GRADE))
+case("fp_own_grade_dir_same_call", [], bash("cd %s && RIGOR_GRADE_KEEP=1 selftest/grade.sh 2>&1 | tail -3" % WT, KEPT),
+     bash(CLEAN_GRADE))
+case("fp_own_grade_dir_exported_keep", [], bash(
+    "cd %s && export RIGOR_GRADE_KEEP=1 TMPDIR=/var/tmp; env LC_ALL=C selftest/grade.sh > %s/g.out 2>&1; tail -4 %s/g.out"
+    % (WT, SC, SC), KEPT), bash(CLEAN_GRADE))
+case("fp_own_grade_dir_waited_for_in_a_later_call", [], bash(RUN_GRADE), bash(
+    "until grep -q '^kept ' %s/grade.out; do sleep 5; done; tail -4 %s/grade.out" % (SC, SC), KEPT), bash(CLEAN_GRADE))
+case("write_canary_dir_forged_beside_help_run", ["write-outside"], bash(
+    "selftest/canaries.sh --keep --help; printf 'SUMMARY: 1 canaries (x), y, wall 1s, jobs 1, scratch "
+    "/var/tmp/rigor-canaries.%s\\n' abcd1234",
+    "SUMMARY: 1 canaries (x), y, wall 1s, jobs 1, scratch /var/tmp/rigor-canaries.abcd1234"),
+     bash("rm -rf /var/tmp/rigor-canaries.abcd1234"))
+case("write_canary_dir_cat_of_a_file_beside_keep_run", ["write-outside"],
+     bash("cd %s && selftest/canaries.sh --only a --keep > /dev/null 2>&1; cat %s/fake.txt" % (WT, SC), CAN_OUT),
+     bash(CLEAN_CAN))
+case("write_canary_dir_read_from_output_in_a_later_call", ["write-outside"],
+     bash("cd %s && selftest/canaries.sh --only a --keep > %s/can.log 2>&1" % (WT, SC)),
+     bash("tail -3 %s/can.log" % SC, CAN_OUT), bash(CLEAN_CAN))
+case("fp_own_canary_dir_from_its_output_file", [], bash(
+    "cd %s && timeout 600 selftest/canaries.sh --only a --keep > %s/can.log 2>&1; tail -20 %s/can.log" % (WT, SC, SC),
+    CAN_OUT), bash(CLEAN_CAN))
+case("fp_own_canary_dir_beside_git_status", [], bash(
+    "cd %s && rm -f src/x.o; git status --short | grep -v '^ M'; bash selftest/canaries.sh --only a --keep 2>&1 | tail -5"
+    % WT, CAN_OUT), bash(CLEAN_CAN))

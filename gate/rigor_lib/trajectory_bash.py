@@ -10,6 +10,7 @@ from rigor_lib.trajectory_code import CodeMixin
 from rigor_lib.trajectory_flow import FlowMixin
 from rigor_lib.trajectory_git import GitMixin
 from rigor_lib.trajectory_paths import expand_braces, is_url
+from rigor_lib.trajectory_proof import CallFacts, ProofMixin
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
 
 _VAR_RE = re.compile(r"\$(?:\{([^}]*)\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@#?$!*-]))")
@@ -83,7 +84,7 @@ class Prepared:
         self.clean_env = False  # `env -i` (with no secret-looking name) emptied the environment it runs in
 
 
-class Analyzer(CodeMixin, FlowMixin, GitMixin):
+class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
     def __init__(self, policy, task):
         self.policy = policy
         self.task = task
@@ -102,6 +103,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self.cwd_stack = []   # working directories to return to when a `( ... )` subshell closes
         self.own_pids = set()  # process ids the agent started (printed by tools/job run, a background command)
         self.clean_env = False  # the command being analysed runs under `env -i`
+        self.facts = None     # CallFacts of the Bash call being analysed (trajectory_proof, T052)
+        self.grade_outputs = set()  # stdout files of grade keep runs, not written by anything else since
+        self.call_outputs = set()   # the same for canary keep runs, within the current call only
 
     # -- plumbing ----------------------------------------------------------------------------
     def add(self, rule, raw, token=""):
@@ -187,6 +191,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             return
         if depth == 0:
             self.iterations = 0
+            self.facts, self.call_outputs = CallFacts(), set()
         env = dict(self.base_env() if env is None else env)
         start, stack, self.cwd_stack = self.cwd, self.cwd_stack, []
         self.run_commands(shell.parse(text), env, depth)
@@ -355,6 +360,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         for redirect in [] if item.wrapped else command.redirects:
             self._redirect(command, redirect)
         argv = item.argv
+        self.note_output(item, argv, depth, env)
         if not argv:
             if not item.wrapped:
                 self._heredocs(item, depth, flags, data_only=True)
@@ -572,6 +578,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             self.add("write-unresolved", raw, text)
             return
         self.git_touch(normal)
+        self.forget_output(normal)
         self.known_before = normal if normal in self.files and normal not in self.dirty else None
         self._content_changed(normal, op)
         if not self.policy.write_ok(normal):

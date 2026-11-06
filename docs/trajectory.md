@@ -111,10 +111,11 @@ stays `read-secret-dir`.
   (see below); under `env -i` without a `TMPDIR` assignment there is none (tools/job refuses it).
 * **`kill-foreign` (block).** `pkill`, `killall` (any argument) and `kill [-SIG] PID...` where a PID is not one of the
   agent's own processes. Own: `%N` job specs, `$!` (also through a variable), and a literal pid that appeared (in a
-  successful result, earlier in the transcript) as `job NAME: pid N,` printed by `tools/job run`, or alone on a line
-  (`echo $!`, `[1] N`) in the output of a command that backgrounds something (`&`, `$!`, `nohup`, `setsid`). A pid seen
-  only in `ps`/`pgrep`/a log, `$(pgrep ...)`, `pgrep ... | xargs kill` (no pid on the command line) and an unknown
-  variable are foreign. One finding per `kill` command. `kill -l` and `kill -0` signal nothing; `buck2 kill` is not
+  successful result, earlier in the transcript) as one of these lines, in a call where nothing else could print digits
+  (see "Proofs in a call's own output"): `job NAME: pid N,` of a lexed `tools/job run NAME` call of that call (one such
+  line per name), the bare number of `echo $!` after a command the lexer put in the background (`&`), or the shell's
+  `[1] N` line for such a command. A pid seen only in `ps`/`pgrep`/`echo`/`printf`/a log, `$(pgrep ...)`,
+  `pgrep ... | xargs kill` (no pid on the command line) and an unknown variable are foreign. One finding per `kill` command. `kill -l` and `kill -0` signal nothing; `buck2 kill` is not
   `kill`. Pids printed by `tools/job run` are the job's child and its runner; a kill of the process group
   (`kill -- -PID`) uses the same number.
 
@@ -202,18 +203,38 @@ Each is a named rule with red twins in `gate/tests/test_trajectory_cases.py` tha
   (review), and a path outside the allowed places is still `write-outside`. No result, a success without the
   note, or no path at all stays `malformed-entry` (block).
 * **The agent's own grade directory.** A line `kept /var/tmp/rigor-grade.XXXXXX` in the successful result of a Bash
-  call, after the agent ran `selftest/grade.sh` with `RIGOR_GRADE_KEEP=1`, makes that one directory (and below it,
-  links resolved) writable. The name must not have been typed by the agent before, so an `ls -d` of other runs, an
+  call makes that one directory (and below it, links resolved) writable when the call carries the proof (T052): it ran
+  the worktree's `selftest/grade.sh` as a lexed command with `RIGOR_GRADE_KEEP=1` (prefix, `env`, or exported earlier
+  in the call; not with `-h`/`--help`), or it reads (`tail`, `head`, `cat`, `grep`) that run's own stdout file from an
+  earlier call and nothing else wrote that file since; and nothing else in the call could print a path line (see
+  "Proofs in a call's own output"). The name must not have been typed by the agent before, so an `ls -d` of other runs, an
   `echo`, another task's directory, the parent `/var/tmp`, or a name shown only after the removal prove nothing.
 * **The agent's own canary scratch (T031, B26).** The same proof for `selftest/canaries.sh`: the runner's last summary line
   `SUMMARY: N canaries (...), ..., wall Ns, jobs N, scratch /var/tmp/rigor-canaries.XXXXXXXX` (eight characters of
   `[a-z0-9_]`, directly under `/var/tmp`) in the successful result of the very Bash call whose command ran
-  `selftest/canaries.sh` with `--keep` (an argument of that command, not of a later `;`/`&`/`|` command) makes that
+  `selftest/canaries.sh` with `--keep` (an argument of that lexed command, not of a later `;`/`&`/`|` command, and
+  not with `--help`), with nothing else in the call able to print a path line (its own stdout file may be read in the
+  same call), makes that
   one directory (links resolved) writable. Stricter than the grade rule: a keep run in one call and the line in another
   proves nothing. Not proofs: a canaries dir never printed, listed by `ls` (also in the keep call, where no summary
   line carries it), echoed (typed by the agent), shown only after the `rm`, a run without `--keep`, an error result, a
   line of another shape, another run's dir, the parent `/var/tmp`, a dir outside `/var/tmp`. A `TMPDIR` other than
   `/var/tmp` is not supported (the dir is then not recognised and still blocks).
+
+### Proofs in a call's own output (T052, R008 #4b, #4c)
+A command can print any line, so a pid line or a kept-dir line proves something only when nothing else in that Bash
+call could have printed it (`gate/rigor_lib/trajectory_proof.py`). While a call is analysed, each command whose
+stdout or stderr reaches the result (a pipe counts as the result; redirections are followed in order) is judged:
+* cannot forge: the grade/canary keep run itself; the `tools/job run` call (CMD's output goes to the job log); `echo $!`
+  after a background command; programs that print nothing on success and only `prog: ...` errors (`cd`, `export`
+  without options, `mkdir`, `rm`, `cp`, `mv`, `sleep`, `true`, `test`, ...; a word holding a newline voids this);
+  `grep -q`; the line filters `head`, `tail`, `grep`, `cat`, `sort`, `uniq` (no byte, count or `-o` option) reading
+  their stdin or a keep run's own output file;
+* can forge digits only: `ls` without a wildcard and `git status` (names hold no `/`, or stand behind a status
+  column), and a filter reading a keep run's output file: these void a pid proof, not a kept-dir proof;
+* can forge anything: every other command, including `echo`/`printf` with any text, `ps`, `pgrep`, interpreters, and
+  any command inside `$(...)` or `bash -c` that is not one of the above.
+Commands nested in `bash -c`, a script or a substitution are never a keep run or a job line source.
 
 ### Git against a local remote (T027, B23)
 `git clone <local path> <dest>` in the transcript, with `dest` in a declared `--allow-write` directory (never the task
