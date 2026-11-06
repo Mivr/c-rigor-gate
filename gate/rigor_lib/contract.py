@@ -102,8 +102,7 @@ def check_entries(contract, entries):
 
 def run(args):
     contract = load_contract(args.contract)
-    head = gitrun.resolve_commit(args.repo, args.head)
-    base = gitrun.merge_base(args.repo, gitrun.resolve_commit(args.repo, args.base), head)
+    base, head = gitrun.resolve_range(args.repo, args.base, args.head)
     entries = gitrun.changed_entries(args.repo, base, head)
     found = check_entries(contract, entries)
     found.extend(approvals.approval_lookalike_findings(args.repo, head))

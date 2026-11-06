@@ -140,3 +140,10 @@ def tree_paths(repo, sha):
     if tokens[-1] != b"":
         raise InternalError("ls-tree output does not end with NUL")
     return tokens[:-1]
+
+
+def resolve_range(repo, base_rev, head_rev):
+    """(merge base, head) as full commit ids; the graded change is merge base -> head."""
+    head = resolve_commit(repo, head_rev)
+    base = merge_base(repo, resolve_commit(repo, base_rev), head)
+    return base, head
