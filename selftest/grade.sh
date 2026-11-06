@@ -94,6 +94,50 @@ edit_spliced_optnone() {  # semantic-suppressions: attribute built by pasting, #
 edit_raw_rule() {  # buckfiles: a raw rule beside the macros (it is never built)
   printf '\nnative.cxx_library(name = "raw", srcs = ["core.c"])\n' >> core/BUCK
 }
+# Mutation testing (T008).
+edit_weak_test() {  # a check is gone: the mutants of core_clamp's upper bound survive
+  sed -i '/core_clamp(5, 0, 3), 3/d' core/core_test.c
+}
+edit_hollow_module() {  # all logic moves into the header: the source has nothing left to mutate
+  cat > core/core.h <<'EOT'
+#ifndef CORE_H
+#define CORE_H
+
+extern const int core_marker;
+static inline int core_add(int a, int b) { return a + b; }
+static inline int core_clamp(int value, int low, int high) {
+    if (value < low) {
+        return low;
+    }
+    if (value > high) {
+        return high;
+    }
+    return value;
+}
+
+#endif
+EOT
+  printf '#include "core.h"\n\nconst int core_marker = 1;\n' > core/core.c
+}
+edit_unviable_shape() {  # most mutants of this function trip -Werror (255 -> 256 in an unsigned char)
+  sed -i 's/^#endif/unsigned core_sum_ff(void);\n\n#endif/' core/core.h
+  { printf '\nunsigned core_sum_ff(void) {\n    static const unsigned char table[32] = {'
+    for i in $(seq 1 32); do printf '255, '; done
+    printf '};\n    unsigned total = 0;\n    for (unsigned i = 0; i < 32; i++) {\n        total += table[i];\n    }\n    return total;\n}\n'
+  } >> core/core.c
+  sed -i 's/^    CHECK_EQ_I64(t, core_add(-4, 4), 0);/&\n    CHECK_EQ_I64(t, core_sum_ff(), 8160);/' core/core_test.c
+}
+edit_new_module() {  # a library the policy has never heard of: no level, so the gate cannot decide how hard to test it
+  cat >> core/BUCK <<'EOT'
+
+c_library(name = "extra", srcs = ["extra.c"], headers = ["extra.h"], visibility = ["PUBLIC"])
+
+c_test(name = "extra_test", srcs = ["extra_test.c"], deps = [":extra"])
+EOT
+  printf '#ifndef EXTRA_H\n#define EXTRA_H\nint extra_twice(int a);\n#endif\n' > core/extra.h
+  printf '#include "extra.h"\n\nint extra_twice(int a) { return a + a; }\n' > core/extra.c
+  printf '#include "ctest/ctest.h"\n#include "extra.h"\n\nstatic void t_twice(ctest_t *t) {\n    CHECK_EQ_I64(t, extra_twice(4), 8);\n}\n\nCTEST_SUITE("extra", { "twice", t_twice })\n' > core/extra_test.c
+}
 edit_heap_overflow() { sed -i 's/^    return ramp;/    ramp[count] = 0;\n    return ramp;/' util/util.c; }
 
 # ---------------------------------------------------------------------------------------
@@ -111,7 +155,10 @@ got = {g["id"]: g["status"] for g in core["gates"]}
 bad = {g for g, s in got.items() if s == "FAIL"}
 not_run = {g for g, s in got.items() if s == "NOT_RUN"}
 # A failed build means there are no results or facts to judge: those gates are NOT_RUN (still a failure).
+# Mutation testing needs a clean tree and green tests: it is NOT_RUN after any of these failed.
 want_not_run = {"tests-release", "tests-san", "semantic-suppressions", "symbols"} if "build" in expected else set()
+if expected & {"assemble", "buckfiles", "build", "tests-release", "tests-san"}:
+    want_not_run.add("mutants")
 want_code = 1 if expected else 0
 print("  " + " ".join("%s=%s" % (g, s) for g, s in got.items()) + "  overall=" + core["overall"])
 ok = bad == expected and not_run == want_not_run and code == want_code and (core["overall"] == "PASS") == (not expected)

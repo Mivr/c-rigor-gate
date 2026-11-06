@@ -19,7 +19,7 @@ allow = ["bcmp", "memcpy", "strlen"]
 
 [module."//json:json"]
 level = "L3"
-allow = []
+allow = ["memcpy"]
 
 [module."//url:url"]
 level = "L3"
@@ -72,25 +72,25 @@ allow = []
 allow = []
 
 [module."//json:limits_test"]
-allow = []
+allow = ["memset", "snprintf"]
 
 [module."//json:number_test"]
-allow = []
+allow = ["bcmp", "memset"]
 
 [module."//json:roundtrip_test"]
-allow = []
+allow = ["snprintf"]
 
 [module."//json:string_test"]
-allow = []
+allow = ["bcmp", "memcpy", "snprintf"]
 
 [module."//json:syntax_test"]
-allow = []
+allow = ["snprintf"]
 
 [module."//json:utf8_test"]
-allow = []
+allow = ["memset"]
 
 [module."//json:value_test"]
-allow = []
+allow = ["snprintf"]
 
 [module."//json:writer_test"]
-allow = []
+allow = ["memcpy", "memset", "strlen"]

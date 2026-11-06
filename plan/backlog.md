@@ -12,3 +12,4 @@
 | B8 | Red team: an Opus agent tries to pass a hidden task by cheating; every success becomes a canary. | plan | end of phase 1. |
 | B9 | Sanitizer stack traces are unsymbolized (agent debugging cost). | T001 | wire `llvm-symbolizer` into san/fuzz runs. |
 | B10 | Transcript audit is an orchestrator scratch script with false positives (URLs in test data). | orchestrator | move into the gate as `rigor trajectory` with structured rules and tests. |
+| B11 | **Code shaped so that its mutants do not compile escapes mutation testing** (e.g. constants at the limit of their type under `-Werror`). | T006 review | **Done (T008):** `unviable-ratio` finding when more than 25 % of a module's mutants are unviable (error at L3+, info at L2), in `rigor mutants`, hence in `rigor grade`. |

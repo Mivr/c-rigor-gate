@@ -75,12 +75,14 @@ hash, because `<`->`<=` and `<`->`>=` at one place would otherwise collide.)
 
 ## `rigor mutants --results DIR --policy P.toml [--out F] [--approvals DIR --repo R --head H]`
 `DIR` holds one `report.json` copy (`*.json`) per `c_mutants` target; the policy is
-`[module."//pkg:name"]` with `level = "L3" | "L2"` for each. Findings (all errors unless noted):
+`[module."//pkg:name"]` with `level = "L2" | "L3" | "L4" | "L5"` for each (L3, L4 and L5 are equally strict;
+L1 is "not mutated" and never appears here; `rigor grade` writes this policy, see docs/grade.md). Findings (all errors unless noted):
 
 | Rule | When |
 |---|---|
 | `survived-mutant` | L3 module, survivor not covered by an `equivalent-mutant` approval whose scope is the mutant id. L2: info `survivor` |
-| `no-mutants` | a source with functions but no mutants (the generator went blind). `gen.py` itself exits non-zero, failing the build, when no location of the AST names the source file |
+| `no-mutants` | a source with functions but no mutants (the generator went blind), or a module none of whose sources produced a mutant at all, even without functions (a gate that mutates nothing must not pass; a pure-data module is L1 by policy). `gen.py` itself exits non-zero, failing the build, when no location of the AST names the source file |
+| `unviable-ratio` | more than 25 % of the module's generated mutants are `unviable` (code shaped to make mutants fail to compile, B11). L3+: error; L2: info. Not reported when all are unviable (`all-unviable`) |
 | `unmutated-function` | L3 (info in L2): a function with a body that no mutant can reach, because a macro makes it or it is defined in a header of the product (not one of the toolchain's `--system-root`s). Move the code into a source file; not approvable |
 | `all-unviable` | every mutant of a module failed to compile |
 | `crash-only-function`, `no-assert-kill-function` | L3: a function with mutants none of which was killed by a failed check (only crashes, or only equivalent/unviable ones) |
@@ -104,3 +106,6 @@ Approvals never cover anything but a survivor.
   known in advance, and the sandbox has no network apart from Buck2's pinned archives.
 - Report integrity rests on the build: `rigor mutants` re-derives every verdict from the raw facts, but a
   forged `report.json` is as trustworthy as the build that made it (the driver builds it freshly on RE).
+- A test can still kill mutants for the wrong reason, for example by hashing the machine code of the function under
+  test: every mutant then fails a check. Nothing in the gate detects that (the `symbols` policy is the only barrier);
+  hidden tests and the red team (B7, B8) are the answer.

@@ -518,7 +518,7 @@ if case == "missing-run":
     live = next(m for m in d["mutants"] if m["runs"])
     live["runs"] = {}
 elif case == "baseline-red":
-    run = d["baseline_runs"]["pinned_test"]
+    run = d["baseline_runs"]["selftest_scratch_mut_m__pinned_test"]
     run["results"] = run["results"].replace('"status":"pass"', '"status":"fail"', 1)
 else:
     d["sources"][0]["original"]["hash"] = "0" * 64

@@ -33,6 +33,13 @@ def _label_text(label: Label) -> str:
     cell = "" if label.cell == "root" else label.cell
     return "{}//{}:{}".format(cell, label.package, label.name)
 
+_TEST_KEY_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789_"
+
+def _test_key(label: Label) -> str:
+    """Unique name of a test in the report and in action identifiers: `<package>__<name>` with every
+    character outside [a-z0-9_] turned into `_`. (Two packages may each have a test called `arena_test`.)"""
+    return "".join([c if c in _TEST_KEY_CHARS else "_" for c in (label.package + "__" + label.name).elems()])
+
 def _objects(dep: Dependency) -> dict[str, Artifact]:
     """Plain (non-PIC) object files of a target, by the name Buck2 gave them (`<src>.o`)."""
     subs = dep[DefaultInfo].sub_targets
@@ -181,7 +188,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
     rels = [s.short_path for s in srcs]
     toolchain = ctx.attrs._toolchain[CxxToolchainInfo]
     real_objects = _objects(ctx.attrs.module)
-    tests = {t.label.name: t for t in ctx.attrs.test_targets}
+    tests = {_test_key(t.label): t for t in ctx.attrs.test_targets}
     if len(tests) != len(ctx.attrs.test_targets) or len(tests) == 0:
         fail("{}: tests must be a non-empty list of distinct targets".format(ctx.label))
     test_names = sorted(tests.keys())
