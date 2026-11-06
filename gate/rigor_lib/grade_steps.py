@@ -72,11 +72,6 @@ def assemble_gate(g):
     return GateResult("assemble", found, metadata)
 
 
-def grade_context.GATE_ROOT:
-    from rigor_lib import grade_context
-    return grade_context.GATE_ROOT
-
-
 def tests_gate_for(mode):
     """The `tests` gate over one mode's results, registered as `tests-<mode>`."""
     def gate(g):
