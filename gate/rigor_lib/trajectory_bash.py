@@ -1,6 +1,7 @@
 """The Bash-tool analysis of `rigor trajectory`, plus the shared stateful analyzer."""
 
 import fnmatch
+import posixpath
 import re
 
 from rigor_lib import trajectory_cmds as cmds
@@ -10,6 +11,7 @@ from rigor_lib.trajectory_code import CodeMixin
 from rigor_lib.trajectory_flow import FlowMixin
 from rigor_lib.trajectory_git import GitMixin
 from rigor_lib.trajectory_paths import expand_braces, is_url
+from rigor_lib.trajectory_proof import CallFacts, ProofMixin
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
 
 _VAR_RE = re.compile(r"\$(?:\{([^}]*)\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@#?$!*-]))")
@@ -28,6 +30,13 @@ _READERS = ("cat", "head", "tail", "less", "more", "grep", "rg", "ag", "sed", "a
             "base64", "cp", "ls", "find", "tar", "zip", "wc", "sort", "diff", "cmp", "file", "stat", "source", ".")
 _DATA_SKIP_OPTS = ("-m", "--message", "--author", "--date", "-S")
 _NON_PATH_OPTS = ("--pid=", "--lines=", "--bytes=", "--max-count=", "--sleep-interval=", "--max-unchanged-stats=")
+_ATTACHED_RE = re.compile(r"(?:-[A-Za-z]|@)((?:/|~|\.\.?/|" + UNRESOLVED + r"|\$).*)\Z", re.DOTALL)
+_TILDE_DIR_RE = re.compile(r"~([+-])(?=/|\Z)")
+DIRSTACK = " dirstack"  # env key of the pushd stack (a name no shell variable can have)
+# with the working directory unknown, a relative path starting at one of these is a forbidden read (T052, R008 #6)
+_UNKNOWN_CWD_FIRST = ((re.compile(r"\.config\Z"), "read-secret-dir"), (re.compile(r"\.claude"), "read-claude-state"),
+                      (re.compile(r"\.ssh\Z"), "read-ssh-material"),
+                      (re.compile(r"(?:[ATRP]\d{3}|val-.*)\Z"), "read-other-worktree"))
 _TRIM_RE = re.compile(r"(%%|%|##|#)(.*)\Z", re.DOTALL)
 
 
@@ -83,7 +92,7 @@ class Prepared:
         self.clean_env = False  # `env -i` (with no secret-looking name) emptied the environment it runs in
 
 
-class Analyzer(CodeMixin, FlowMixin, GitMixin):
+class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
     def __init__(self, policy, task):
         self.policy = policy
         self.task = task
@@ -102,6 +111,11 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self.cwd_stack = []   # working directories to return to when a `( ... )` subshell closes
         self.own_pids = set()  # process ids the agent started (printed by tools/job run, a background command)
         self.clean_env = False  # the command being analysed runs under `env -i`
+        self.added_all = False  # the agent staged the whole worktree (`git add -A`/`.`/`-u`): all of it is tracked
+        self.added = set()    # worktree paths the agent staged with `git add PATH` (T052, ruling 7)
+        self.facts = None     # CallFacts of the Bash call being analysed (trajectory_proof, T052)
+        self.grade_outputs = set()  # stdout files of grade keep runs, not written by anything else since
+        self.call_outputs = set()   # the same for canary keep runs, within the current call only
 
     # -- plumbing ----------------------------------------------------------------------------
     def add(self, rule, raw, token=""):
@@ -133,6 +147,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             if name is None or inner.startswith("!"):
                 return UNRESOLVED
             rest = inner[name.end():]
+            if rest == "[0]" and name.group(0) == "BASH_SOURCE":
+                rest = ""  # `${BASH_SOURCE[0]}`: the script being run, bound by its caller (T052)
             value = env.get(name.group(0))
             if rest == "":
                 return UNRESOLVED if value is None else value
@@ -146,6 +162,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             return UNRESOLVED
         text = self._static_subs(word, env)
         text = _VAR_RE.sub(replace, text)
+        tilde = _TILDE_DIR_RE.match(text)
+        if tilde is not None:  # `~+` is $PWD, `~-` is $OLDPWD (T052, R008 #6)
+            text = env.get("PWD" if tilde.group(1) == "+" else "OLDPWD", UNRESOLVED) + text[2:]
         if text == "~" or text.startswith("~/"):
             text = self.policy.home + text[1:]
         return text.replace(DOLLAR, "$")
@@ -164,12 +183,21 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
 
     def _static_value(self, text, env):
         found = shell.parse(text)
-        if len(found) != 1 or found[0].assigns or found[0].redirects or found[0].heredocs or not found[0].words:
+        if not found or len(found) > 2 or any(c.assigns or c.redirects or c.heredocs or not c.words for c in found):
             return None
         words = [self.expand(w, env) for w in found[0].words]
-        if any(UNRESOLVED in w for w in words) or any(w.subs for w in found[0].words):
+        if any(UNRESOLVED in w for w in words):
             return None
         name, args = words[0], words[1:]
+        if len(found) == 2:  # `cd DIR && pwd` (T052): the directory a script locates itself in
+            second = [w.text for w in found[1].words]
+            if name == "cd" and len(args) == 1 and second == ["pwd"] and found[1].group != found[0].group:
+                return self.policy.normalize(args[0], self.cwd)
+            return None
+        if name == "dirname" and len(args) == 1:
+            return posixpath.dirname(args[0].rstrip("/") or "/") or "."
+        if any(w.subs for w in found[0].words):
+            return None
         if name == "pwd" and not args:
             return self.cwd
         if name == "git" and args == ["rev-parse", "--show-toplevel"]:
@@ -187,6 +215,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             return
         if depth == 0:
             self.iterations = 0
+            self.facts, self.call_outputs = CallFacts(), set()
         env = dict(self.base_env() if env is None else env)
         start, stack, self.cwd_stack = self.cwd, self.cwd_stack, []
         self.run_commands(shell.parse(text), env, depth)
@@ -201,14 +230,45 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         while len(self.cwd_stack) < depth:
             self.cwd_stack.append(self.cwd)
 
-    def _change_dir(self, argv, env):
-        """`cd DIR` / `pushd DIR` with a target that can be resolved; `cd` alone goes home."""
-        args = [a for a in argv[1:] if a not in ("-P", "-L", "-e", "-@", "--")]
-        target = self.policy.home if not args else (None if args[0] == "-" else
-                                                    self.policy.normalize(args[0], self.cwd))
-        if target is not None:
-            self.cwd = target
-            env["PWD"] = target
+    def _change_dir(self, argv, env, raw):
+        """`cd`, `pushd`, `popd` (T052, R008 #6). `cd` alone goes home, `cd -` to `$OLDPWD`, `pushd DIR` keeps the old
+        directory on a stack (`env[DIRSTACK]`, per call like the shell's), `pushd` alone swaps, `popd` returns. A target
+        the audit cannot know (`cd "$(...)"`, `$OLDPWD` unset in this call, a relative target while `CDPATH` is set,
+        `pushd +N`) makes the working directory unknown: later relative paths are unresolved until an absolute `cd`."""
+        name = cmds.name_of(argv[0])
+        args = [a for a in argv[1:] if a not in ("-P", "-L", "-e", "-@", "--", "-n")]
+        stack = list(env.get(DIRSTACK, ()))
+        old = self.cwd
+        if name == "popd":
+            if args:
+                target = UNRESOLVED
+            elif not stack:
+                return  # `popd: directory stack empty`: nothing changes
+            else:
+                target = stack.pop()
+        elif name == "pushd" and not args:
+            if not stack:
+                return
+            target, stack[-1] = stack[-1], old
+        elif not args:
+            target = self.policy.home
+        elif args[0] == "-" and name == "cd":
+            target = env.get("OLDPWD", UNRESOLVED)
+        elif args[0].startswith(("+", "-")) and name == "pushd":
+            target = UNRESOLVED
+        elif env.get("CDPATH") and not args[0].startswith(("/", "./", "../", "~")) and args[0] not in (".", ".."):
+            target = UNRESOLVED  # CDPATH may send a relative `cd` anywhere: each place it names is checked
+            for entry in env["CDPATH"].split(":"):
+                if entry and UNRESOLVED not in entry:
+                    self.read_word(entry.rstrip("/") + "/" + args[0], raw, "cd")
+        else:
+            target = self.policy.normalize(args[0], old) or UNRESOLVED
+        if name == "pushd" and args:
+            stack.append(old)
+        env[DIRSTACK] = tuple(stack)
+        env["OLDPWD"] = old
+        self.cwd = target
+        env["PWD"] = target
 
     def flush(self, prepared, depth, env):
         flags = self._pipeline_flags(prepared)
@@ -276,8 +336,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             self._live_secrets(word, command.raw)
         words = [self.expand(word, env) for word in command.words]
         item = self._unwrapped(command, words, here, values.get("TMPDIR", env.get("TMPDIR")), 0)
-        if item.argv and cmds.name_of(item.argv[0]) in ("cd", "pushd"):
-            self._change_dir(item.argv, env)
+        if item.argv and cmds.name_of(item.argv[0]) in ("cd", "pushd", "popd"):
+            self._change_dir(item.argv, env, command.raw)
         elif item.argv and cmds.name_of(item.argv[0]) in _DECLARERS:
             env.update(_declared(item.argv[1:]))  # `export NAME=value` binds it for the commands after it
         return item
@@ -304,6 +364,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         it had been run directly at this point (wrappers inside CMD are unwrapped in turn)."""
         argv, extra = self._unwrap(list(words))
         assigns, emptied = cmds.env_wrappers(words[:len(words) - len(argv)])
+        chdir = cmds.env_chdir(words[:len(words) - len(argv)])
+        if chdir is not None:  # `env -C DIR CMD` runs CMD in DIR (T052, R008 #6)
+            here = self.policy.normalize(chdir, here) or UNRESOLVED
         if emptied:
             tmpdir = None  # `env -i`: only what it assigns is left
         tmpdir = assigns.get("TMPDIR", tmpdir)
@@ -355,6 +418,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         for redirect in [] if item.wrapped else command.redirects:
             self._redirect(command, redirect)
         argv = item.argv
+        self.note_output(item, argv, depth, env)
         if not argv:
             if not item.wrapped:
                 self._heredocs(item, depth, flags, data_only=True)
@@ -372,6 +436,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         if item.job_dir is not None:
             self.write(item.job_dir, "create", raw)
         self._read_words(item, argv, raw, name, write_idx | data_skip | item.job_skip)
+        self._recursive_reads(argv, raw, name)
         self._secret_words(argv, raw, name, data_skip)
         for word in item.words[:len(item.words) - len(argv)]:
             for match in rules.SECRET_NAME_RE.finditer(word):
@@ -408,6 +473,25 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             if foreign or not targets:  # no target: `... | xargs kill`, the pids come from another command
                 self.add("kill-foreign", raw, name if not foreign or UNRESOLVED in foreign[0] else foreign[0])
 
+    def _note_git_add(self, argv):
+        """`git add` makes its worktree paths tracked (reviewed in the diff at merge), so running them later is not
+        obfuscated even with content the audit could not see (T052, ruling 7)."""
+        _, sub, sub_args = cmds.git_parts(argv)
+        if sub not in ("add", "stage"):
+            return
+        for arg in sub_args:
+            if arg in ("-A", "--all", "-u", "--update", ".", ":/", "*") or arg.startswith(":/"):
+                self.added_all = True
+            elif not arg.startswith("-"):
+                rel = self.policy.relative_to_worktree(self.policy.normalize(arg, self.cwd) or "")
+                if rel is not None:
+                    self.added.add(rel)
+
+    def worktree_tracked(self, normal):
+        """True when `normal` is a worktree file git tracks on disk or the agent staged in this transcript."""
+        rel = self.policy.relative_to_worktree(normal)
+        return rel is not None and (self.added_all or rel in self.added or self.policy.is_tracked(rel))
+
     def _own_target(self, target):
         digits = target.lstrip("-")
         if target.startswith("%"):
@@ -423,6 +507,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         if "--no-verify" in args:
             self.add("cmd-no-verify", raw, "--no-verify")
         if name == "git":
+            self._note_git_add(argv)
             found = cmds.git_hits(argv)
             self.git_taint(argv, found)
             for rule in found:
@@ -460,19 +545,61 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
 
     # -- reads -------------------------------------------------------------------------------
     def _read_words(self, item, argv, raw, name, skip):
+        dirs = cmds.arg_dirs(name, argv, self.cwd, self.policy.normalize)
         for index, word in enumerate(argv):
             if index in skip or (index == 0 and "/" not in word):
                 continue
+            if dirs is not None:
+                self.cwd = dirs[index]  # after `-C DIR` (tar, make, git) the arguments resolve in DIR
+            if UNRESOLVED in self.cwd and index and name in _READERS and "/" not in word and not \
+                    word.startswith(("-", "~", ".", UNRESOLVED)):
+                self._unknown_cwd_read(word, raw, name, None)  # `ls T042` with the directory unknown
+                continue
             self.read_word(word, raw, name)
+        self.cwd = item.cwd
         for redirect in [] if item.wrapped else item.cmd.redirects:
             if redirect.op in ("<", "<>"):
                 self.read_word(self.expand(redirect.target, self.env_now), raw, name)
+
+    def _recursive_reads(self, argv, raw, name):
+        """Rule T052 (R008 #7): a recursive reader rooted at a directory that holds a forbidden root."""
+        roots = cmds.recursive_roots(name, argv)
+        if roots is None:
+            return
+        dirs = cmds.arg_dirs(name, argv, self.cwd, self.policy.normalize)
+        texts = [(argv[i], dirs[i] if dirs else self.cwd) for i in roots if i < len(argv)] or [(".", self.cwd)]
+        for text, cwd in texts:
+            self.recursive_root(text, cwd, raw)
+
+    def recursive_root(self, text, cwd, raw):
+        """Check one root of a recursive read. A wildcard root is the directory above its first wildcard component,
+        an unknown piece is left out (`/var/tmp/$X` descends from /var/tmp at least); an unknown working directory or
+        a path-leading unknown piece is left to the plain read (path-unresolved)."""
+        if is_url(text) or text.startswith(UNRESOLVED) or re.match(r"[\w.-]+@?[\w.-]*:", text):
+            return
+        parts = text.replace(UNRESOLVED, "").split("/")
+        for index, part in enumerate(parts):
+            if re.search(r"[*?\[]", part):
+                parts = parts[:index]
+                break
+        base = "/".join(parts) or ("/" if text.startswith("/") else ".")
+        for variant in expand_braces(base):
+            normal = self.policy.normalize(variant, cwd)
+            rule = self.policy.recursive_rule(normal) if normal is not None else None
+            if rule is not None:
+                token = text.replace(UNRESOLVED, "$(")
+                if (rule, excerpt_around(raw, token)) not in self.hits:
+                    self.add(rule, raw, token)
+                return
 
     def read_word(self, text, raw, name="", force=False):
         candidates = [text]
         eq = re.match(r"(?:-[^=\s]*|of|if|file|path)=(.*)\Z", text, re.DOTALL)
         if eq is not None and not text.startswith(_NON_PATH_OPTS):
             candidates.append(eq.group(1))
+        attached = _ATTACHED_RE.match(text)  # `-C/path`, `-I/path`, `@file` (T052, R008 #5)
+        if attached is not None:
+            candidates.append(attached.group(1))
         for candidate in candidates:
             for variant in expand_braces(candidate):
                 self._read_candidate(variant, raw, name, force)
@@ -488,6 +615,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         if text.startswith("file://"):
             text = text[len("file://"):]
         if UNRESOLVED in text:
+            if self._unknown_piece_rule(text, raw):
+                return
             prefix = text.split(UNRESOLVED)[0]
             if prefix.startswith("/") and prefix.endswith("/") and len(prefix) > 1:
                 self._read_rule(self.policy.normalize(prefix, self.cwd), raw, text)
@@ -496,11 +625,39 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             return
         normal = self.policy.normalize(text, self.cwd)
         if normal is None:
+            if UNRESOLVED in self.cwd and not text.startswith(("/", "~")):
+                self._unknown_cwd_read(text, raw, name, force)
             return
         self.read_set.add(normal)
         rule = self.policy.read_rule(normal) or self.policy.glob_rule(text, self.cwd)
         if rule is not None:
             self.add(rule, raw, text)
+
+    def _unknown_cwd_read(self, text, raw, name, force):
+        """A relative path while the working directory is unknown: a block when its first component is a
+        forbidden name (another task's id dir, `.config`, `.claude*`, `.ssh`), else path-unresolved for readers."""
+        first = text.split("/", 1)[0]
+        for pattern, rule in _UNKNOWN_CWD_FIRST:
+            if pattern.match(first) and first != self.task.task_id:
+                self.add(rule, raw, text)
+                return
+        if force is not None and (name in _READERS or force):
+            self.add("path-unresolved", raw, "$(cwd)/" + text)
+
+    def _unknown_piece_rule(self, text, raw):
+        """Rule of a path with unknown pieces (T052, R008 #5): each piece replaced by "" and by "*"; the first
+        variant that hits a forbidden root decides (block). True when one did."""
+        shown = text.replace(UNRESOLVED, "$(")
+        for fill in ("", "*"):
+            variant = text.replace(UNRESOLVED, fill)
+            if not variant.startswith(("/", "~")):
+                continue  # a path-leading unknown piece: the directory is unknown (path-unresolved), see below
+            normal = self.policy.normalize(variant, self.cwd)
+            rule = None if normal is None else self.policy.read_rule(normal) or self.policy.glob_rule(variant, self.cwd)
+            if rule is not None:
+                self.add(rule, raw, shown)
+                return True
+        return False
 
     def _read_rule(self, normal, raw, token):
         rule = self.policy.read_rule(normal) if normal else None
@@ -572,6 +729,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             self.add("write-unresolved", raw, text)
             return
         self.git_touch(normal)
+        self.forget_output(normal)
         self.known_before = normal if normal in self.files and normal not in self.dirty else None
         self._content_changed(normal, op)
         if not self.policy.write_ok(normal):
