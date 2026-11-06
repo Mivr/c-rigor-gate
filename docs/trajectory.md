@@ -355,7 +355,9 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
 
 ### Decisions worth knowing
 * **Secret-looking names** (`*_SECRET`, `*_TOKEN`, `*_PASSWORD`, `*_API_KEY`, `*_ACCESS_KEY`, `*_PRIVATE_KEY`,
-  `*_SECRET_KEY`, `*_AUTH_KEY`, `SSH_AUTH_SOCK`, ...). `secret-env-access` (block) is an expansion
+  `*_SECRET_KEY`, `*_AUTH_KEY`, `SSH_AUTH_SOCK`, ...; T062, R008 O4: also a bare `TOKEN`/`SECRET`/`PASSWORD`/`PASSWD`/
+  `CREDENTIALS`, a glued `*PASSWORD` such as `PGPASSWORD`, and `*_PAT`; a generic `*_KEY` such as `OPENAI_KEY` is not
+  one, since `CACHE_KEY`, `SORT_KEY` are ordinary names). `secret-env-access` (block) is an expansion
   (`$NAME`, `${NAME}`, `${!x}`), `printenv NAME`, or `environ`/`getenv`/`ENV` in inline or executed code.
   A bare mention in a command (`NAME=fake ./run`, an argument) is `secret-env-mention` (review). The same name inside
   text written to the worktree is `secret-env-in-file` (review). `echo`/`printf` arguments, commit messages and the

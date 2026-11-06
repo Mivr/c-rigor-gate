@@ -1311,7 +1311,7 @@ case("program_awk_getline_other_cache", [OC], bash("awk 'BEGIN{while((getline l<
 case("program_sed_r_other_worktree", [OW], bash("sed '1r /var/tmp/wt/c-rigor-gate/T042/src/x.c' src/x.c"))
 case("program_sed_r_attached_other_cache", [OC], bash("sed -e '1r/var/tmp/cache/T042/out.log' src/x.c"))
 case("program_sed_r_relative_other_worktree", [OW], bash("sed '$r ../T042/src/x.c' src/x.c"))
-case("program_sed_w_outside", [O], bash("sed -n '/TOKEN/w /data/club-apps/scratch/x' src/x.c"))
+case("program_sed_w_outside", [O], bash("sed -n '/main/w /data/club-apps/scratch/x' src/x.c"))
 case("program_perl_whole_env", [E], bash("perl -e 'print map {\"$_=$ENV{$_}\\n\"} keys %ENV'"))
 case("program_ruby_whole_env", [E], bash("ruby -e 'p ENV'"))
 case("program_awk_environ", [E], bash("awk 'BEGIN{for(k in ENVIRON) print k\"=\"ENVIRON[k]}'"))
@@ -1373,3 +1373,7 @@ case("fp_inline_own_processes", [], bash(
      bash("node -e \"const c = require('child_process').spawn('sleep', ['9']); process.kill(c.pid); c.kill()\"; "
           "ruby -e 'pid = spawn(\"sleep 9\"); Process.kill(\"TERM\", pid)'; python3 -c \"exec('x = 1')\""),
      write(WT + "/src/j.py", "import os\n\n\ndef stop(pgid):\n    os.killpg(pgid, 15)\n"), bash("python3 src/j.py"))
+
+# -- T062 (R008 O4): unprefixed secret names: a bare TOKEN/SECRET/PASSWORD, PGPASSWORD-style, *_PAT --------------------
+case("secret_unprefixed_names", ["secret-env-access"], bash("echo $PGPASSWORD $TOKEN $GITHUB_PAT"))
+case("fp_secret_unprefixed_lookalikes", [], bash("echo $PATH $PATTERN $TOKENS $MY_PATH $OLDPWD"))

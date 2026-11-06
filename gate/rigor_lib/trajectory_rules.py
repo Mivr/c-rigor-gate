@@ -79,8 +79,10 @@ DEFAULT_HOME = "/var/tmp"
 _PART = r"[A-Z][A-Z0-9]*"
 SECRET_NAME_RE = re.compile(
     r"(?<![A-Za-z0-9_])(?:"
-    r"(?:%(p)s_)+(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?)"
+    r"(?:%(p)s_)*(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?)"  # T062 (R008 O4): bare `TOKEN` too
     r"|(?:%(p)s_)*(?:API|ACCESS|PRIVATE|SECRET|AUTH|SIGNING)_?KEY"
+    r"|[A-Z][A-Z0-9]*(?:PASSWORD|PASSWD)"  # T062 (R008 O4): `PGPASSWORD`
+    r"|(?:%(p)s_)+PAT"  # T062 (R008 O4): a personal access token, `GITHUB_PAT`
     r"|SSH_AUTH_SOCK"
     r")(?![A-Za-z0-9_])" % {"p": _PART})
 
