@@ -86,6 +86,22 @@ class BuckFilesCase(TempDirTestCase):
     def test_select_value(self):
         self.red(LOAD + 'c_library(name = "a", srcs = select({"DEFAULT": ["a.c"]}))\n', "bad-argument")
 
+    def test_deps_must_be_same_cell_labels(self):
+        for dep in ("gate//ctest:ctest", "@gate//ctest:ctest", "prelude//cxx:x", "toolchains//:cxx", "root//a:b",
+                    "a", "a:b", ":", "//a", "//a:b c", ":a/b", "//a:b:c", ""):
+            with self.subTest(dep=dep):
+                self.red(LOAD + 'c_library(name = "a", deps = ["%s"])\n' % dep, "bad-argument")
+        self.assertEqual(self.check({"BUCK": LOAD + 'c_library(name = "a", deps = [])\n'}, 0), [])
+
+    def test_good_deps(self):
+        for dep in (":b", ":b-c_d.e+f", "//pkg:name", "//pkg/sub.dir:n", "//:root"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": LOAD + 'c_library(name = "a", deps = ["%s"])\n' % dep}, 0), [])
+
+    def test_deps_as_a_bare_string_is_not_a_list_of_labels(self):
+        self.red(LOAD + 'c_library(name = "a", deps = "//a:b")\n', "bad-argument")
+
     def test_def_if_for_import_expression_statements(self):
         self.red("def f():\n    pass\n", "bad-statement")
         self.red("if True:\n    pass\n", "bad-statement")

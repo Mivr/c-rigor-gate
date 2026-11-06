@@ -9,6 +9,7 @@ configuration (`.bzl`, `BUCK.v2` which takes priority over `BUCK`, `PACKAGE`, `.
 
 import ast
 import os
+import re
 
 from rigor_lib import jsonio
 from rigor_lib.errors import InternalError
@@ -21,6 +22,9 @@ LOAD_PATH = "@gate//rules:c.bzl"
 MACROS = ("c_library", "c_binary", "c_test", "c_fuzz")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 BUILD_FILE = "BUCK"
+# Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
+# (The macros add `gate//ctest:ctest` themselves.)
+DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+)")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.
 FORBIDDEN_NAMES = ("TARGETS", "PACKAGE", ".buckconfig", ".buckconfig.local", ".buckroot",
@@ -42,6 +46,10 @@ def _is_string(node):
 
 def _is_value(node):
     return _is_string(node) or (isinstance(node, ast.List) and all(_is_string(e) for e in node.elts))
+
+
+def _is_dep_list(node):
+    return isinstance(node, ast.List) and all(DEP_LABEL.fullmatch(e.value) for e in node.elts)
 
 
 def load_findings(path, node):
@@ -66,6 +74,8 @@ def call_findings(path, node):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="keyword"))
         elif not _is_value(keyword.value):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
+        elif keyword.arg == "deps" and not _is_dep_list(keyword.value):
+            found.append(finding("bad-argument", path=path, line=node.lineno, why="dep"))
     return found
 
 

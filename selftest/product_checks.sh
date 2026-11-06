@@ -208,8 +208,10 @@ def mkfd(allfacts, dest, names):
 def check(result, expected):
     """check RESULT EXPECTED...: the findings are exactly the expected `rule` / `rule:symbol|name` entries"""
     doc = json.load(open(result))
-    got = sorted(f["rule"] + (":" + (f.get("symbol") or f.get("name")) if (f.get("symbol") or f.get("name")) else "")
-                 for f in doc["findings"] if f["severity"] == "error")
+    def render(f):
+        detail = "" if f["rule"] == "line-directive" else (f.get("symbol") or f.get("name"))
+        return f["rule"] + (":" + detail if detail else "")
+    got = sorted(render(f) for f in doc["findings"] if f["severity"] == "error")
     want = sorted(expected)
     if got != want:
         print("  wanted %s\n  got    %s" % (want, got))
@@ -270,14 +272,39 @@ begin "the throwaway product's build files pass rigor buckfiles (and so does exa
 "${RIGOR[@]}" buckfiles --root "$scratch" > "$out/bf.txt" 2>&1 || fail "$CUR" "$out/bf.txt"
 "${RIGOR[@]}" buckfiles --root examples > "$out/bf2.txt" 2>&1 || fail "$CUR" "$out/bf2.txt"
 
+begin "line markers: locate the toolchain's header directory and write the #line / GNU-marker sources"
+must_pass build "//ctest:ctest[objects][ctest.c.o][preprocessed]" --show-output
+pre="$(awk '/buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+sysinc="$(grep -o 'buck-out/[^" ]*/__sysroot__/tree/usr/include' "$pre" | head -1)"
+[ -n "$sysinc" ] || fail "$CUR: no system include directory in $pre"
+echo "  system root: $sysinc"
+cd "$scratch/p"
+EVIL='A(optnone) int evil(void) { __asm__ volatile("nop"); return 0; }'
+# a spliced #line (evades the line regex) naming a real system header
+printf '#define A(x) __attribute__((x))\n#li\\\nne 1 "%s/stdio.h"\n%s\n' "$sysinc" "$EVIL" > linespl.c
+# a plain #line naming a system header (T002 catches this one too; the semantic gate must on its own)
+printf '#define A(x) __attribute__((x))\n#line 1 "%s/stdio.h"\n%s\n' "$sysinc" "$EVIL" > lineplain.c
+# a #line that only changes the number (backwards)
+printf '#define A(x) __attribute__((x))\nint pad_a(void) { return 1; }\nint pad_b(void) { return 2; }\n#line 1\n%s\n' "$EVIL" > linenum.c
+# the GNU marker form, which could forge "enter include" (flag 1), is refused by the sealed flags
+printf 'int gnu_a(void) { return 1; }\n# 1 "x.c" 1\nint gnu_b(void) { return 2; }\n' > gnu.c
+cat >> BUCK <<'EOF'
+c_library(name = "linespl", srcs = ["linespl.c"])
+c_library(name = "lineplain", srcs = ["lineplain.c"])
+c_library(name = "linenum", srcs = ["linenum.c"])
+c_library(name = "gnu", srcs = ["gnu.c"])
+EOF
+cd "$root"
+"${RIGOR[@]}" buckfiles --root "$scratch" > "$out/bf3.txt" 2>&1 || fail "$CUR" "$out/bf3.txt"
+
 begin "every red source passes the T002 line scan (this is what the semantic scan is for)"
-for f in paste splice digraph attr weak asm unreach kill rename fopen write ctestsym puts exittest fz_fuzz; do
+for f in linespl paste splice digraph attr weak asm unreach kill rename fopen write ctestsym puts exittest fz_fuzz; do
   tool textscan_misses "$scratch/p/$f.c" "$out" || fail "$CUR: $f.c"
 done
-echo "  15 sources: line scan exit 0 on all"
+echo "  16 sources: line scan exit 0 on all"
 
 begin "facts actions build on RE for every target (release) and the libc export list exists"
-targets=(clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz)
+targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz)
 args=(); for t in "${targets[@]}"; do args+=("$pkg:${t}_facts"); done
 run "$out/facts.log" build "${args[@]}" //ctest:ctest_facts //examples/hello:lib_facts //examples/hello:hello_facts //examples/hello:hello_test_facts toolchains//:libc_symbols --show-output || fail "$CUR" "$out/facts.log"
 tool collect "$out/facts.log" "$out/facts" || fail "$CUR: collect"
@@ -305,6 +332,16 @@ gate_case weak $SEM 1 "$out/p_weak.toml" weak -- forbidden-attribute:weak
 gate_case weak $SYM 1 "$out/p_weak.toml" weak -- weak-symbol:weak_f
 tool policy "$out/p_asm.toml" asm
 gate_case asm $SEM 1 "$out/p_asm.toml" asm -- inline-asm:__asm__
+
+begin "red: a #line cannot make the rest of the file look like a system header (optnone and asm still reported)"
+for c in linespl lineplain linenum; do
+  tool policy "$out/p_$c.toml" "$c"
+  gate_case $c $SEM 1 "$out/p_$c.toml" $c -- line-directive forbidden-attribute:optnone inline-asm:__asm__
+done
+
+begin "red: the GNU line-marker form (which could forge flag 1) does not compile"
+if run "$out/gnu.log" build "$pkg:gnu"; then fail "$CUR: gnu.c built" "$out/gnu.log"; fi
+grep -q 'Wgnu-line-marker' "$out/gnu.log" || fail "$CUR: failed for the wrong reason" "$out/gnu.log"
 
 begin "builtins: __builtin_unreachable behind a macro is a finding unless the module's policy allows it"
 tool policy "$out/p_unreach.toml" unreach
@@ -392,6 +429,8 @@ bf package       forbidden-file  PACKAGE ''
 bf flagskeyword  bad-argument    BUCK "${L}c_library(name = \"a\", srcs = [\"a.c\"], compiler_flags = [\"-w\"])
 "
 bf globbed       bad-argument    BUCK "${L}c_library(name = \"a\", srcs = glob([\"*.c\"]))
+"
+bf crosscelldep  bad-argument    BUCK "${L}c_library(name = \"a\", deps = [\"prelude//cxx:x\"])
 "
 bf syntax        parse-error     BUCK 'c_library(
 '

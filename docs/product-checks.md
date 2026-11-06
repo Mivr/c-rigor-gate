@@ -51,6 +51,7 @@ latter), each with its own `--out` like every other gate.
 | `pragma-operator` | `_Pragma` / `__pragma` survives preprocessing |
 | `inline-asm` | `asm`, `__asm`, `__asm__` |
 | `forbidden-attribute` | an attribute (`__x__` spelling normalised) in `FORBIDDEN_ATTRIBUTES`: `optnone`, `no_instrument_function`, `no_profile_instrument_function`, `disable_sanitizer_instrumentation`, `no_sanitize`, `no_sanitize_address/memory/thread`, `no_address_safety_analysis`, `no_stack_protector`, `weak`, `weakref`, `alias`, `ifunc`, `constructor`, `destructor`, `section`, `used`, `visibility`, `naked`. `noreturn` is allowed. |
+| `line-directive` | a line marker the compiler did not write: a flag-less marker that names another file, or goes back in the same file (a user `#line`), or a return marker that does not name the file it returns to. Markers are never believed: the file stays the one the compiler is really reading, so a `#line` naming a system header cannot hide the text after it |
 | `forbidden-builtin` | `__builtin_trap`, `__builtin_unreachable`, `__builtin_debugtrap`, unless the module's policy entry lists it in `allow_builtins` |
 
 An identifier the scanner reports but the table does not know is exit 2 (table and scanner drifted).
@@ -83,13 +84,23 @@ Each `BUCK` is parsed (never executed) with `ast`. Allowed: `load("@gate//rules:
 `c_library`, `c_binary`, `c_test`, `c_fuzz`, and top-level calls to those with keyword arguments
 (`name`, `srcs`, `headers`, `deps`, `visibility`) whose values are string literals or lists of string
 literals. Rules: `bad-load`, `extra-load` (a second `load`), `bad-call` (`native.`, other rules, wrappers),
-`bad-argument` (positional, `**`, unknown keyword, non-literal value, `glob`, `select`, concatenation,
+`bad-argument` (positional, `**`, unknown keyword, non-literal value, a `deps` entry that is not a same-cell label `:name` or `//pkg:name` (why=`dep`: no cell prefix, so no raw rules or prelude targets; the macros add `gate//ctest:ctest` themselves), `glob`, `select`, concatenation,
 f-strings), `bad-statement` (assignment, `def`, `if`, `for`, import, bare expression), `parse-error`
 (also non-UTF-8 and NUL), `forbidden-file` (any file Buck2 could read as configuration: `*.bzl`, `*.bxl`,
 `BUCK.*` such as `BUCK.v2` which wins over `BUCK`, `TARGETS*`, `PACKAGE*`, `.buckconfig*`, `.buckroot`,
 `.buckignore`, `.buckjavaversion`, and `buck`/`Buck` spellings), `symlink` (any symlink anywhere).
 
+## Line markers
+The compiler writes flag 1 (enter include) and flag 2 (return) markers itself; the only flag-less markers it
+writes are the first one of the text and forward resynchronisations in the same file. The GNU form
+`# N "file" 1` in source is refused by the sealed flags (`-Wgnu-line-marker` under `-Wpedantic -Werror`; selftest
+step "the GNU line-marker form ... does not compile"), so a product cannot forge a flag. Standard `#line`
+(also spliced) always produces a flag-less marker and is reported.
+
 ## Known limits
+* A `#line N` that only moves forward in the same file is indistinguishable from the compiler's own
+  resynchronisation and is not reported (it only changes the line numbers of later findings; it cannot
+  rename the file). Backward moves and renames are reported.
 * Facts are release-only. Code under `#ifdef __SANITIZE_ADDRESS__` or `__has_feature(...sanitizer)` is
   not in the release text; those spellings stay forbidden by T002's line patterns, and a red-team case
   should try to rebuild them through macros.

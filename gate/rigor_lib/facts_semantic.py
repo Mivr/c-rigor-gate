@@ -1,4 +1,6 @@
 """Gate `semantic-suppressions`: what the compiler saw must contain no switch-off of any check.
+A user `#line` that renames the file or goes back is a finding too: it is how text would be made
+to look like a system header.
 
 Decided on the preprocessed text of every source (facts from `cscan.py`): after macros, token
 pasting, `_Pragma` and line splices have been resolved, so none of them can hide anything.
@@ -16,6 +18,8 @@ def unit_findings(facts, unit, module):
     found = []
     for file, line, text in unit.pragmas:
         found.append(finding("pragma", file=file, line=line, text=text, **where))
+    for name, file, line in unit.line_directives:
+        found.append(finding("line-directive", name=name, file=file, line=line, **where))
     for name, file, line in unit.identifiers:
         found.extend(identifier_findings(name, file, line, module, where))
     for name, file, line in unit.attributes:

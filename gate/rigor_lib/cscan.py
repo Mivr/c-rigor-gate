@@ -102,6 +102,10 @@ class Collector:
         self.pragmas = set()
         self.attributes = set()
         self.identifiers = set()
+        self.line_directives = set()
+        self.stack = []        # files we will return to (flag 1 pushes, flag 2 pops)
+        self.current = None    # the file the compiler is really in; None before the first marker
+        self.number = 0
 
     def is_system(self, path):
         if path.startswith("<"):   # "<built-in>" and "<command line>": the compiler's own text
@@ -109,19 +113,48 @@ class Collector:
         norm = os.path.normpath(path) + "/"
         return any(norm.startswith(root) for root in self.roots)
 
+    def marker(self, match):
+        """Follow one line marker. The compiler writes flag 1 (enter include) and flag 2 (return)
+        itself; a marker with neither is either the compiler resynchronising line numbers (same
+        file, moving forward, or the very first marker of the text) or a user `#line`, and
+        a user `#line` is never believed: the file name stays what the compiler is really reading."""
+        line = int(match.group(1))
+        name = match.group(2).replace('\\"', '"').replace("\\\\", "\\")
+        flags = match.group(3).split()
+        if self.current is None:
+            self.current, self.number = name, line - 1
+        elif "1" in flags:
+            self.stack.append(self.current)
+            self.current, self.number = name, line - 1
+        elif "2" in flags:
+            if self.stack and self.stack[-1] == name:
+                self.stack.pop()
+                self.current, self.number = name, line - 1
+            else:
+                self.line_directive(name)
+        elif flags:   # only system-header flags: the compiler restating the current file
+            self.number = line - 1
+        elif name == self.current and line > self.number:
+            self.number = line - 1
+        else:
+            self.line_directive(name)
+            self.number = line - 1
+
+    def line_directive(self, name):
+        self.line_directives.add((name, display_file(self.current), self.number + 1))
+
     def scan(self, text):
-        current, number = "<unknown>", 0
         attributes = AttributeTracker()
         for raw in text.split("\n"):
-            number += 1
+            self.number += 1
             marker = _MARKER.match(raw)
             if marker:
-                current = marker.group(2).replace('\\"', '"').replace("\\\\", "\\")
-                number = int(marker.group(1)) - 1
+                self.marker(marker)
                 continue
+            current = self.current if self.current is not None else "<unknown>"
             if self.is_system(current) or _DEFINITION.match(raw):
                 continue
-            where = (display_file(current), number)
+            where = (display_file(current), self.number)
             pragma = _PRAGMA.match(raw)
             if pragma:
                 self.pragmas.add(where + (pragma.group(1).strip(),))
@@ -140,6 +173,7 @@ class Collector:
             "pragmas": [{"file": f, "line": n, "text": t} for f, n, t in sorted(self.pragmas)],
             "attributes": [{"name": a, "file": f, "line": n} for a, f, n in sorted(self.attributes)],
             "identifiers": [{"name": a, "file": f, "line": n} for a, f, n in sorted(self.identifiers)],
+            "line_directives": [{"name": a, "file": f, "line": n} for a, f, n in sorted(self.line_directives)],
         }
 
 

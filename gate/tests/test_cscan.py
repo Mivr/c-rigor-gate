@@ -28,7 +28,7 @@ class ScanCase(TempDirTestCase):
 
     def test_clean_text_has_no_facts(self):
         result = scan(mark("a.c") + "int f(void) { return 1; }\n")
-        self.assertEqual(result, {"pragmas": [], "attributes": [], "identifiers": []})
+        self.assertEqual(result, {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": []})
 
     def test_pragma_line_with_location(self):
         result = scan(mark("a.c") + "int x;\n#pragma clang diagnostic ignored \"-Wall\"\n")
@@ -43,7 +43,7 @@ class ScanCase(TempDirTestCase):
 
     def test_definitions_are_not_expansions(self):
         text = mark("a.c") + '#define A(x) __attribute__((x))\n#define ASM __asm__\n#undef ASM\n'
-        self.assertEqual(scan(text), {"pragmas": [], "attributes": [], "identifiers": []})
+        self.assertEqual(scan(text), {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": []})
 
     def test_attribute_names_inside_gnu_lists(self):
         text = mark("a.c") + "__attribute__((optnone)) int f(void);\n"
@@ -89,7 +89,7 @@ class ScanCase(TempDirTestCase):
         text = (mark("a.c") + mark(ROOT + "/stdio.h", 1, " 1 3") + "extern int f(void) __asm__(\"g\");\n"
                 + "#pragma GCC system_header\n__attribute__((weak)) int h;\n" + mark("a.c", 5, " 2")
                 + "int x;\n")
-        self.assertEqual(scan(text), {"pragmas": [], "attributes": [], "identifiers": []})
+        self.assertEqual(scan(text), {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": []})
 
     def test_system_flag_alone_does_not_hide_text(self):
         # A product header that says `#pragma GCC system_header` is flagged 3 by the compiler,
@@ -105,6 +105,46 @@ class ScanCase(TempDirTestCase):
     def test_dotdot_into_the_root_is_normalised(self):
         path = "p/../" + ROOT + "/stdio.h"
         self.assertEqual(self.names(mark(path) + "__attribute__((weak)) int h;\n"), [])
+
+    PREAMBLE = (mark("a.c") + mark("<built-in>", 1, " 1") + mark("<built-in>", 1, " 3")
+                + "#define __x 1\n" + mark("<command line>", 1, " 1") + mark("<built-in>", 1, " 2")
+                + mark("a.c", 1, " 2"))
+    EVIL = '__attribute__((optnone)) int f(void) { __asm__(""); return 0; }\n'
+
+    def assert_still_scanned(self, text, directives):
+        result = scan(text)
+        self.assertEqual(len(result["line_directives"]), directives, msg=result)
+        self.assertEqual([a["name"] for a in result["attributes"]], ["optnone"])
+        self.assertEqual([a["name"] for a in result["identifiers"]], ["__asm__"])
+
+    def test_the_compilers_own_preamble_is_not_a_line_directive(self):
+        result = scan(self.PREAMBLE + "int x;\n" + mark("b.h", 1, " 1") + "int y;\n" + mark("a.c", 3, " 2"))
+        self.assertEqual(result["line_directives"], [])
+
+    def test_forward_resync_marker_is_the_compilers(self):
+        self.assertEqual(scan(self.PREAMBLE + "int x;\n" + mark("a.c", 90))["line_directives"], [])
+
+    def test_line_directive_naming_a_system_header_is_reported_and_does_not_hide_text(self):
+        text = self.PREAMBLE + "int x;\n" + mark(ROOT + "/stdio.h") + self.EVIL
+        self.assert_still_scanned(text, 1)
+        found = scan(text)["line_directives"][0]
+        self.assertEqual((found["name"], found["file"]), (ROOT + "/stdio.h", "a.c"))
+
+    def test_line_directive_naming_the_compilers_own_regions_is_reported(self):
+        for name in ("<built-in>", "<command line>"):
+            with self.subTest(name=name):
+                self.assert_still_scanned(self.PREAMBLE + "int x;\n" + mark(name) + self.EVIL, 1)
+
+    def test_line_directive_that_only_goes_back_in_the_same_file_is_reported(self):
+        self.assert_still_scanned(self.PREAMBLE + "int x;\nint y;\nint z;\n" + mark("a.c") + self.EVIL, 1)
+
+    def test_return_marker_must_name_the_file_it_returns_to(self):
+        text = self.PREAMBLE + mark("b.h", 1, " 1") + mark(ROOT + "/stdio.h", 5, " 2") + self.EVIL
+        self.assert_still_scanned(text, 1)   # the bogus return did not make the rest "system"
+
+    def test_a_flagless_marker_is_only_the_compilers_first_one(self):
+        text = mark("a.c") + mark("b.c") + "int x;\n"
+        self.assertEqual(len(scan(text)["line_directives"]), 1)
 
     def test_builtin_and_command_line_regions_are_not_the_product(self):
         text = mark("<built-in>", 1, " 3") + "typedef int v __attribute__((address_space(1)));\n"

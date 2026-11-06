@@ -19,11 +19,13 @@ WITH_TEST = POLICY + '[module."//p:test"]\n'
 LIBC = "kill\nexit\nfopen\nmemcpy\nopen\nwrite\nprintf\n"
 
 
-def unit(name="a.c.o", defined=(), undefined=(), weak=(), pragmas=(), attributes=(), identifiers=()):
+def unit(name="a.c.o", defined=(), undefined=(), weak=(), pragmas=(), attributes=(), identifiers=(),
+         line_directives=()):
     return {"name": name, "defined": sorted(defined), "weak": sorted(weak), "undefined": sorted(undefined),
             "pragmas": [{"file": "p/a.c", "line": n, "text": t} for n, t in pragmas],
             "attributes": [{"name": a, "file": "p/a.c", "line": n} for a, n in attributes],
-            "identifiers": [{"name": a, "file": "p/a.c", "line": n} for a, n in identifiers]}
+            "identifiers": [{"name": a, "file": "p/a.c", "line": n} for a, n in identifiers],
+            "line_directives": [{"name": a, "file": "p/a.c", "line": n} for a, n in line_directives]}
 
 
 def facts(label, units, deps=(), kind="c_library"):
@@ -109,6 +111,10 @@ class FactsCase(TempDirTestCase):
         self.assertEqual(self.sem([unit(identifiers=[("__builtin_unreachable", 1)])], 1,
                                   label="//core:assert", policy=allowed),
                          [("forbidden-builtin", "__builtin_unreachable")])
+
+    def test_line_directive_is_a_finding(self):
+        self.assertEqual(self.sem([unit(line_directives=[("buck-out/x/stdio.h", 3)])], 1),
+                         [("line-directive", "buck-out/x/stdio.h")])
 
     def test_unknown_scanner_identifier_fails_closed(self):
         outcome, _ = self.run_gate("semantic-suppressions",

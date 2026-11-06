@@ -26,6 +26,7 @@ class Unit:
     pragmas: tuple      # of (file, line, text)
     attributes: tuple   # of (name, file, line)
     identifiers: tuple  # of (name, file, line)
+    line_directives: tuple  # of (name, file, line): a user `#line` that renames the file
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,7 @@ def _pragmas(path, entries):
 
 
 def parse_unit(path, unit):
-    keys = ("name", "defined", "weak", "undefined", "pragmas", "attributes", "identifiers")
+    keys = ("name", "defined", "weak", "undefined", "pragmas", "attributes", "identifiers", "line_directives")
     _exact(path, unit, keys, "unit")
     defined = _strings(path, unit["defined"], "defined")
     weak = _strings(path, unit["weak"], "weak")
@@ -103,6 +104,7 @@ def parse_unit(path, unit):
         pragmas=_pragmas(path, unit["pragmas"]),
         attributes=_located(path, unit["attributes"], "name", "attribute"),
         identifiers=_located(path, unit["identifiers"], "name", "identifier"),
+        line_directives=_located(path, unit["line_directives"], "name", "line directive"),
     )
 
 
