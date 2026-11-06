@@ -60,6 +60,6 @@ c_facts = rule(
         "unit": attrs.dep(),
         "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
         "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
-        "_scanner": attrs.source(default = "root//gate/rigor_lib:cscan.py"),
+        "_scanner": attrs.source(default = "gate//gate/rigor_lib:cscan.py"),
     },
 )
