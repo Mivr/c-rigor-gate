@@ -20,7 +20,7 @@ allow = []
 allow = []
 
 [module."//util:util"]
-allow = []
+allow = ["malloc"]
 
 [module."//util:util_test"]
-allow = []
+allow = ["free"]
