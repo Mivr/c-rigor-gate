@@ -229,15 +229,14 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
                 state[item.group] = True
             if state.get(item.group) and self._executes_stdin(item.argv):
                 flagged[item.group] = True
-        sinks, fed, cats = {}, {}, {}
+        sinks, producer, last = {}, {}, {}
         for item in prepared:
             if item.argv and self._executes_stdin(item.argv):
                 sinks[item.group] = True
-                fed[item.group] = cats.get(item.group, [])
-            elif item.argv and cmds.name_of(item.argv[0]) == "cat":  # `cat f | sh` (T049)
-                files = [item.argv[1 + i] for i in cmds.positionals(item.argv[1:])]
-                cats.setdefault(item.group, []).extend(f for f in files if f != "-")
-        return {"obfuscated": flagged, "sink": sinks, "fed": fed}
+                if item.group in last:
+                    producer[id(item)] = last[item.group]  # the stage whose output is this one's stdin (T049)
+            last[item.group] = item
+        return {"obfuscated": flagged, "sink": sinks, "producer": producer}
 
     @staticmethod
     def _executes_stdin(argv):
@@ -380,7 +379,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self._kill_rules(argv, raw, name)
         self.clean_env = item.clean_env
         self._run_code(item, argv, name, raw, depth, env)
-        self.fed_files(item, argv, name, raw, depth, flags)
+        self.stdin_code(item, argv, name, raw, depth, flags)
         if name == "git":
             self.note_clone(argv, len(self.hits) == hits_before)
         self.clean_env = item.clean_env
