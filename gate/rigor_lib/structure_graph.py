@@ -90,3 +90,21 @@ def reaches(graph, source):
                 seen.add(nxt)
                 work.append(nxt)
     return seen
+
+
+def shortest_path(graph, source, target):
+    """The fewest direct calls from `source` to `target` as a list of keys (source first), or None."""
+    previous = {source: None}
+    queue = [source]
+    while queue:
+        node = queue.pop(0)
+        if node == target:
+            path = [node]
+            while previous[path[-1]] is not None:
+                path.append(previous[path[-1]])
+            return path[::-1]
+        for nxt in sorted(graph.get(node, ())):
+            if nxt not in previous:
+                previous[nxt] = node
+                queue.append(nxt)
+    return None
