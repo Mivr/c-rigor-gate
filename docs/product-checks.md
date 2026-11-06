@@ -98,12 +98,13 @@ binary lists `main`). Nothing in the product can change it: the policy file is g
 * **Levels** (`level`, the same key the mutants gate reads). L1 is exempt. L2: a defined symbol outside the list is an
   `unexpected-export` (error); a missing list is `exports-missing` as info. L3 and above: a missing list is
   `exports-missing`, an error, so a module at L3 can never pass without a list.
-* **Mutable objects.** `cscan.py` also reads `llvm-nm --format=sysv` and writes the unit key `mutable`: defined external
-  objects (nm class `D B G S C`) whose section is writable. Sections `.data.rel.ro*` are read-only after relocation and are
-  not mutable, so a `const` table of addresses is not reported. Thread-local data (`.tdata`, `.tbss`) is mutable. A listed
-  symbol that is mutable is still `mutable-global-export`: the list says a name may exist, never that it may be writable.
-  A `const` table that is not listed is only `unexpected-export`. The reader requires `mutable` in every product facts
-  file (gate-owned third-party facts, which are never checked, may omit it).
+* **Mutable objects.** `cscan.py` reads the nm class of each defined external symbol and writes the unit key `mutable`:
+  the objects in writable storage (classes `D B G S C`: data, bss, small data, common; thread-local data is among them).
+  `const` data (`R`) and code (`T`) are not. The scanned objects are not position independent, so a `const` table of
+  addresses stays in `.rodata`; the selftest pins this on the real toolchain (`x_const` lists a `const char *const`
+  table and is only `unexpected-export`). A listed symbol that is mutable is still `mutable-global-export`: the list says a
+  name may exist, never that it may be writable. A `const` table that is not listed is only `unexpected-export`. The reader
+  requires `mutable` in every product facts file (gate-owned third-party facts, which are never checked, may omit it).
 * **Where the check is armed.** A module table with neither `level` nor `exports` is not checked (legacy table). An
   `exports` key arms the check even without a level (the level is then taken as L3). `rigor grade` hands the symbols
   gate a copy of the policy without `level` (`grade_policy.symbol_policy_text`), so in a grade a module is checked

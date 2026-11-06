@@ -86,26 +86,15 @@ class ExportsCase(TempDirTestCase):
         self.run_gate("symbols", [document, CTEST], policy=module("L3", ["f"]), expect_code=2)
 
 
-SYSV = """Symbols from x.o:
-
-Name                  Value           Class        Type         Size             Line  Section
-a_func              |0000000000000000|   T  |            FUNC|0000000000000004|     |.text
-a_data              |0000000000000000|   D  |          OBJECT|0000000000000004|     |.data
-a_bss               |0000000000000000|   B  |          OBJECT|0000000000000004|     |.bss
-a_const             |0000000000000000|   R  |          OBJECT|0000000000000004|     |.rodata
-a_relro             |0000000000000010|   D  |          OBJECT|0000000000000008|     |.data.rel.ro
-a_tls               |0000000000000000|   D  |          OBJECT|0000000000000004|     |.tdata
-"""
+POSIX = "a_func T 0 4\na_data D 0 4\na_bss B 0 4\na_const R 0 4\na_small G 0 4\na_common C 4 4\na_weak V 0 4\nextern_ref U\n"
 
 
-class ReadMutableCase(TempDirTestCase):
-    def fake_nm(self, text):
-        path = self.tmp / "nm"
-        path.write_text("#!%s\nimport sys\nsys.stdout.write(%r)\n" % (sys.executable, text), encoding="utf-8")
-        os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
-        return str(path)
-
-    def test_writable_sections_are_mutable_and_read_only_ones_are_not(self):
-        mutable, seen = cscan.read_mutable(self.fake_nm(SYSV), "x.o")
-        self.assertEqual(mutable, ["a_bss", "a_data", "a_tls"])
-        self.assertEqual(seen, {"a_func", "a_data", "a_bss", "a_const", "a_relro", "a_tls"})
+class MutableCase(TempDirTestCase):
+    def test_writable_classes_are_mutable_and_read_only_ones_are_not(self):
+        nm = self.tmp / "nm"
+        nm.write_text("#!%s\nimport sys\nsys.stdout.write(%r)\n" % (sys.executable, POSIX), encoding="utf-8")
+        os.chmod(nm, os.stat(nm).st_mode | stat.S_IXUSR)
+        defined, weak, undefined, mutable = cscan.read_symbols(str(nm), "x.o")
+        self.assertEqual(mutable, ["a_bss", "a_common", "a_data", "a_small"])
+        self.assertEqual((weak, undefined), (["a_weak"], ["extern_ref"]))
+        self.assertEqual(defined, ["a_bss", "a_common", "a_const", "a_data", "a_func", "a_small", "a_weak"])
