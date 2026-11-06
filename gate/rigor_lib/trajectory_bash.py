@@ -506,6 +506,10 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin):
             self.add("cmd-spawn-agent", raw, name)
         if "--no-verify" in args:
             self.add("cmd-no-verify", raw, "--no-verify")
+        if name == "ssh-add":
+            self.add("read-ssh-material", raw, name)  # lists or loads the agent's keys (T057, R008 #9)
+        if name.startswith("git-credential"):
+            self.add("cmd-git-credential", raw, name)
         if name == "git":
             self._note_git_add(argv)
             found = cmds.git_hits(argv)

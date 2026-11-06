@@ -366,8 +366,10 @@ def git_hits(argv):
             found.append("cmd-no-verify")
         elif key not in rules.GIT_ALLOWED_C_KEYS:
             found.append("git-config-override")
-    if sub == "push":
-        found.append("cmd-git-push")
+    if sub in ("push", "send-pack", "http-push") or (sub == "lfs" and sub_args[:1] == ["push"]):
+        found.append("cmd-git-push")  # send-pack and http-push are push plumbing (T057, R008 #9)
+    if (sub == "credential" and sub_args[:1] != ["capability"]) or sub.startswith("credential-"):
+        found.append("cmd-git-credential")
     if sub in ("commit", "merge", "push", "am", "rebase", "cherry-pick", "revert") and any(
             a == "--no-verify" or (sub in ("commit", "merge") and _CLUSTER_N.match(a)) for a in sub_args):
         found.append("cmd-no-verify")
@@ -383,7 +385,9 @@ def git_hits(argv):
 
 def git_is_networked(argv):
     confs, sub, sub_args = git_parts(argv)
-    if sub in ("fetch", "pull", "ls-remote", "clone"):
+    if sub in ("fetch", "pull", "ls-remote", "clone", "fetch-pack", "lfs"):
+        return True
+    if sub == "archive" and any(a == "--remote" or a.startswith("--remote=") for a in sub_args):
         return True
     if sub == "remote" and sub_args[:1] == ["update"]:
         return True
@@ -393,10 +397,19 @@ def git_is_networked(argv):
 def git_remote_ok(argv):
     """True when the remote of a networked git command is a local path or an allowlisted URL."""
     confs, sub, sub_args = git_parts(argv)
-    plain = [sub_args[i] for i in positionals(sub_args)]
+    if sub == "lfs":
+        return False  # git-lfs talks to its own server (T057, R008 #9)
+    if sub == "archive":  # `--remote=REPO` / `--remote REPO`: the same test as any other remote
+        values = [a.split("=", 1)[1] for a in sub_args if a.startswith("--remote=")]
+        values += [sub_args[i + 1] for i, a in enumerate(sub_args[:-1]) if a == "--remote"]
+        return bool(values) and all(_remote_word_ok(v) for v in values)
+    plain = [sub_args[i] for i in positionals(sub_args, ("--remote", "--exec", "--upload-pack"))]
     if sub in ("submodule", "remote") or not plain:
         return False
-    remote = plain[0]
+    return _remote_word_ok(plain[0])
+
+
+def _remote_word_ok(remote):
     if remote.startswith(("/", "./", "../")):
         return True
     return _local_or_url(remote) and host_allowed(remote, False)

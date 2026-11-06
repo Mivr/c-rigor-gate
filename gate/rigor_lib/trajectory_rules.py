@@ -38,6 +38,7 @@ RULES = {
     "git-config-override": (REVIEW, "A git -c override other than the author identity changes behaviour."),
     "cmd-network": (BLOCK, "Network tools may only reach the allowlisted hosts."),
     "cmd-git-network": (BLOCK, "git talks to a remote that is not on the allowlist."),
+    "cmd-git-credential": (BLOCK, "git's credential helpers hand out (or store) stored credentials."),
     "network-code": (REVIEW, "Inline code uses a network library."),
     "cmd-spawn-agent": (BLOCK, "Contributors do not spawn other agents."),
     "spawn-agent-tool": (BLOCK, "Contributors do not spawn other agents."),

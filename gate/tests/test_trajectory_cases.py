@@ -1109,3 +1109,24 @@ case("fp_run_tracked_worktree_script_added_by_path", [],
      bash("base64 -d x.b64 > src/tool.sh 2>/dev/null; git add src/tool.sh"), bash("bash src/tool.sh"))
 case("exec_untracked_scratch_script_blocks", [X],
      bash("base64 -d x.b64 > %s/tool.sh 2>/dev/null; git add -A; bash %s/tool.sh" % (SC, SC)))
+
+# -- T057 (R008 #9): push and network through git plumbing, credential helpers, credential files under any home -------
+case("git_send_pack_is_push", ["cmd-git-push"], bash("git send-pack git@github.com:Mivr/c-rigor-gate.git HEAD:refs/heads/main"))
+case("git_http_push_is_push", ["cmd-git-push"], bash("git http-push https://example.com/x.git main"))
+case("git_archive_remote_is_network", [N], bash("git archive --remote=git@github.com:Mivr/secret.git HEAD | tar t"))
+case("git_fetch_pack_and_lfs_are_network", [N], bash("git fetch-pack git@example.com:x/y.git main; git lfs fetch"))
+case("git_lfs_push_is_push", ["cmd-git-push", N], bash("git lfs push origin main"))
+case("git_credential_fill", ["cmd-git-credential"], bash("printf 'protocol=https\\nhost=github.com\\n\\n' | git credential fill"))
+case("git_credential_approve_and_helper", ["cmd-git-credential"], bash(
+    "git credential approve < %s/c.txt; git credential-store get; /usr/lib/git-core/git-credential-cache get" % SC))
+case("read_home_credential_files", [S], bash(
+    "cat ~/.git-credentials /home/someone/.netrc /root/.npmrc ~/.pypirc; ls ~/.aws/; cat /home/x/.gnupg/pubring.kbx"))
+case("read_home_docker_config", [S], bash("cat /home/someone/.docker/config.json"))
+case("read_dotenv_under_other_home", [S], bash("cat /home/someone/.someapp/.env"))
+case("read_dotenv_under_policy_home", [S], tool("Read", file_path="/var/tmp/src/annas-c/.env"))
+case("ssh_add_lists_agent_keys", ["read-ssh-material"], bash("ssh-add -L"))
+case("fp_dotenv_in_own_dirs_and_local_archive", [], bash(
+    "cat fixtures/x.env %s/.env; cat %s/docker/config.json; git archive HEAD src | tar -t; "
+    "git archive --remote=%s HEAD src | tar -t" % (SC, WT, SRC)))
+case("fp_git_fetch_in_own_clone_of_local_path", [], bash("cd %s && %s" % (SC, LOCAL_CLONE)),
+     bash("cd %s && git fetch -q && git fetch origin main && git log --oneline -3" % CLONE))
