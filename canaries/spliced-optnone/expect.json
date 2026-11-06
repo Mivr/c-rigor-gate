@@ -5,6 +5,12 @@
     "semantic-suppressions": [
       "forbidden-attribute",
       "line-directive"
+    ],
+    "witness-tests": [
+      "witness-build-failed"
     ]
-  }
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
 }

@@ -5,6 +5,12 @@
     "mutants": [
       "no-mutants",
       "unmutated-function"
+    ],
+    "witness-tests": [
+      "witness-build-failed"
     ]
-  }
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
 }
