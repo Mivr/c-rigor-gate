@@ -86,15 +86,28 @@ class ExportsCase(TempDirTestCase):
         self.run_gate("symbols", [document, CTEST], policy=module("L3", ["f"]), expect_code=2)
 
 
-POSIX = "a_func T 0 4\na_data D 0 4\na_bss B 0 4\na_const R 0 4\na_small G 0 4\na_common C 4 4\na_weak V 0 4\nextern_ref U\n"
+SYSV = """Symbols from x.o:
+
+Name                  Value           Class        Type         Size             Line  Section
+a_data              |0000000000000000|   D  |          OBJECT|0000000000000004|     |.data
+a_relro             |0000000000000010|   D  |          OBJECT|0000000000000008|     |.data.rel.ro
+a_tls               |0000000000000000|   D  |          OBJECT|0000000000000004|     |.tdata
+"""
+POSIX = "a_relro D 10 8\na_func T 0 4\na_data D 0 4\na_bss B 0 4\na_const R 0 4\na_small G 0 4\na_common C 4 4\na_weak V 0 4\nextern_ref U\n"
 
 
 class MutableCase(TempDirTestCase):
     def test_writable_classes_are_mutable_and_read_only_ones_are_not(self):
         nm = self.tmp / "nm"
-        nm.write_text("#!%s\nimport sys\nsys.stdout.write(%r)\n" % (sys.executable, POSIX), encoding="utf-8")
+        nm.write_text("#!%s\nimport sys\nsys.stdout.write(%r if '--format=sysv' in sys.argv else %r)\n" % (sys.executable, SYSV, POSIX), encoding="utf-8")
         os.chmod(nm, os.stat(nm).st_mode | stat.S_IXUSR)
         defined, weak, undefined, mutable = cscan.read_symbols(str(nm), "x.o")
-        self.assertEqual(mutable, ["a_bss", "a_common", "a_data", "a_small"])
+        self.assertEqual(mutable, ["a_bss", "a_common", "a_data", "a_small"])    # a_relro is const data
         self.assertEqual((weak, undefined), (["a_weak"], ["extern_ref"]))
-        self.assertEqual(defined, ["a_bss", "a_common", "a_const", "a_data", "a_func", "a_small", "a_weak"])
+        self.assertEqual(defined, ["a_bss", "a_common", "a_const", "a_data", "a_func", "a_relro", "a_small", "a_weak"])
+
+    def test_unparsable_section_listing_reports_more_never_less(self):
+        nm = self.tmp / "nm"
+        nm.write_text("#!%s\nimport sys\nsys.stdout.write(%r)\n" % (sys.executable, POSIX), encoding="utf-8")
+        os.chmod(nm, os.stat(nm).st_mode | stat.S_IXUSR)
+        self.assertIn("a_relro", cscan.read_symbols(str(nm), "x.o")[3])

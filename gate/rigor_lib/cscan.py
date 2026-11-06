@@ -57,9 +57,11 @@ ATTRIBUTE_INTRODUCERS = ("__attribute__", "__attribute")
 WEAK_DEFINED_TYPES = ("W", "V", "i", "I", "u")
 UNDEFINED_TYPES = ("U", "w", "v")
 # nm classes of defined external objects in writable storage: data, bss, small data, common (T033).
-# Read-only data (`R`) and code (`T`) are not. The objects scanned are not position independent, so a `const`
-# table of addresses stays in `.rodata` (class `R`); selftest/product_checks.sh pins that on the real toolchain.
+# Read-only data (`R`) and code (`T`) are not.
 MUTABLE_TYPES = ("D", "B", "G", "S", "C")
+# The objects are position independent, so a `const` table of addresses is in `.data.rel.ro` and nm says `D`.
+# The linker makes that section read-only, so `read_relro` finds those names and they are not mutable.
+RELRO_PREFIXES = (".data.rel.ro", ".tdata.rel.ro")
 
 _MARKER = re.compile(r'^\s*#\s*(\d+)\s+"((?:[^"\\]|\\.)*)"((?:\s+\d+)*)\s*$')
 # The compile command keeps macro definitions in the output (-dD); their bodies only matter when
@@ -426,6 +428,23 @@ class Collector:
         }
 
 
+def read_relro(nm, path):
+    """Names of the defined symbols in a `.data.rel.ro*` section (`--format=sysv` names the section).
+
+    This only ever removes names from `mutable`: output that does not parse gives the empty set, which
+    reports more and never less."""
+    done = subprocess.run([nm, "-g", "--defined-only", "--format=sysv", path], stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, universal_newlines=True)
+    if done.returncode != 0:
+        raise SystemExit("cscan: nm failed on %s: %s" % (path, done.stderr))
+    relro = set()
+    for line in done.stdout.splitlines():
+        cells = [cell.strip() for cell in line.split("|")]
+        if len(cells) == 7 and cells[6].startswith(RELRO_PREFIXES):
+            relro.add(cells[0])
+    return relro
+
+
 def read_symbols(nm, path):
     """(defined, weak_defined, undefined, mutable) external symbol names of one object file.
 
@@ -448,7 +467,7 @@ def read_symbols(nm, path):
                 weak.add(name)
             if kind in MUTABLE_TYPES:
                 mutable.add(name)
-    return sorted(defined), sorted(weak), sorted(undefined), sorted(mutable)
+    return sorted(defined), sorted(weak), sorted(undefined), sorted(mutable - read_relro(nm, path))
 
 
 def build_unit(args, name, preprocessed, obj):
