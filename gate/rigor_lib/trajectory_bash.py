@@ -53,7 +53,7 @@ def excerpt_around(raw, token):
 
 
 class Prepared:
-    __slots__ = ("cmd", "argv", "extra", "words", "group", "cwd")
+    __slots__ = ("cmd", "argv", "extra", "words", "group", "cwd", "inner", "wrapped", "job_dir", "job_skip")
 
     def __init__(self, cmd, argv, extra, words, cwd):
         self.cmd = cmd
@@ -62,6 +62,10 @@ class Prepared:
         self.words = words    # expanded words before unwrapping
         self.group = cmd.group
         self.cwd = cwd        # the working directory this command runs in
+        self.inner = None     # for `tools/job run ... -- CMD`: CMD, audited as if it ran here directly
+        self.wrapped = False  # this is such a CMD: the redirections and here-documents belong to tools/job
+        self.job_dir = None   # the job directory `tools/job run` writes (`--dir`, else `$TMPDIR/jobs`)
+        self.job_skip = set()  # argv index of the `--dir` value: a write target, not a read
 
 
 class Analyzer(CodeMixin, FlowMixin, GitMixin):
@@ -189,7 +193,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         flags = self._pipeline_flags(prepared)
         final = self.cwd
         for item in prepared:
-            self.analyze(item, flags, depth, env)
+            while item is not None:
+                self.analyze(item, flags, depth, env)
+                item = item.inner
         self.cwd = final
 
     def _pipeline_flags(self, prepared):
@@ -239,7 +245,15 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         for word in command.words:
             self._live_secrets(word, command.raw)
         words = [self.expand(word, env) for word in command.words]
-        argv, extra = list(words), []
+        item = self._unwrapped(command, words, here, values.get("TMPDIR", env.get("TMPDIR")), 0)
+        if item.argv and cmds.name_of(item.argv[0]) in ("cd", "pushd"):
+            self._change_dir(item.argv, env)
+        return item
+
+    @staticmethod
+    def _unwrap(argv):
+        """(argv without leading keywords and wrappers such as `timeout`, the rule ids the wrappers hit)."""
+        extra = []
         for _ in range(8):
             while argv and argv[0] in cmds.KEYWORDS:
                 argv = argv[1:]
@@ -250,9 +264,28 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
                 break
             extra.extend(more)
             argv = inner
-        if argv and cmds.name_of(argv[0]) in ("cd", "pushd"):
-            self._change_dir(argv, env)
-        return Prepared(command, argv, extra, words, here)
+        return argv, extra
+
+    def _unwrapped(self, command, words, here, tmpdir, nest):
+        """The Prepared item for `words`. `tools/job run [OPTS] NAME -- CMD` becomes two items: the tools/job
+        call itself (its argv ends before `--`; it writes its job directory) and, as `inner`, CMD exactly as if
+        it had been run directly at this point (wrappers inside CMD are unwrapped in turn)."""
+        argv, extra = self._unwrap(list(words))
+        job = cmds.job_run(argv) if argv and nest < 8 else None
+        if job is None:
+            return Prepared(command, argv, extra, words, here)
+        dir_index, cut = job
+        own = argv[:cut]
+        item = Prepared(command, own, extra, words[:len(words) - len(argv)] + own, here)
+        if dir_index is not None:
+            item.job_skip = {dir_index}
+            text = own[dir_index]
+            item.job_dir = text[len("--dir="):] if text.startswith("--dir=") else text
+        elif tmpdir:  # tools/job refuses an empty TMPDIR
+            item.job_dir = tmpdir + "/jobs"
+        item.inner = self._unwrapped(command, argv[cut + 1:], here, tmpdir, nest + 1)
+        item.inner.wrapped = True
+        return item
 
     @staticmethod
     def _all_words(command):
@@ -277,11 +310,12 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self.cwd = item.cwd
         for rule in item.extra:
             self.add(rule, raw, "")
-        for redirect in command.redirects:
+        for redirect in [] if item.wrapped else command.redirects:
             self._redirect(command, redirect)
         argv = item.argv
         if not argv:
-            self._heredocs(item, depth, flags, data_only=True)
+            if not item.wrapped:
+                self._heredocs(item, depth, flags, data_only=True)
             return
         name = cmds.name_of(argv[0])
         if UNRESOLVED in argv[0]:
@@ -291,7 +325,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self._command_rules(argv, raw, name)
         data_skip = self._data_indexes(argv, name, item.group in flags["sink"])
         write_idx = self._write_targets(item, argv, raw)
-        self._read_words(item, argv, raw, name, write_idx | data_skip)
+        if item.job_dir is not None:
+            self.write(item.job_dir, "create", raw)
+        self._read_words(item, argv, raw, name, write_idx | data_skip | item.job_skip)
         self._secret_words(argv, raw, name, data_skip)
         for word in item.words[:len(item.words) - len(argv)]:
             for match in rules.SECRET_NAME_RE.finditer(word):
@@ -299,7 +335,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
         self._run_code(item, argv, name, raw, depth, env)
         if name == "git":
             self.note_clone(argv, len(self.hits) == hits_before)
-        self._heredocs(item, depth, flags, data_only=False)
+        if not item.wrapped:
+            self._heredocs(item, depth, flags, data_only=False)
 
     def _command_rules(self, argv, raw, name):
         args = argv[1:]
@@ -349,7 +386,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin):
             if index in skip or (index == 0 and "/" not in word):
                 continue
             self.read_word(word, raw, name)
-        for redirect in item.cmd.redirects:
+        for redirect in [] if item.wrapped else item.cmd.redirects:
             if redirect.op in ("<", "<>"):
                 self.read_word(self.expand(redirect.target, self.env_now), raw, name)
 

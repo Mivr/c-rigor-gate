@@ -96,3 +96,63 @@ not used (classification uses the command kind instead).
 shapes this farm has not produced yet (local and worker commands, dep-file cache hits, failed test runs). The
 fixture logs keep every executed action and two command-less ones, so their counts are smaller than the live
 logs they were cut from.
+
+# Waiting on long jobs (T042)
+
+Agents are Claude Code subagents. A subagent is not re-invoked when its background shell finishes: ending its turn
+ends the task. So it must wait with a **blocking** call, and that call must return before the harness takes it away.
+`tools/job` (Python 3 stdlib, Linux) starts a long command detached and lets the agent wait on it with one blocking
+call per ~2-3 minutes, instead of `sleep`/`until` loops, `tail` peeks or a watcher that can die.
+
+```sh
+TMPDIR=/var/tmp/cache/T042/tmp tools/job run --deadline 1800 gate -- selftest/gate.sh
+TMPDIR=/var/tmp/cache/T042/tmp tools/job wait gate              # Bash default timeout: blocks up to 110 s
+TMPDIR=/var/tmp/cache/T042/tmp tools/job wait gate --max 170    # only with the Bash tool's timeout: 600000
+TMPDIR=/var/tmp/cache/T042/tmp tools/job status gate            # never blocks (same as wait --max 0)
+TMPDIR=/var/tmp/cache/T042/tmp tools/job list
+```
+
+## Harness measurements (2026-11-06, from a contributor subagent session on sb-ws)
+
+| Call | What happened |
+|---|---|
+| foreground Bash, `timeout: 600000`, a 420 s command | moved to the background **after 180 s** ("Command was moved to the background ... after running for 180s"); R007 confirmed |
+| foreground Bash, no `timeout` (default 120 s), a 150 s command | moved to the background **after 120 s** ("did not complete within its 120s timeout and was moved to the background"), not killed |
+| foreground Bash, `timeout: 600000`, `tools/job wait --max 170` | stayed in the foreground and returned after 170 s (`running 173s`, exit 124) |
+
+So a foreground call blocks at most **min(timeout, 180 s)**. What happens to an auto-backgrounded call: the command
+keeps running to the end (the 420 s and 150 s loops both finished: 42 and 15 ticks, exit 0), its output goes only to
+a harness file under the session's `tasks/` directory (nothing reaches the agent unless it reads that file), and a
+"completed" notification arrives later as a system event while the agent is still working. A subagent that has
+ended its turn by then is never re-invoked (not measurable from inside one: ending the turn ends the task). An
+agent that misses this ends up polling the output file, which is what R006/R007 saw.
+
+**The limit chosen:** `wait` defaults to `--max 110` (the 120 s default Bash timeout minus a 10 s margin), so a
+plain `tools/job wait NAME` never gets backgrounded. With `timeout: 600000` on the Bash call, `--max 170` (the 180 s
+cut-off minus 10 s) is allowed; anything above 170 is refused, because the harness would background the call.
+
+## Behaviour
+
+- `run [--deadline SECONDS] [--dir DIR] NAME -- CMD [ARG...]`: CMD is executed as an argv, never through a shell
+  (write `sh -c '...'` yourself), in a new session, stdin `/dev/null`, stdout and stderr appended to `DIR/NAME/log`,
+  with the caller's cwd and environment unchanged. `run` prints one line (name, pid, deadline, log path, the argv
+  shell-quoted) and returns at once. A detached runner records `DIR/NAME/job.json` (argv, cwd, start, pid,
+  runner pid, deadline) and on exit `DIR/NAME/exit.json` (code, end, killed, signal). At the deadline (default
+  3600 s) the runner sends SIGTERM to the job's whole process group, then SIGKILL after 3 s, and records `killed`.
+  A NAME whose job is still running is refused; a finished NAME is replaced.
+- `wait NAME [--max SECONDS]`: blocks in `flock` on `DIR/NAME/lock`, which the runner holds for the job's whole life,
+  so it wakes as soon as the job ends (no polling). While running it prints exactly one line, `running 312s`, and
+  exits 124. When done it prints `exit N after S s` (with `(signal N)` if a signal ended it) or
+  `KILLED after S s (deadline Ds, exit N)`, then the last 30 lines of the log with ANSI escapes removed (a line
+  redrawn with `\r` shows its last state; a line is cut at 400 characters), and exits with the job's code (128+N for
+  a signal). A job whose runner died without recording an exit is `LOST ...` (exit 2), never "running forever".
+- `status NAME`: `wait --max 0`. `list`: one line per job (name, state, argv).
+- `DIR` is `--dir`, else `$TMPDIR/jobs`; without either it refuses. The absolute, normalized DIR must be inside
+  `/var/tmp/cache/` and resolve to itself (no symlink anywhere in it); so must `DIR/NAME`. Exit 2 on every tool error.
+- Known limit: with a C/POSIX locale (no `LANG`/`LC_ALL`/`LC_CTYPE`), Python's PEP 538 locale coercion sets
+  `LC_CTYPE=C.UTF-8` in the tool's own environment, and the job inherits it. Lanes run with `LANG` set, where
+  nothing is added.
+
+Tests: `gate/tests/test_job.py` (the real executable as a subprocess, in a fresh directory under `$TMPDIR` when that is
+inside `/var/tmp/cache/`, else under `/var/tmp/cache/`) and `gate/tests/test_trajectory_job.py` (the audit side, see
+docs/trajectory.md).

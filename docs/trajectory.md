@@ -42,7 +42,7 @@ Every tool input, not only Bash.
   backslashes, `$'..'`, `$VAR`/`${VAR}`/`${VAR:-d}` for variables assigned in the same call and `HOME`/`PWD`,
   brace expansion, `~`, command substitution (its text is audited too, and `echo`/`printf`/`pwd`/
   `git rev-parse --show-toplevel` substitutions with literal output are evaluated), `bash -c`, `eval`, `find -exec`,
-  `env`/`command`/`nohup`/`time`/`timeout`/`xargs`/`sudo` wrappers, redirections and here-documents. A here-document
+  `env`/`command`/`nohup`/`time`/`timeout`/`xargs`/`sudo`/`tools/job run` wrappers, redirections and here-documents. A here-document
   is data (for `cat > f`, `tee`, `git commit -F -`) unless its consumer is an interpreter reading stdin or the
   pipeline ends in one. A script the agent wrote earlier in the transcript (Write tool or here-document) and later
   runs (`bash f`, `./f`, `source f`) is audited as if its text had been typed.
@@ -191,6 +191,23 @@ a clone of a URL (`https://`, `git@`, `ssh://`, any `file://`), a clone made wit
 finding (another task's worktree), a fetch of any other remote, or an `origin` whose clone is not in the transcript.
 `git checkout main` and `reset --hard origin/main` in the worktree, or via `-C <worktree>` from a clone, still block.
 Red twins: `git_*` cases in `gate/tests/test_trajectory_cases.py`.
+
+### Background jobs: `tools/job` (T042)
+`tools/job run [--deadline S] [--dir DIR] NAME -- CMD ARGS` is audited twice, at the point where it was typed:
+* **CMD ARGS exactly as if they had been run directly** (every rule: network, reads, writes, git, tamper, secrets,
+  inline code, wrappers inside CMD such as `timeout` or `sh -c`, a nested `tools/job run`). The same cwd and
+  shell variables apply; the redirections and here-documents of the line belong to `tools/job` and are audited once.
+* **The `tools/job` call itself.** Its job directory is a write: `--dir DIR` (or `--dir=DIR`), else `$TMPDIR/jobs`
+  when `TMPDIR` is known in that call (`TMPDIR=... tools/job run`, or `TMPDIR=...;` earlier). Outside the worktree and
+  the declared scratch dirs (another task's cache, `/var/tmp`, `/tmp`) that is `write-outside`. The `--dir` value is a
+  write target, not a read. An unknown `TMPDIR` is not guessed; the tool itself refuses anything outside
+  `/var/tmp/cache/`.
+The argument reading mirrors `tools/job` (`trajectory_cmds.job_run`; `gate/tests/test_job.py` checks they agree):
+options and NAME before the first `--` that is not an option's value, CMD after it. `tools/job wait|status|list`
+run nothing: they are ordinary read-only commands (a `--dir` of another task's cache is `read-other-cache`).
+Tests: `gate/tests/test_trajectory_job.py` (a wrapped `curl`, `rm -rf` outside the write roots, `git push`, a `--dir`
+or `TMPDIR` outside the task cache all block; a wrapped `selftest/gate.sh` and the wait commands pass; a wrapped
+command breaks exactly the rules the bare command breaks).
 
 ### Repeated reviews
 Identical `review` findings (same rule, tool and excerpt) are reported once, at the first line, and counted in
