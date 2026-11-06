@@ -1074,9 +1074,10 @@ sed -i "s|    CHECK_EQ_I64(t, double_it(0), 0);|    CHECK_EQ_I64(t, double_it(0)
 grep -q "double_it($k)" "$scratch/m/weak_test.c" || fail "$CUR: the test edit did not apply"
 build_all "$out/build3.log" || fail "$CUR: buck2 build failed" "$out/build3.log"
 n="$(executed "$out/build3.log")"
-echo "    executed $n actions; the weak module has $live live mutants (a cold build of all five modules is about 200 actions)"
-# the live mutants of the weak module (one test each), plus the test's compile, the baseline run and the report
-[ "$n" -ge "$live" ] && [ "$n" -le $((live + 6)) ] || fail "$CUR: expected about $live actions" "$out/build3.log"
+echo "    executed $n actions; the weak module has $live live mutants"
+# T064: the live mutants of the weak module run in batches of at most 16 (one action per batch and test), plus the
+# test's compile, the baseline run and the report; before batching this was one action per live mutant
+[ "$n" -ge 3 ] && [ "$n" -le 8 ] || fail "$CUR: expected 3 to 8 actions for $live live mutants (batched), got $n" "$out/build3.log"
 printf '[module."%s:weak_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 mkdir -p "$out/weak_after"; cp "$RES/weak.json" "$out/weak_after/"
 gate "$out/weak_after"
