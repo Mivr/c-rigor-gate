@@ -77,9 +77,12 @@ class SampleTest(unittest.TestCase):
         self.assertEqual(self.pairs("caller", "statement-deletion"),
                          [("sink(v)", "(void)0"), ("sink(v + 1)", "(void)0")])
 
-    def test_struct_returns_get_no_return_or_body_mutant(self):
-        self.assertEqual(self.of("make", "return-value"), [])
-        self.assertEqual(self.of("make", "function-body"), [])
+    def test_struct_returns_get_a_zero_literal_return_and_body_mutant(self):
+        # T050 (R003 G4): before, none. More cases in test_mutate_gen_records.py.
+        self.assertEqual([m["replacement"] for m in self.of("make", "return-value")],
+                         ["((void)(p), (struct pair){0})"])
+        self.assertEqual(len(self.of("make", "function-body")), 1)
+        self.assertIn("return (struct pair){0};", self.of("make", "function-body")[0]["replacement"])
 
     def test_whole_body_keeps_parameters_used(self):
         self.assertEqual([m["replacement"] for m in self.of("ptr_math", "function-body")],
@@ -196,7 +199,7 @@ class IdTest(unittest.TestCase):
 class ReturnClassTest(unittest.TestCase):
     def test_classes(self):
         cases = {"int (int, int)": "scalar", "void (void)": "void", "const char *(int)": "scalar",
-                 "struct S (int)": None, "int (*(int))(int)": None, "static inline unsigned long (void)": "scalar",
+                 "struct S (int)": "struct", "int (*(int))(int)": None, "static inline unsigned long (void)": "scalar",
                  "double _Complex (int)": None, "int": None, "": None}
         for text, want in cases.items():
             self.assertEqual(gen.return_class(text), want, text)

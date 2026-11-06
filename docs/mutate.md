@@ -130,9 +130,9 @@ No mutation is made under `case` labels, enumerator values, bit-field widths, `_
 | `increment` | `++`<->`--` |
 | `integer-literal` | `0`->`1`, `1`->`0`, `n`->`n+1`; notation (hex) and suffix kept |
 | `condition` | the condition of `if`, `while`, `do`, `for` becomes `!(c)` |
-| `return-value` | `return e;` -> `return ((void)(e), (T)0);` with T the expression's type (`(T)1` when it was `0`); not for struct, union, complex or void; `e` is still evaluated, so no variable or parameter becomes unused |
+| `return-value` | `return e;` -> `return ((void)(e), (T)0);` with T the expression's type (`(T)1` when it was `0`); not for complex or void; `e` is still evaluated, so no variable or parameter becomes unused. **Struct or union return (T050):** `return ((void)(e), (T){0});` with T the declared return type (qualifiers dropped), unless `e` already is `(T){0}` |
 | `statement-deletion` | an expression statement that is a call -> `(void)0;` |
-| `function-body` | body of a scalar function -> `{ (void)p; ... return 0; }`, void -> `{ (void)p; ... }` (pseudo-tested function check) |
+| `function-body` | body of a scalar function -> `{ (void)p; ... return 0; }`, void -> `{ (void)p; ... }`, struct or union -> `{ (void)p; ... return (T){0}; }` (pseudo-tested function check) |
 | `enum-constant` | an enumerator used as a value (return, assignment, argument, comparison operand) -> the next enumerator of the same enum in declaration order, wrapping; none when the enum has one value |
 | `string-literal` | a non-empty `"..."` -> `""`; and its first byte incremented (second mutant; none when the byte is an escape start, non-ASCII, or the next byte would be `"` or `\\`) |
 | `char-literal` | `'c'` -> `('c' + 1)`, any spelling (`'\\n'`, `L'x'`) |
@@ -168,6 +168,22 @@ that is an error under the sealed flags) = `unviable`.
 ordinal of the mutant among those equal in the function (`NUL`-separated). No line or offset is in it, so an
 approval survives edits elsewhere in the file. (Deviation from the task text: `replacement` is part of the
 hash, because `<`->`<=` and `<`->`>=` at one place would otherwise collide.)
+
+### Struct and union returns (T050; R003 G4, G5; B30)
+A function whose return type is a struct or union gets the `function-body` mutant `{ (void)p; ... return (T){0}; }` and
+every `return e;` the `return-value` mutant `((void)(e), (T){0})`, T being the declared return type without
+`static`/`inline`/`const`/`volatile`; so a struct-returning function that is only called, never checked, now has
+survivors (canary `struct-return-untested`). "Is a struct" is resolved from the AST, never from the spelling:
+`TypedefDecl` nodes are read (`typedef_kinds`), anonymous (`typedef struct {..} T`) and tagged typedefs, and any chain of
+typedefs (`typedef span_t span2_t`) lead to a record; a typedef of a complex type does not. Because a typedef'd struct is
+no longer classed as scalar, no `return 0` / `(T)0` mutant that cannot compile is made for it (G5: the false
+`no-assert-kill-function` and the unviable ratio are gone; selftest module `rec`). `(T){0}` is the universal zero
+initializer, which the pinned clang accepts for any struct or union.
+
+`no-mutable-token`: a function with a body but no mutant. With this change every function whose body starts with `{`
+and whose return type is void, a scalar or a record has the `function-body` mutant, so what is left is a complex or
+function-pointer return. `mutants_verdict.accounting_findings(report, level)` makes it an **error at L3 and above**
+and info below; with no `level` it is info (the caller must pass the module's level).
 
 ## Verdicts (derived by `rigor mutants`, never by the build)
 | Verdict | Meaning |
@@ -208,7 +224,7 @@ Approvals never cover anything but a survivor.
 - Release mode only. The `san` mode would add sanitizer kills but doubles the compile and link work; not done.
 - Macro-heavy code is mutated less: an expression that touches a macro is not mutated as a whole, and the code a product
   macro writes is a finding (`macro-hidden-code`), not a silent skip. `rigor mutants` reads `hidden` in the report; a report without it is exit 2.
-- Pointer-arithmetic and struct-valued returns are not mutated. File-scope initializers (constant tables)
+- Pointer arithmetic is not mutated. Complex-valued and function-pointer-valued returns get no `function-body` mutant. File-scope initializers (constant tables)
   are not mutated; only function bodies are.
 - The 10 s per-test and 180 s per-binary limits are wall-clock, as in ctest.
 - Mull cross-check: not done. A Mull release for LLVM 19 would have to be fetched by a sha256 that is not
