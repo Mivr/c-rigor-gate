@@ -891,7 +891,8 @@ begin "DETERMINISM: two cold-keyed grades of the same module give byte-identical
 # the report records about the module, so every mutant is run again; the uninit mutants read garbage.
 det_build() {
   local nonce="$1" dest="$2" log="$out/det_$1.log" p
-  sed -i "/^\/\* det-nonce /d; 1i /* det-nonce $nonce */" "$scratch/m/uninit_test.c"
+  sed -i "/^\/\* det-nonce /d" "$scratch/m/uninit_test.c"
+  sed -i "1i /* det-nonce $nonce */" "$scratch/m/uninit_test.c"
   run "$log" build "$pkg:uninit_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$log"
   p="$(awk -v t="$pkg:uninit_mutants" 'index($1, t) {print $2}' "$log" | tail -1)"
   [ -f "$p" ] || fail "$CUR: no report" "$log"
