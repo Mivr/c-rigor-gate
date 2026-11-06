@@ -12,7 +12,7 @@ from rigor_lib.trajectory_paths import expand_braces, is_url
 from rigor_lib.trajectory_shell import DOLLAR, UNRESOLVED
 
 _VAR_RE = re.compile(r"\$(?:\{([^}]*)\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@#?$!*-]))")
-_LIVE_RE = re.compile(r"\$\{?(!?)([A-Za-z_][A-Za-z0-9_]*)")
+_LIVE_RE = re.compile(r"\$(\{?)(!?)([A-Za-z_][A-Za-z0-9_]*)([*@]?)")
 _NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _CODE_LIKE = re.compile(r"[\s;()'\"]")
 _FRAGMENTS = (
@@ -258,7 +258,10 @@ class Analyzer(CodeMixin, FlowMixin):
 
     def _live_secrets(self, word, raw):
         for match in _LIVE_RE.finditer(word.text):
-            if match.group(1) == "!" or rules.SECRET_NAME_RE.fullmatch(match.group(2)):
+            brace, bang, name, tail = match.groups()
+            if bang == "!" and brace and tail and re.search("[a-z]", name):
+                continue  # `${!r1_*}` lists variable names; a prefix with a lowercase letter lists no secret name
+            if bang == "!" or rules.SECRET_NAME_RE.fullmatch(name):
                 self.add("secret-env-access", raw, match.group(0))
 
     # -- analysis ----------------------------------------------------------------------------
