@@ -156,3 +156,11 @@ cut-off minus 10 s) is allowed; anything above 170 is refused, because the harne
 Tests: `gate/tests/test_job.py` (the real executable as a subprocess, in a fresh directory under `$TMPDIR` when that is
 inside `/var/tmp/cache/`, else under `/var/tmp/cache/`) and `gate/tests/test_trajectory_job.py` (the audit side, see
 docs/trajectory.md).
+
+## Backlog (T047)
+
+`plan/backlog.md` is generated. Each row is one fragment, `plan/backlog.d/B<N>.md` (header lines `found_by:` and
+`fix:`, a blank line, then the one-line gap text; `_header.md` holds the title and table header). Edit a fragment,
+then run `python3 -I tools/backlog_fold.py` to rewrite the table; `--check` (also run by `selftest/gate.sh` through
+`gate/tests/test_backlog_fold.py`) fails if the table is stale. Two tasks therefore never edit the same file.
+**Row ids are assigned by the orchestrator in the task spec**; a task never picks its own next `B<N>`.
