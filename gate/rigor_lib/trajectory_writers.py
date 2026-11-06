@@ -7,6 +7,7 @@
 * the files a unified or git diff touches (`patch`, `git apply` of a patch whose text the audit knows).
 """
 
+import posixpath
 import re
 
 from rigor_lib import trajectory_cmds as cmds
@@ -283,7 +284,10 @@ def transfer(argv):
         return None
     if len(pos) == 1:  # `ln -s TARGET`: the link is made in the working directory
         return {"sources": pos, "target": None, "text": ".", "dir": True}
-    return {"sources": pos[:-1], "target": pos[-1], "text": argv[pos[-1]], "dir": len(pos) > 2}
+    # `ln -n`: a target that is a link to a directory is replaced, not entered
+    follow = not (name == "ln" and ("--no-dereference" in args or any(
+        re.fullmatch(r"-[A-Za-z]*n[A-Za-z]*", a) for a in args)))
+    return {"sources": pos[:-1], "target": pos[-1], "text": argv[pos[-1]], "dir": len(pos) > 2, "follow": follow}
 
 
 def into_dir(directory, source):
@@ -374,6 +378,7 @@ class WritersMixin:
             if index is not None:
                 skip.add(index)
             self.write_tree(text, raw)
+        skip |= self.note_links(argv, name, raw)
         if name == "patch":
             skip |= self._patch(item, argv, raw)
         elif name == "git":
@@ -396,6 +401,10 @@ class WritersMixin:
         self.dirs.add(normal)
         for known in [f for f in self.files if self.policy.is_inside(normal, f)]:
             self._content_changed(known, "rewrite")  # whatever was known of the files below is gone
+        normal = self.policy.through_links(normal)
+        if normal is None:
+            self.add("write-unresolved", raw, text)
+            return
         if not self.policy.write_ok(normal):
             self.add("write-outside", raw, text)
             return
@@ -407,6 +416,43 @@ class WritersMixin:
             self.add("tamper-protected", raw, text)
         else:
             self.add("write-unresolved", raw, text)
+
+    def note_links(self, argv, name, raw):
+        """`ln [-s] SOURCE... DEST` and `cp -s/-l`: record each link in the policy's virtual table (T061, R008 #18), so
+        later paths through it resolve to its target whatever the disk holds. A relative symbolic source is relative
+        to the link's own directory (`ln -s ../policy src/p` points at <worktree>/policy), unless `-r`/`--relative`
+        (then the working directory). The source is read-checked as resolved; returns its argv indexes."""
+        args = argv[1:]
+        flags = [a for a in args if a.startswith("-") and not a.startswith("--")]
+        if name == "ln":
+            symbolic = "--symbolic" in args or any("s" in a[1:] for a in flags)
+        elif name == "cp" and ("--symbolic-link" in args or "--link" in args or any(
+                ("s" in a[1:] or "l" in a[1:]) and not a.startswith("-S") for a in flags)):
+            symbolic = "--symbolic-link" in args or any("s" in a[1:] for a in flags)
+        else:
+            return set()
+        layout = transfer(argv)
+        if layout is None:
+            return set()
+        relative = "--relative" in args or any("r" in a[1:] for a in flags) and name == "ln"
+        into = layout["dir"] or self.is_dir(layout["text"], layout.get("follow", True))
+        for index in layout["sources"]:
+            source = argv[index]
+            dest = into_dir(layout["text"], source) if into else layout["text"]
+            link = self.policy.normalize(dest, self.cwd)
+            if link is None:
+                continue
+            key = self.policy.add_link(link, None)
+            base = posixpath.dirname(key) if symbolic and not relative else self.cwd
+            target = self.policy.normalize(source, base)
+            self.policy.links[key] = target
+            if target is not None:
+                saved = set(self.read_set)
+                self.read_word(target, raw, "")  # the target as the link sees it, not as the cwd would
+                self.read_set = saved
+            elif UNRESOLVED in source:
+                self.add("path-unresolved", raw, source.replace(UNRESOLVED, "$("))
+        return set(layout["sources"])
 
     def known_text(self, path_text):
         """The text of a file as this transcript wrote it, or None when the audit does not know it."""

@@ -71,6 +71,7 @@ class PathPolicy:
         self.exempt = set()   # persisted tool-output files announced by the harness
         self.made = []        # scratch dirs a gate script the agent ran printed as its own (see Audit.own_dir)
         self._tracked = None  # worktree paths git tracks on disk, read once (T052, ruling 7; None until needed)
+        self.links = {}       # links the transcript made: link path -> target path, None when unknown (T061, R008 #18)
 
     # -- resolving ---------------------------------------------------------------------------
     def normalize(self, text, cwd):
@@ -98,6 +99,36 @@ class PathPolicy:
 
     def real(self, path):
         return os.path.realpath(path)
+
+    def through_links(self, path, follow_last=True):
+        """`path` resolved through the links this transcript made (T061, R008 #18), independent of the disk: each
+        component from the root is replaced by its link's target, as the kernel does; the last one only with
+        `follow_last` (`rm LINK` removes the link itself). None when a link on the way has an unknown target."""
+        for _ in range(40):  # the kernel's own bound on link hops (ELOOP)
+            parts = path.split("/")
+            last = len(parts) if follow_last else len(parts) - 1
+            for end in range(2, last + 1):
+                prefix = "/".join(parts[:end])
+                if prefix in self.links:
+                    target = self.links[prefix]
+                    if target is None:
+                        return None
+                    path = collapse(target + "/" + "/".join(parts[end:])) if end < len(parts) else target
+                    break
+            else:
+                return path
+        return None
+
+    def add_link(self, link, target):
+        """Record that `link` (absolute, normalized) now points at `target` (absolute, normalized; None: unknown)."""
+        key = self.through_links(link, follow_last=False) or link
+        self.links[key] = target
+        return key
+
+    def drop_links(self, path):
+        """`path` and everything below it was removed: so were the links there."""
+        for key in [k for k in self.links if self._inside(path, k)]:
+            del self.links[key]
 
     def is_tracked(self, rel):
         """True when `rel` (a worktree-relative path) is a file git tracks in the worktree on disk. Read once with
@@ -147,16 +178,20 @@ class PathPolicy:
 
     # -- forbidden reads ---------------------------------------------------------------------
     def read_rule(self, path):
-        """The rule id a read of `path` breaks, or None. `path` is absolute and normalized."""
+        """The rule id a read of `path` breaks, or None. `path` is absolute and normalized. The path is also judged
+        through the links the transcript made (T061) and through the links on the disk."""
         found = self._classify(path)
         if found == "read-claude-state" and path in self.exempt:
             found = None  # an announced persisted output lifts this rule and no other (T049)
         if found is None:
-            real = self.real(path)
-            if real != path:
-                found = self._classify(real)
-                if found == "read-claude-state" and real in self.exempt:
-                    found = None
+            virtual = self.through_links(path) if self.links else path
+            for other in dict.fromkeys(p for p in (virtual, self.real(path), virtual and self.real(virtual)) if p):
+                if other != path:
+                    found = self._classify(other)
+                    if found == "read-claude-state" and other in self.exempt:
+                        found = None
+                    if found is not None:
+                        break
         return found
 
     def _classify(self, path):

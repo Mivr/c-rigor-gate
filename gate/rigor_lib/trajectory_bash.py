@@ -837,7 +837,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         indexes = set()
         layout = writers.transfer(argv)
         carried = self._carried_texts(argv, layout)
-        if layout is not None and not (layout["dir"] or self.is_dir(layout["text"])):
+        if layout is not None and not (layout["dir"] or self.is_dir(layout["text"], layout.get("follow", True))):
             layout = None
         for index, op, text in writers.write_targets(argv):
             if index < len(argv):
@@ -876,20 +876,22 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if known[1]:
             self.dirty.add(normal)
 
-    def is_dir(self, text):
+    def is_dir(self, text, follow=True):
         """True when a copy target is a directory: `.`, `..`, a trailing `/`, the working directory or one of the
-        agent's roots, a directory the transcript made or wrote files into, or a directory on the disk."""
+        agent's roots, a directory the transcript made or wrote files into, or a directory on the disk; with `follow`,
+        also through a link the transcript made."""
         if text in (".", "..") or text.endswith(("/", "/.", "/..")):
             return True
         normal = self.policy.normalize(text, self.cwd)
         if normal is None:
             return False
+        normal = (self.policy.through_links(normal) or normal) if follow else normal  # a link made in the transcript
         if normal == self.cwd or normal in self.policy.own or normal in self.dirs:
             return True
         inside = normal.rstrip("/") + "/"
         if any(f.startswith(inside) for f in self.files) or any(f.startswith(inside) for f in self.created):
             return True
-        return os.path.isdir(self.policy.real(normal))
+        return os.path.isdir(self.policy.real(normal)) if follow else os.path.isdir(normal) and not os.path.islink(normal)
 
     def _redirect(self, command, redirect):
         if redirect.op in ("<", "<<", "<<-", "<<<", "<&"):
@@ -931,10 +933,16 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         self.forget_output(normal)
         self.known_before = normal if normal in self.files and normal not in self.dirty else None
         self._content_changed(normal, op)
-        if not self.policy.write_ok(normal):
+        landed = self.policy.through_links(normal, follow_last=op != "delete" or text.endswith("/"))
+        if op == "delete" and not text.endswith("/"):
+            self.policy.drop_links(normal)  # `rm LINK` removes the link, not what it points at
+        if landed is None:  # through a link whose target the audit does not know (T061, R008 #18)
+            self.add("write-unresolved", raw, text)
+            return
+        if not self.policy.write_ok(landed):
             self.add("write-outside", raw, text)
             return
-        self.tamper_check(normal, "rewrite" if op == "build" else op, raw, text)
+        self.tamper_check(landed, "rewrite" if op == "build" else op, raw, text)
 
     def _content_changed(self, normal, op):
         """What the audit knows of a file's text after a write (T049, R008 #3). A rewrite replaces it with text

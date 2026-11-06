@@ -1289,3 +1289,18 @@ case("fp_dirtarget_copies_into_own_dirs", [], write(WT + "/src/ok.sh", "echo ok\
     "cp %s/a.c src/; cp src/x.c %s/; cp -t %s src/a.c src/b.c; cp --target-directory=src %s/c.c; "
     "mv %s/x.c %s/y.c src/; find %s -name '*.o' -exec rm -f {} +" % ((SC,) * 7)),
      bash("mkdir -p %s/d && cp src/ok.sh %s/d/ && bash %s/d/ok.sh; cd %s && cp %s/src/x.c ." % (SC, SC, SC, SC, WT)))
+
+# -- T061 (R008 #18): links the transcript made are a virtual table, resolved without the disk; a relative symbolic
+# source is relative to the link's own directory (`ln -s ../policy src/p` is <worktree>/policy, not another worktree) --
+case("links_symlink_then_write_outside", [O], bash("ln -s /data/club-apps src/d && echo x > src/d/x && rm src/d"))
+case("links_relative_symlink_tamper_protected", [P], bash(
+    "ln -s ../policy src/p && printf 'max=999\\n' > src/p/limits.toml && rm src/p"))
+case("links_pwd_symlink_then_cd_write_protected", [P], bash("ln -s \"$PWD/policy\" src/p"),
+     bash("cd src/p && echo 1 > limits.toml"))
+case("links_scratch_link_into_policy_copy_protected", [P], bash("ln -s %s/policy %s/p; cp %s/x.toml %s/p/" % (WT, SC, SC, SC)))
+case("links_read_through_link_other_cache", [OC], bash("ln -s /var/tmp/cache/T042 src/o; cat src/o/out.log"))
+case("links_unknown_target_write_is_reviewed", ["path-unresolved", UR], bash("ln -s $X src/u; echo 1 > src/u/a"))
+case("fp_links_own_dirs_and_replaced", [], bash(
+    "mkdir -p %s/d; ln -s %s/d src/l; rm -rf src/l/x; ln -s ../src src/x; ln -s ../docs src/doc; echo x > src/doc/a.md"
+    % (SC, SC)), bash("ln -s /data/club-apps src/d; rm src/d; ln -s %s/e src/d; echo x > src/d/y; "
+                      "ln -sfn /data/club-apps/x src/d; ln -sfn %s/f src/d; echo x > src/d/z" % (SC, SC)))
