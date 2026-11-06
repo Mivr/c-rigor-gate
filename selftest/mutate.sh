@@ -753,7 +753,12 @@ printf '[module."%s:lit_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 gate "$out/only_lit"
 [ "$GATE_CODE" = 1 ] || fail "$CUR: expected exit 1, got $GATE_CODE" "$out/gate.log"
 got="$(json '"\n".join(sorted("%s|%s|%s|%s" % (f["function"], f["operator"], f["line"], f["replacement"]) for f in r["findings"] if f["rule"] == "survived-mutant"))')"
-want='PLACEHOLDER'
+want='lit_check|enum-constant|17|LIT_ERR_HIGH
+lit_get|function-body|6|{ (void)p; return 0; }
+lit_get|integer-literal|7|1
+lit_letter|char-literal|27|('q' + 1)
+lit_name|string-literal|25|""
+lit_name|string-literal|25|m'
 [ "$got" = "$want" ] || fail "$CUR: survivors differ from the expected list" <(printf 'got:\n%s\nwant:\n%s\n' "$got" "$want")
 "${PY[@]}" - "$out/only_lit/lit.json" <<'PY' || fail "$CUR: bad lit report"
 import json, sys
@@ -766,6 +771,7 @@ assert ops["enum-constant"] == {"lit_check"} and ops["string-literal"] == {"lit_
 assert not d["sources"][0]["hidden"], "a toolchain macro was reported as hidden code"
 print("    new operators:", {k: sorted(v) for k, v in sorted(ops.items()) if k in ("condition", "enum-constant", "string-literal", "char-literal")})
 PY
+# (the condition and relational mutants of `p != NULL` compile to the function-body mutant's object here: duplicates)
 echo "    survivors exactly as expected: $(printf '%s\n' "$got" | wc -l)"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
