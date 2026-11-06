@@ -3,10 +3,11 @@
   "description": "A BUCK that loads a product-supplied .bzl (the layout drops .bzl files).",
   "fail": {
     "buckfiles": [
+      "bad-load",
       "extra-load"
     ],
     "build": [
-      "build-failed"
+      "query-failed"
     ]
   },
   "not_run": [
