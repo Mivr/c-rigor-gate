@@ -74,6 +74,8 @@ trusted = ["//ctest:ctest"]  # gate-owned modules: only their exports count; not
 allow = ["memcpy"]           # external symbols beyond what its direct deps define
 deny_exempt = []             # entries of global.deny this module may use (this also allows them)
 allow_builtins = []          # guarded builtins (trap/unreachable/debugtrap) this module may use
+level = "L3"                 # L1..L5; read by the exports check (below)
+exports = ["core_add"]       # every external symbol the module may define (T033)
 ```
 For every non-trusted target: undefined symbols minus its own definitions must be defined by a **direct**
 dependency, be in `allow` or in `deny_exempt`. Findings:
@@ -86,6 +88,39 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 | `weak-symbol` | defines a weak, indirect or unique symbol |
 | `module-not-in-policy` / `policy-module-without-facts` / `trusted-module-without-facts` | facts and policy disagree |
 | `missing-dep-facts` | a declared dep has no facts file |
+| `unexpected-export` | defines an external symbol that is not in the module's `exports` list (T033) |
+| `exports-missing` | the module is L3 or above and has no `exports` key (T033; info at L2) |
+| `mutable-global-export` | defines an external object in a writable data/bss section, listed or not (T033; error at L3 and above, info at L2) |
+
+### Exports policy (T033, R003 G7, backlog B32)
+`exports` is the gate-owned allowed set of **defined external symbols** of a module, all units together (a test or
+binary lists `main`). Nothing in the product can change it: the policy file is gate-owned like `allow`.
+* **Levels** (`level`, the same key the mutants gate reads). L1 is exempt. L2: a defined symbol outside the list is an
+  `unexpected-export` (error); a missing list is `exports-missing` as info. L3 and above: a missing list is
+  `exports-missing`, an error, so a module at L3 can never pass without a list.
+* **Mutable objects.** `cscan.py` also reads `llvm-nm --format=sysv` and writes the unit key `mutable`: defined external
+  objects (nm class `D B G S C`) whose section is writable. Sections `.data.rel.ro*` are read-only after relocation and are
+  not mutable, so a `const` table of addresses is not reported. Thread-local data (`.tdata`, `.tbss`) is mutable. A listed
+  symbol that is mutable is still `mutable-global-export`: the list says a name may exist, never that it may be writable.
+  A `const` table that is not listed is only `unexpected-export`. The reader requires `mutable` in every product facts
+  file (gate-owned third-party facts, which are never checked, may omit it).
+* **Where the check is armed.** A module table with neither `level` nor `exports` is not checked (legacy table). An
+  `exports` key arms the check even without a level (the level is then taken as L3). `rigor grade` hands the symbols
+  gate a copy of the policy without `level` (`grade_policy.symbol_policy_text`), so in a grade a module is checked
+  exactly when it has an `exports` key, and always as L3. Giving the gate the real level, so that a missing list at L3
+  is found there too, needs `grade_policy` to keep `level` for this gate (a follow-up outside T033).
+* **Generating the first list.** Build the product's facts as `rigor grade` does (`<name>_facts` in the release
+  platform) and print what each module defines; review the output against the module's public header before pasting it:
+  ```sh
+  python3 -I -c 'import glob,json,sys
+  for f in sorted(glob.glob(sys.argv[1] + "/*.json")):
+      d = json.load(open(f)); names = sorted({s for u in d["units"] for s in u["defined"]})
+      print(d["label"], "exports = " + json.dumps(names))' FACTS_DIR
+  ```
+  A symbol a library defines that none of its `headers` mentions is exported but undeclared: remove the export
+  (make it `static`) or declare it. Test and binary modules only need `main` plus their own shared test-kit helpers.
+  annas-c's lists were generated this way in T033 (its test-kit helpers `kit_*`, `ak_*`, `kf_*` are exported by the
+  shared test sources and are listed per test; no library exports an undeclared symbol).
 
 ## Modes: `<name>_facts_san` and `rigor facts --modes` (T023)
 The semantic scan reads the **release** compile, but the `san` tests run the `san` compile. Code that exists in
