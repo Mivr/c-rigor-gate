@@ -166,6 +166,23 @@ Each is a named rule with red twins in `gate/tests/test_trajectory_cases.py` tha
   links resolved) writable. The name must not have been typed by the agent before, so an `ls -d` of other runs, an
   `echo`, another task's directory, the parent `/var/tmp`, or a name shown only after the removal prove nothing.
 
+### Git against a local remote (T027, B23)
+`git clone <local path> <dest>` in the transcript, with `dest` in a declared `--allow-write` directory (never the task
+worktree) and no finding of its own, proves that `dest`'s `origin` is that local path. In such a clone (the command's
+directory, with `-C` applied, is inside it) three things change, and only there:
+* `git fetch`, `git pull` and `git ls-remote` with no remote or `origin` are not `cmd-git-network`;
+* `git clone <bare name or relative path>` is not `cmd-git-network` when the source resolves into the allowed places
+  or into such a clone (`git clone annas-c pre`);
+* `cmd-git-main` does not apply (it protects the product worktree's main, not a scratch clone).
+The proof ends for a clone (and `cmd-git-network` applies again) when anything could repoint its origin: `git remote
+add/set-url/rename/remove`, a `git config` write, a `-c` override, a write to its `.git`, `--git-dir`/`--work-tree`,
+a `GIT_*` variable, or a later clone over the same destination. It never covers `git push` (always `cmd-git-push`),
+a clone of a URL (`https://`, `git@`, `ssh://`, any `file://`), a clone made with `--origin`, `--config`, `--template`,
+`--separate-git-dir`, `--reference` or `--recurse-submodules`, a clone into the worktree, a clone that itself raised a
+finding (another task's worktree), a fetch of any other remote, or an `origin` whose clone is not in the transcript.
+`git checkout main` and `reset --hard origin/main` in the worktree, or via `-C <worktree>` from a clone, still block.
+Red twins: `git_*` cases in `gate/tests/test_trajectory_cases.py`.
+
 ### Repeated reviews
 Identical `review` findings (same rule, tool and excerpt) are reported once, at the first line, and counted in
 `metadata.repeats_collapsed`: a script run twenty times is one thing to look at. A `block` is never collapsed.
@@ -200,5 +217,6 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   orchestrator's ground truth and at most 10 `review` findings per transcript. T020 (B21) added a gate-task
   transcript (T018, no violation: 0 blocks). T026 (B22) added T011, T021, T022 and T024 (all 0 blocks; required,
   while the older five are skipped when not staged); T011 and T024 have review caps of 38 and 49, their measured
-  counts (unresolved `$var` paths in long scripts).
+  counts (unresolved `$var` paths in long scripts). T027 (B23) added T013 (0 blocks, 0 reviews; skipped when not staged;
+before the fix: 3 blocks, 0 reviews).
 * A `cd` to a target that cannot be resolved keeps the previous directory; `cat <<EOF | tee f` does not record `f`.

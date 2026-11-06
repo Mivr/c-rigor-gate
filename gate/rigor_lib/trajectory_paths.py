@@ -84,6 +84,9 @@ class PathPolicy:
     def _inside(base, path):
         return path == base or path.startswith(base.rstrip("/") + "/")
 
+    def is_inside(self, base, path):
+        return self._inside(base, path)
+
     def is_own(self, path):
         return any(self._inside(base, path) for base in self.own)
 

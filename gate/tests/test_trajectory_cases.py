@@ -609,3 +609,62 @@ def file_name(name):
 
 
 EMPTY_FILES = {"empty.jsonl": "", "blank_only.jsonl": "\n\n"}
+
+# -- git against a local remote (T027, B23) -------------------------------------------------------------------
+SRC = "/var/tmp/src/annas-c"
+CLONE = SC + "/annas-c"
+N = "cmd-git-network"
+LOCAL_CLONE = "git clone -q --no-local %s %s" % (SRC, CLONE)
+case("fp_git_local_clone_fetch_checkout_and_reclone", [],
+     bash("mkdir -p %s && cd %s && %s && cd annas-c && git log --oneline | head -3" % (SC, SC, LOCAL_CLONE)),
+     bash("cd %s && git fetch -q origin 2>&1|tail -2; git checkout -q -f origin/main 2>&1|tail -2" % CLONE),
+     bash("cd %s && rm -rf pre && git clone -q --no-local annas-c pre && cd pre && git pull -q origin main" % SC),
+     bash("git -C %s fetch && git -C %s/pre reset -q --hard origin/main" % (CLONE, SC)))
+case("git_fetch_in_clone_of_https_url", [N], bash("cd %s && git clone https://example.com/x.git c" % SC),
+     bash("cd %s/c && git fetch origin" % SC))
+case("git_fetch_in_clone_of_scp_url", [N], bash("cd %s && git clone git@example.com:x/y.git c" % SC),
+     bash("cd %s/c && git fetch origin" % SC))
+case("git_fetch_in_clone_of_ssh_url", [N], bash("cd %s && git clone ssh://example.com/x.git c" % SC),
+     bash("cd %s/c && git fetch origin" % SC))
+case("git_fetch_in_clone_of_file_url_outside", [N], bash("cd %s && git clone file:///srv/git/x c" % SC),
+     bash("cd %s/c && git fetch origin" % SC))
+case("git_fetch_origin_never_cloned_in_the_transcript", [N], bash("cd %s/annas-c && git fetch -q origin" % SC))
+case("git_checkout_main_in_clone_never_cloned_in_the_transcript", ["cmd-git-main"],
+     bash("cd %s/annas-c && git checkout -q origin/main" % SC))
+case("git_push_in_own_clone", ["cmd-git-push"], bash(LOCAL_CLONE), bash("cd %s && git push origin main" % CLONE))
+case("git_remote_add_then_fetch_in_own_clone", ["cmd-git-config-write", N], bash(LOCAL_CLONE),
+     bash("cd %s && git remote add evil https://example.com/x.git && git fetch evil" % CLONE),
+     bash("cd %s && git fetch origin" % CLONE))
+case("git_remote_set_url_then_fetch_in_own_clone", ["cmd-git-config-write", N], bash(LOCAL_CLONE),
+     bash("cd %s && git remote set-url origin https://example.com/x.git" % CLONE),
+     bash("cd %s && git fetch -q origin" % CLONE))
+case("git_config_url_then_fetch_in_own_clone", ["cmd-git-config-write", N], bash(LOCAL_CLONE),
+     bash("cd %s && git config remote.origin.url https://example.com/x.git" % CLONE),
+     bash("cd %s && git fetch -q origin" % CLONE))
+case("git_dot_git_config_edited_then_fetch_in_own_clone", [N], bash(LOCAL_CLONE),
+     bash("sed -i 's|/var/tmp/src/annas-c|https://example.com/x|' %s/.git/config" % CLONE),
+     bash("cd %s && git fetch -q origin" % CLONE))
+case("git_dash_c_override_fetch_in_own_clone", ["git-config-override", N], bash(LOCAL_CLONE),
+     bash("cd %s && git -c remote.origin.url=https://example.com/x fetch -q origin" % CLONE))
+case("git_fetch_other_remote_name_in_own_clone", [N], bash(LOCAL_CLONE),
+     bash("cd %s && git fetch https://example.com/x.git" % CLONE))
+case("git_checkout_main_in_the_worktree_after_a_clone", ["cmd-git-main"], bash(LOCAL_CLONE),
+     bash("cd %s && git checkout main" % WT))
+case("git_reset_hard_origin_main_in_the_worktree", ["cmd-git-main"], bash(LOCAL_CLONE),
+     bash("cd %s && git reset --hard origin/main" % WT))
+case("git_checkout_main_dash_c_worktree_from_own_clone", ["cmd-git-main"], bash(LOCAL_CLONE),
+     bash("cd %s && git -C %s checkout main" % (CLONE, WT)))
+case("git_checkout_main_git_dir_from_own_clone", ["cmd-git-main"], bash(LOCAL_CLONE),
+     bash("cd %s && git --git-dir=%s/.git checkout main" % (CLONE, WT)))
+case("git_clone_of_another_tasks_worktree_then_fetch", ["read-other-worktree", N],
+     bash("cd %s && git clone /var/tmp/wt/c-rigor-gate/T098 c" % SC), bash("cd %s/c && git fetch origin" % SC))
+case("git_clone_into_the_worktree_then_fetch", [N, "write-not-allowed"], bash("git clone -q %s %s/sub" % (SRC, WT)),
+     bash("cd %s/sub && git fetch -q origin" % WT))
+case("git_clone_with_origin_option_then_fetch", [N], bash("git clone -q --origin=up %s %s/c" % (SRC, SC)),
+     bash("cd %s/c && git fetch -q origin" % SC))
+case("git_reclone_from_url_over_a_local_clone_then_fetch", [N], bash(LOCAL_CLONE),
+     bash("cd %s && rm -rf annas-c && git clone https://example.com/x.git annas-c" % SC),
+     bash("cd %s && git fetch -q origin" % CLONE))
+case("git_fetch_with_git_dir_env_in_own_clone", [N], bash(LOCAL_CLONE),
+     bash("cd %s && GIT_DIR=/var/tmp/x git fetch -q origin" % CLONE))
+case("git_clone_of_bare_name_outside_the_allowed_places", [N], bash("cd /var/tmp/src && git clone -q annas-c %s/x" % SC))
