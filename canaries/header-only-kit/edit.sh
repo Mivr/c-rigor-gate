@@ -3,44 +3,38 @@ mkdir kit
 cat > kit/BUCK <<'EOT'
 load("@gate//rules:c.bzl", "c_library", "c_test")
 
-c_library(name = "clamp", srcs = ["clamp.c"], headers = ["clamp.h"], visibility = ["PUBLIC"])
+c_library(name = "window", srcs = ["window.c"], headers = ["window.h"], visibility = ["PUBLIC"])
 
 # Test scaffolding with no source of its own: only a header, so the library has no archive.
-c_library(name = "clamp_kit", headers = ["clamp_kit.h"], deps = [":clamp"], visibility = ["PUBLIC"])
+c_library(name = "window_kit", headers = ["window_kit.h"], deps = [":window"], visibility = ["PUBLIC"])
 
-c_test(name = "clamp_test", srcs = ["clamp_test.c"], deps = [":clamp", ":clamp_kit"])
+c_test(name = "window_test", srcs = ["window_test.c"], deps = [":window", ":window_kit"])
 EOT
-printf '#ifndef CLAMP_H\n#define CLAMP_H\nint clamp_to(int x, int lo, int hi);\n#endif\n' > kit/clamp.h
-cat > kit/clamp.c <<'EOT'
-#include "clamp.h"
+printf '#ifndef WINDOW_H\n#define WINDOW_H\nint in_window(int x, int lo, int hi);\n#endif\n' > kit/window.h
+cat > kit/window.c <<'EOT'
+#include "window.h"
 
-int clamp_to(int x, int lo, int hi)
+int in_window(int x, int lo, int hi)
 {
-    if (x < lo) {
-        return lo;
-    }
-    if (x > hi) {
-        return hi;
-    }
-    return x;
+    return x >= lo && x <= hi;
 }
 EOT
-printf '#ifndef CLAMP_KIT_H\n#define CLAMP_KIT_H\n#include "clamp.h"\n#include "ctest/ctest.h"\n#define CHECK_CLAMP(t, x, want) CHECK_EQ_I64((t), clamp_to((x), 10, 20), (want))\n#endif\n' > kit/clamp_kit.h
-cat > kit/clamp_test.c <<'EOT'
-#include "clamp_kit.h"
+printf '#ifndef WINDOW_KIT_H\n#define WINDOW_KIT_H\n#include "window.h"\n#include "ctest/ctest.h"\n#define CHECK_WINDOW(t, x, want) CHECK_EQ_I64((t), in_window((x), 10, 20), (want))\n#endif\n' > kit/window_kit.h
+cat > kit/window_test.c <<'EOT'
+#include "window_kit.h"
 
 static void t_bounds(ctest_t *t)
 {
-    CHECK_CLAMP(t, 9, 10);
-    CHECK_CLAMP(t, 10, 10);
-    CHECK_CLAMP(t, 11, 11);
-    CHECK_CLAMP(t, 15, 15);
-    CHECK_CLAMP(t, 19, 19);
-    CHECK_CLAMP(t, 20, 20);
-    CHECK_CLAMP(t, 21, 20);
-    CHECK_CLAMP(t, -5, 10);
-    CHECK_CLAMP(t, 400, 20);
+    CHECK_WINDOW(t, 9, 0);
+    CHECK_WINDOW(t, 10, 1);
+    CHECK_WINDOW(t, 11, 1);
+    CHECK_WINDOW(t, 15, 1);
+    CHECK_WINDOW(t, 19, 1);
+    CHECK_WINDOW(t, 20, 1);
+    CHECK_WINDOW(t, 21, 0);
+    CHECK_WINDOW(t, -5, 0);
+    CHECK_WINDOW(t, 400, 0);
 }
 
-CTEST_SUITE("clamp", { "bounds", t_bounds })
+CTEST_SUITE("window", { "bounds", t_bounds })
 EOT

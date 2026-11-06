@@ -30,13 +30,13 @@ allow = []
 [module."//util:util_test"]
 allow = ["free"]
 
-[module."//kit:clamp"]
+[module."//kit:window"]
 level = "L3"
 allow = []
 
-[module."//kit:clamp_test"]
+[module."//kit:window_test"]
 allow = []
 
-[module."//kit:clamp_kit"]
+[module."//kit:window_kit"]
 level = "L1"
 allow = []
