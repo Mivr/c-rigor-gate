@@ -1,0 +1,18 @@
+{
+  "bypass": "deleted test target",
+  "description": "The util_test c_test target is deleted from util/BUCK (mirrors selftest/grade.sh step deleted-target).",
+  "fail": {
+    "tests-release": [
+      "missing-test"
+    ],
+    "tests-san": [
+      "missing-test"
+    ],
+    "symbols": [
+      "policy-module-without-facts"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

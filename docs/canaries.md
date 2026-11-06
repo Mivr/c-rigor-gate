@@ -106,6 +106,23 @@ canary and change only what the bypass needs, so unchanged targets are cache hit
    (and fixes the guessed rule ids in `expect.json`) in the merge.
 5. Record the bypass class in `bypass` and, if it came from an audit, the id in `description`.
 
+## Canaries mirroring `selftest/grade.sh` red cases (T046)
+These seven were the red cases only `grade.sh` had (R006 #1, step 1). Each `edit.sh` is the grade.sh `edit_*` function verbatim,
+with the same `product.toml` variant. The expectation is exact (grade.sh only checks that one rule is present).
+
+| canary | grade.sh step | fails | NOT_RUN |
+|---|---|---|---|
+| `deleted-target` | `deleted-target` | `tests-release`/`tests-san`: missing-test, `symbols`: policy-module-without-facts | mutants |
+| `kills` | `kills` | `symbols`: denied-symbol, `mutants`: survived-mutant | none |
+| `spliced-optnone` | `spliced-optnone` | `semantic-suppressions`: forbidden-attribute + line-directive | none |
+| `excluded-code` (`product.toml` excludes `core/docs/**`) | `excluded-code` | `buckfiles`: excluded-code | mutants |
+| `stale-include` (`product.toml` includes `gone/**`) | `stale-include` | `buckfiles`: stale-include | mutants |
+| `third-party-copy` | `third-party-copy` | `buckfiles`: ignored-code, `contract`: outside-allowed (third_party/ is not an allowed path) | mutants |
+| `case-collision` | `case-collision` | `buckfiles`: case-collision | mutants |
+
+The runner also ports grade.sh's leaked-daemon check (`find_daemons`): after each canary, a process whose working
+directory is under the canary's scratch dir makes that canary a miss.
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
