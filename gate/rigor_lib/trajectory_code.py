@@ -5,6 +5,7 @@ import re
 
 from rigor_lib import trajectory_cmds as cmds
 from rigor_lib import trajectory_rules as rules
+from rigor_lib import trajectory_shell as shell
 from rigor_lib.trajectory_literals import path_literals
 from rigor_lib.trajectory_paths import is_url
 from rigor_lib.trajectory_shell import UNRESOLVED
@@ -164,15 +165,67 @@ class CodeMixin:
             return False
         return interpreter not in ("sh", "exec") or posixpath.splitext(path_text)[1] in _SCRIPT_SUFFIXES
 
-    def fed_files(self, item, argv, name, raw, depth, flags):
-        """`bash < f` and `cat f | sh`: the interpreter reads the file's text as code (T049)."""
-        if not self._executes_stdin(argv):
+    def stdin_code(self, item, argv, name, raw, depth, flags):
+        """An interpreter that reads its code from stdin (T049, R008 #3). Its stdin is, in this order of
+        precedence: a here-document on it (audited by _heredocs), a here-string or `< f` on it, else the output of
+        the pipeline stage before it. Known text (a here-string or a quoted here-document without unknown pieces,
+        literal `echo`/`printf`, `cat` of known files or of a here-document) is audited as code in this
+        interpreter's language; any other producer's output is `cmd-obfuscated-exec`."""
+        if name == "eval" or not self._executes_stdin(argv):
             return
-        for redirect in [] if item.wrapped else item.cmd.redirects:
-            if redirect.op == "<" and redirect.fd in (None, "0"):
+        is_shell = cmds.interpreter_kind(name) == "shell"
+        redirects = [] if item.wrapped else item.cmd.redirects
+        if self._stdin_redirects(redirects, name, is_shell, raw, depth) or item.cmd.heredocs:
+            return
+        producer = flags["producer"].get(id(item))
+        if producer is not None and item.group not in flags["obfuscated"]:  # a decoder pipe is already reported
+            self._produced(producer, name, is_shell, raw, depth)
+
+    def _stdin_redirects(self, redirects, name, is_shell, raw, depth):
+        """Audit a here-string or `< f` that is stdin; True when there was one."""
+        found = False
+        for redirect in redirects:
+            if redirect.fd not in (None, "0"):
+                continue
+            if redirect.op == "<<<":
+                found = True
+                text = self.expand(redirect.target, self.env_now)
+                if UNRESOLVED in text:
+                    self.add("cmd-obfuscated-exec", raw, "<<<")
+                else:
+                    self.code(text + "\n", is_shell, raw, depth, None)
+            elif redirect.op == "<":
+                found = True
                 self._executed_file(self.expand(redirect.target, self.env_now), name, raw, depth)
-        for path_text in flags["fed"].get(item.group, ()):
-            self._executed_file(path_text, name, raw, depth)
+        return found
+
+    def _produced(self, producer, name, is_shell, raw, depth):
+        """The output of the pipeline stage `producer`, read by the interpreter `name` as code."""
+        argv = producer.argv
+        pname = cmds.name_of(argv[0]) if argv else ""
+        if pname in ("echo", "printf"):
+            text = cmds.echo_text(argv) if pname == "echo" else cmds.printf_text(argv)
+            if text is None:
+                self.add("cmd-obfuscated-exec", raw, pname)
+            else:
+                self.code(text, is_shell, raw, depth, None)
+            return
+        if pname == "cat":
+            files = [a for a in (argv[1 + i] for i in cmds.positionals(argv[1:])) if a != "-"]
+            for path_text in files:
+                self._executed_file(path_text, name, raw, depth)
+            if files:
+                return
+            if producer.cmd.heredocs:
+                doc = producer.cmd.heredocs[0]
+                if doc.quoted or shell.body_is_literal(doc.body):
+                    self.code(doc.body, is_shell, raw, depth, None)
+                else:
+                    self.add("cmd-obfuscated-exec", raw, "<<" + doc.delimiter)
+                return
+            if self._stdin_redirects(producer.cmd.redirects, name, is_shell, raw, depth):
+                return
+        self.add("cmd-obfuscated-exec", raw, pname or "|")
 
     def _find_exec(self, args, raw, depth, env):
         i = 0
@@ -225,8 +278,8 @@ class CodeMixin:
         if not command.heredocs:
             return
         name = cmds.name_of(item.argv[0]) if item.argv else ""
-        is_code = bool(item.argv) and not data_only and (
-            self._executes_stdin(item.argv) or (item.group in flags["sink"] and name in ("cat", "echo", "printf")))
+        is_code = bool(item.argv) and not data_only and self._executes_stdin(item.argv)
+        # a here-document fed through a pipe (`cat <<EOF | sh`) is audited by stdin_code, in the reader's language
         for doc in command.heredocs:
             if is_code:
                 self.code(doc.body, name in rules.SHELLS, command.raw, depth, None)
