@@ -2,8 +2,8 @@
 
 | # | Gap | Found by | Planned fix |
 |---|---|---|---|
-| B1 | **Recursion is not mechanically detected** (only the 512-byte frame limit pressures it). | A003 test author | Call-graph cycle check from the release objects (`llvm-objdump -dr` call relocations + intra-TU calls via clang `-Xclang -ast-dump` or `-fstack-usage`), as a facts field and a `structure` gate. |
-| B2 | **Size/complexity rules are prompt-only**: functions <= 50 lines, files <= 500 lines, nesting, params. | orchestrator | `structure` gate from the clang AST (function extents, params, nesting), one table of limits per rigor level. |
+| B1 | **Recursion is not mechanically detected** (only the 512-byte frame limit pressures it). | A003 test author | Call-graph cycle check from the release objects (`llvm-objdump -dr` call relocations + intra-TU calls via clang `-Xclang -ast-dump` or `-fstack-usage`), as a facts field and a `structure` gate. **Landed in T011, not wired** into `rigor grade` yet: `c_structure` + `rigor structure`, docs/structure.md. |
+| B2 | **Size/complexity rules are prompt-only**: functions <= 50 lines, files <= 500 lines, nesting, params. | orchestrator | `structure` gate from the clang AST (function extents, params, nesting), one table of limits per rigor level. **Landed in T011, not wired** into `rigor grade` yet (same facts as B1). |
 | B3 | Code under `__SANITIZE_ADDRESS__` / `__has_feature(...sanitizer)` is invisible to the release-only semantic scan. | T004 | Also produce facts in `san` mode and diff the semantic facts between modes; any difference is a finding. |
 | B4 | Action cache is client-writable on the shared RE farm, so cached results could be forged. Today: decisive grades use `--uncached`. | orchestrator (T005) | Dedicated grader instance with client-read-only AC on NativeLink (needs owner, sb-ws infra). |
 | B5 | Contributor agents share uid, filesystem and credentials with the orchestrator; isolation is detective (transcript audit). | phase-1 known limit | orca-dev sandboxes (separate uid, no network, no credentials) on sb-ws. |
