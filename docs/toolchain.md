@@ -49,6 +49,17 @@ flags. The macros `c_library`, `c_binary`, `c_test`, `c_fuzz` have no flag param
 - Tools (clang, lld, llvm-*) and test binaries dynamically load the worker image's glibc/libstdc++/libz/libxml2/ICU
   at run time. Headers, link libraries, crt files and sanitizer runtimes come only from the pinned archives.
 - `python_bootstrap` and `genrule` toolchains use the worker's `python3` and `/bin/sh` (script interpreters only).
-- Sanitizer reports are unsymbolized (no `llvm-symbolizer` wired in); report kinds are still printed.
+- Sanitizer reports in `<name>_results` are symbolized with the pinned `llvm-symbolizer` (see below). `c_fuzz` runs
+  (`buck2 test` of a fuzz target) still print unsymbolized reports: wiring the same environment into `c_fuzz` needs
+  `rules/c.bzl` (backlog B9).
+
+## Sanitizer symbolization
+
+`llvm-symbolizer` comes from the pinned LLVM tarball (`toolchains//:llvm-symbolizer`) and is a declared input of the
+`<name>_results` action, so it is cached and runs on RE; no host symbolizer is ever looked up. `rules/ctest.bzl`
+exports `ASAN_SYMBOLIZER_PATH` and `LLVM_SYMBOLIZER_PATH` (absolute paths to it) and these options (details in
+`docs/ctest.md`): `symbolize=1`, `fast_unwind_on_malloc=0`, `strip_path_prefix=<exec root>/`, `log_path`, and the
+fatal settings `halt_on_error=1`, `abort_on_error=0`, `detect_leaks=1` (the compile flags keep
+`-fno-sanitize-recover=all`).
 
 Self-test: `selftest/toolchain.sh`.

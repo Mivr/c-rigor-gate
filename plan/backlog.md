@@ -10,7 +10,7 @@
 | B6 | Gate canary pack (every gate red on its known-bad fixture, run on every gate change) and impossible-obligation tripwires. | plan | T008. |
 | B7 | Hidden tests in a private repo, fail-on-base / pass-on-witness, run only at grading. | plan | after mutation lands. |
 | B8 | Red team: an Opus agent tries to pass a hidden task by cheating; every success becomes a canary. | plan | end of phase 1. |
-| B9 | Sanitizer stack traces are unsymbolized (agent debugging cost). | T001 | wire `llvm-symbolizer` into san/fuzz runs. |
+| B9 | Sanitizer stack traces are unsymbolized (agent debugging cost). | T001 | wire `llvm-symbolizer` into san/fuzz runs. **Done in T016 for `<name>_results` in `san`** (hermetic symbolizer, `file:line function` in `reason`, `t_results[san_report]`); `c_fuzz` runs still need the same env set in `rules/c.bzl` (T016 could not touch it). |
 | B10 | Transcript audit is an orchestrator scratch script with false positives (URLs in test data). | orchestrator | move into the gate as `rigor trajectory` with structured rules and tests. |
 | B11 | **Code shaped so that its mutants do not compile escapes mutation testing** (e.g. constants at the limit of their type under `-Werror`). | T006 review | **Done (T008):** `unviable-ratio` finding when more than 25 % of a module's mutants are unviable (error at L3+, info at L2), in `rigor mutants`, hence in `rigor grade`. |
 | B12 | `rigor grade` must build `gate//third_party/*:*_symbols` into the facts dir for products that use a vendored library; product layouts must always exclude `third_party/**`. | T009 | after T008 merges. |
