@@ -8,6 +8,7 @@ product wrote anywhere is not consulted. The daemon is always killed when the ga
 import os
 import re
 import subprocess
+from dataclasses import dataclass, field
 
 from rigor_lib import grade_context, jsonio, toolchain_verify
 from rigor_lib.errors import InternalError
@@ -18,6 +19,27 @@ RESULT_KIND = "ctest_results"
 _LABEL = re.compile(r"root//[A-Za-z0-9_./+-]*:[A-Za-z0-9_./+-]+")
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _TAIL_CHARS = 4000
+
+
+@dataclass
+class TreeRun:
+    """One tree the build and mutants steps work on, and where their outputs go."""
+    tree: str                  # the tree Buck2 builds in
+    work: str                  # directory for build reports and scratch files
+    results: str = ""          # one <gate id>.json per gate
+    test_results: str = ""     # per mode: a directory of *.jsonl
+    mutants_reports: str = ""  # the mutants reports, one per module
+    report_prefix: str = "build-report"   # build reports are <work>/<prefix>-<mode>.json
+    built: dict = field(default_factory=dict)   # mode -> results directory, set for a clean build
+
+    def report_path(self, name):
+        return os.path.join(self.work, "%s-%s.json" % (self.report_prefix, name))
+
+
+def head_run(g):
+    """The TreeRun of the head tree, over the paths of the grading."""
+    return TreeRun(g.tree, g.work, g.results, g.test_results, os.path.join(g.work, "mutants-reports"),
+                   "build-report", g.built)
 
 
 def run_buck(tree, args):
@@ -119,44 +141,50 @@ def collect_mode(tree, mode, labels, report_path, out_dir):
     return found
 
 
-def build_mode(g, mode, labels):
+def build_mode(run, uncached, mode, labels):
     """Build all labels in one mode. Returns (findings, metadata)."""
-    report = os.path.join(g.work, "build-report-%s.json" % mode)
+    report = run.report_path(mode)
     if os.path.lexists(report):
         os.unlink(report)
     # --uncached: no remote action-cache lookups or writes, so every action runs on a worker.
-    flags = ["--no-remote-cache"] if g.args.uncached else []
-    code, _, err = run_buck(g.tree, ["build", "--target-platforms", "toolchains//:linux_" + mode,
-                                     "--keep-going", "--build-report", report] + flags + labels)
-    executed, cached = action_counts(g.tree)
+    flags = ["--no-remote-cache"] if uncached else []
+    code, _, err = run_buck(run.tree, ["build", "--target-platforms", "toolchains//:linux_" + mode,
+                                       "--keep-going", "--build-report", report] + flags + labels)
+    executed, cached = action_counts(run.tree)
     metadata = {"executed_actions": executed, "cached_actions": cached, "exit_code": code}
-    out_dir = os.path.join(g.test_results, mode)
-    found = collect_mode(g.tree, mode, labels, report, out_dir)
+    out_dir = os.path.join(run.test_results, mode)
+    found = collect_mode(run.tree, mode, labels, report, out_dir)
     if code != 0 and not found:
         found.append(finding("build-failed", mode=mode, target="*"))
     if code != 0:
         metadata["stderr_tail"] = err[-_TAIL_CHARS:]
     if not found:
-        g.built[mode] = out_dir
+        run.built[mode] = out_dir
     return found, metadata
+
+
+def build_tree(run, uncached):
+    """The build of every results target of `run.tree` in both modes; always a GateResult."""
+    code, labels, err = result_targets(run.tree)
+    if code != 0:
+        return GateResult("build", [finding("query-failed")], {"stderr_tail": err[-_TAIL_CHARS:]})
+    if not labels:
+        return GateResult("build", [finding("no-results-targets")], {})
+    found, metadata = [], {"targets": labels}
+    for mode in grade_context.MODES:
+        mode_found, mode_metadata = build_mode(run, uncached, mode, labels)
+        found.extend(mode_found)
+        metadata[mode] = mode_metadata
+    for counter in ("executed_actions", "cached_actions"):
+        metadata[counter] = sum(metadata[m][counter] for m in grade_context.MODES)
+    return GateResult("build", found, metadata)
 
 
 def build_gate(g):
     if g.status.get("assemble") != "PASS":
         return None  # no trustworthy tree to build
+    run = head_run(g)
     try:
-        code, labels, err = result_targets(g.tree)
-        if code != 0:
-            return GateResult("build", [finding("query-failed")], {"stderr_tail": err[-_TAIL_CHARS:]})
-        if not labels:
-            return GateResult("build", [finding("no-results-targets")], {})
-        found, metadata = [], {"targets": labels}
-        for mode in grade_context.MODES:
-            mode_found, mode_metadata = build_mode(g, mode, labels)
-            found.extend(mode_found)
-            metadata[mode] = mode_metadata
-        for counter in ("executed_actions", "cached_actions"):
-            metadata[counter] = sum(metadata[m][counter] for m in grade_context.MODES)
-        return GateResult("build", found, metadata)
+        return build_tree(run, g.args.uncached)
     finally:
-        grade_context.kill_daemon(g.tree)
+        grade_context.kill_daemon(run.tree)
