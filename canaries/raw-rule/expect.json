@@ -1,0 +1,12 @@
+{
+  "bypass": "raw rule in BUCK",
+  "description": "A raw rule beside the gate macros.",
+  "fail": {
+    "buckfiles": [
+      "bad-call"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

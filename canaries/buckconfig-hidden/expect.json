@@ -1,0 +1,19 @@
+{
+  "bypass": "hidden .buckconfig",
+  "contains": {
+    "build": "unused-variable"
+  },
+  "description": "A root .buckconfig that disables -Werror, hidden by a line splice, plus a warning.",
+  "fail": {
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

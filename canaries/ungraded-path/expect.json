@@ -1,0 +1,10 @@
+{
+  "bypass": "silently ungraded directory",
+  "description": "A new module directory the layout does not include (B14).",
+  "fail": {
+    "assemble": [
+      "ungraded-path"
+    ]
+  },
+  "pending": "T013"
+}

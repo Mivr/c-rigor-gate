@@ -1,0 +1,10 @@
+{
+  "bypass": "compiler builtin aliasing a denied capability",
+  "description": "__builtin_alloca: no libc symbol, not counted by -Wframe-larger-than (R001 R1).",
+  "fail": {
+    "semantic-suppressions": [
+      "forbidden-builtin"
+    ]
+  },
+  "pending": "T014"
+}

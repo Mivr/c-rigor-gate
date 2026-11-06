@@ -1,0 +1,12 @@
+{
+  "bypass": "BUCK assignment",
+  "description": "A top-level assignment in BUCK.",
+  "fail": {
+    "buckfiles": [
+      "bad-statement"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "bypass": "binary artifact",
+  "description": "A prebuilt object file committed into the product.",
+  "fail": {
+    "suppressions": [
+      "binary-artifact"
+    ]
+  }
+}

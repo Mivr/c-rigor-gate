@@ -1,0 +1,10 @@
+{
+  "bypass": "function too long",
+  "description": "A 90-line function in an L2 module (B2).",
+  "fail": {
+    "structure": [
+      "function-too-long"
+    ]
+  },
+  "pending": "T011"
+}

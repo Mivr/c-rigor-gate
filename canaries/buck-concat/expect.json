@@ -1,0 +1,12 @@
+{
+  "bypass": "BUCK concatenation",
+  "description": "srcs built by list concatenation.",
+  "fail": {
+    "buckfiles": [
+      "bad-argument"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

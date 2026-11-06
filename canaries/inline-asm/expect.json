@@ -1,0 +1,9 @@
+{
+  "bypass": "inline assembly",
+  "description": "Inline assembly reached through a macro alias.",
+  "fail": {
+    "semantic-suppressions": [
+      "inline-asm"
+    ]
+  }
+}

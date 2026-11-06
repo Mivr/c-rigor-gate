@@ -1,0 +1,19 @@
+{
+  "bypass": "hidden .buckconfig",
+  "contains": {
+    "build": "unused-variable"
+  },
+  "description": "A .buckconfig in a package directory with a warning that -Werror must reject.",
+  "fail": {
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

@@ -7,7 +7,7 @@
 | B3 | Code under `__SANITIZE_ADDRESS__` / `__has_feature(...sanitizer)` is invisible to the release-only semantic scan. | T004 | Also produce facts in `san` mode and diff the semantic facts between modes; any difference is a finding. |
 | B4 | Action cache is client-writable on the shared RE farm, so cached results could be forged. Today: decisive grades use `--uncached`. | orchestrator (T005) | Dedicated grader instance with client-read-only AC on NativeLink (needs owner, sb-ws infra). |
 | B5 | Contributor agents share uid, filesystem and credentials with the orchestrator; isolation is detective (transcript audit). | phase-1 known limit | orca-dev sandboxes (separate uid, no network, no credentials) on sb-ws. |
-| B6 | Gate canary pack (every gate red on its known-bad fixture, run on every gate change) and impossible-obligation tripwires. | plan | T008. |
+| B6 | Gate canary pack (every gate red on its known-bad fixture, run on every gate change) and impossible-obligation tripwires. | plan | **Canary pack done (T018):** `selftest/canaries.sh`, `docs/canaries.md`; no bypass fix merges without its canary. Impossible-obligation tripwires still open. |
 | B7 | Hidden tests in a private repo, fail-on-base / pass-on-witness, run only at grading. | plan | after mutation lands. |
 | B8 | Red team: an Opus agent tries to pass a hidden task by cheating; every success becomes a canary. | plan | end of phase 1. |
 | B9 | Sanitizer stack traces are unsymbolized (agent debugging cost). | T001 | wire `llvm-symbolizer` into san/fuzz runs. **Done in T016 for `<name>_results` in `san`** (hermetic symbolizer, `file:line function` in `reason`, `t_results[san_report]`); `c_fuzz` runs still need the same env set in `rules/c.bzl` (T016 could not touch it). |

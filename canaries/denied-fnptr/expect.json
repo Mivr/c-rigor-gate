@@ -1,0 +1,9 @@
+{
+  "bypass": "function pointer to a denied symbol",
+  "description": "The address of kill() stored in a constant function pointer, never called.",
+  "fail": {
+    "symbols": [
+      "denied-symbol"
+    ]
+  }
+}

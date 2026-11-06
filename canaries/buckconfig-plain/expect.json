@@ -1,0 +1,22 @@
+{
+  "bypass": "hidden .buckconfig",
+  "contains": {
+    "build": "unused-variable"
+  },
+  "description": "The same, spelled out: the text scan sees it, and it still must not take effect.",
+  "fail": {
+    "build": [
+      "build-failed"
+    ],
+    "suppressions": [
+      "forbidden-pattern"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}
