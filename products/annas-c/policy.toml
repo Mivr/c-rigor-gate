@@ -13,21 +13,93 @@ deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace",
 # The ctest runtime forks, kills and exits by design; it is the gate's own code.
 trusted = ["gate//ctest:ctest"]
 
-[module."//core:core"]
-level = "L3"
-allow = ["bcmp", "memcpy", "strlen"]
-
-[module."//json:json"]
+[module."//annas:annas"]
 level = "L3"
 allow = ["memcpy"]
 
-[module."//url:url"]
-level = "L3"
+[module."//annas:config_test"]
+allow = ["bcmp", "memset", "snprintf", "strlen"]
+
+[module."//annas:ctx_test"]
+allow = ["memset"]
+
+[module."//annas:download_big_test"]
+allow = ["memcpy", "snprintf"]
+
+[module."//annas:download_err_test"]
+allow = ["snprintf"]
+
+[module."//annas:download_fs_test"]
+allow = ["snprintf"]
+
+[module."//annas:download_ok_test"]
+allow = ["memset", "snprintf", "strlen"]
+
+[module."//annas:fast_err_test"]
+allow = ["memcpy", "memset", "snprintf"]
+
+[module."//annas:fast_net_test"]
+allow = ["strlen"]
+
+[module."//annas:fast_ok_test"]
+allow = ["memset", "snprintf", "strlen"]
+
+[module."//annas:fast_request_test"]
 allow = []
 
-[module."//fsname:fsname"]
-level = "L3"
-allow = ["memcpy"]
+[module."//annas:format_test"]
+allow = ["memset"]
+
+[module."//annas:leak_test"]
+allow = ["memset", "snprintf", "strlen"]
+
+[module."//annas:testkit"]
+level = "L1"
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
+
+[module."//app:app"]
+level = "L2"
+allow = ["bcmp"]
+
+[module."//app:cli_err_test"]
+allow = []
+
+[module."//app:cli_run_test"]
+allow = []
+
+[module."//app:dotenv_test"]
+allow = ["memset", "snprintf", "strlen"]
+
+[module."//app:leak_test"]
+allow = ["snprintf"]
+
+[module."//app:mcp_args_test"]
+allow = ["snprintf", "strcmp"]
+
+[module."//app:mcp_bad_test"]
+allow = ["memcpy", "memset", "strchr", "strlen", "strncmp"]
+
+[module."//app:mcp_call_test"]
+allow = ["memcpy", "snprintf"]
+
+[module."//app:mcp_proto_test"]
+allow = ["snprintf", "strchr"]
+
+[module."//app:parse_err_test"]
+allow = ["bcmp", "memset", "snprintf", "strlen"]
+
+[module."//app:parse_test"]
+allow = []
+
+[module."//app:scratch_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
+
+[module."//app:scrub_utf8_test"]
+allow = ["snprintf"]
+
+[module."//app:testkit"]
+level = "L1"
+allow = ["memcpy", "memset", "strchr", "strlen"]
 
 [module."//core:arena_test"]
 allow = []
@@ -35,11 +107,19 @@ allow = []
 [module."//core:buf_test"]
 allow = ["strlen"]
 
+[module."//core:core"]
+level = "L3"
+allow = ["bcmp", "memcpy", "strlen"]
+
 [module."//core:parse_test"]
 allow = []
 
 [module."//core:str_test"]
 allow = []
+
+[module."//fsname:fsname"]
+level = "L3"
+allow = ["memcpy"]
 
 [module."//fsname:fsname_prop_test"]
 allow = ["memchr", "memcpy", "memset", "strstr"]
@@ -50,26 +130,67 @@ allow = ["memchr", "memcpy", "memset"]
 [module."//fsname:fsname_utf8_test"]
 allow = ["memset"]
 
-[module."//url:url_base_test"]
+[module."//http:challenge_test"]
 allow = ["memset"]
 
-[module."//url:url_build_test"]
-allow = ["memset", "strlen"]
+[module."//http:complexity_test"]
+allow = ["memset", "snprintf"]
 
-[module."//url:url_ident_test"]
+[module."//http:http"]
+level = "L3"
+allow = ["memset"]
+
+[module."//http:live_test"]
+allow = ["memcpy", "strlen"]
+
+[module."//http:parse_basic_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strlen"]
+
+[module."//http:parse_count_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strlen"]
+
+[module."//http:parse_framing_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strlen"]
+
+[module."//http:parse_limits_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strlen"]
+
+[module."//http:parse_reject_chunk_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strlen"]
+
+[module."//http:parse_reject_framing_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strlen"]
+
+[module."//http:parse_reject_syntax_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strlen"]
+
+[module."//http:parse_split_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strchr", "strlen", "strstr"]
+
+[module."//http:parse_stream_test"]
 allow = []
 
-[module."//url:url_pct_test"]
-allow = ["memchr", "memset"]
+[module."//http:redirect_test"]
+allow = ["strlen"]
 
-[module."//url:url_redact_test"]
-allow = ["memcpy", "memset"]
+[module."//http:request_test"]
+allow = ["bcmp", "strlen", "strstr"]
+
+[module."//http:url_test"]
+allow = ["bcmp", "memset"]
 
 [module."//json:arena_test"]
 allow = []
 
+[module."//json:complexity_test"]
+allow = ["memset", "snprintf"]
+
 [module."//json:corpus_test"]
 allow = []
+
+[module."//json:json"]
+level = "L3"
+allow = ["memcmp", "memcpy"]
 
 [module."//json:limits_test"]
 allow = ["memset", "snprintf"]
@@ -95,10 +216,6 @@ allow = ["snprintf"]
 [module."//json:writer_test"]
 allow = ["memcpy", "memset", "strlen"]
 
-[module."//ports:ports"]
-level = "L2"
-allow = ["bcmp", "memchr", "memcpy"]
-
 [module."//ports:clock_test"]
 allow = []
 
@@ -111,6 +228,10 @@ allow = []
 [module."//ports:fs_test"]
 allow = []
 
+[module."//ports:ports"]
+level = "L2"
+allow = ["bcmp", "memchr", "memcpy"]
+
 [module."//ports:stream_error_test"]
 allow = []
 
@@ -122,3 +243,137 @@ allow = ["strlen"]
 
 [module."//ports:stream_test"]
 allow = []
+
+[module."//posix_clock:clock_test"]
+allow = []
+
+[module."//posix_clock:posix_clock"]
+level = "L2"
+allow = ["__errno_location"]
+deny_exempt = ["clock_gettime"]
+
+[module."//posix_env:env_test"]
+allow = ["bcmp", "memset", "snprintf", "strlen"]
+deny_exempt = ["environ", "getenv", "setenv"]
+
+[module."//posix_env:posix_env"]
+level = "L2"
+allow = ["memchr"]
+
+[module."//posix_fs:fs_args_test"]
+allow = []
+
+[module."//posix_fs:fs_commit_test"]
+allow = ["memcmp", "memset", "strlen"]
+
+[module."//posix_fs:fs_contract_test"]
+allow = ["snprintf", "strlen"]
+
+[module."//posix_fs:fs_errno_test"]
+allow = ["strchr"]
+
+[module."//posix_fs:fs_real_test"]
+allow = ["__lxstat", "__xstat", "chdir", "getcwd", "mkdir", "rmdir", "snprintf", "symlink", "umask"]
+deny_exempt = ["rename", "unlink"]
+
+[module."//posix_fs:posix_fs"]
+level = "L2"
+allow = ["__errno_location", "close", "fsync", "ftruncate", "linkat", "memcpy", "pwrite", "snprintf"]
+deny_exempt = ["open", "openat"]
+
+[module."//posix_fs:testkit"]
+level = "L1"
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy", "memset", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strcmp"]
+deny_exempt = ["fopen", "getenv", "unlink"]
+
+[module."//tls_stream:alert_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:api_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:bulk_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:cert_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:deadline_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:eof_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:errno_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:fault_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:host_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:reuse_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:session_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:sizing_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:sock_test"]
+allow = ["memset"]
+
+[module."//tls_stream:split_test"]
+allow = ["memcmp", "memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:state_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//tls_stream:testkit"]
+level = "L1"
+allow = []
+
+[module."//tls_stream:tls_stream"]
+level = "L2"
+allow = []
+deny_exempt = ["connect", "socket"]
+third_party = ["gate//third_party/mbedtls:mbedtls"]
+
+[module."//tls_stream:trust_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+
+[module."//url:url_base_test"]
+allow = ["memset"]
+
+[module."//url:url_build_test"]
+allow = ["memset", "strlen"]
+
+[module."//url:url"]
+level = "L3"
+allow = []
+
+[module."//url:url_ident_test"]
+allow = []
+
+[module."//url:url_pct_test"]
+allow = ["memchr", "memset"]
+
+[module."//url:url_redact_test"]
+allow = ["memcpy", "memset"]
