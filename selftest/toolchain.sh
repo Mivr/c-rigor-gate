@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Self-test of the hermetic C toolchain. Runs every acceptance check, stops at the first
+# failure and names it. Needs only bash, python3 (stdlib) and tools/buck2.
+set -uo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+B=(tools/buck2)
+PLAT=toolchains//:linux_
+scratch="selftest/scratch"
+out="$(mktemp -d)"
+cleanup() { rm -rf "$scratch" "$out"; }
+trap cleanup EXIT
+
+step=0
+fail() { echo "FAIL [$step]: $1" >&2; [ -n "${2:-}" ] && { echo "---- output ----" >&2; tail -n 40 "$2" >&2; }; exit 1; }
+begin() { step=$((step + 1)); echo "[$step] $1"; CUR="$1"; }
+strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
+# run <logfile> <args...>: runs buck2, stores ANSI-stripped combined output, returns buck2's status
+run() { local log="$1"; shift; "${B[@]}" "$@" 2>&1 | strip_ansi > "$log"; return "${PIPESTATUS[0]}"; }
+must_pass() { local log="$out/$step.log"; run "$log" "$@" || fail "$CUR: buck2 $* failed" "$log"; }
+must_fail_with() { # <regex> <args...>
+  local re="$1"; shift; local log="$out/$step.log"
+  if run "$log" "$@"; then fail "$CUR: buck2 $* unexpectedly succeeded" "$log"; fi
+  grep -Eq "$re" "$log" || fail "$CUR: failed, but not for the right reason (wanted /$re/)" "$log"
+}
+
+begin "hello builds on RE (release)"
+must_pass build //examples/hello:hello
+
+begin "hello tests pass: release"
+must_pass test //examples/hello/...
+begin "hello tests pass: san"
+must_pass test --target-platforms ${PLAT}san //examples/hello/...
+begin "hello tests pass: cov"
+must_pass test --target-platforms ${PLAT}cov //examples/hello/...
+
+begin "coverage report from the fetched llvm-cov / llvm-profdata (line, branch, MC/DC)"
+log="$out/$step.log"
+run "$log" build --target-platforms ${PLAT}cov //examples/hello:hello_test_coverage --show-output || fail "$CUR" "$log"
+rep="$(awk '/hello_test_coverage/ && /buck-out/ {print $2}' "$log" | tail -1)"
+[ -f "$rep" ] || fail "$CUR: no report file" "$log"
+grep -q "MC/DC" "$rep" && grep -q "Branches" "$rep" && grep -Eq "^hello\.c +[0-9]+ +0 +100\.00%" "$rep" || fail "$CUR: report lacks expected content: $(cat "$rep")"
+grep -q "MC/DC" "$(dirname "$rep")/detail.txt" || true
+
+begin "sealed flags: bad/warn fails to build for -Werror (unused variable)"
+must_fail_with "unused variable.*-Werror|-Werror.*unused variable" build //examples/bad/warn:warn
+
+begin "sealed flags: warn also fails in every mode"
+for m in release san cov fuzz; do
+  must_fail_with "unused variable" build --target-platforms ${PLAT}$m //examples/bad/warn:warn
+done
+
+begin "san: bad/ubsan fails with an UndefinedBehaviorSanitizer report"
+must_fail_with "runtime error: signed integer overflow" test --target-platforms ${PLAT}san //examples/bad/ubsan:ubsan
+begin "san: bad/asan fails with heap-buffer-overflow"
+must_fail_with "AddressSanitizer: heap-buffer-overflow" test --target-platforms ${PLAT}san //examples/bad/asan:asan
+begin "san: bad/leak fails with LeakSanitizer"
+must_fail_with "LeakSanitizer: detected memory leaks" test --target-platforms ${PLAT}san //examples/bad/leak:leak
+
+begin "fuzz: fuzzme finds its planted crash with -seed=1 -runs=200000 (3 times, same crash)"
+sums=""
+for i in 1 2 3; do
+  log="$out/fuzz$i.log"
+  if run "$log" test --target-platforms ${PLAT}fuzz //examples/bad/fuzzme:fuzzme; then fail "$CUR: fuzzme did not fail" "$log"; fi
+  grep -q "INFO: Seed: 1$" "$log" || fail "$CUR: seed not 1" "$log"
+  grep -q "AddressSanitizer: heap-buffer-overflow" "$log" || fail "$CUR: wrong crash kind" "$log"
+  grep -q "Test unit written to" "$log" || fail "$CUR: no crash artifact" "$log"
+  sums="$sums $(grep -o 'crash-[0-9a-f]*' "$log" | head -1)"
+done
+[ "$(echo $sums | tr ' ' '\n' | sort -u | wc -l)" = 1 ] || fail "$CUR: crash input differs between runs:$sums"
+
+begin "sealed flags: macros reject every flag argument"
+mkdir -p "$scratch"
+for macro in c_library c_binary c_test c_fuzz; do
+  for kw in compiler_flags preprocessor_flags linker_flags copts cflags exported_linker_flags exported_preprocessor_flags; do
+    cat > "$scratch/BUCK" <<BUCK
+load("@gate//rules:c.bzl", "$macro")
+$macro(name = "x", srcs = ["x.c"], $kw = ["-Wno-error"])
+BUCK
+    log="$out/neg.log"
+    if run "$log" build //selftest/scratch:x; then fail "$CUR: $macro accepted $kw" "$log"; fi
+    grep -Eq "$kw" "$log" && grep -Eq "[Ee]xtra named|unexpected|no parameter" "$log" || fail "$CUR: $macro/$kw rejected for the wrong reason" "$log"
+  done
+done
+rm -rf "$scratch"
+
+begin "remote: compile, link and test all execute on RE (fresh, uncached sources)"
+mkdir -p "$scratch"
+nonce="$(date +%s%N)-$$"
+cat > "$scratch/BUCK" <<'BUCK'
+load("@gate//rules:c.bzl", "c_library", "c_test")
+c_library(name = "l", srcs = ["l.c"], headers = ["l.h"])
+c_test(name = "t", srcs = ["t.c"], deps = [":l"])
+BUCK
+printf '/* %s */\nint scratch_one(void);\n' "$nonce" > "$scratch/l.h"
+printf '#include "l.h"\nint scratch_one(void) { return 1; }\n' > "$scratch/l.c"
+printf '#include "l.h"\nint main(void) { return scratch_one() == 1 ? 0 : 1; }\n' > "$scratch/t.c"
+must_pass test //selftest/scratch:t
+"${B[@]}" log what-ran 2>/dev/null | strip_ansi > "$out/whatran.txt"
+for want in "(c_compile l.c)" "(c_compile t.c)" "(archive " "(cxx_link_executable)"; do
+  grep -qF "$want" "$out/whatran.txt" || fail "$CUR: no $want action in what-ran" "$out/whatran.txt"
+done
+grep -q '^test.run' "$out/whatran.txt" || fail "$CUR: no test.run in what-ran" "$out/whatran.txt"
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
+  fail "$CUR: an action did not run on RE" "$out/whatran.txt"
+fi
+grep -q "local: 0)" "$out/$step.log" || fail "$CUR: local executions reported" "$out/$step.log"
+rm -rf "$scratch"
+
+begin "hermetic: no action command references host paths or the host clang"
+python3 - "$root" <<'PY' || fail "$CUR"
+import json, re, subprocess, sys
+root = sys.argv[1]
+bad = re.compile(r'(^|[\s=:\'"])/(usr/include|usr/lib|usr/local|usr/bin|lib|lib64|opt)(/|\b)')
+seen = 0
+for plat in ("release", "san", "cov", "fuzz"):
+    targets = "deps(//examples/hello:hello_test)" if plat != "fuzz" else "deps(//examples/bad/fuzzme:fuzzme)"
+    p = subprocess.run(["tools/buck2", "aquery", "--target-platforms", "toolchains//:linux_" + plat,
+                        targets, "--output-attribute=cmd"], cwd=root, capture_output=True, text=True)
+    if p.returncode:
+        sys.exit("aquery failed: " + p.stderr[-500:])
+    for key, val in json.loads(p.stdout).items():
+        cmd = val.get("cmd")
+        if not cmd:
+            continue
+        seen += 1
+        for tok in re.split(r'[\s,\[\]]+', cmd):
+            if tok.startswith("/") and tok != "/bin/sh":
+                sys.exit("absolute host path %r in %s" % (tok, key))
+            if re.search(r'(^|/)(gcc|cc|c\+\+|ld|clang|clang\+\+|clang-\d+)$', tok) and not tok.startswith("buck-out/"):
+                sys.exit("host tool %r in %s" % (tok, key))
+        if bad.search(cmd):
+            sys.exit("host path in %s: %s" % (key, cmd[:400]))
+        if "clang" in cmd and "buck-out/v2/art/toolchains/" not in cmd:
+            sys.exit("clang not from the fetched archive in " + key)
+print("checked %d action commands" % seen)
+PY
+
+begin "warm: a second build executes 0 actions"
+must_pass build //examples/hello:hello
+must_pass build //examples/hello:hello
+n="$("${B[@]}" log what-ran 2>/dev/null | strip_ansi | grep -vc '^Showing\|^$')"
+[ "$n" = 0 ] || fail "$CUR: $n actions executed on the second build"
+
+echo "ALL CHECKS PASSED ($step)"
