@@ -84,11 +84,11 @@ def _principals_for(signature_path, allowed_signers):
     return [line for line in out.decode("utf-8", "replace").splitlines() if line.strip()]
 
 
-def signature_is_valid(data, signature_path, allowed_signers):
-    """True if some allowed principal's key signed exactly `data` in our namespace."""
+def signature_is_valid(data, signature_path, allowed_signers, namespace=NAMESPACE):
+    """True if some allowed principal's key signed exactly `data` in `namespace`."""
     for principal in _principals_for(signature_path, allowed_signers):
         code, _ = _ssh_keygen(["-Y", "verify", "-f", allowed_signers, "-I", principal,
-                               "-n", NAMESPACE, "-s", signature_path], input_bytes=data)
+                               "-n", namespace, "-s", signature_path], input_bytes=data)
         if code == 0:
             return True
     return False

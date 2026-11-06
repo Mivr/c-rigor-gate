@@ -406,3 +406,46 @@ class ContractHistorySubstitutionTests(ContractCase):
         outcome, result = self.grade(["src/**"], head=bad_head)
         self.assertExit(outcome, 1)
         self.assertEqual(self.rules(result), [("outside-allowed", "tool.sh")])
+
+
+class ContractRoleTests(TempDirTestCase):
+    """`role` (P002): implementer (the default), test-author or audit; anything else is exit 2."""
+
+    GOOD = 'id = "T"\nallowed = ["src/**"]\n'
+
+    def load(self, text):
+        from rigor_lib import contract
+        path = self.tmp / "role.toml"
+        path.write_text(text, encoding="utf-8")
+        return contract.load_contract(path)
+
+    def test_absent_role_is_implementer(self):
+        self.assertEqual(self.load(self.GOOD).role, "implementer")
+
+    def test_each_role_is_exposed(self):
+        for role in ("implementer", "test-author", "audit"):
+            self.assertEqual(self.load(self.GOOD + 'role = "%s"\n' % role).role, role)
+
+    def test_roles_constant(self):
+        from rigor_lib import contract
+        self.assertEqual(contract.ROLES, ("implementer", "test-author", "audit"))
+
+    def test_any_other_role_is_an_internal_error(self):
+        from rigor_lib.errors import InternalError
+        for value in ('"Implementer"', '""', '"test_author"', '"stub"', "1", "true", '["audit"]', "{}"):
+            with self.assertRaises(InternalError, msg=value):
+                self.load(self.GOOD + "role = %s\n" % value)
+
+    def test_the_cli_accepts_a_role_and_refuses_a_bad_one(self):
+        repo = Repo(self.tmp / "repo")
+        repo.write("src/a.c", "int a;\n")
+        base = repo.commit("base")
+        repo.write("src/a.c", "int b;\n")
+        head = repo.commit("work")
+        contract_path = self.tmp / "c.toml"
+        for text, code in ((self.GOOD + 'role = "test-author"\n', 0), (self.GOOD + 'role = "audit"\n', 0),
+                           (self.GOOD + 'role = "owner"\n', 2), (self.GOOD + "role = 2\n", 2)):
+            contract_path.write_text(text, encoding="utf-8")
+            outcome = run_rigor(["contract", "--repo", repo.root, "--base", base, "--head", head,
+                                 "--contract", contract_path])
+            self.assertExit(outcome, code)
