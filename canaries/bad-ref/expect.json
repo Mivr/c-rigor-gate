@@ -1,0 +1,22 @@
+{
+  "bypass": "unresolvable head",
+  "description": "The head is a commit the repository does not have: nothing may be judged.",
+  "exit": 2,
+  "fail": {
+    "clone": [
+      "internal-error"
+    ]
+  },
+  "not_run": [
+    "contract",
+    "suppressions",
+    "assemble",
+    "buckfiles",
+    "semantic-suppressions",
+    "symbols",
+    "build",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "bypass": "weak symbol",
+  "description": "A weak definition (interposable).",
+  "fail": {
+    "semantic-suppressions": [
+      "forbidden-attribute"
+    ],
+    "symbols": [
+      "weak-symbol"
+    ]
+  }
+}

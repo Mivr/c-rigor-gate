@@ -1,0 +1,9 @@
+{
+  "bypass": "attribute behind a macro",
+  "description": "optnone built by token pasting: invisible to every line regex.",
+  "fail": {
+    "semantic-suppressions": [
+      "forbidden-attribute"
+    ]
+  }
+}

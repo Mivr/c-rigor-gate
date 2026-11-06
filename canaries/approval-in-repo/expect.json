@@ -1,0 +1,12 @@
+{
+  "bypass": "approval planted in the repo",
+  "description": "A forged approval file inside the graded tree.",
+  "fail": {
+    "contract": [
+      "approval-in-repo"
+    ],
+    "suppressions": [
+      "approval-in-repo"
+    ]
+  }
+}

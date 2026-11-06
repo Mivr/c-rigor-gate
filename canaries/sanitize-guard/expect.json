@@ -1,0 +1,9 @@
+{
+  "bypass": "sanitizer-only code",
+  "description": "Code guarded by __SANITIZE_ADDRESS__: release and san would differ.",
+  "fail": {
+    "suppressions": [
+      "forbidden-pattern"
+    ]
+  }
+}

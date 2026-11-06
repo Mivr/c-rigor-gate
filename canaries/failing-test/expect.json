@@ -1,0 +1,15 @@
+{
+  "bypass": "failing test",
+  "description": "A product change that breaks a test.",
+  "fail": {
+    "tests-release": [
+      "test-not-pass"
+    ],
+    "tests-san": [
+      "test-not-pass"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

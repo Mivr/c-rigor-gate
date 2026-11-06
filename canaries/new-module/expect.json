@@ -1,0 +1,12 @@
+{
+  "bypass": "module missing from the policy",
+  "description": "A library the policy has never heard of.",
+  "fail": {
+    "mutants": [
+      "level-missing"
+    ],
+    "symbols": [
+      "module-not-in-policy"
+    ]
+  }
+}

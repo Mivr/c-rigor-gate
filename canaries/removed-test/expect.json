@@ -1,0 +1,15 @@
+{
+  "bypass": "removed expected test",
+  "description": "A test is deleted and the expected-test list still names it.",
+  "fail": {
+    "tests-release": [
+      "missing-test"
+    ],
+    "tests-san": [
+      "missing-test"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}
