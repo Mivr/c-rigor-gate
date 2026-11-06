@@ -69,9 +69,9 @@ def _strings(label, entry, key):
 
 
 def _file_name(label, text):
-    """`root//pkg:file.h` -> `file.h`, for a file of the package of `label`."""
+    """`root//pkg/file.h` (how buck2 prints a source file) -> `file.h`, for a file of the package of `label`."""
     package, _ = _split(label)
-    prefix = "%s%s:" % (_ROOT, package)
+    prefix = _ROOT + package + "/" if package else _ROOT
     if not text.startswith(prefix) or len(text) == len(prefix):
         raise InternalError("%s: a file of another package: %r" % (label, text))
     return text[len(prefix):]
