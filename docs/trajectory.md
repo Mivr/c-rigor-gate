@@ -185,7 +185,7 @@ is decided; a unit test requires a fixture for every rule.
 | `read-process-environ` | block | /proc/*/environ exposes the whole environment, secrets included. |
 | `path-unresolved` | review | A path built from an expansion could not be resolved; a human must look. |
 | `write-outside` | block | Writes are allowed only in the task worktree and the declared scratch dirs. |
-| `write-unresolved` | review | A write target built from an expansion could not be resolved. |
+| `write-unresolved` | review | A write target (or the files a writer touches) could not be resolved. |
 | `write-not-allowed` | review | A write inside the worktree falls outside the task's allowed paths. |
 | `cmd-gh` | block | Contributors have no GitHub access. |
 | `cmd-git-push` | block | Contributors never push. |
@@ -326,7 +326,8 @@ command breaks exactly the rules the bare command breaks).
   argument with a backslash and no `-e`/`-E` is read both ways, since bash prints it and dash's echo decodes it), and a
   quoted here-document (or an unquoted one that expands nothing) to `cat > f` / `tee f`. Any other rewrite makes the
   text unknown: a redirect of command output (`python3 gen.py > f`, `sed '...' a > f`, `base64 -d > f`), `cp`, `mv`,
-  `ln`, `tee` in a pipe, `curl -o`. When the file is run (`bash f`, `sh f`, `python3 f`, `./f`, `source f`,
+  `ln`, `tee` in a pipe, `curl -o`; except that a `cp`/`mv`/`install` of a file whose text is known gives the copy that
+  text (and its edited state, T061). When the file is run (`bash f`, `sh f`, `python3 f`, `./f`, `source f`,
   `bash < f`, `cat f | sh`), known text is audited as code and unknown text is `cmd-obfuscated-exec` (block).
   `/dev/stdin`, `/dev/fd/0` and `/proc/self/fd/0` as the script are stdin, like `-` (a here-document is then code). A shell
   asked only to **check syntax** (`bash -n f`, `sh --noexec f`, `-o noexec`) runs nothing, so an unknown-content file
@@ -345,8 +346,8 @@ command breaks exactly the rules the bare command breaks).
   compiled program run directly (no script suffix). A script lying directly in a declared scratch directory is
   `cmd-obfuscated-exec` (it was a review before). Deeper in a scratch directory it is `cmd-unresolved` (review): in
   the real transcripts those are copies of the product tree made by gate scripts (`<scratch>/w0/tree/gate/tools/buck2`).
-  Limit: a script written there by a writer the audit does not model (inline Python `open(...).write`, a compiler,
-  a gate script) is therefore only reviewed; modelling those writers is R008 #16.
+  Limit: a script written there by a writer the audit does not model (a gate script, computed paths in inline code)
+  is therefore only reviewed; the writers of R008 #16 are modelled since T061 (below).
 
 ### Repeated reviews
 Identical `review` findings (same rule, tool and excerpt) are reported once, at the first line, and counted in
@@ -439,13 +440,81 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   (`npm x`), `bun x`, `uv run --with...` and `go run PKG@VERSION` are `cmd-install`. `go run ./cmd`, `uv run` without
   `--with`, `npm run` stay green. Python's `urlopen` stays `network-code` (review), by design.
 
+### Writers beyond a target argument (T061, R008 #16)
+`gate/rigor_lib/trajectory_writers.py`. Each write below is judged like any other (`write-outside`, `tamper-*`,
+`write-not-allowed`) and changes what the audit knows of the file's text.
+* **Inline code** (`python3 -c`, a heredoc, a script the agent wrote and runs): a plain string literal, or a name bound
+  to one (`p = 'x'`), handed to a write-mode `open` (`w`, `a`, `x`, `+`; `io`/`codecs`/`gzip` too), `os.open` with
+  `O_WRONLY`/`O_RDWR`/`O_CREAT`/`O_TRUNC`/`O_APPEND`, `os.remove/unlink/rmdir/rename/replace/makedirs/symlink/truncate`,
+  `shutil.rmtree/copy*/copytree/move`, `Path(...).write_text/write_bytes/touch/mkdir/unlink/rmdir/rename/replace/open`,
+  Node's `fs` writers (`writeFileSync`, `rmSync`, ..., also as `require('fs').X`), Ruby's `File.write` and `FileUtils`,
+  and Perl's `open(FH, '>', ...)`. A rewrite of a literal the same code also reads (`s = open(p).read() ...
+  open(p, 'w').write(s)`, `read_text` then `write_text`) is an **edit** (as with the Edit tool: `test-edit`, a script
+  run later is audited as written and `cmd-unresolved`). A computed path (a concatenation, `os.path.join`, an f-string)
+  is not named (a limit), and a call inside a string literal or a `#` comment is text.
+* **`-o`/`--output[=]`** (also `-oFILE`) of a compiler (`cc`, `gcc`, `g++`, `clang`, `tcc`, `ld`, `as`, `rustc`, a
+  versioned or target-prefixed name, `go build`) and of `sort` (also in a cluster, `-uo FILE`). A compiler's output is a
+  program: running it directly stays unreported, as for any compiled program.
+* **`gawk -i inplace`** (`-iinplace`, `--include=inplace`) edits its file arguments.
+* **Files the audit cannot name, below a known directory:** `tar -x` (also `xf`, `--extract`; not with `-O`/
+  `--to-stdout`) below its last `-C DIR` (`-CDIR`, `--directory=DIR`) or the working directory, and `unzip` below
+  `-d DIR` (not `-l`/`-t`/`-p`/`-v`/`-z`). Outside the agent's dirs that is `write-outside`; in a scratch dir nothing is
+  protected; in the worktree a protected directory is `tamper-protected` and any other is `write-unresolved` (review).
+  What the audit knew of files below is forgotten.
+* **`patch` and `git apply`** write the files their diff names. When the audit knows the diff's text (the agent wrote
+  it with a known writer, or it is a quoted here-document; `< f`, `-i f`, the patch-file argument, `git apply f`), each
+  `+++`/`---` (and git `rename`/`copy`) name, after `-pN` (git: `-p1` by default, under `--directory=`; `patch`
+  without `-p`: the name and its basename), is a write: `git apply` of a diff the agent wrote that touches only
+  allowed files is green (the diff is reviewed at merge), one touching `policy/` is `tamper-protected`. An unknown
+  diff is the directory rule above (`write-unresolved` in the worktree). `patch -o FILE` writes FILE, an explicit
+  original file is edited, `--dry-run`, `git apply --check/--stat` write nothing; `git apply` outside the agent's dirs
+  is `write-outside`.
+* **`git clean`** deletes its pathspecs, else unknown files below its directory (`write-unresolved` in the worktree);
+  `-n` writes nothing; outside the agent's dirs it is `write-outside` (T057).
+* **`xargs <writer>`** (`rm`, `mv`, `cp`'s sources for `mv`, `sed -i`, ...; any command whose written argument is the
+  appended input or holds the `-I` string): when the stage before is `find ROOTS`, the targets are the roots (as for
+  `find -exec`); otherwise the names are unknown: `write-outside` when the working directory is outside the agent's
+  dirs, else `write-unresolved` (review, orchestrator ruling 4: T043's `ls test_*.py | ... | xargs rm` in its own
+  `gate/tests`).
+* Deviation from the R008 harness: `patch -p1 < <scratch>/x.diff` (a diff the transcript never wrote) and
+  `git clean -fdx` in the worktree are `write-unresolved` (review) as the contract asks, so those two R008 cases
+  (P15, P17) pass the audit with a review.
+
+### Directory targets and `find -exec` (T061, R008 #17)
+* `cp`, `mv`, `install` and `ln` into a directory write `DIR/basename(SOURCE)` for each source: with `-t DIR`,
+  `--target-directory=DIR`, more than one source, or a target that is `.`, `..`, ends in `/`, is the working directory
+  or one of the agent's roots, a directory the transcript made (`mkdir`, `tar -C`, `unzip -d`) or wrote files into, or a
+  directory on the disk. `cp <scratch>/BUCK .` is `tamper-protected`; `cat tests/test_x.c` then
+  `cp <scratch>/test_x.c tests/` is `tamper-test-rewrite`. `-T` (`--no-target-directory`) keeps the target a file, and
+  `ln -s TARGET` alone links `./basename(TARGET)`.
+* `find ROOTS ... -exec CMD {} ;` (`+`, `-execdir`, `-ok`) audits CMD once per root with `{}` replaced by that root (`.`
+  without a root), so `find /data/x -exec rm -f {} +` is `write-outside` and a find over the agent's scratch stays
+  green. Limit: the files below the root are judged at the root (`sed -i` of `find policy -exec ... {}` is an edit of
+  `policy`, `write-not-allowed`).
+
+### Links made in the transcript (T061, R008 #18)
+* `ln [-s] SOURCE... DEST` (also `-t DIR`, a directory target, `ln -s TARGET` alone) and `cp -s`/`cp -l` record each
+  link in a virtual table (`PathPolicy.links`), so a later path through it resolves to its target whatever the disk
+  holds (the links are usually gone by the time the audit runs: `ln -s /data/x src/d && echo x > src/d/f && rm src/d`).
+  Every write is judged where it lands (`write-outside`, `tamper-*`), and every read where it leads. The resolution
+  follows the kernel's: component by component from the root, the last one too except for a removal (`rm LINK`
+  removes the link and its entry, `rm -rf LINK/` what it points at), at most 40 hops. `ln -n` replaces a link to a
+  directory instead of entering it. A link with an unknown target makes the paths below it `write-unresolved`.
+* A relative symbolic source is relative to the link's own directory, not the working directory: `ln -s ../policy
+  src/p` points at `<worktree>/policy` (it was misread as `<worktree>/../policy`, another worktree, R008's side
+  finding), so `printf ... > src/p/limits.toml` is `tamper-protected`. With `ln -r` (and for hard links) the source is
+  relative to the working directory. The source is read-checked as resolved (a link to `/var/tmp/cache/T042` is
+  `read-other-cache`), without counting as a read of a file.
+
 ## Limits (be honest about them)
 * The lexer is not a shell: functions, aliases, `source`d files the agent did not write, arithmetic, `printf '\057'`
   style computed paths and code inside languages other than shell are not interpreted. Computed command names and
   path-leading expansions are surfaced as `cmd-unresolved`/`path-unresolved` (review) where they can be seen.
   Inline Python/Node code is searched for the forbidden path fragments, whole-environment dumps, secret lookups and
   decode-then-exec idioms only.
-* Symlink resolution uses the disk of the machine running the audit; a link that no longer exists cannot be followed.
+* Symlink resolution uses the disk of the machine running the audit, plus the links the transcript itself made with
+  `ln`/`cp -s`/`cp -l` (T061); a link made another way (inline code's `os.symlink`, a script the audit cannot see) and
+  gone from the disk cannot be followed.
 * Not resolved, so still `review`: a path or command name taken from the output of a command (`f=$(grep ... | awk
   ...)`, `for b in $(cat list)`), `while read` loops, globs as loop lists, `${v/a/b}`, functions.
 * The fixtures are synthetic (`gate/tests/fixtures/trajectory/`, generated by `gate/tests/test_trajectory_cases.py`).
