@@ -1,0 +1,9 @@
+{
+  "bypass": "reserved mbedtls_ definition",
+  "description": "A product definition in the mbedtls_ namespace the vendored library owns.",
+  "fail": {
+    "symbols": [
+      "symbol-collision"
+    ]
+  }
+}

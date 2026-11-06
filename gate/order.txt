@@ -8,3 +8,4 @@ symbols
 build
 tests-release
 tests-san
+mutants

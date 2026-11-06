@@ -4,12 +4,15 @@ Input is a directory of `c_mutants` reports (one `*.json` per module, see mutant
 gate-owned policy:
 
     [module."//core:core_mutants"]     # label of the c_mutants target
-    level = "L3"                       # L3: a survivor fails the gate; L2: survivors are reported
+    level = "L3"                       # L3 and up: a survivor fails the gate; L2: survivors are reported
+
+Levels L1 (not mutated, so never in this policy) to L5 exist; L3, L4 and L5 are equally strict here.
 
 Findings: survived-mutant (L3; covered by an `equivalent-mutant` approval whose scope is the mutant
 id), no-mutants (a source with functions but no mutants: the generator went blind), all-unviable,
 unmutated-function (L3: a function made by a macro or defined in a product header, which no mutant
 can reach; info in L2),
+unviable-ratio (more than a quarter of the generated mutants did not compile: L3 and up; info in L2),
 crash-only-function / no-assert-kill-function (L3 function whose mutants no check failure ever
 killed), baseline-red, harness-mismatch, missing-run, bad-results, module-not-in-policy,
 policy-module-without-report, no-reports. Survivors of L2 modules are info findings.
@@ -24,7 +27,10 @@ from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 from rigor_lib.runner import gate_handler
 
 GATE_ID = "mutants"
-LEVELS = ("L2", "L3")
+LEVELS = ("L2", "L3", "L4", "L5")
+STRICT_LEVELS = ("L3", "L4", "L5")
+# B11: a module whose mutants mostly fail to compile has been shaped to escape mutation testing.
+MAX_UNVIABLE_PERCENT = 25
 
 
 def load_policy(path):
@@ -59,9 +65,21 @@ def blindness_findings(report, verdicts):
         if source.functions and not counts.get(source.file):
             found.append(finding("no-mutants", module=report.label, file=source.file,
                                  functions=len(source.functions)))
+    if not verdicts and not found:
+        # A gate that mutates nothing must not pass: no source of this module produced a mutant.
+        found.append(finding("no-mutants", module=report.label, file="*", functions=0))
     if verdicts and all(v.verdict == "unviable" for v in verdicts):
         found.append(finding("all-unviable", module=report.label, mutants=len(verdicts)))
     return found
+
+
+def unviable_findings(report, level, verdicts):
+    """More than 25 % of all generated mutants unviable (integer arithmetic, no rounding)."""
+    unviable = sum(1 for v in verdicts if v.verdict == "unviable")
+    if unviable * 100 <= MAX_UNVIABLE_PERCENT * len(verdicts) or unviable == len(verdicts):
+        return []  # (all unviable has a finding of its own)
+    return [finding("unviable-ratio", module=report.label, unviable=unviable, total=len(verdicts),
+                    severity="error" if level in STRICT_LEVELS else SEVERITY_INFO)]
 
 
 def skipped_findings(report, level):
@@ -72,7 +90,7 @@ def skipped_findings(report, level):
         for name, file, reason in source.skipped:
             found.append(finding("unmutated-function", module=report.label, source=source.file,
                                  function=name, file=file, reason=reason,
-                                 severity="error" if level == "L3" else SEVERITY_INFO))
+                                 severity="error" if level in STRICT_LEVELS else SEVERITY_INFO))
     return found
 
 
@@ -99,7 +117,7 @@ def survivor_findings(report, level, verdicts, approval_set, used):
         if verdict.verdict != "survived":
             continue
         fields = survivor_fields(report.label, verdict.mutant)
-        if level != "L3":
+        if level not in STRICT_LEVELS:
             found.append(finding("survivor", severity=SEVERITY_INFO, **fields))
             continue
         approval = approval_set.covering(approvals.KIND_EQUIVALENT_MUTANT, verdict.mutant.id)
@@ -129,9 +147,10 @@ def module_findings(report, level, approval_set, used):
     verdicts, problems = mutants_verdict.derive(report, baseline_ids)
     found.extend(problems)
     found.extend(blindness_findings(report, verdicts))
+    found.extend(unviable_findings(report, level, verdicts))
     found.extend(skipped_findings(report, level))
     found.extend(survivor_findings(report, level, verdicts, approval_set, used))
-    if level == "L3":
+    if level in STRICT_LEVELS:
         found.extend(function_findings(report, verdicts))
     return found, module_summary(report, verdicts)
 

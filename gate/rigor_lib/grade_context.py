@@ -94,7 +94,7 @@ def prepare_work(work):
     """Create `work` and clear what an earlier run left in it (stopping its daemon first)."""
     os.makedirs(work, exist_ok=True)
     kill_daemon(os.path.join(work, "tree"))
-    for name in ("src", "tree", "results", "test-results", "home", "tmp"):
+    for name in ("src", "tree", "results", "test-results", "facts", "mutants-reports", "home", "tmp"):
         path = os.path.join(work, name)
         if os.path.lexists(path):
             remove_tree(path)

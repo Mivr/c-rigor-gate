@@ -9,3 +9,5 @@ c_library(
 )
 
 c_test(name = "util_test", srcs = ["util_test.c"], deps = [":util"])
+
+c_test(name = "core_test", srcs = ["util_core_test.c"], deps = [":util", "//core:core"])

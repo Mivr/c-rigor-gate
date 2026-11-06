@@ -1,0 +1,9 @@
+{
+  "bypass": "unviable-ratio",
+  "description": "Code shaped so most of its mutants do not compile (255 -> 256 in an unsigned char).",
+  "fail": {
+    "mutants": [
+      "unviable-ratio"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "bypass": "test peer in a library",
+  "description": "A library that links a c_test target (a test-only peer in production code).",
+  "fail": {
+    "buckfiles": [
+      "bad-argument"
+    ],
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

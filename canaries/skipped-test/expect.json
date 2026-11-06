@@ -1,0 +1,17 @@
+{
+  "bypass": "skipped test",
+  "description": "A test that returns before checking anything (the framework has no skip).",
+  "fail": {
+    "tests-release": [
+      "no-assertions",
+      "test-not-pass"
+    ],
+    "tests-san": [
+      "no-assertions",
+      "test-not-pass"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

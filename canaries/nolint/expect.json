@@ -1,0 +1,9 @@
+{
+  "bypass": "NOLINT suppression",
+  "description": "A NOLINT comment.",
+  "fail": {
+    "suppressions": [
+      "forbidden-pattern"
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "bypass": "git graft",
+  "description": "info/grafts hides an out-of-contract commit by moving the merge-base.",
+  "fail": {
+    "contract": [
+      "outside-allowed"
+    ]
+  }
+}

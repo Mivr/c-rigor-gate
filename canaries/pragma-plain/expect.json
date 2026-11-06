@@ -1,0 +1,12 @@
+{
+  "bypass": "pragma suppression",
+  "description": "A clang diagnostic pragma spelled plainly.",
+  "fail": {
+    "semantic-suppressions": [
+      "pragma"
+    ],
+    "suppressions": [
+      "forbidden-pattern"
+    ]
+  }
+}

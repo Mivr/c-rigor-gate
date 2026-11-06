@@ -14,12 +14,19 @@ deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace",
 trusted = ["gate//ctest:ctest"]
 
 [module."//core:core"]
+level = "L3"
 allow = ["bcmp", "memcpy", "strlen"]
 
+[module."//json:json"]
+level = "L3"
+allow = ["memcpy"]
+
 [module."//url:url"]
+level = "L3"
 allow = []
 
 [module."//fsname:fsname"]
+level = "L3"
 allow = ["memcpy"]
 
 [module."//core:arena_test"]
@@ -57,3 +64,61 @@ allow = ["memchr", "memset"]
 
 [module."//url:url_redact_test"]
 allow = ["memcpy", "memset"]
+
+[module."//json:arena_test"]
+allow = []
+
+[module."//json:corpus_test"]
+allow = []
+
+[module."//json:limits_test"]
+allow = ["memset", "snprintf"]
+
+[module."//json:number_test"]
+allow = ["bcmp", "memset"]
+
+[module."//json:roundtrip_test"]
+allow = ["snprintf"]
+
+[module."//json:string_test"]
+allow = ["bcmp", "memcpy", "snprintf"]
+
+[module."//json:syntax_test"]
+allow = ["snprintf"]
+
+[module."//json:utf8_test"]
+allow = ["memset"]
+
+[module."//json:value_test"]
+allow = ["snprintf"]
+
+[module."//json:writer_test"]
+allow = ["memcpy", "memset", "strlen"]
+
+[module."//ports:ports"]
+level = "L2"
+allow = ["bcmp", "memchr", "memcpy"]
+
+[module."//ports:clock_test"]
+allow = []
+
+[module."//ports:env_test"]
+allow = []
+
+[module."//ports:fs_inject_test"]
+allow = []
+
+[module."//ports:fs_test"]
+allow = []
+
+[module."//ports:stream_error_test"]
+allow = []
+
+[module."//ports:stream_init_test"]
+allow = []
+
+[module."//ports:stream_mismatch_test"]
+allow = ["strlen"]
+
+[module."//ports:stream_test"]
+allow = []

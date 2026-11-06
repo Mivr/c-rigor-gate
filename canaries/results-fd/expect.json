@@ -1,0 +1,15 @@
+{
+  "bypass": "test inherits the results fd",
+  "description": "A test writes a forged pass line into every inherited descriptor, then fails.",
+  "fail": {
+    "tests-release": [
+      "test-not-pass"
+    ],
+    "tests-san": [
+      "test-not-pass"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}

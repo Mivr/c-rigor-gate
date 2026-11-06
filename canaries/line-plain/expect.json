@@ -1,0 +1,12 @@
+{
+  "bypass": "#line spoofing",
+  "description": "A #line directive that renames the file.",
+  "fail": {
+    "semantic-suppressions": [
+      "line-directive"
+    ],
+    "suppressions": [
+      "forbidden-pattern"
+    ]
+  }
+}

@@ -1,0 +1,75 @@
+load("@gate//rules:third_party.bzl", "c_third_party", "third_party_symbols")
+load(":pki.bzl", "tls_peer_pki")
+load(":rename.bzl", "srv_rename")
+load("//third_party/mbedtls:files.bzl", "MBEDTLS_FILES")
+
+# The TLS test peer (T012): a server-enabled build of the pinned mbedTLS tarball, renamed into a private
+# namespace (`srv_*`) so that it lives in one process with the client-only
+# `//third_party/mbedtls:mbedtls`, plus a plain-C in-memory API (`tls_peer.h`) and a test PKI.
+#
+# Only a `c_test` may name `gate//third_party/tls_peer:tls_peer` (third_party/ALLOWED_TEST_LABELS;
+# `rigor buckfiles` and `rigor facts --gate symbols`). Every other target here is internal: they are
+# PUBLIC only because the macros of the gate cell need to see them, and the gate refuses them as deps.
+export_file(name = "rename.py", visibility = ["PUBLIC"])
+
+export_file(name = "embed_pki.py", visibility = ["PUBLIC"])
+
+c_third_party(
+    name = "mbedtls_srv",
+    url = "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2",
+    sha256 = "a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6",
+    size_bytes = 5473689,
+    top = "mbedtls-3.6.7",
+    dirs = ["include", "library"],
+    files = MBEDTLS_FILES,
+    srcs = [f for f in MBEDTLS_FILES if f.startswith("library/") and f.endswith(".c") and f not in ["library/net_sockets.c", "library/ecp_curves_new.c"]],
+    own_srcs = ["//third_party/mbedtls:gate_platform.c"],
+    private_headers = [f for f in MBEDTLS_FILES if f.startswith("library/") and f.endswith(".h")],
+    public_headers = [f for f in MBEDTLS_FILES if f.startswith("include/")],
+    config_header = "srv_config.h",
+    config_macro = "MBEDTLS_CONFIG_FILE",
+    symbols_in_every_mode = True,
+    instrument = False,
+    extra_headers = {"gate_mbedtls_config.h": "//third_party/mbedtls:gate_mbedtls_config.h"},
+)
+
+srv_rename(
+    name = "srv_lib",
+    lib = ":mbedtls_srv",
+    symbols = ":mbedtls_srv_symbols",
+)
+
+prebuilt_cxx_library(
+    name = "srv_archive",
+    static_lib = ":srv_lib",
+)
+
+# The test PKI: the checked-in PEM files become one generated header.
+tls_peer_pki(
+    name = "tls_peer_pki",
+    pems = glob(["pki/*.pem"]),
+)
+
+# The glue sees the private copy's headers (preprocessing only) and links the renamed archive.
+cxx_library(
+    name = "tls_peer",
+    srcs = ["tls_peer.c"],
+    headers = {"tls_peer_pki.h": ":tls_peer_pki", "srv_rename.h": ":srv_lib[header]"},
+    exported_headers = {"tls_peer.h": "tls_peer.h"},
+    header_namespace = "",
+    deps = [":mbedtls_srv_headers", ":srv_archive"],
+    compiler_flags = ["-std=c17", "-w"],
+    link_style = "static",
+    visibility = ["PUBLIC"],
+)
+
+# The facts of the peer (kind `c_third_party`): the symbols the glue defines and needs, computed from its
+# object by the build. The renamed `srv_*` library below it is covered by the reserved prefix `srv_`.
+third_party_symbols(
+    name = "tls_peer_symbols",
+    lib_name = "tls_peer",
+    unit = ":tls_peer",
+    expected_units = 1,
+    target_compatible_with = ["toolchains//:release"],
+    visibility = ["PUBLIC"],
+)

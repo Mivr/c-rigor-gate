@@ -2,8 +2,8 @@
 
 They run after `assemble` and before `build`. `buckfiles` reads the product files of the tree (not
 the gate's own). The two fact gates share one Buck2 build of every `*_facts` target (release) plus
-the gate's `ctest_facts` and the libc export list; the policy is `products/<p>/policy.toml`, next to
-`product.toml` (gate-owned, never read from the product). If the facts cannot be built (for example
+the gate's `ctest_facts` and the libc export list; the policy is `products/<p>/policy.toml` (minus
+its `level` keys, see grade_policy), next to `product.toml` (gate-owned, never read from the product). If the facts cannot be built (for example
 the product does not compile) the fact gates are NOT_RUN, which fails the verdict; the `build` gate
 reports why.
 """
@@ -14,8 +14,7 @@ import sys
 from dataclasses import dataclass
 
 from rigor_lib import buckfiles, facts_data, facts_policy, facts_semantic, facts_symbols
-from rigor_lib import grade_build, grade_context
-from rigor_lib.errors import InternalError
+from rigor_lib import grade_build, grade_context, grade_policy
 from rigor_lib.findings import GateResult
 
 FACTS_KIND = "c_facts"
@@ -97,13 +96,6 @@ def _build_facts(g):
                                         "executed_actions": executed, "cached_actions": cached})
 
 
-def _policy_path(g):
-    path = os.path.join(os.path.dirname(g.args.product), "policy.toml")
-    if not os.path.isfile(path):
-        raise InternalError("missing %s" % path)
-    return path
-
-
 def _fact_gate(g, run):
     if g.status.get("assemble") != "PASS":
         return None
@@ -111,7 +103,7 @@ def _fact_gate(g, run):
     if isinstance(built, str):
         return None
     facts = facts_data.load_facts_dir(built.directory)
-    policy = facts_policy.load_policy(_policy_path(g))
+    policy = facts_policy.load_policy(grade_policy.symbol_policy_path(g))
     result = run(facts, policy, built)
     result.metadata.update(built.metadata)
     return result

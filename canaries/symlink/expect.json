@@ -1,0 +1,21 @@
+{
+  "bypass": "symlink",
+  "description": "A symlink in the product.",
+  "fail": {
+    "assemble": [
+      "unsupported-entry"
+    ],
+    "contract": [
+      "symlink"
+    ]
+  },
+  "not_run": [
+    "buckfiles",
+    "semantic-suppressions",
+    "symbols",
+    "build",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}
