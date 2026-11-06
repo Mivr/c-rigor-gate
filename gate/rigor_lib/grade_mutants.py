@@ -17,7 +17,7 @@ import re
 from argparse import Namespace
 from dataclasses import dataclass
 
-from rigor_lib import approval_args, grade_build, grade_context, grade_policy, jsonio
+from rigor_lib import approval_args, approvals, grade_build, grade_context, grade_policy, jsonio
 from rigor_lib import mutants_gate as rigor_mutants
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
@@ -91,9 +91,9 @@ def parse_layout(result_targets, attributes, binaries):
     return Layout(frozenset(libs), frozenset(binary_labels), frozenset(tests), deps)
 
 
-def read_layout(tree):
+def read_layout(run):
     def query(args):
-        code, out, err = grade_build.run_buck(tree, ["uquery"] + args)
+        code, out, err = grade_build.run_buck(run.tree, ["uquery"] + args)
         if code != 0:
             raise InternalError("buck2 uquery failed: %s" % err.strip()[-500:])
         return out
@@ -181,37 +181,37 @@ def policy_text(modules, indexes=None):
                      for i, m in zip(indexes, modules))
 
 
-def write_package(tree, modules):
+def write_package(run, modules):
     """Write the gate-owned package; refuses to touch anything the product put in its place."""
     for name in (PACKAGE_DIR, PACKAGE_FILE):
-        if os.path.lexists(os.path.join(tree, name)):
+        if os.path.lexists(os.path.join(run.tree, name)):
             raise InternalError("%s exists in the grading tree before the mutants step" % name)
-    write_file(tree, PACKAGE_FILE, PACKAGE_TEXT.encode("utf-8"), 0o644)
-    return write_file(tree, PACKAGE_DIR + "/BUCK", build_file_text(modules).encode("utf-8"), 0o644)
+    write_file(run.tree, PACKAGE_FILE, PACKAGE_TEXT.encode("utf-8"), 0o644)
+    return write_file(run.tree, PACKAGE_DIR + "/BUCK", build_file_text(modules).encode("utf-8"), 0o644)
 
 
-def build_reports(g, modules):
+def build_reports(run, uncached, modules):
     """Build every c_mutants target; copy the reports. Returns (findings, metadata, built indexes)."""
     labels = [target_label(i, m) for i, m in enumerate(modules)]
-    report = os.path.join(g.work, "build-report-mutants.json")
+    report = run.report_path("mutants")
     if os.path.lexists(report):
         os.unlink(report)  # never read a report an earlier run left
-    flags = ["--no-remote-cache"] if g.args.uncached else []
-    code, _, err = grade_build.run_buck(g.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
+    flags = ["--no-remote-cache"] if uncached else []
+    code, _, err = grade_build.run_buck(run.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
                                                  "--build-report", report] + flags + labels)
-    executed, cached = grade_build.action_counts(g.tree)
+    executed, cached = grade_build.action_counts(run.tree)
     metadata = {"executed_actions": executed, "cached_actions": cached, "exit_code": code}
     if code != 0:
         metadata["stderr_tail"] = err[-_TAIL_CHARS:]
     results = grade_build.read_report(report) or {}
-    out_dir = os.path.join(g.work, "mutants-reports")
+    out_dir = run.mutants_reports
     os.makedirs(out_dir)
     found, built = [], []
     for index, label in enumerate(labels):
         entry = results.get("root" + label)
         source = None
         if entry is not None and entry.get("success") == "SUCCESS":
-            source = grade_build.output_path(g.tree, label, entry)
+            source = grade_build.output_path(run.tree, label, entry)
         if source is None:
             found.append(finding("mutants-build-failed", module=modules[index].label))
             continue
@@ -226,47 +226,52 @@ def _relabel(found, names):
             for item in found]
 
 
-def judge(g, modules, built):
+def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, renames=None):
     """`rigor mutants` over the reports of the modules that built, with a policy the gate writes.
 
     Returns (findings, per-module summaries, approvals used), all in terms of the product's labels.
+    `approval_kind` is the approval that covers a survivor; `renames` maps a finding rule to the rule
+    it is reported as (empty for the head).
     """
-    policy = os.path.join(g.work, "tmp", "mutants-policy.toml")
+    policy = os.path.join(run.work, "tmp", "mutants-policy.toml")
     os.makedirs(os.path.dirname(policy), exist_ok=True)
     with open(policy, "xb") as handle:
         handle.write(policy_text([modules[i] for i in built], built).encode("utf-8"))
     result = rigor_mutants.run(Namespace(
-        results=os.path.join(g.work, "mutants-reports"), policy=policy, approvals=g.args.approvals,
-        repo=g.src, head=g.head, allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS))
+        results=run.mutants_reports, policy=policy, approvals=g.args.approvals,
+        repo=g.src, head=g.head, allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS), approval_kind)
     names = {target_label(i, modules[i]): modules[i].label for i in built}
     summaries = {names.get(label, label): summary for label, summary in result.metadata["modules"].items()}
-    return _relabel(result.findings, names), summaries, result.metadata["approvals_used"]
+    found = [dict(item, rule=renames.get(item["rule"], item["rule"])) for item in
+             _relabel(result.findings, names)] if renames else _relabel(result.findings, names)
+    return found, summaries, result.metadata["approvals_used"]
 
 
 def mutants_gate(g):
     if any(g.status.get(gate) != "PASS" for gate in REQUIRED):
         return None  # no clean build and green tests: nothing to judge
+    run = grade_build.TreeRun(g.tree, g.work, mutants_reports=os.path.join(g.work, "mutants-reports"))
     try:
-        return _run(g)
+        return _run(g, run)
     finally:
-        grade_context.kill_daemon(g.tree)
+        grade_context.kill_daemon(run.tree)
 
 
-def _run(g):
+def _run(g, run):
     levels = grade_policy.load_levels(grade_policy.policy_path(g))
-    chosen = plan(read_layout(g.tree), levels)
+    chosen = plan(read_layout(run), levels)
     found = list(chosen.findings)
     if not chosen.modules:
         return GateResult(rigor_mutants.GATE_ID, found, {"modules": {}})
-    package_sha = write_package(g.tree, chosen.modules)
-    build_found, metadata, built = build_reports(g, chosen.modules)
+    package_sha = write_package(run, chosen.modules)
+    build_found, metadata, built = build_reports(run, g.args.uncached, chosen.modules)
     found.extend(build_found)
     metadata["package_sha256"] = package_sha
     metadata["targets"] = {m.label: target_label(i, m) for i, m in enumerate(chosen.modules)}
     metadata["modules"], metadata["approvals_used"] = {}, []
     if built:
         # The policy names only the modules that built: a missing one already has its own finding.
-        judged, summaries, used = judge(g, chosen.modules, built)
+        judged, summaries, used = judge(g, run, chosen.modules, built)
         found.extend(judged)
         metadata["modules"], metadata["approvals_used"] = summaries, used
     return GateResult(rigor_mutants.GATE_ID, found, metadata)

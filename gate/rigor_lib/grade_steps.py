@@ -25,10 +25,27 @@ def contract_gate(g):
     return contract.run(Namespace(repo=g.src, base=g.base, head=g.head, contract=g.args.task))
 
 
+def _graded_entries(g):
+    """The plain files of `head` that `assemble` copies into the tree (same layout test)."""
+    graded = []
+    for entry in grade_tree.list_tree(g.src, g.head):
+        try:
+            text = entry.path.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if paths.unsafe_path_reason(text) is not None:
+            continue
+        if product_layout.classify(g.product, text) != product_layout.COPY:
+            continue
+        if entry.mode in _PLAIN_FILE_MODES:
+            graded.append(entry)
+    return graded
+
+
 def suppressions_gate(g):
     return suppressions.run(Namespace(
         repo=g.src, base=g.base, head=g.head, approvals=g.args.approvals,
-        allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS))
+        allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS), _graded_entries(g))
 
 
 def _product_entry_findings(g, entry, manifest):
