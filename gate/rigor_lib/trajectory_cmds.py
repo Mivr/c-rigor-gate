@@ -674,7 +674,7 @@ def write_specs(argv):
         specs = [(i + 1, "rewrite") for i, a in enumerate(args[:-1]) if a in ("-o", "--output", "-O", "-P")
                  and name == "wget" or a in ("-o", "--output") and name == "curl"]
     elif name == "find" and "-delete" in args:
-        specs = [(i, "delete") for i in _find_roots(args)]
+        specs = [(i, "delete") for i in find_roots(args)]
     return [(index + 1, op) for index, op in specs] if name != "git" else specs
 
 
@@ -713,7 +713,7 @@ def recursive_roots(name, argv):
     if name in ("rg", "ag", "ack"):
         return _after_pattern(args)
     if name == "find":
-        return [i + 1 for i in _find_roots(args)]
+        return [i + 1 for i in find_roots(args)]
     if name in ("du",) or (name == "ls" and (cluster("R") or "--recursive" in args)):
         return [i + 1 for i in positionals(args)]
     if name == "tar":
@@ -739,7 +739,7 @@ def _after_pattern(args):
     return [i + 1 for i in (plain if explicit else plain[1:])]
 
 
-def _find_roots(args):
+def find_roots(args):
     roots = []
     for i, arg in enumerate(args):
         if arg.startswith("-") or arg in ("(", "!"):
@@ -750,6 +750,8 @@ def _find_roots(args):
 
 def _transfer_specs(name, args, pos):
     target = next((i + 1 for i, a in enumerate(args[:-1]) if a in ("-t", "--target-directory")), None)
+    if any(a.startswith("--target-directory=") for a in args):  # the value is the target (trajectory_writers)
+        return [(i, "delete") for i in pos] if name == "mv" else []
     if target is not None:
         dest = [(target, "rewrite")]
         return dest + ([(i, "delete") for i in pos] if name == "mv" else [])

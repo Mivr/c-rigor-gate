@@ -6,7 +6,7 @@ import re
 from rigor_lib import trajectory_cmds as cmds
 from rigor_lib import trajectory_rules as rules
 from rigor_lib import trajectory_shell as shell
-from rigor_lib.trajectory_literals import path_literals
+from rigor_lib.trajectory_literals import path_literals, write_literals
 from rigor_lib.trajectory_paths import is_url
 from rigor_lib.trajectory_shell import UNRESOLVED
 
@@ -257,14 +257,17 @@ class CodeMixin:
         self.add("cmd-obfuscated-exec", raw, pname or "|")
 
     def _find_exec(self, args, raw, depth, env):
+        """`find ROOTS ... -exec CMD {} ;`: CMD is audited once per root, with `{}` replaced by that root (the files it
+        gets are below the roots; T061, R008 #17), `.` when no root is given."""
+        roots = [args[r] for r in cmds.find_roots(args)] or ["."]
         i = 0
         while i < len(args):
             if args[i] in ("-exec", "-execdir", "-ok", "-okdir"):
                 end = i + 1
                 while end < len(args) and args[end] not in (";", "+"):
                     end += 1
-                inner = [a.replace("{}", ".") for a in args[i + 1:end]]
-                if inner:
+                for root in roots if args[i + 1:end] else ():
+                    inner = [a.replace("{}", root) for a in args[i + 1:end]]
                     self.bash(" ".join(_quote(a) for a in inner), depth + 1, env)
                 i = end
             i += 1
@@ -279,6 +282,9 @@ class CodeMixin:
     def scan_code(self, text, raw):
         for literal in path_literals(text):
             self._scan_literal(literal, raw)
+        for path, op in write_literals(text):  # T061 (R008 #16): a literal the code writes or deletes
+            if "\n" not in path and path.strip():
+                self.write(path, op, raw)
         match = None if self.clean_env else whole_environment(text)  # `env -i`: nothing inherited to dump
         if match is not None:
             self.add("cmd-env-dump", raw, match.group(0))

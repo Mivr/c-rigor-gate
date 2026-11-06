@@ -4,6 +4,6 @@ name = "annas-c"
 # Every module directory of annas-c. Coverage (B14) makes a missing one a finding (ungraded-path),
 # and an entry that matches nothing a finding (stale-include).
 include = ["core/**", "json/**", "url/**", "fsname/**", "ports/**", "http/**", "annas/**", "app/**",
-           "posix_fs/**", "posix_env/**", "posix_clock/**", "tls_stream/**"]
+           "posix_fs/**", "posix_env/**", "posix_clock/**", "tls_stream/**", "wire/**", "bin/**"]
 # Non-code only (docs, plans, live fixtures): an exclude that covers a BUCK or C file is a finding.
 exclude = []
