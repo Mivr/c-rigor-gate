@@ -95,3 +95,52 @@ clang_ld = rule(
         "sysroot": attrs.dep(),
     },
 )
+
+def _roots_impl(ctx: AnalysisContext) -> list[Provider]:
+    """`--system-root <dir>` for the toolchain's own header directories (strings only: the
+    trees are not inputs). Text from a file below one of them is not the product's."""
+    llvm, sysroot = _common(ctx)
+    args = cmd_args(
+        "--system-root",
+        llvm.project("lib/clang/{}/include".format(ctx.attrs.llvm_major)),
+        "--system-root",
+        sysroot.project("usr/include"),
+        ignore_artifacts = True,
+    )
+    return [DefaultInfo(), RunInfo(args = args)]
+
+system_roots = rule(
+    impl = _roots_impl,
+    attrs = {
+        "llvm": attrs.dep(),
+        "llvm_major": attrs.string(),
+        "sysroot": attrs.dep(),
+    },
+)
+
+def _libc_impl(ctx: AnalysisContext) -> list[Provider]:
+    """Every symbol the pinned glibc's shared libraries export (what a product must not redefine)."""
+    sysroot = _tree(ctx.attrs.sysroot)
+    libs = [sysroot.project("lib/x86_64-linux-gnu/" + name) for name in ctx.attrs.libs]
+    out = ctx.actions.declare_output("libc.symbols")
+    script = ctx.actions.write(
+        "run.sh",
+        [
+            "set -eu",
+            'nm="$1"; out="$2"; shift 2',
+            '"$nm" -D --defined-only --just-symbol-name "$@" | sed "s/@.*//" | LC_ALL=C sort -u > "$out"',
+            '[ -s "$out" ] || { echo "libc_symbols: empty" >&2; exit 1; }',
+        ],
+        is_executable = True,
+    )
+    ctx.actions.run(cmd_args("/bin/sh", script, ctx.attrs._nm[RunInfo], out.as_output(), libs), category = "libc_symbols")
+    return [DefaultInfo(default_output = out)]
+
+libc_symbols = rule(
+    impl = _libc_impl,
+    attrs = {
+        "libs": attrs.list(attrs.string()),
+        "sysroot": attrs.dep(),
+        "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
+    },
+)
