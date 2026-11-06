@@ -456,4 +456,5 @@ took
 # Actions executed (not cached) by this run. A warm second run executes 0 in every build that succeeds; the
 # builds that must fail (wrong sha256, manifest mismatch, a header that is not visible) are never cached.
 awk '$1 == 0 {ok += $3} $1 != 0 {bad += $3; n++} END {printf "actions executed by successful builds: %d; by the %d builds that must fail: %d\n", ok, n, bad}' "$out/actions.txt"
+echo "elapsed ${SECONDS}s"
 echo "selftest/third_party.sh: all steps passed"
