@@ -164,8 +164,15 @@ class ScanCase(TempDirTestCase):
         self.assertEqual(cscan.display_file("p/a.c"), "p/a.c")
 
     def test_scanner_table_covers_every_identifier_the_decision_names(self):
-        decided = set(semantic_table.FORBIDDEN_IDENTIFIERS) | set(semantic_table.GUARDED_BUILTINS)
+        # Exact names: what the table decides is what the scanner watches; prefixes are the same.
+        decided = set(semantic_table.FORBIDDEN_IDENTIFIERS) | set(semantic_table.BUILTIN_NAMES)
         self.assertEqual(decided, set(cscan.WATCHED_IDENTIFIERS))
+        self.assertEqual(semantic_table.BUILTIN_PREFIXES, cscan.WATCHED_PREFIXES)
+        for name in (semantic_table.GUARDED_BUILTINS + semantic_table.ALLOWED_BUILTINS
+                     + semantic_table.BANNED_BUILTINS + tuple(semantic_table.SYMBOL_BUILTINS)):
+            with self.subTest(name=name):
+                self.assertTrue(cscan.watched(name))
+                self.assertTrue(semantic_table.is_builtin(name))
 
     def test_scanner_script_runs_standalone_and_is_deterministic(self):
         pre = self.tmp / "a.c.i"

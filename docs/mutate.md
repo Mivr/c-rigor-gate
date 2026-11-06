@@ -37,6 +37,28 @@ macro expansion (`spellingLoc`/`expansionLoc`) is skipped, and so is a binary op
 found, between blanks and comments only, exactly where the AST says it is. The effect: code in macros is
 never mis-mutated, and a mutant is always a precise byte replacement (`begin_offset`, `end_offset`,
 `original`, `replacement`). The mutant carries `operator`, `function`, `line` and a stable `id`.
+### Accounting (B19)
+Every function **definition** (a non-implicit `FunctionDecl` with a `CompoundStmt` among its children, wherever
+among them: clang lists attributes such as `noinline` or `cold` after the body) outside the toolchain's own
+headers is in exactly one of `functions` and `skipped` of the source's entry:
+- `functions`: mutated, or, when no mutation applies (for example `for (;;) {}`), listed with
+  `"reason": "no-mutable-token"` (an `info` finding of the same name; nothing to test there).
+- `skipped`: the body is made by a macro or lives in a product header (`unmutated-function`, as before). A node
+  whose range only *starts* in a macro (`NOINLINE int f(void) { ... }`) is not that: its body is plain text and it is
+  mutated.
+
+The invariant is checked twice, by code that shares nothing:
+1. `gen.py` counts the definitions with `audit_definitions`, a second walk over the raw AST that uses none of the
+   walker's state, and compares by name with what the walker listed. A difference (or a function with two
+   bodies) is exit **2**, nothing written, so the Buck2 action fails.
+2. The report carries that count as `definitions`. `rigor mutants` fails any source where
+   `len(functions) + len(skipped) != definitions`, where a name appears twice, where a function has neither a mutant
+   nor a reason, where a mutant names an unlisted function, or where a reason is given for a mutated one
+   (`unaccounted-function`, every level). A report without `definitions` is exit 2.
+
+Asm labels (`int f(void) __asm__("x")`) and the `used`/`section` attributes are refused upstream (`inline-asm`,
+`forbidden-attribute`); the generator accounts for them regardless (fixtures in `gate/tests/fixtures/mutate/`).
+
 No mutation is made under `case` labels, enumerator values, bit-field widths, `_Static_assert` or `sizeof`.
 
 | Operator | Replacement |
@@ -109,7 +131,5 @@ Approvals never cover anything but a survivor.
 - A test can still kill mutants for the wrong reason, for example by hashing the machine code of the function under
   test: every mutant then fails a check. Nothing in the gate detects that (the `symbols` policy is the only barrier);
   hidden tests and the red team (B7, B8) are the answer.
-- **Known gap (B19, found by T008, not fixed):** `gen.py` silently drops a function whose AST has an attribute node
-  after the body (`__attribute__((noinline)) int f(void) { ... }`): it is not mutated and no finding says so.
 - In `c_mutants` a test is named `<package>__<name>` in the report (every character outside `[a-z0-9_]` becomes
   `_`), because two packages may each have a test called `arena_test` and both can depend on the same module.

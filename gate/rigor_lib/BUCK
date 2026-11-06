@@ -3,3 +3,15 @@ export_file(
     name = "cscan.py",
     visibility = ["PUBLIC"],
 )
+
+# The call-set scanner of the mode comparison (T023); it runs in the same action environment.
+export_file(
+    name = "facts_modes.py",
+    visibility = ["PUBLIC"],
+)
+
+# Likewise for the structure scanner (rules/structure.bzl).
+export_file(
+    name = "structure_scan.py",
+    visibility = ["PUBLIC"],
+)

@@ -52,6 +52,16 @@ c_library(name = "dep_b", srcs = ["dep_b.c"], deps = [":dep_a"])
 c_library(name = "dep_c", srcs = ["dep_c.c"])
 c_test(name = "exittest", srcs = ["exittest.c"])
 c_fuzz(name = "fz", srcs = ["fz_fuzz.c"])
+c_library(name = "b_alloca", srcs = ["b_alloca.c"])
+c_library(name = "b_paste", srcs = ["b_paste.c"])
+c_library(name = "b_frame", srcs = ["b_frame.c"])
+c_library(name = "b_longjmp", srcs = ["b_longjmp.c"])
+c_library(name = "b_sync", srcs = ["b_sync.c"])
+c_library(name = "b_hidden", srcs = ["b_hidden.c"])
+c_library(name = "b_io", srcs = ["b_io.c"])
+c_library(name = "b_ovf", srcs = ["b_ovf.c"], headers = ["b_ovf.h"])
+c_library(name = "b_hdrs", srcs = ["b_hdrs.c"])
+c_library(name = "b_direct", srcs = ["b_direct.c"])
 EOF
 
 # --- green ---
@@ -167,6 +177,79 @@ cat > fz_fuzz.c <<EOF
 #include <stdlib.h>
 int $entry(const uint8_t *data, size_t size) { (void)data; return getenv("HOME") != NULL && size > 0 ? 1 : 0; }
 EOF
+# --- builtins (T014): default-deny on the preprocessed text ---
+# The sealed flags make a call of a banned builtin a compile error, so these reds `#undef` the guard
+# first: the semantic gate must still see both the #undef and the builtin.
+cat > b_alloca.c <<'EOF'
+#undef __builtin_alloca
+int b_alloca_f(unsigned n) { char *p = __builtin_alloca(n); p[0] = 1; return p[0]; }
+EOF
+cat > b_paste.c <<'EOF'
+#undef __builtin_alloca
+#define CAT(a, b) a##b
+#define GROW(n) CAT(__builtin_, alloca)(n)
+int b_paste_f(unsigned n) { char *p = GROW(n); p[0] = 1; return p[0]; }
+EOF
+cat > b_frame.c <<'EOF'
+#undef __builtin_frame_address
+int b_frame_f(void) { return __builtin_frame_address(0) != 0; }
+EOF
+cat > b_longjmp.c <<'EOF'
+static void *b_buf[5];
+void b_longjmp_f(void) { __builtin_longjmp(b_buf, 1); }
+EOF
+cat > b_sync.c <<'EOF'
+int b_sync_f(int *p) { return __sync_fetch_and_add(p, 1); }
+EOF
+cat > b_hidden.c <<'EOF'
+#define JUMP(b) __builtin_longjmp((b), 1)
+static void *b_hidden_buf[5];
+void b_hidden_f(void) { JUMP(b_hidden_buf); }
+EOF
+# toolchain code a product names is charged to the product: inb() is an inline function of
+# <sys/io.h> whose body is inline asm
+cat > b_io.c <<'EOF'
+#include <sys/io.h>
+unsigned char b_io_f(void) { return inb(0x60); }
+EOF
+# green: what annas-c-like code expands to (offsetof, va_*, the overflow checkers)
+cat > b_ovf.h <<'EOF'
+#ifndef B_OVF_H
+#define B_OVF_H
+#include <stddef.h>
+int b_ovf_mul(size_t a, size_t b, size_t *out);
+size_t b_ovf_off(void);
+int b_ovf_sum(int n, ...);
+#endif
+EOF
+cat > b_ovf.c <<'EOF'
+#include <stdarg.h>
+#include "b_ovf.h"
+struct b_rec { int a; char b; };
+int b_ovf_mul(size_t a, size_t b, size_t *out) { return __builtin_mul_overflow(a, b, out) ? -1 : 0; }
+size_t b_ovf_off(void) { return offsetof(struct b_rec, b); }
+int b_ovf_sum(int n, ...) {
+    va_list ap;
+    int total = 0;
+    va_start(ap, n);
+    for (int i = 0; i < n; i++) { total += va_arg(ap, int); }
+    va_end(ap);
+    return total;
+}
+EOF
+# the guard must not break toolchain headers: a wide include set with _GNU_SOURCE (alloca.h too)
+{ echo '#define _GNU_SOURCE'
+  for h in alloca assert complex ctype errno fenv float inttypes iso646 limits locale math setjmp signal \
+           stdalign stdarg stdatomic stdbool stddef stdint stdio stdlib stdnoreturn string tgmath time \
+           uchar wchar wctype fcntl poll pthread sys/mman sys/random sys/select sys/socket sys/stat \
+           sys/types sys/wait netinet/in arpa/inet netdb unistd dirent byteswap endian x86intrin; do
+    echo "#include <$h.h>"
+  done
+  echo 'int b_hdrs_f(int x) { return (int)htonl((uint32_t)x) + isdigit(x) + abs(x); }'
+} > b_hdrs.c
+cat > b_direct.c <<'EOF'
+int b_direct_f(unsigned n) { char *p = __builtin_alloca(n); p[0] = 1; return p[0]; }
+EOF
 cd "$root"
 
 # --------------------------------------------------------------------------------------
@@ -209,7 +292,7 @@ def check(result, expected):
     """check RESULT EXPECTED...: the findings are exactly the expected `rule` / `rule:symbol|name` entries"""
     doc = json.load(open(result))
     def render(f):
-        detail = "" if f["rule"] == "line-directive" else (f.get("symbol") or f.get("name"))
+        detail = "" if f["rule"] == "line-directive" else (f.get("symbol") or f.get("name") or f.get("item"))
         return f["rule"] + (":" + detail if detail else "")
     got = sorted(render(f) for f in doc["findings"] if f["severity"] == "error")
     want = sorted(expected)
@@ -236,7 +319,42 @@ def textscan_misses(path, workdir):
         print("  the line scan already flags this file (exit %d): %s" % (done.returncode, done.stdout))
         sys.exit(1)
 
+def collectmodes(log, dest, suffix):
+    """collectmodes LOG DEST SUFFIX: every `<name>_facts<SUFFIX>` and `<name>_facts<SUFFIX>[calls]` line of a
+    --show-output log to DEST/<name>.json and DEST/<name>.calls.json"""
+    os.makedirs(dest, exist_ok=True)
+    pattern = re.compile(r"^root//(\S+):(\w+)_facts" + suffix + r"(\[calls\])?\s+(\S+)$")
+    for line in open(log):
+        m = pattern.match(line.strip())
+        if m:
+            shutil.copy(m.group(4), os.path.join(dest, m.group(2) + (".calls.json" if m.group(3) else ".json")))
+
+def mkmd(src, dest, names):
+    """mkmd SRC DEST NAME...: a modes directory with those targets (facts and calls)"""
+    os.makedirs(dest, exist_ok=True)
+    for name in names:
+        for ext in (".json", ".calls.json"):
+            shutil.copy(os.path.join(src, name + ext), os.path.join(dest, name + ext))
+
+def only_in(result, mode):
+    """only_in RESULT MODE: every finding says the item exists in MODE only"""
+    doc = json.load(open(result))
+    bad = [f for f in doc["findings"] if f.get("only_in") != mode]
+    if bad or not doc["findings"]:
+        print("  wanted only_in=%s findings, got %s" % (mode, doc["findings"]))
+        sys.exit(1)
+
+def tamper(path, key, value):
+    """tamper FILE KEY VALUE: set a top-level key of a JSON file (VALUE is JSON)"""
+    doc = json.load(open(path))
+    doc[key] = json.loads(value)
+    json.dump(doc, open(path, "w"))
+
 COMMANDS = {
+    "collectmodes": lambda a: collectmodes(a[0], a[1], a[2]),
+    "mkmd": lambda a: mkmd(a[0], a[1], a[2:]),
+    "only_in": lambda a: only_in(a[0], a[1]),
+    "tamper": lambda a: tamper(a[0], a[1], a[2]),
     "policy": lambda a: policy(a[0], a[1:]),
     "collect": lambda a: collect(a[0], a[1]),
     "mkfd": lambda a: mkfd(a[0], a[1], a[2:]),
@@ -304,7 +422,7 @@ done
 echo "  16 sources: line scan exit 0 on all"
 
 begin "facts actions build on RE for every target (release) and the libc export list exists"
-targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz)
+targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs)
 args=(); for t in "${targets[@]}"; do args+=("$pkg:${t}_facts"); done
 run "$out/facts.log" build "${args[@]}" //ctest:ctest_facts //examples/hello:lib_facts //examples/hello:hello_facts //examples/hello:hello_test_facts toolchains//:libc_symbols --show-output || fail "$CUR" "$out/facts.log"
 tool collect "$out/facts.log" "$out/facts" || fail "$CUR: collect"
@@ -400,6 +518,42 @@ for g in $SEM $SYM; do
     || fail "$CUR: hello/$g" "$out/res/hello.$g.txt"
 done
 
+begin "builtins are default-deny: alloca (also pasted), frame_address, longjmp (also behind a macro), __sync"
+tool policy "$out/p_b.toml" b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs
+gate_case b_alloca $SEM 1 "$out/p_b.toml" b_alloca -- banned-builtin:__builtin_alloca "reserved-macro:#undef __builtin_alloca"
+gate_case b_paste $SEM 1 "$out/p_b.toml" b_paste -- banned-builtin:__builtin_alloca "reserved-macro:#undef __builtin_alloca"
+gate_case b_frame $SEM 1 "$out/p_b.toml" b_frame -- forbidden-builtin:__builtin_frame_address "reserved-macro:#undef __builtin_frame_address"
+gate_case b_longjmp $SEM 1 "$out/p_b.toml" b_longjmp -- forbidden-builtin:__builtin_longjmp
+gate_case b_hidden $SEM 1 "$out/p_b.toml" b_hidden -- forbidden-builtin:__builtin_longjmp
+gate_case b_sync $SEM 1 "$out/p_b.toml" b_sync -- forbidden-builtin:__sync_fetch_and_add
+for c in b_alloca b_paste b_frame b_longjmp b_hidden b_sync; do
+  tool policy "$out/p_$c.toml" "$c"
+  gate_case $c $SYM 0 "$out/p_$c.toml" $c --   # no symbol: why the symbols gate alone cannot see them
+done
+tool policy "$out/p_b_jmp.toml" "b_longjmp;exempt=longjmp"
+gate_case b_longjmp_exempt $SEM 0 "$out/p_b_jmp.toml" b_longjmp --
+tool policy "$out/p_b_alloca.toml" "b_alloca;builtins=__builtin_alloca"
+"${RIGOR[@]}" facts --gate $SEM --facts "$out/fd/b_alloca.$SEM" --policy "$out/p_b_alloca.toml" --out "$out/res/b_alloca_pol.json" > "$out/res/b_alloca_pol.txt" 2>&1
+rc=$?
+[ "$rc" = 2 ] || fail "$CUR: a policy allowing __builtin_alloca exited $rc, wanted 2" "$out/res/b_alloca_pol.txt"
+echo "  a policy naming __builtin_alloca in allow_builtins -> exit 2"
+
+begin "builtins: toolchain code the product names is charged to it; annas-c-like code and a wide header set pass"
+gate_case b_io $SEM 1 "$out/p_b.toml" b_io -- inline-asm:__asm__
+gate_case b_ovf $SEM 0 "$out/p_b.toml" b_ovf --
+tool policy "$out/p_b_ovf.toml" b_ovf
+gate_case b_ovf $SYM 0 "$out/p_b_ovf.toml" b_ovf --
+gate_case b_hdrs $SEM 0 "$out/p_b.toml" b_hdrs --
+
+begin "builtins: the sealed flags make a direct call of a banned builtin a compile error, and break no header"
+if run "$out/direct.log" build "$pkg:b_direct"; then fail "$CUR: b_direct.c built" "$out/direct.log"; fi
+grep -q "c_rigor_gate_bans___builtin_alloca" "$out/direct.log" || fail "$CUR: failed for the wrong reason" "$out/direct.log"
+for m in release san cov fuzz; do
+  run "$out/hdrs.$m.log" build --target-platforms ${PLAT}$m "$pkg:b_hdrs" "$pkg:b_ovf" //ctest:ctest //examples/hello:lib \
+    || fail "$CUR: the header set does not build in $m" "$out/hdrs.$m.log"
+  echo "  $m: wide header set, b_ovf, ctest and examples/hello build"
+done
+
 begin "buckfiles: assignment, native.cxx_library, second load, a .bzl file, BUCK.v2 and others are findings"
 bf() { # <name> <want-rule> <file> <content>
   local d="$out/bf/$1"; rm -rf "$d"; mkdir -p "$d"
@@ -447,11 +601,201 @@ printf 'int scratch_nonce_%s_%s(void) { return 1; }\n' "$(date +%s)" "$$" >> "$s
 must_pass build "$pkg:dep_a_facts" --show-output
 "${B[@]}" log what-ran 2>/dev/null | strip_ansi > "$out/whatran.txt"
 grep -q 'c_facts' "$out/whatran.txt" || fail "$CUR: no c_facts action ran" "$out/whatran.txt"
-if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
-  fail "$CUR: an action did not run on RE" "$out/whatran.txt"
+# Only the fresh-nonce actions (the changed source facts) must have run on RE; unchanged dependencies (toolchain, ctest, other
+# facts) may legitimately be cache hits, depending on farm and daemon history. Nothing may run locally.
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $2 ~ /c_facts/ && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
+  fail "$CUR: a fresh-nonce action did not run on RE" "$out/whatran.txt"
+fi
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^(re\(|cache)/ {bad=1} END{exit !bad}'; then
+  fail "$CUR: an action ran locally or on an unknown executor" "$out/whatran.txt"
 fi
 grep 'c_facts' "$out/whatran.txt" | head -2
 grep -q 'scratch_nonce_' "$(awk '/dep_a_facts/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)" || fail "$CUR: new symbol missing from the facts"
+
+begin "modes (T023): the san twin of the facts; code that differs between release and san is a finding"
+cd "$scratch/p"
+cat >> BUCK <<'EOF'
+c_library(name = "m_asan", srcs = ["m_asan.c"])
+c_library(name = "m_feat", srcs = ["m_feat.c"])
+c_library(name = "m_ubsan", srcs = ["m_ubsan.c"])
+c_library(name = "m_hdr", srcs = ["m_hdr.c"], headers = ["m_hdr.h"])
+c_library(name = "m_rel", srcs = ["m_rel.c"])
+c_library(name = "m_pragma", srcs = ["m_pragma.c"])
+c_library(name = "m_asm", srcs = ["m_asm.c"])
+c_library(name = "m_ndebug", srcs = ["m_ndebug.c"])
+c_library(name = "m_opt", srcs = ["m_opt.c"])
+EOF
+# The pinned clang does not define __SANITIZE_ADDRESS__ (a GCC macro) under -fsanitize=address: the
+# block is dead in both modes, so this is not a divergence. __has_feature(address_sanitizer) is the real one.
+cat > m_asan.c <<'EOF'
+int m_hook(int v);
+int m_asan_f(int v) {
+#if defined(__SANITIZE_ADDRESS__)
+    return m_hook(v);
+#else
+    return v;
+#endif
+}
+EOF
+cat > m_feat.c <<'EOF'
+int m_hook(int v);
+int m_feat_f(int v) {
+#if __has_feature(address_sanitizer)
+    return m_hook(v);
+#else
+    return v;
+#endif
+}
+EOF
+cat > m_ubsan.c <<'EOF'
+int m_hook(int v);
+int m_ubsan_f(int v) {
+#if __has_feature(undefined_behavior_sanitizer)
+    return m_hook(v);
+#else
+    return v;
+#endif
+}
+EOF
+cat > m_hdr.h <<'EOF'
+#ifndef M_HDR_H
+#define M_HDR_H
+int m_hook2(int v);
+#if __has_feature(address_sanitizer)
+#define M_HOOK(v) m_hook2(v)
+#else
+#define M_HOOK(v) (v)
+#endif
+#endif
+EOF
+cat > m_hdr.c <<'EOF'
+#include "m_hdr.h"
+int m_hdr_f(int v) { return M_HOOK(v); }
+EOF
+cat > m_rel.c <<'EOF'
+int m_hook(int v);
+int m_rel_f(int v) {
+#if !__has_feature(address_sanitizer)
+    return m_hook(v);
+#else
+    return v;
+#endif
+}
+EOF
+cat > m_pragma.c <<'EOF'
+#if __has_feature(address_sanitizer)
+#pragma clang diagnostic push
+#pragma clang diagnostic pop
+#endif
+int m_pragma_f(void) { return 1; }
+EOF
+cat > m_asm.c <<'EOF'
+int m_asm_f(int v) {
+#if __has_feature(address_sanitizer)
+    __asm__ volatile("nop");
+#endif
+    return v;
+}
+EOF
+# Neither mode defines NDEBUG and both optimise (-O2 / -O1), so these are the same text in both: green.
+cat > m_ndebug.c <<'EOF'
+int m_hook(int v);
+int m_ndebug_f(int v) {
+#ifndef NDEBUG
+    return m_hook(v);
+#else
+    return v;
+#endif
+}
+EOF
+cat > m_opt.c <<'EOF'
+int m_hook(int v);
+int m_opt_f(int v) {
+#ifdef __OPTIMIZE__
+    return m_hook(v);
+#else
+    return v;
+#endif
+}
+EOF
+cd "$root"
+"${RIGOR[@]}" buckfiles --root "$scratch" > "$out/bf4.txt" 2>&1 || fail "$CUR" "$out/bf4.txt"
+mtargets=(m_asan m_feat m_ubsan m_hdr m_rel m_pragma m_asm m_ndebug m_opt clean clean_test clean_bin b_ovf b_hdrs b_io fz paste attr)
+rargs=(); sargs=()
+for t in "${mtargets[@]}"; do rargs+=("$pkg:${t}_facts" "$pkg:${t}_facts[calls]"); sargs+=("$pkg:${t}_facts_san" "$pkg:${t}_facts_san[calls]"); done
+rargs+=(//ctest:ctest_facts "//ctest:ctest_facts[calls]" //examples/hello:lib_facts "//examples/hello:lib_facts[calls]" //examples/hello:hello_facts "//examples/hello:hello_facts[calls]" //examples/hello:hello_test_facts "//examples/hello:hello_test_facts[calls]")
+sargs+=(//ctest:ctest_facts_san "//ctest:ctest_facts_san[calls]" //examples/hello:lib_facts_san "//examples/hello:lib_facts_san[calls]" //examples/hello:hello_facts_san "//examples/hello:hello_facts_san[calls]" //examples/hello:hello_test_facts_san "//examples/hello:hello_test_facts_san[calls]")
+run "$out/mrel.log" build "${rargs[@]}" --show-output || fail "$CUR: release facts" "$out/mrel.log"
+run "$out/msan.log" build --target-platforms ${PLAT}san "${sargs[@]}" --show-output || fail "$CUR: san facts" "$out/msan.log"
+echo "  cold release: $(grep -m1 'Commands:' "$out/mrel.log")"
+echo "  cold san:     $(grep -m1 'Commands:' "$out/msan.log")"
+tool collectmodes "$out/mrel.log" "$out/mrel" "" || fail "$CUR: collect release"
+tool collectmodes "$out/msan.log" "$out/msan" "_san" || fail "$CUR: collect san"
+ls "$out/mrel" | wc -l | xargs echo "  release files:"; ls "$out/msan" | wc -l | xargs echo "  san files:"
+
+# modes_case <name> <want-exit> <mode-the-items-are-in|-> <target>... -- <expected finding>...
+modes_case() {
+  local name="$1" want="$2" mode="$3"; shift 3
+  local targets=() expected=()
+  while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do targets+=("$1"); shift; done
+  [ "${1:-}" = "--" ] && shift
+  expected=("$@")
+  local d="$out/md/$name"; rm -rf "$d"
+  tool mkmd "$out/mrel" "$d/release" "${targets[@]}" || fail "$CUR: no facts for ${targets[*]}"
+  tool mkmd "$out/msan" "$d/san" "${targets[@]}" || fail "$CUR: no san facts for ${targets[*]}"
+  local res="$d/res.json"
+  "${RIGOR[@]}" facts --modes "$d/release" "$d/san" --out "$res" > "$d/o.txt" 2>&1
+  local rc=$?
+  [ "$rc" = "$want" ] || fail "$CUR: $name exited $rc, wanted $want" "$d/o.txt"
+  tool check "$res" "${expected[@]}" || fail "$CUR: $name findings differ" "$d/o.txt"
+  [ "$mode" = "-" ] || tool only_in "$res" "$mode" || fail "$CUR: $name: wrong mode" "$d/o.txt"
+  echo "  $name -> exit $rc ${expected[*]:-}"
+}
+
+begin "modes: green (no mode-dependent code) -> 0 findings, incl. test, binary, fuzz, hello and the wide header set"
+modes_case green 0 - clean clean_test clean_bin b_ovf b_hdrs b_io fz paste attr ctest lib hello hello_test --
+begin "modes: red, each the only finding (__has_feature sanitizer tests, directly and through a product header macro)"
+modes_case feature 1 san m_feat -- mode-divergent-code:m_hook
+modes_case ubsan 1 san m_ubsan -- mode-divergent-code:m_hook
+modes_case header 1 san m_hdr -- mode-divergent-code:m_hook2
+modes_case release_only 1 release m_rel -- mode-divergent-code:m_hook
+modes_case pragma 1 san m_pragma -- "mode-divergent-code:clang diagnostic push" "mode-divergent-code:clang diagnostic pop"
+modes_case asm 1 san m_asm -- mode-divergent-code:__asm__
+begin "modes: __SANITIZE_ADDRESS__ (not defined by this clang), NDEBUG (neither mode) and __OPTIMIZE__ (both modes) do not differ: no divergence"
+modes_case sanitize_address 0 - m_asan --
+modes_case ndebug 0 - m_ndebug --
+modes_case optimize 0 - m_opt --
+begin "modes: fail closed (target or unit in one mode only, missing calls file, schema mismatch, empty or missing dir) -> exit 2"
+exit2() { # <name> <dir-release> <dir-san>
+  "${RIGOR[@]}" facts --modes "$2" "$3" --out "$out/md/$1.json" > "$out/md/$1.txt" 2>&1; local rc=$?
+  [ "$rc" = 2 ] || fail "$CUR: $1 exited $rc, wanted 2" "$out/md/$1.txt"
+  echo "  $1 -> exit 2"
+}
+d="$out/md/f1"; tool mkmd "$out/mrel" "$d/release" clean m_asan; tool mkmd "$out/msan" "$d/san" clean
+exit2 no_san_twin "$d/release" "$d/san"
+d="$out/md/f2"; tool mkmd "$out/mrel" "$d/release" clean; tool mkmd "$out/msan" "$d/san" clean; rm "$d/san/clean.calls.json"
+exit2 no_calls "$d/release" "$d/san"
+d="$out/md/f3"; tool mkmd "$out/mrel" "$d/release" clean; tool mkmd "$out/msan" "$d/san" clean; tool tamper "$d/san/clean.json" schema 2
+exit2 schema "$d/release" "$d/san"
+d="$out/md/f4"; tool mkmd "$out/mrel" "$d/release" clean; tool mkmd "$out/msan" "$d/san" clean; tool tamper "$d/san/clean.json" units '[]'
+exit2 unit_missing "$d/release" "$d/san"
+mkdir -p "$out/md/empty"
+exit2 empty "$out/md/empty" "$out/md/empty"
+exit2 not_a_dir "$out/md/nonexistent" "$out/md/nonexistent"
+
+begin "modes: cache: the san facts of an unchanged tree execute 0 actions, and san facts are san-only"
+must_pass build --target-platforms ${PLAT}san "${sargs[@]}"
+must_pass build --target-platforms ${PLAT}san "${sargs[@]}"
+n="$("${B[@]}" log what-ran 2>/dev/null | strip_ansi | grep -vc '^Showing\|^$')"
+[ "$n" = 0 ] || fail "$CUR: $n actions executed on the second san build"
+echo "  second san build: $n actions executed"
+must_pass build "${rargs[@]}"
+must_pass build "${rargs[@]}"
+n="$("${B[@]}" log what-ran 2>/dev/null | strip_ansi | grep -vc '^Showing\|^$')"
+[ "$n" = 0 ] || fail "$CUR: $n actions executed on the second release build"
+echo "  second release build: $n actions executed"
+if run "$out/sanrel.log" build "$pkg:clean_facts_san"; then fail "$CUR: san facts built in release" "$out/sanrel.log"; fi
+grep -q "is incompatible with" "$out/sanrel.log" || fail "$CUR: failed for the wrong reason" "$out/sanrel.log"
 
 begin "modes: facts exist in the release mode only"
 for m in san cov fuzz; do

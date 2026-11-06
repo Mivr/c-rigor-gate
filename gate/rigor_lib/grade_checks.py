@@ -14,8 +14,8 @@ import sys
 from dataclasses import dataclass
 
 from rigor_lib import buckfiles, facts_data, facts_policy, facts_semantic, facts_symbols
-from rigor_lib import grade_build, grade_context, grade_policy
-from rigor_lib.findings import GateResult
+from rigor_lib import grade_build, grade_context, grade_policy, facts_third_party, grade_tree, paths, product_layout
+from rigor_lib.findings import GateResult, finding
 
 FACTS_KIND = "c_facts"
 CTEST_FACTS = "gate//ctest:ctest_facts"
@@ -30,6 +30,26 @@ class FactsBuild:
     metadata: dict
 
 
+def _display(text):
+    return text.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
+
+
+def layout_findings(g):
+    """The layout coverage rule (B14): product code the layout leaves out is a finding, not silence.
+
+    Reads the product head from the clone (git blobs, as `assemble` does) and the BUCK files that were
+    copied into the tree. It is part of this gate because `assemble` cannot be extended from here.
+    """
+    entries = [(paths.match_text(e.path), e.mode) for e in grade_tree.list_tree(g.src, g.head)]
+    buck_texts = []
+    for path in g.product_paths:
+        if product_layout.is_build_file(path):
+            with open(os.path.join(g.tree, path), "rb") as handle:
+                buck_texts.append((path, handle.read().decode("utf-8", "replace")))
+    return [finding(rule, path=_display(path), reason=reason)
+            for rule, path, reason in product_layout.coverage_findings(g.product, entries, buck_texts)]
+
+
 def buckfiles_gate(g):
     if g.status.get("assemble") != "PASS":
         return None
@@ -39,7 +59,8 @@ def buckfiles_gate(g):
         os.makedirs(os.path.dirname(target), exist_ok=True)
         shutil.copyfile(os.path.join(g.tree, path), target)
     os.makedirs(view, exist_ok=True)
-    return GateResult(buckfiles.GATE_ID, buckfiles.walk_findings(view), {"files": len(g.product_paths)})
+    found = buckfiles.walk_findings(view) + layout_findings(g)
+    return GateResult(buckfiles.GATE_ID, found, {"files": len(g.product_paths)})
 
 
 def _copy_outputs(g, labels, results, directory):
@@ -77,6 +98,8 @@ def _build_facts(g):
     if code != 0:
         return "query failed: %s" % err.strip()[-500:]
     labels = sorted(line.strip() for line in out.splitlines() if line.strip())
+    # B12: the facts of every gate-owned library a product may use (`<label>_symbols`), trusted by name.
+    labels += sorted(label + "_symbols" for label in facts_third_party.load().trusted)
     labels += [CTEST_FACTS, LIBC_TARGET]  # libc last: _copy_outputs relies on it
     report = os.path.join(g.work, "build-report-facts.json")
     flags = ["--no-remote-cache"] if g.args.uncached else []

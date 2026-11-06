@@ -52,6 +52,7 @@ class PathPolicy:
         self.real_own = [os.path.realpath(d) for d in self.own]
         self.home = collapse(home)
         self.exempt = set()   # persisted tool-output files announced by the harness
+        self.made = []        # scratch dirs a gate script the agent ran printed as its own (see Audit.own_dir)
 
     # -- resolving ---------------------------------------------------------------------------
     def normalize(self, text, cwd):
@@ -83,6 +84,9 @@ class PathPolicy:
     def _inside(base, path):
         return path == base or path.startswith(base.rstrip("/") + "/")
 
+    def is_inside(self, base, path):
+        return self._inside(base, path)
+
     def is_own(self, path):
         return any(self._inside(base, path) for base in self.own)
 
@@ -90,9 +94,14 @@ class PathPolicy:
         if path in _SINKS or path.startswith("/dev/fd/"):
             return True
         if not self.is_own(path):
-            return False
+            return self._in_made(path)
         real = self.real(path)
         return any(self._inside(base, real) for base in self.real_own) or self.is_own(real)
+
+    def _in_made(self, path):
+        """Inside a directory the agent's own gate run created, and still there after resolving links."""
+        real = self.real(path)
+        return any(self._inside(base, path) and self._inside(os.path.realpath(base), real) for base in self.made)
 
     def relative_to_worktree(self, path):
         if self._inside(self.worktree, path):

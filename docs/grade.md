@@ -59,6 +59,29 @@ A gate that fails by findings does not stop the others (except as noted for `bui
   at L3+, info at L2. Code written so that its mutants fail to compile (for example constants at the limit of
   their type, which trip `-Werror`) would otherwise escape.
 
+## Layout coverage (B14)
+`[layout].include` is an allow-list, so on its own a new product directory would be silently ungraded. The
+`buckfiles` gate (`grade_checks.layout_findings`, rules in `product_layout.coverage_findings`) therefore reads every
+entry of the product head (git tree, not the working directory) and fails closed. *Code* is: a file named `BUCK*`,
+`TARGETS*` or `PACKAGE*`; a file with a C or header extension (`.c .h .inc .def`, and the C++, assembler and
+linker-script spellings, in any letter case, trailing dots/spaces ignored); and any file a copied `BUCK` names in a
+string literal (`srcs`, `headers`, ...) however it is called or wherever it lives (`../docs/x.txt`).
+
+| Rule (all errors) | When |
+|---|---|
+| `ungraded-path` | code outside `layout.include`; or a submodule (gitlink) that is not the gate's own `gate` |
+| `excluded-code` | a `layout.exclude` glob covers code. `exclude` may name non-code paths only (docs, plans, fixtures) |
+| `ignored-code` | code inside a path the gate always excludes (`tools/`, `third_party/`, `toolchains/`, `prelude/`, `gate/`, `.git*`; matched in any letter case). A product's own `third_party/` copy would never be built, so it is refused instead of ignored |
+| `stale-include` | an include glob that matches no file at the head (an empty module). A glob that itself names only gate-excluded paths (`.buckconfig`, `tools/**`) is inert, not stale |
+| `case-collision` | two paths that differ only in letter case or Unicode normalisation |
+
+Symlinks are judged by name like files (a symlink called `x.c` outside the include is `ungraded-path`; an included
+one is `unsupported-entry` from `assemble`). `third_party/**` is always excluded (B12): a product's libraries come from
+`gate//third_party`, and `rigor grade` now builds the `<label>_symbols` facts of every library in
+`third_party/ALLOWED_LABELS` and `ALLOWED_TEST_LABELS` into the facts directory, so `symbols` can check
+`third_party = [...]` policy entries. The check runs in `buckfiles` (not `assemble`) because `assemble`'s step lives in
+`grade_steps.py`; moving it is a one-line follow-up.
+
 ## The grading tree
 `<work>/tree/` contains only:
 - `gate/`: the gate repository at the commit `rigor` itself runs from (sha in `assemble` metadata),

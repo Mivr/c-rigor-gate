@@ -9,7 +9,7 @@ from unittest import mock
 
 from rigor_lib import grade_checks, grade_context, grade_pipeline, grade_tree, product_layout, verdict
 from rigor_lib.errors import InternalError
-from tests.helpers import GATE_DIR, TempDirTestCase, base_env
+from tests.helpers import GATE_DIR, Repo, TempDirTestCase, base_env
 
 
 def write_product(directory, text):
@@ -231,16 +231,38 @@ class ProductChecksStep(TempDirTestCase):
             results="", test_results="", status={"assemble": assemble_status},
             product_paths=sorted(files))
 
+    def layout_ok(self):
+        return mock.patch.object(grade_checks, "layout_findings", return_value=[])
+
+    def test_layout_findings_read_the_product_head(self):
+        repo = Repo(self.sub("src"))
+        repo.write("core/BUCK", 'c_library(name = "a", srcs = ["a.c", "../docs/hidden.txt"])\n')
+        repo.write("core/a.c", "")
+        repo.write("app/BUCK", "")
+        repo.write("docs/hidden.txt", "")
+        repo.write("docs/notes.md", "")
+        repo.git("add", "-A")
+        repo.add_gitlink("vendor", "1" * 40)
+        head = repo.commit(add_all=False)
+        config = product_layout.load_product(str(write_product(self.tmp, 'name = "p"\n[layout]\ninclude = ["core/**", "gone/**"]\n')))
+        g = self.grading("PASS", {"core/BUCK": (repo.root / "core/BUCK").read_text(), "core/a.c": ""})
+        g.src, g.head, g.product = str(repo.root), head, config
+        found = sorted((f["rule"], f["path"]) for f in grade_checks.layout_findings(g))
+        self.assertEqual(found, [("stale-include", "gone/**"), ("ungraded-path", "app/BUCK"),
+                                 ("ungraded-path", "docs/hidden.txt"), ("ungraded-path", "vendor")])
+
     def test_buckfiles_reads_product_files_only(self):
         good = 'load("@gate//rules:c.bzl", "c_library")\nc_library(name = "a", srcs = ["a.c"])\n'
         g = self.grading("PASS", {"core/BUCK": good, "core/a.c": ""})
         (self.tmp / "tree" / "gate").mkdir()
         (self.tmp / "tree" / "gate" / "BUCK").write_text("native.cxx_library()\n")
-        self.assertEqual(grade_checks.buckfiles_gate(g).status, "PASS")
+        with self.layout_ok():
+            self.assertEqual(grade_checks.buckfiles_gate(g).status, "PASS")
 
     def test_buckfiles_fails_on_a_raw_rule(self):
         g = self.grading("PASS", {"core/BUCK": "native.cxx_library(name = 'a')\n"})
-        result = grade_checks.buckfiles_gate(g)
+        with self.layout_ok():
+            result = grade_checks.buckfiles_gate(g)
         self.assertEqual([f["rule"] for f in result.findings], ["bad-call"])
         self.assertEqual(result.findings[0]["path"], "core/BUCK")
 

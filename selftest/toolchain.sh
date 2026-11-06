@@ -63,9 +63,10 @@ sums=""
 for i in 1 2 3; do
   log="$out/fuzz$i.log"
   if run "$log" test --target-platforms ${PLAT}fuzz //examples/bad/fuzzme:fuzzme; then fail "$CUR: fuzzme did not fail" "$log"; fi
-  grep -q "INFO: Seed: 1$" "$log" || fail "$CUR: seed not 1" "$log"
+  grep -q "fuzz: -seed=1 -runs=200000 verdict: fail" "$log" || fail "$CUR: seed/runs not reported" "$log"
   grep -q "AddressSanitizer: heap-buffer-overflow" "$log" || fail "$CUR: wrong crash kind" "$log"
-  grep -q "Test unit written to" "$log" || fail "$CUR: no crash artifact" "$log"
+  grep -q "reproducer: crash-" "$log" || fail "$CUR: no crash artifact named in the report" "$log"
+  grep -Eq "in LLVMFuzzerTestOneInput examples/bad/fuzzme/fuzzme\.c:[0-9]+" "$log" || fail "$CUR: crash not symbolized" "$log"
   sums="$sums $(grep -o 'crash-[0-9a-f]*' "$log" | head -1)"
 done
 [ "$(echo $sums | tr ' ' '\n' | sort -u | wc -l)" = 1 ] || fail "$CUR: crash input differs between runs:$sums"
@@ -123,8 +124,16 @@ for want in "(c_compile l.c)" "(c_compile t.c)" "(archive " "(cxx_link_executabl
   grep -qF "$want" "$out/whatran.txt" || fail "$CUR: no $want action in what-ran" "$out/whatran.txt"
 done
 grep -q '^test.run' "$out/whatran.txt" || fail "$CUR: no test.run in what-ran" "$out/whatran.txt"
-if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
-  fail "$CUR: an action did not run on RE" "$out/whatran.txt"
+# Fresh-nonce actions (the scratch targets and their test run) must have executed on RE. Dependency actions (the
+# fetched toolchain, the sysroot, ctest) are not nonce-stamped, so a cache hit on them is legitimate and depends on
+# farm and daemon history; they may be `cache` or `re`. Nothing may be `local`.
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' '
+    NF >= 3 && ($1 == "test.run" || $2 ~ /^root\/\/selftest\/scratch:/) && $3 !~ /^re\(/ { bad = 1 }
+    END { exit !bad }'; then
+  fail "$CUR: a fresh-nonce action did not run on RE" "$out/whatran.txt"
+fi
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF >= 3 && $3 !~ /^(re\(|cache)/ { bad = 1 } END { exit !bad }'; then
+  fail "$CUR: an action ran locally or on an unknown executor" "$out/whatran.txt"
 fi
 grep -q "local: 0)" "$out/$step.log" || fail "$CUR: local executions reported" "$out/$step.log"
 rm -rf "$scratch"

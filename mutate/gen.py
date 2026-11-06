@@ -8,12 +8,18 @@ or, for tests, `gen.py --src PATH --ast FILE --out FILE` (PATH is the source fil
 A mutant is a replacement of source bytes [begin_offset, end_offset) by text. Only AST ranges that
 lie in the main file and in no macro expansion are used; a node whose operator token is not found
 exactly where the AST says it must be is skipped. Output (canonical JSON):
-    {"schema": 1, "file": PATH, "sha256": ..., "functions": [{"name", "line"}...],
+    {"schema": 1, "file": PATH, "sha256": ..., "definitions": N,
+     "functions": [{"name", "line"} + {"reason": "no-mutable-token"} when it has no mutant...],
      "skipped": [{"name", "file", "reason": "macro" | "header"}...],
      "mutants": [{"id", "file", "begin_offset", "end_offset", "original", "replacement",
                   "operator", "function", "line"}...]}
 `skipped` lists functions with a body that no mutant can reach: made by a macro in the main file, or
 defined in a header that is not one of the `--system-root` directories (the toolchain's own).
+Accounting invariant (B19): every function definition (a non-implicit `FunctionDecl` with a
+`CompoundStmt` child) outside the toolchain's own headers is in exactly one of `functions` and
+`skipped`; `definitions` is how many there are, counted by `audit_definitions`, a second walk that
+shares no code or state with the walker. The generator exits 2 if the two disagree (by name, not
+just by count); `rigor mutants` repeats the comparison on the report.
 `original` and `replacement` are the bytes decoded as latin-1 (lossless). Mutants are sorted by
 (begin, end, replacement, operator). The id is the first 16 hex digits of sha256 over
 file, function, operator, original, replacement and the ordinal among equal ones in the function.
@@ -49,6 +55,12 @@ LITERAL = re.compile(rb"(0[xX][0-9a-fA-F]+|0|[1-9][0-9]*)([uUlL]*)")
 NO_MUTATION = ("ConstantExpr", "StaticAssertDecl", "EnumConstantDecl", "UnaryExprOrTypeTraitExpr",
                "DesignatedInitExpr", "FieldDecl")
 CONDITION_SLOT = {"IfStmt": 0, "WhileStmt": 0, "DoStmt": 1, "ForStmt": 2}
+NO_MUTABLE_TOKEN = "no-mutable-token"
+EXIT_ACCOUNTING = 2
+
+
+class AccountingError(Exception):
+    """A function definition the generator could not account for, or an AST shape it cannot trust."""
 
 
 class Source:
@@ -146,6 +158,7 @@ class Walker:
         self.mutants = []
         self.functions = []
         self.skipped = []  # functions with a body that no mutant can reach, and why
+        self.system = []  # names of definitions in the toolchain's own headers (reported nowhere)
 
     def add(self, ctx, operator, begin, end, replacement):
         original = self.source.data[begin:end]
@@ -167,21 +180,31 @@ class Walker:
             child_ctx = self.enter_function(node, ctx)
         elif kind in NO_MUTATION:
             child_ctx = dict(ctx, live=False)
+        elif kind == "StmtExpr":
+            for child in children:  # its last statement is the value: never replace it by (void)0
+                if isinstance(child, dict) and child.get("kind") == "CompoundStmt":
+                    child["_value_last"] = True
         if ctx["function"] is not None and ctx["live"] and span_of(node) is not None:
             self.mutate(node, kind, children, ctx)
         for child in children:
             self.visit(child, child_ctx)
 
     def enter_function(self, node, ctx):
-        body = node["inner"][-1] if node.get("inner") else None
-        if not body or body.get("kind") != "CompoundStmt" or node.get("isImplicit"):
+        bodies = [c for c in node.get("inner", []) if isinstance(c, dict) and c.get("kind") == "CompoundStmt"]
+        if len(bodies) > 1:
+            raise AccountingError("function %r has %d compound statements; the body is not unique"
+                                  % (node.get("name", ""), len(bodies)))
+        if not bodies or node.get("isImplicit"):
             return ctx
-        if span_of(node) is None or span_of(body) is None:
+        body = bodies[0]  # wherever it sits: attributes may follow it
+        if span_of(body) is None:
+            # Made by a macro, or defined in a header. (A node whose range merely *starts* in a macro,
+            # `NOINLINE int f(void) { ... }`, is not that: its body is plain main-file text.)
             self.skip(node)
             return ctx
         params = [c.get("name") for c in node["inner"] if c.get("kind") == "ParmVarDecl"]
         name = node.get("name", "")
-        self.functions.append({"name": name, "line": self.source.line(span_of(node)[0])})
+        self.functions.append({"name": name, "line": self.source.line((span_of(node) or span_of(body))[0])})
         return {"function": name, "params": [p for p in params if p], "live": True,
                 "qual": node.get("type", {}), "body": body}
 
@@ -191,7 +214,8 @@ class Walker:
         file = node.get("_where", (self.main,))[0]
         if file == self.main:
             reason = "macro"
-        elif any(file == root or file.startswith(root + "/") for root in self.system_roots):
+        elif in_roots(file, self.system_roots):
+            self.system.append(node.get("name", ""))
             return
         else:
             reason = "header"
@@ -212,7 +236,7 @@ class Walker:
         elif kind == "ReturnStmt":
             self.returned(children, ctx)
         elif kind == "CompoundStmt":
-            self.deletions(children, ctx)
+            self.deletions(children[:-1] if node.get("_value_last") else children, ctx)
             if node is ctx["body"]:
                 self.whole_body(span, ctx)
 
@@ -265,7 +289,8 @@ class Walker:
 
     def condition(self, kind, children, ctx):
         slot = CONDITION_SLOT[kind]
-        span = span_of(children[slot]) if len(children) > slot else None
+        cond = children[slot] if len(children) > slot else {}
+        span = span_of(cond) if isinstance(cond, dict) and "valueCategory" in cond else None
         if span is not None:
             original = self.source.data[span[0]:span[1]].decode("latin-1")
             self.add(ctx, "condition", span[0], span[1], "!(" + original + ")")
@@ -306,6 +331,10 @@ class Walker:
         uses = "".join("(void)%s; " % name for name in ctx["params"])
         self.add(ctx, "function-body", span[0], span[1],
                  "{ " + uses + ("}" if returns == "void" else "return 0; }"))
+
+
+def in_roots(file, roots):
+    return any(file == root or file.startswith(root + "/") for root in roots)
 
 
 def pointerish(node):
@@ -355,6 +384,61 @@ def assign_ids(mutants, file_path):
     return result
 
 
+def audit_definitions(ast, system_roots):
+    """(names outside the toolchain's headers, names inside them) of every function definition in the AST.
+
+    The second, independent count behind the accounting invariant: it shares nothing with `Walker`
+    (no `annotate`, no `_span`, no context, no `enter_function`). It walks the raw JSON in document
+    order, which is clang's print order, so it follows the file a location names (a location that names
+    none is in the file of the last one printed). A definition is any non-implicit FunctionDecl with a
+    CompoundStmt among its children, wherever among them, and a macro-made one counts in the file the
+    macro was expanded in."""
+    state = {"file": ""}
+    outside = []
+    inside = []
+
+    def walk(value):
+        if isinstance(value, list):
+            for item in value:
+                walk(item)
+            return
+        if not isinstance(value, dict):
+            return
+        here = None
+        for key, child in value.items():
+            if key == "includedFrom":
+                continue  # names the includer, not the file of this location
+            if key == "file" and isinstance(child, str):
+                state["file"] = child
+            else:
+                walk(child)
+            if key == "loc":
+                here = state["file"]
+        children = value.get("inner")
+        if value.get("kind") == "FunctionDecl" and not value.get("isImplicit") \
+                and isinstance(children, list) \
+                and any(isinstance(c, dict) and c.get("kind") == "CompoundStmt" for c in children):
+            (inside if in_roots(here if here is not None else state["file"], system_roots)
+             else outside).append(value.get("name", ""))
+
+    walk(ast)
+    return sorted(outside), sorted(inside)
+
+
+def check_accounting(walker, ast):
+    """Fail closed unless the walker and `audit_definitions` agree on every definition, by name."""
+    outside, inside = audit_definitions(ast, walker.system_roots)
+    accounted = sorted([f["name"] for f in walker.functions] + [s["name"] for s in walker.skipped])
+    problems = []
+    if accounted != outside:
+        problems.append("definitions in the AST %r, accounted for %r" % (outside, accounted))
+    if sorted(walker.system) != inside:
+        problems.append("toolchain definitions in the AST %r, passed over %r" % (inside, sorted(walker.system)))
+    if problems:
+        raise AccountingError("; ".join(problems))
+    return len(outside)
+
+
 def generate(file_path, data, ast, system_roots=()):
     if not annotate(ast, file_path) and data.strip():
         raise SystemExit("gen.py: no location in the AST names %r; the generator would be blind"
@@ -363,9 +447,14 @@ def generate(file_path, data, ast, system_roots=()):
     walker = Walker(source, file_path, system_roots)
     for top in ast.get("inner", []):
         walker.visit(top, {"function": None, "live": True})
+    definitions = check_accounting(walker, ast)
+    mutants = assign_ids(walker.mutants, file_path)
+    mutated = {m["function"] for m in mutants}
+    functions = [dict(f, reason=NO_MUTABLE_TOKEN) if f["name"] not in mutated else f
+                 for f in walker.functions]
     return {"schema": SCHEMA, "file": file_path, "sha256": hashlib.sha256(data).hexdigest(),
-            "functions": walker.functions, "skipped": walker.skipped,
-            "mutants": assign_ids(walker.mutants, file_path)}
+            "definitions": definitions, "functions": functions, "skipped": walker.skipped,
+            "mutants": mutants}
 
 
 def canonical(obj):
@@ -397,7 +486,11 @@ def main(argv):
         sys.exit("gen.py: give either --ast FILE or a clang command after --")
     with open(args.src, "rb") as handle:
         data = handle.read()
-    result = generate(args.src, data, read_ast(args.ast, command), args.system_root)
+    try:
+        result = generate(args.src, data, read_ast(args.ast, command), args.system_root)
+    except AccountingError as exc:
+        sys.stderr.write("gen.py: accounting failed for %s: %s\n" % (args.src, exc))
+        sys.exit(EXIT_ACCOUNTING)
     with open(args.out, "wb") as handle:
         handle.write(canonical(result))
 
