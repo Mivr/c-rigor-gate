@@ -566,8 +566,13 @@ printf 'int scratch_nonce_%s_%s(void) { return 1; }\n' "$(date +%s)" "$$" >> "$s
 must_pass build "$pkg:dep_a_facts" --show-output
 "${B[@]}" log what-ran 2>/dev/null | strip_ansi > "$out/whatran.txt"
 grep -q 'c_facts' "$out/whatran.txt" || fail "$CUR: no c_facts action ran" "$out/whatran.txt"
-if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
-  fail "$CUR: an action did not run on RE" "$out/whatran.txt"
+# Only the fresh-nonce actions (the changed source facts) must have run on RE; unchanged dependencies (toolchain, ctest, other
+# facts) may legitimately be cache hits, depending on farm and daemon history. Nothing may run locally.
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $2 ~ /c_facts/ && $3 !~ /^re\(/ {bad=1} END{exit !bad}'; then
+  fail "$CUR: a fresh-nonce action did not run on RE" "$out/whatran.txt"
+fi
+if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^(re\(|cache)/ {bad=1} END{exit !bad}'; then
+  fail "$CUR: an action ran locally or on an unknown executor" "$out/whatran.txt"
 fi
 grep 'c_facts' "$out/whatran.txt" | head -2
 grep -q 'scratch_nonce_' "$(awk '/dep_a_facts/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)" || fail "$CUR: new symbol missing from the facts"
