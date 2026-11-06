@@ -2,16 +2,16 @@
 
 Both read facts that Buck2 makes on RE from the product's own targets; the product declares nothing:
 
-  * `structure`: for every module that has sources, one `c_structure` target in a generated package
-    (`gate-structure/BUCK`, written after the product was copied, so `buckfiles` never sees it; a root
-    `PACKAGE` file makes the product's targets visible to it and both are removed when the step ends,
-    because the `mutants` step writes its own). The modules, sources, headers and dependencies come
-    from `buck2 uquery` over the `c_facts` and `mutsrc` targets of the tree, never from the product's
-    words. Header-only modules have no compile, so no target and no dependency edge (their text is
-    read in every unit that includes it). Tests and fuzz targets get facts and are not graded (T011).
-    `rigor structure` decides, with a policy the gate writes: every built module, with the level of
-    `products/<p>/policy.toml` (L4 and L5 are mutation levels; the structure limits stop at L3, so
-    they are L3), or none for a module the policy has no level for (L3 and a note).
+  * `structure`: for every module that has sources, one `c_structure` target. A source file can only be
+    named from its own package, so the targets are appended to the BUCK file of the module's package in
+    the grading tree (after `buckfiles` has read the product's own files; the original bytes are put
+    back when the step ends). The modules, sources, headers and dependencies come from `buck2 uquery`
+    over the `c_facts` and `mutsrc` targets of the tree, never from the product's words. Header-only
+    modules have no compile, so no target and no dependency edge (their text is read in every unit that
+    includes it). Tests and fuzz targets get facts and are not graded (T011). `rigor structure` decides,
+    with a policy the gate writes: every built module, with the level of `products/<p>/policy.toml`
+    (L4 and L5 are mutation levels; the structure limits stop at L3, so they are L3), or none for a
+    module the policy has no level for (L3 and a note).
   * `mode-divergence`: the release facts and the `san` twins (`<name>_facts_san`, rule `c_san_facts`)
     with their `[calls]` sub-targets, compared by `rigor facts --modes`. A twin that is missing is a
     finding, a malformed or one-sided directory is exit 2.
@@ -22,17 +22,14 @@ are cached Buck2 builds like every other step (`--uncached` applies).
 
 import os
 import re
-import shutil
 from argparse import Namespace
 
 from rigor_lib import facts_modes, grade_build, grade_context, grade_policy, jsonio, structure
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
-from rigor_lib.grade_tree import write_file
 
-PACKAGE_DIR = "gate-structure"
-PACKAGE_FILE = "PACKAGE"
-PACKAGE_TEXT = 'package(visibility = ["PUBLIC"], inherit = True)\n'
+BUILD_FILE = "BUCK"
+LOAD_LINE = 'load("@gate//rules:structure.bzl", "c_structure")\n'
 RELEASE = "toolchains//:linux_release"
 SAN = "toolchains//:linux_san"
 FACTS_RULE = "c_facts"
@@ -124,34 +121,38 @@ def parse_modules(facts, mutsrc):
     return modules, every
 
 
-def target_name(index, module):
-    return "s%03d_%s" % (index, re.sub(r"[^A-Za-z0-9_]", "_", module.label.lstrip("/")))
+def package_of(module):
+    return module.label[len("//"):].partition(":")[0]
 
 
-def target_label(index, module):
-    return "//%s:%s" % (PACKAGE_DIR, target_name(index, module))
+def target_name(module):
+    return module.label.rpartition(":")[2] + "__structure"
+
+
+def target_label(module):
+    return "//%s:%s" % (package_of(module), target_name(module))
 
 
 def _list(items):
     return "[%s]" % ", ".join(jsonio.canonical_dumps(item).decode("utf-8").strip() for item in items)
 
 
-def _owned(label, name):
-    """A file of the package of a module label (`//pkg:x`) as a label."""
-    return "%s:%s" % (label.rpartition(":")[0], name)
+def _quoted(text):
+    return jsonio.canonical_dumps(text).decode("utf-8").strip()
 
 
-def build_file_text(modules):
-    calls = []
-    for index, module in enumerate(modules):
-        name = module.label.rpartition(":")[2]
-        calls.append("c_structure(\n    name = %s,\n    module = %s,\n    srcs = %s,\n    headers = %s,\n"
-                     "    deps = %s,\n    kind = %s,\n    facts_name = %s,\n)\n"
-                     % (_list([target_name(index, module)])[1:-1], _list([module.unit])[1:-1],
-                        _list([_owned(module.label, s) for s in module.srcs]),
-                        _list([_owned(module.label, h) for h in module.headers]),
-                        _list(module.deps), _list([module.kind])[1:-1], _list([name])[1:-1]))
-    return 'load("@gate//rules:structure.bzl", "c_structure")\n\n' + "\n".join(calls)
+def call_text(module):
+    """The `c_structure` call of one module, written in the BUCK file of its package."""
+    return ("c_structure(\n    name = %s,\n    module = %s,\n    srcs = %s,\n    headers = %s,\n"
+            "    deps = %s,\n    kind = %s,\n    facts_name = %s,\n)\n"
+            % (_quoted(target_name(module)), _quoted(":" + module.unit.rpartition(":")[2]), _list(module.srcs),
+               _list(module.headers), _list(module.deps), _quoted(module.kind),
+               _quoted(module.label.rpartition(":")[2])))
+
+
+def extended_text(original, modules):
+    """The BUCK file with the load first and the calls after it."""
+    return LOAD_LINE.encode("utf-8") + original + b"\n" + "\n".join(call_text(m) for m in modules).encode("utf-8")
 
 
 def structure_level(level):
@@ -171,21 +172,37 @@ def policy_text(modules, levels):
     return "\n".join(out)
 
 
-def write_package(tree, modules):
-    for name in (PACKAGE_DIR, PACKAGE_FILE):
-        if os.path.lexists(os.path.join(tree, name)):
-            raise InternalError("%s exists in the grading tree before the structure step" % name)
-    write_file(tree, PACKAGE_FILE, PACKAGE_TEXT.encode("utf-8"), 0o644)
-    return write_file(tree, PACKAGE_DIR + "/BUCK", build_file_text(modules).encode("utf-8"), 0o644)
+def extend_build_files(tree, modules):
+    """Append the targets; returns {path: (original bytes, mode)} for `restore_build_files`.
+
+    A module whose unit is not in its own package would need a file of another package: refused."""
+    originals = {}
+    try:
+        for package in sorted({package_of(m) for m in modules}):
+            path = os.path.join(tree, package, BUILD_FILE)
+            if not os.path.isfile(path) or os.path.islink(path):
+                raise InternalError("no %s in the package %r" % (BUILD_FILE, package))
+            data = jsonio.read_bytes(path)
+            mode = os.stat(path).st_mode & 0o777
+            originals[path] = (data, mode)
+            here = [m for m in modules if package_of(m) == package]
+            if any(m.unit.rpartition(":")[0] != "//" + package for m in here):
+                raise InternalError("a unit outside its package in %r" % (package,))
+            os.chmod(path, 0o644)
+            with open(path, "wb") as handle:
+                handle.write(extended_text(data, here))
+    except BaseException:
+        restore_build_files(originals)
+        raise
+    return originals
 
 
-def remove_package(tree):
-    """Take the generated package away again: the `mutants` step refuses a tree that already has one."""
-    package = os.path.join(tree, PACKAGE_DIR)
-    if os.path.lexists(package):
-        grade_context.remove_tree(package)
-    if os.path.lexists(os.path.join(tree, PACKAGE_FILE)):
-        os.unlink(os.path.join(tree, PACKAGE_FILE))
+def restore_build_files(originals):
+    for path, (data, mode) in originals.items():
+        os.chmod(path, 0o644)
+        with open(path, "wb") as handle:
+            handle.write(data)
+        os.chmod(path, mode)
 
 
 def query_json(tree, expression, attributes):
@@ -224,12 +241,16 @@ def run_build(g, platform, labels, tag):
     return grade_build.read_report(report) or {}, metadata
 
 
-def output_of(g, results, label):
-    """The one artifact of a built target; `label` is spelled `root//...` as the build report does."""
+def output_of(g, results, label, key="DEFAULT"):
+    """The one artifact of a built target (or of its named sub-target output `key`); `label` is spelled
+    `root//...` as the build report does."""
     entry = results.get(label)
     if entry is None or entry.get("success") != "SUCCESS":
         return None
-    return grade_build.output_path(g.tree, label, entry)
+    outputs = entry.get("outputs", {})
+    if key not in outputs:
+        return None
+    return grade_build.output_path(g.tree, label, {"outputs": {"DEFAULT": outputs[key]}})
 
 
 def fresh_dir(g, name):
@@ -252,14 +273,15 @@ def structure_enabled(g):
 def structure_gate(g):
     if not structure_enabled(g):
         return None   # no tree that compiles: nothing to read
+    originals = {}
     try:
-        return _structure(g)
+        return _structure(g, originals)
     finally:
-        remove_package(g.tree)
+        restore_build_files(originals)
         grade_context.kill_daemon(g.tree)
 
 
-def _structure(g):
+def _structure(g, originals):
     modules, every = read_modules(g.tree)
     levels = grade_policy.load_levels(grade_policy.policy_path(g))
     found = [finding("policy-module-without-facts", module=label)
@@ -267,8 +289,8 @@ def _structure(g):
     if not modules:
         found.append(finding("no-structure-modules"))
         return GateResult(structure.GATE_ID, found, {"modules": {}})
-    package_sha = write_package(g.tree, modules)
-    labels = [target_label(i, m) for i, m in enumerate(modules)]
+    originals.update(extend_build_files(g.tree, modules))
+    labels = [target_label(m) for m in modules]
     results, metadata = run_build(g, RELEASE, labels, "structure")
     directory = fresh_dir(g, "structure-facts")
     built = []
@@ -279,7 +301,6 @@ def _structure(g):
             continue
         copy_file(source, os.path.join(directory, "%03d.json" % index))
         built.append(modules[index])
-    metadata["package_sha256"] = package_sha
     metadata["modules"] = {}
     if built:
         policy = os.path.join(g.work, "tmp", "structure-policy.toml")
@@ -319,7 +340,7 @@ def _build_mode(g, platform, labels, tag, directory):
     results, metadata = run_build(g, platform, wanted, tag)
     built = []
     for index, label in enumerate(labels):
-        facts, calls = (output_of(g, results, text) for text in (label, label + "[calls]"))
+        facts, calls = output_of(g, results, label), output_of(g, results, label, "calls")
         if facts is None or calls is None:
             continue
         copy_file(facts, os.path.join(directory, "%03d.json" % index))
