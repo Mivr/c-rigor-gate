@@ -118,7 +118,11 @@ class TypedDecisionTest(StructureCase):
     def test_an_unprototyped_pointer_type_is_red(self):
         funcs = [typed("dispatch", "int ( )", sites=[(3, "int ( )")], line=1),
                  typed("member", A, line=10, calls=["dispatch"], taken=[("member", A)])]
-        self.assertEqual(self.rules([tmodule(funcs)], 1), ["indirect-cycle-possible"])
+        outcome, result = self.run_gate([tmodule(funcs)], expect=1)
+        self.assertEqual(sorted(f["rule"] for f in result["findings"]),
+                         ["indirect-cycle-possible", "indirect-untyped-fallback"])
+        fallback = [f for f in result["findings"] if f["rule"] == "indirect-untyped-fallback"][0]
+        self.assertIn("unprototyped", fallback["reason"])
 
     def test_an_unprototyped_function_may_be_called_through_any_pointer_type(self):
         funcs = [typed("dispatch", A, sites=[(3, A)], line=1),
@@ -273,6 +277,13 @@ class CanonicalTypesTest(ScanCase):
     def test_a_cast_in_a_table_initialiser_is_a_top_level_conversion(self):
         got = [(c["line"], c["kind"]) for c in self.facts("types")["conversions"]]
         self.assertIn((34, "cast"), got)
+
+    def test_null_pointer_constants_are_not_conversions(self):
+        self.assertEqual(self.funcs("nulls")["t"]["conversions"], [])
+
+    def test_a_union_with_an_unnamed_struct_member_is_resolved_not_unknown(self):
+        unions = [(c["line"], c["types"]) for c in self.facts("nulls")["conversions"]]
+        self.assertEqual(unions, [(3, ["int ( int )"])])
 
     def test_functions_without_function_pointers_have_no_conversions(self):
         for name in ("run", "viaops", "use_table"):

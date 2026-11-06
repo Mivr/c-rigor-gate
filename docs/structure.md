@@ -86,8 +86,8 @@ incompatible type is undefined), unless the program converts a function pointer 
   unprototyped (`int ()`) and variadic types match everything.
 * **Conversions** (`conversions[]`, per function and per unit): `cast` (an implicit or explicit cast that changes the
   type, or goes between a function pointer, or a pointer to one, and `void *`, an integer or another type;
-  `FunctionToPointerDecay`, `LValueToRValue`, null pointers and `(void)` are not), `union` (a union with a function
-  pointer, or a struct holding one, and a member of another type), `copy` (`memcpy`/`memmove` between objects of two
+  `FunctionToPointerDecay`, `LValueToRValue`, null pointer constants such as `NULL`, and `(void)` are not), `union` (a union with a function
+  pointer, or a struct holding one - an unnamed struct or union member included - and a member of another type), `copy` (`memcpy`/`memmove` between objects of two
   different types, one of them holding a function pointer, which includes copying it into a byte buffer), `vararg`
   (`va_arg` of a function pointer type). Each lists the canonical function types involved, or `null` when the
   scanner could not tell.
