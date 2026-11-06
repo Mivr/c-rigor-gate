@@ -182,6 +182,16 @@ class MutantsTest(TempDirTestCase):
     def test_a_function_whose_mutants_are_all_equivalent_fails(self):
         self.fails_with(report([mutant(1, digest=BASE, runs={})]), "no-assert-kill-function")
 
+    def test_a_duplicate_counts_with_the_verdict_of_the_mutant_it_duplicates(self):
+        # g's only mutant makes the same object as f's, which a test killed by a failed check
+        self.put(report([mutant(1), mutant(2, function="g", digest=H[1], runs={})], functions=("f", "g")))
+        outcome, _ = self.grade()
+        self.assertExit(outcome, 0)
+        # ... and as one that only a crash killed
+        self.fails_with(report([mutant(1, runs={"t": CRASH}), mutant(2, function="g", digest=H[1], runs={}),
+                                mutant(3, function="h")], functions=("f", "g", "h")),
+                        "crash-only-function", "crash-only-function")
+
     def test_the_function_rule_does_not_apply_to_l2(self):
         self.write_policy("L2")
         self.put(report([mutant(1, runs={"t": CRASH})]))

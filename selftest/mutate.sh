@@ -226,6 +226,9 @@ cat > multi.h <<'EOF'
 #ifndef MULTI_H
 #define MULTI_H
 int add_wrap(int a, int b);
+int add_three(int x);
+int not_zero(int x);
+int record(int v);
 #endif
 EOF
 cat > multi_a.c <<'EOF'
@@ -234,6 +237,29 @@ cat > multi_a.c <<'EOF'
 int add_wrap(int a, int b)
 {
     return (a + b) % 7;
+}
+
+int add_three(int x)
+{
+    x += 3;
+    return x;
+}
+
+int not_zero(int x)
+{
+    return !x;
+}
+
+static void note(int *log, int v)
+{
+    *log = v;
+}
+
+int record(int v)
+{
+    int log = 0;
+    note(&log, v);
+    return log;
 }
 EOF
 cat > sub/multi_b.h <<'EOF'
@@ -270,6 +296,17 @@ static void t_add_wrap(ctest_t *t)
     CHECK_EQ_I64(t, add_wrap(10, 20), 2);
 }
 
+static void t_more(ctest_t *t)
+{
+    CHECK_EQ_I64(t, add_three(4), 7);
+    CHECK_EQ_I64(t, add_three(-3), 0);
+    CHECK_EQ_I64(t, not_zero(0), 1);
+    CHECK_EQ_I64(t, not_zero(9), 0);
+    CHECK_EQ_I64(t, not_zero(-1), 0);
+    CHECK_EQ_I64(t, record(5), 5);
+    CHECK_EQ_I64(t, record(-2), -2);
+}
+
 static void t_is_zero(ctest_t *t)
 {
     CHECK_EQ_I64(t, is_zero(0), 1);
@@ -285,7 +322,7 @@ static void t_hi_bit(ctest_t *t)
     CHECK_EQ_I64(t, hi_bit(0xFFFFFFFFu), 1);
 }
 
-CTEST_SUITE("multi", { "add_wrap", t_add_wrap }, { "is_zero", t_is_zero }, { "hi_bit", t_hi_bit })
+CTEST_SUITE("multi", { "add_wrap", t_add_wrap }, { "is_zero", t_is_zero }, { "hi_bit", t_hi_bit }, { "more", t_more })
 EOF
 cat > hidden.h <<'EOF'
 #ifndef HIDDEN_H
@@ -355,6 +392,26 @@ begin "build the throwaway module's mutants on RE (cold if MUTATE_COLD=1)"
 t0=$SECONDS
 build_all "$out/build1.log" || fail "$CUR: buck2 build failed" "$out/build1.log"
 echo "    built in $((SECONDS - t0)) s, executed $(executed "$out/build1.log") actions"
+"${PY[@]}" - "$RES" <<'PY'
+import glob, json, os, sys
+operators, verdicts = {}, {}
+for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.json"))):
+    d = json.load(open(path))
+    here = {}
+    for m in d["mutants"]:
+        operators[m["operator"]] = operators.get(m["operator"], 0) + 1
+        if m["compile"]["status"] == "unviable":
+            v = "unviable"
+        elif m["compile"]["hash"] == d["sources"][[s["file"] for s in d["sources"]].index(m["file"])]["baseline"]["hash"]:
+            v = "equivalent"
+        else:
+            v = "run" if m["runs"] else "duplicate"
+        here[v] = here.get(v, 0) + 1
+        verdicts[v] = verdicts.get(v, 0) + 1
+    print("    %-8s %3d mutants  %s" % (os.path.basename(path)[:-5], len(d["mutants"]), dict(sorted(here.items()))))
+print("    all      %3d mutants  %s" % (sum(operators.values()), dict(sorted(verdicts.items()))))
+print("    per operator:", dict(sorted(operators.items())))
+PY
 
 begin "RED: the known survivors of the weak tests are reported as survivors, precisely"
 mkdir -p "$out/only_weak"; cp "$RES/weak.json" "$out/only_weak/"

@@ -77,11 +77,13 @@ def skipped_findings(report, level):
 
 
 def function_findings(report, verdicts):
-    """Every function with mutants needs a mutant that some test killed by a failed check."""
+    """Every function with mutants needs a mutant that some test killed by a failed check. A
+    duplicate counts with the verdict of the mutant it duplicates (the same object, the same run)."""
+    by_id = {v.mutant.id: v.verdict for v in verdicts}
     by_function = {}
     for verdict in verdicts:
         key = (verdict.mutant.file, verdict.mutant.function)
-        by_function.setdefault(key, set()).add(verdict.verdict)
+        by_function.setdefault(key, set()).add(by_id[verdict.of] if verdict.of else verdict.verdict)
     found = []
     for (file, function), kinds in sorted(by_function.items()):
         if "killed-assert" in kinds or "survived" in kinds or "unrun" in kinds:
