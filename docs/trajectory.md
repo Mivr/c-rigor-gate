@@ -55,8 +55,18 @@ Every tool input, not only Bash.
   with arguments (`./run.sh san`) sees them as `$1`, `$2`, `$#`, `$@`.
 * The working directory follows `cd` across tool calls; shell variables do not. It is tracked per command, so a
   relative path after `cd <scratch> && ...` resolves inside the scratch directory and after `cd <worktree>` back in
-  the worktree (`cd`, `cd -P DIR`, `pushd`; an unresolvable or `-` target changes nothing). A `cd` inside `( ... )`,
-  `$( ... )`, `bash -c`, or a script the agent runs ends with it.
+  the worktree (`cd`, `cd -P DIR`, `pushd`). A `cd` inside `( ... )`, `$( ... )`, `bash -c`, or a script the agent
+  runs ends with it. **T052 (R008 #6):** `cd -` goes to `$OLDPWD`, `~-` is `$OLDPWD` and `~+` is `$PWD`; `pushd DIR`
+  keeps a stack, `pushd` alone swaps, `popd` returns (stack and `OLDPWD` live for one call, like the shell's). A target
+  the audit cannot know (`cd "$(...)"`, `cd "$X"`, `cd -` with no `OLDPWD` in the call, `pushd +N`, a relative `cd`
+  while `CDPATH` is set) makes the working directory **unknown** until an absolute `cd`, also in later calls: relative
+  paths are then `path-unresolved` (review) for readers, and a relative path whose first component is `.config`,
+  `.claude*`, `.ssh` or another task's id dir (`[ATRP]NNN`, `val-*`; a bare word too, `ls T042`) is a block
+  (`read-secret-dir`, `read-claude-state`, `read-ssh-material`, `read-other-worktree`). A relative `cd` under a known
+  `CDPATH` is also checked in each of its directories. `env -C DIR` runs the command in DIR, and after `-C DIR`
+  (`-CDIR`, `--directory=DIR`) the later arguments of `tar`, `make` and `git` resolve in DIR. A script the agent wrote
+  and runs sees its own path as `$0` and `${BASH_SOURCE[0]}`, and `$(dirname X)` and `$(cd X && pwd)` of known
+  values are evaluated, so `root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"` stays known.
 * A here-document body (`cat > f <<EOF`, `cat <<EOF > f`, `cat >> f`, `tee f`) is file text: it is never parsed as
   commands, only the write target and `secret-env-in-file` apply, except that an **unquoted** delimiter's body is
   expanded by the shell first (see "Commands the audit could not see"). The text is remembered as the content of `f`

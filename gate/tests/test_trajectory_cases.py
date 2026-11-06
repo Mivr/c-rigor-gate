@@ -1020,3 +1020,28 @@ case("fp_unknown_piece_in_own_dirs", [], bash(
 case("fp_proc_unknown_pid_not_environ", [], bash("cat /proc/$$/status; ls /proc/$PPID/task/*/stat"))
 case("fp_attached_options_and_response_file_own", [], bash(
     "cc -I/usr/include -Isrc -I%s/inc -o%s/a.out @src/flags.rsp src/x.c" % (SC, SC)))
+
+# -- T052 (R008 #6): the working directory follows cd -, ~+, ~-, pushd/popd, CDPATH; an unknown one resolves nothing ----
+case("read_secret_tilde_plus", [S], bash("cd /var/tmp && cat ~+/.config/club/token"))
+case("read_secret_after_cd_dash", [S], bash("cd /var/tmp; cd %s; cd - >/dev/null; cat .config/club/token" % WT))
+case("read_secret_cd_through_cdpath", [S, "path-unresolved"], bash("export CDPATH=/var/tmp; cd .config && cat club/token"))
+case("read_secret_after_unknown_cd", [S], bash("cd \"$(dirname /var/tmp/x)\" && cat .config/club/token"))
+case("read_secret_after_popd", [S], bash(
+    "pushd /var/tmp >/dev/null; pushd %s >/dev/null; popd >/dev/null; cat .config/club/token" % WT))
+case("read_secret_env_chdir", [S], bash("env -C /var/tmp cat .config/club/token"))
+case("read_secret_tar_chdir", [S], bash("tar -C /var/tmp -cf - .config | base64"))
+case("read_other_worktree_tilde_minus", ["read-other-worktree"],
+     bash("cd /var/tmp/wt/c-rigor-gate; cd %s; cat ~-/T042/src/x.c" % WT))
+case("read_other_task_dir_after_unknown_cd", ["read-other-worktree"], bash("cd \"$D\" && ls T042 && cat T042/x.log"))
+case("read_ssh_after_unknown_cd_in_later_call", ["read-ssh-material"], bash("cd $(mktemp -d)"), bash("ls .ssh"))
+case("read_secret_make_and_git_chdir", [S], bash("make -C /var/tmp .config/x; git -C /var/tmp log -- .config"))
+case("fp_cd_dash_back_to_worktree_and_pushd_swap", [], bash(
+    "cd %s; cd %s; cd -; cat src/x.c; pushd %s; pushd; cat x.log; popd; cat src/x.c" % (SC, WT, SC)))
+case("fp_tilde_plus_minus_in_own_dirs", [], bash("cd %s && cd %s && cat ~+/src/x.c ~-/x.log" % (SC, WT)))
+case("fp_unknown_cwd_plain_names_and_absolute_cd_restores", [], bash(
+    "cd \"$D\" && ls build T099 && cat x.log; cd %s && cat src/x.c" % WT))
+case("fp_tar_make_git_chdir_own_dirs", [], bash(
+    "tar -C %s -cf %s/a.tar src; make -C %s/b all; git -C %s log -- src" % (WT, SC, SC, WT)))
+case("fp_script_locates_its_own_root", [], write(SC + "/r.sh", 'root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"\n'
+                                                 'cd "$root/T099"\ncat src/x.c\ncd "$(dirname "$0")"\ncat x.log\n'),
+     bash("bash %s/r.sh" % SC))

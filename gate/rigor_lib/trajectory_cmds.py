@@ -216,6 +216,59 @@ def env_wrappers(prefix):
     return assigns, clean
 
 
+def env_chdir(prefix):
+    """The directory of `env -C DIR` / `env --chdir=DIR` among the wrappers stripped in front of a command, or None."""
+    found, i = None, 0
+    while i < len(prefix):
+        if name_of(prefix[i]) == "env":
+            j = i + 1
+            while j < len(prefix) and prefix[j].startswith("-"):
+                arg = prefix[j]
+                if arg in ("-C", "--chdir") and j + 1 < len(prefix):
+                    found = prefix[j + 1]
+                    j += 1
+                elif arg.startswith("--chdir="):
+                    found = arg[len("--chdir="):]
+                elif arg.startswith("-C") and len(arg) > 2:
+                    found = arg[2:]
+                elif arg in ("-u", "-S", "--unset", "--split-string"):
+                    j += 1
+                j += 1
+            i = j
+        else:
+            i += 1
+    return found
+
+
+_CHDIR_OPTS = {"tar": ("-C", "--directory"), "make": ("-C", "--directory"), "gmake": ("-C", "--directory"),
+               "git": ("-C",)}
+
+
+def arg_dirs(name, argv, cwd, normalize):
+    """The directory each argument of `tar`/`make`/`git` is resolved in: a `-C DIR` (`-CDIR`, `--directory=DIR`)
+    applies to the arguments after it (T052, R008 #6). None for other commands."""
+    opts = _CHDIR_OPTS.get(name)
+    if opts is None:
+        return None
+    dirs, here, i = [], cwd, 0
+    while i < len(argv):
+        arg, value, skip = argv[i], None, False
+        if i > 0 and arg in opts and i + 1 < len(argv):
+            value, skip = argv[i + 1], True
+        elif i > 0 and "-C" in opts and arg.startswith("-C") and len(arg) > 2:
+            value = arg[2:]
+        elif i > 0 and arg.startswith("--directory=") and "--directory" in opts:
+            value = arg[len("--directory="):]
+        dirs.append(here)
+        if skip:
+            dirs.append(here)
+            i += 1
+        if value is not None:
+            here = normalize(value, here) or UNRESOLVED
+        i += 1
+    return dirs
+
+
 def clean_environment(assigns, clean):
     """True when `env -i` left an environment without a secret-looking variable name: not an env dump."""
     return clean and not any(rules.SECRET_NAME_RE.search(name) for name in assigns)

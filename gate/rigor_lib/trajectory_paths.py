@@ -70,6 +70,8 @@ class PathPolicy:
                 return None
             text = ("/root" if user == "root" else "/home/" + user) + ("/" + rest if rest else "")
         if not text.startswith("/"):
+            if UNRESOLVED in cwd:
+                return None  # the working directory is unknown (T052, R008 #6)
             text = cwd + "/" + text
         path = collapse(text)
         path = _PROC_ROOT_RE.sub("", path) or "/"

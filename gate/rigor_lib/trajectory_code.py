@@ -148,6 +148,7 @@ class CodeMixin:
             env = self.base_env()
             env.update({str(i): a for i, a in enumerate(args, start=1)})
             env["#"] = str(len(args))
+            env["0"] = env["BASH_SOURCE"] = normal  # the script's own path (`cd "$(dirname "$0")"`, T052)
             env["@"] = env["*"] = " ".join(args)
             is_shell = interpreter in rules.SHELLS or interpreter == "sh" or (
                 interpreter == "exec" and _shebang_is_shell(content))
