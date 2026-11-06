@@ -1,0 +1,197 @@
+# Which selftests must run when a path changes (T044). Read by tools/affected.py.
+#
+# Semantics: the FIRST rule whose glob matches a path decides that path's selftests; the selected set of a change is
+# the union over its changed paths. `gate` (the unit tests) is always selected and need not be listed. A path that no
+# rule matches selects EVERYTHING (fail closed). Globs: `*` matches within one path segment, `**` across segments,
+# `?` one character; they match the whole repo-relative path.
+# `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
+#
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real
+# "all" is shorthand for every one of them.
+
+# ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
+[[rule]]
+glob = "rules/**"
+selftests = ["all"]
+[[rule]]
+glob = "toolchains/**"
+selftests = ["all"]
+[[rule]]
+glob = "prelude/**"
+selftests = ["all"]
+[[rule]]
+glob = ".buckconfig"
+selftests = ["all"]
+[[rule]]
+glob = ".buckroot"
+selftests = ["all"]
+[[rule]]
+glob = "tools/buck2*"
+selftests = ["all"]
+[[rule]]
+glob = "gate/rigor_lib/grade*"
+selftests = ["all"]
+[[rule]]
+glob = "gate/rigor"
+selftests = ["all"]
+
+# ---- 2. Trajectory audit: standalone, no Buck2 -----------------------------------------------------------------------
+[[rule]]
+glob = "gate/rigor_lib/trajectory*"
+selftests = ["trajectory_real"]
+[[rule]]
+glob = "gate/tests/fixtures/trajectory/**"
+selftests = ["trajectory_real"]
+[[rule]]
+glob = "gate/tests/trajectory_real.sh"
+selftests = ["trajectory_real"]
+[[rule]]
+glob = "docs/trajectory.md"
+selftests = ["trajectory_real"]
+# The rules a contributor is audited against.
+[[rule]]
+glob = "AGENTS.md"
+selftests = ["trajectory_real"]
+
+# ---- 3. The kernel library, by family ---------------------------------------------------------------------------------
+[[rule]]
+glob = "gate/rigor_lib/facts*"
+selftests = ["product_checks", "grade", "canaries"]
+[[rule]]
+glob = "gate/rigor_lib/buckfiles.py"
+selftests = ["product_checks", "grade", "canaries"]
+[[rule]]
+glob = "gate/rigor_lib/product_checks.py"
+selftests = ["product_checks", "grade", "canaries"]
+[[rule]]
+glob = "gate/rigor_lib/semantic_table.py"
+selftests = ["product_checks", "grade", "canaries"]
+[[rule]]
+glob = "gate/rigor_lib/structure*"
+selftests = ["structure", "grade", "canaries"]
+[[rule]]
+glob = "gate/rigor_lib/mutants*"
+selftests = ["mutate", "grade", "canaries"]
+[[rule]]
+glob = "gate/rigor_lib/results_parse.py"
+selftests = ["ctest", "mutate", "product_checks", "third_party", "fuzz", "grade", "canaries"]
+# Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
+[[rule]]
+glob = "gate/rigor_lib/**"
+selftests = ["grade", "product_checks", "structure", "mutate", "canaries"]
+[[rule]]
+glob = "gate/order.txt"
+selftests = ["grade", "canaries"]
+[[rule]]
+glob = "gate/allowed_signers"
+selftests = ["grade", "canaries"]
+[[rule]]
+glob = "gate/tools/**"
+selftests = ["grade", "canaries"]
+[[rule]]
+glob = "gate/tests/fixtures/mutate/**"
+selftests = ["mutate"]
+# Unit tests, their data and helpers: the unit tests themselves (always selected).
+[[rule]]
+glob = "gate/tests/**"
+selftests = []
+
+# ---- 4. Frameworks and the throwaway products of each selftest ------------------------------------------------
+[[rule]]
+glob = "mutate/**"
+selftests = ["mutate", "grade", "canaries"]
+[[rule]]
+glob = "ctest/**"
+selftests = ["ctest", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure"]
+[[rule]]
+glob = "examples/**"
+selftests = ["toolchain", "ctest", "product_checks"]
+[[rule]]
+glob = "policy/**"
+selftests = ["product_checks"]
+[[rule]]
+glob = "third_party/**"
+selftests = ["third_party", "grade", "product_checks", "canaries"]
+[[rule]]
+glob = "products/selftest/**"
+selftests = ["grade", "canaries"]
+[[rule]]
+glob = "products/annas-c/**"
+selftests = ["grade", "canaries"]
+[[rule]]
+glob = "canaries/**"
+selftests = ["canaries"]
+
+# ---- 5. The selftests themselves ------------------------------------------------------------------------------------
+[[rule]]
+glob = "selftest/gate.sh"
+selftests = []
+[[rule]]
+glob = "selftest/canaries.sh"
+selftests = ["canaries"]
+[[rule]]
+glob = "selftest/grade.sh"
+selftests = ["grade"]
+[[rule]]
+glob = "selftest/grade_product/**"
+selftests = ["grade"]
+[[rule]]
+glob = "selftest/mutate.sh"
+selftests = ["mutate"]
+[[rule]]
+glob = "selftest/structure.sh"
+selftests = ["structure"]
+[[rule]]
+glob = "selftest/structure_product/**"
+selftests = ["structure"]
+[[rule]]
+glob = "selftest/product_checks.sh"
+selftests = ["product_checks"]
+[[rule]]
+glob = "selftest/toolchain.sh"
+selftests = ["toolchain"]
+[[rule]]
+glob = "selftest/ctest.sh"
+selftests = ["ctest"]
+[[rule]]
+glob = "selftest/fuzz.sh"
+selftests = ["fuzz"]
+[[rule]]
+glob = "selftest/fuzz_product/**"
+selftests = ["fuzz"]
+[[rule]]
+glob = "selftest/third_party.sh"
+selftests = ["third_party"]
+
+# ---- 6. Nothing the selftests read ---------------------------------------------------------------------------------
+[[rule]]
+glob = "docs/**"
+selftests = []
+[[rule]]
+glob = "plan/**"
+selftests = []
+[[rule]]
+glob = "README.md"
+selftests = []
+[[rule]]
+glob = "CLAUDE.md"
+selftests = []
+[[rule]]
+glob = "LICENSE-*"
+selftests = []
+[[rule]]
+glob = ".gitignore"
+selftests = []
+[[rule]]
+glob = "tools/lanes/**"
+selftests = []
+[[rule]]
+glob = "tools/affected.*"
+selftests = []
+[[rule]]
+glob = "tools/validate.sh"
+selftests = []
+# tools/job is the orchestrator's lane launcher (T042).
+[[rule]]
+glob = "tools/job*"
+selftests = []

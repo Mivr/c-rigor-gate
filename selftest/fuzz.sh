@@ -100,4 +100,5 @@ n="$(executed)"
 [ "$n" = 0 ] || fail "$CUR: $n actions executed on the warm build"
 echo "  warm build: $n actions executed"
 
+echo "elapsed ${SECONDS}s"
 echo "fuzz selftest: all $step steps passed"
