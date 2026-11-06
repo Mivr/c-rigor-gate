@@ -522,6 +522,9 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
 * The whole environment: Perl's `%ENV` (`keys %ENV`; `$ENV{HOME}` is one entry), Ruby's bare `ENV` (`p ENV`; `ENV[...]`,
   `ENV.fetch`, `ENV.key?` are lookups; only in code run by `ruby`), awk's `ENVIRON` without a subscript
   (`for (k in ENVIRON)`; `ENVIRON["HOME"]` is one entry) and node's `-p`/`--print process.env` are `cmd-env-dump`.
+  Perl's `%ENV` and Ruby's `ENV.keys` are program text of those interpreters only (T066): in Python code (a heredoc or
+  `-c`) they are string data, so a heredoc that writes documentation naming `%ENV`, `ENVIRON` or `printenv` is green;
+  `os.environ` in Python stays a dump.
 
 ### Env dumps and kills under other names (T062, R008 #20)
 * `cmd-env-dump`: `printenv` with options only (`printenv -0`; not `--help`/`--version`; `printenv NAME` prints one
