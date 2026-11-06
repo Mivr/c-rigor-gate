@@ -77,6 +77,53 @@ class Buckconfig(unittest.TestCase):
             grade_tree.generated_buckconfig(b"[cells]\n")
 
 
+class SealedEnvironment(TempDirTestCase):
+    HOSTILE = {"HOME": "/tmp/evil", "BUCK2_BIN": "/bin/false", "BUCK_LOG": "x", "XDG_CONFIG_HOME": "/e",
+               "LD_PRELOAD": "/e.so", "LD_LIBRARY_PATH": "/e", "PYTHONPATH": "/e", "SSH_AUTH_SOCK": "/e",
+               "https_proxy": "http://e", "ALL_PROXY": "http://e", "GIT_DIR": "/e", "TMPDIR": "/e"}
+
+    def test_exactly_the_fixed_variables(self):
+        with mock.patch.dict(os.environ, self.HOSTILE):
+            env = grade_context.sealed_env(str(self.tmp))
+        self.assertEqual(set(env), {"HOME", "PATH", "LANG", "TMPDIR"})
+        self.assertEqual(env["PATH"], "/usr/local/bin:/usr/bin:/bin")
+        self.assertEqual(env["LANG"], "C.UTF-8")
+        self.assertEqual(env["HOME"], str(self.tmp / "home"))
+        self.assertEqual(env["TMPDIR"], str(self.tmp / "tmp"))
+        self.assertEqual(os.listdir(env["HOME"]), [])
+
+    def test_home_is_recreated_empty(self):
+        home = self.tmp / "home"
+        home.mkdir()
+        (home / ".buckconfig.local").write_text("[x]\n")
+        grade_context.sealed_env(str(self.tmp))
+        self.assertFalse((home / ".buckconfig.local").exists())
+
+
+class SealedEnvironment(TempDirTestCase):
+    HOSTILE = {"HOME": "/tmp/evil", "BUCK2_BIN": "/bin/false", "BUCK_LOG": "x", "XDG_CONFIG_HOME": "/e",
+               "LD_PRELOAD": "/e.so", "LD_LIBRARY_PATH": "/e", "PYTHONPATH": "/e", "SSH_AUTH_SOCK": "/e",
+               "https_proxy": "http://e", "ALL_PROXY": "http://e", "GIT_DIR": "/e", "TMPDIR": "/e"}
+
+    def test_exactly_the_fixed_variables(self):
+        with mock.patch.dict(os.environ, self.HOSTILE):
+            env = grade_context.sealed_env(str(self.tmp))
+        self.assertEqual(set(env), {"HOME", "PATH", "LANG", "TMPDIR"})
+        self.assertEqual(env["PATH"], "/usr/local/bin:/usr/bin:/bin")
+        self.assertEqual(env["LANG"], "C.UTF-8")
+        self.assertEqual(env["HOME"], str(self.tmp / "home"))
+        self.assertEqual(env["TMPDIR"], str(self.tmp / "tmp"))
+        self.assertEqual(os.listdir(env["HOME"]), [])
+
+    def test_prepare_work_leaves_home_empty(self):
+        home = self.tmp / "home"
+        home.mkdir()
+        (home / ".buckconfig.local").write_text("[x]\n")
+        grade_context.prepare_work(str(self.tmp))
+        self.assertEqual(os.listdir(str(home)), [])
+        self.assertTrue((self.tmp / "tmp").is_dir())
+
+
 class DirtyGateCheckout(TempDirTestCase):
     def git(self, *args):
         subprocess.run(["git", "-C", str(self.tmp)] + list(args), env=base_env(), check=True,

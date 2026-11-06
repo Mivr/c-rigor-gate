@@ -185,6 +185,49 @@ ssh-keygen -Y check-novalidate -n c-rigor-gate -s "$work/warm.verdict.json.sig" 
   && fail "verdict signature verifies under the wrong namespace"
 echo "  signature verifies (namespace c-rigor-gate-verdict only)"
 
+# 1b. the pipeline ignores the inherited environment: hostile user config in HOME, BUCK2_* and
+#     LD_PRELOAD in the parent must change nothing, down to core_sha256
+step=$((step + 1))
+echo "[$step] hostile inherited environment"
+mkdir -p "$work/evil-home/.buckconfig.d"
+printf '[buck2_re_client]\n  engine_address = grpc://127.0.0.1:1\n  cas_address = grpc://127.0.0.1:1\n[build]\n  execution_platforms = evil//:nothing\n' > "$work/evil-home/.buckconfig.local"
+cp "$work/evil-home/.buckconfig.local" "$work/evil-home/.buckconfig.d/evil"
+started="$(now)"
+env HOME="$work/evil-home" XDG_CONFIG_HOME="$work/evil-home" BUCK2_BIN=/bin/false BUCK2_TEST=1 BUCK_LOG=debug \
+    LD_PRELOAD=/nonexistent/evil.so LD_LIBRARY_PATH=/nonexistent SSH_AUTH_SOCK=/nonexistent \
+    https_proxy=http://127.0.0.1:1 ALL_PROXY=http://127.0.0.1:1 PYTHONPATH=/nonexistent \
+    "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$last_head" --task "$work/task.toml" \
+    --product "$product" --work "$work/hostile" --out "$work/hostile.verdict.json" > "$work/hostile.log" 2>&1
+code=$?
+echo "  exit $code, $(elapsed "$started")s"
+check_verdict "$work/hostile.verdict.json" "" "$code" "$work/hostile" || { tail -n 30 "$work/hostile.log" >&2; fail "hostile environment"; }
+sha_hostile="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_sha256"])' "$work/hostile.verdict.json")"
+[ "$sha_hostile" = "$sha_cold" ] || fail "core_sha256 changed under a hostile environment"
+echo "  core_sha256 identical to the clean run"
+[ -z "$(find_daemons "$work/hostile")" ] || fail "hostile: a process is still running"
+
+# 1c. --uncached: every action really runs on a worker, and the verdict says so
+step=$((step + 1))
+echo "[$step] clean, --uncached"
+started="$(now)"
+"${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$last_head" --task "$work/task.toml" \
+    --product "$product" --work "$work/uncached" --out "$work/uncached.verdict.json" --uncached \
+    > "$work/uncached.log" 2>&1
+code=$?
+uncached_secs="$(elapsed "$started")"
+echo "  exit $code, ${uncached_secs}s"
+check_verdict "$work/uncached.verdict.json" "" "$code" "$work/uncached" || { tail -n 30 "$work/uncached.log" >&2; fail "uncached"; }
+python3 -I - "$work/uncached.verdict.json" "$work/warm.verdict.json" <<'EOF' || fail "uncached: wrong counts or flag"
+import json, sys
+u, w = (json.load(open(p)) for p in sys.argv[1:])
+b = u["metadata"]["gate_metadata"]["build"]
+print("  uncached: executed %d, cached %d" % (b["executed_actions"], b["cached_actions"]))
+assert u["core"]["uncached"] is True and w["core"]["uncached"] is False
+assert b["executed_actions"] > 0 and b["cached_actions"] == 0, b
+assert u["core_sha256"] != w["core_sha256"]
+EOF
+[ -z "$(find_daemons "$work/uncached")" ] || fail "uncached: a process is still running"
+
 # 2. red cases: each must fail in exactly these gates
 run_case outside-contract contract:outside-allowed
 run_case nolint suppressions:forbidden-pattern
@@ -214,5 +257,5 @@ assert core["overall"] == "FAIL" and got["contract"] == "FAIL" and got["build"] 
 EOF
 [ -z "$(find_daemons "$work/internal")" ] || fail "internal-error: a process is still running"
 
-echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions), warm ${warm_secs}s (executed $exec_warm)"
+echo "SUMMARY: uncached ${uncached_secs}s; cold ${cold_secs}s (executed $exec_cold build actions), warm ${warm_secs}s (executed $exec_warm)"
 echo "selftest/grade.sh: all $step steps passed"
