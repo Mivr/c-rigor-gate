@@ -1,0 +1,9 @@
+{
+  "bypass": "suppression committed before the graded base (R001 R5)",
+  "description": "A NOLINT comment added in an ancestor commit before base; only the full-tree scan sees it.",
+  "fail": {
+    "suppressions": [
+      "forbidden-pattern-in-tree"
+    ]
+  }
+}

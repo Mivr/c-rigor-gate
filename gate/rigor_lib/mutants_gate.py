@@ -126,7 +126,7 @@ def function_findings(report, verdicts):
     return found
 
 
-def survivor_findings(report, level, verdicts, approval_set, used):
+def survivor_findings(report, level, verdicts, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
     found = []
     for verdict in verdicts:
         if verdict.verdict != "survived":
@@ -135,7 +135,7 @@ def survivor_findings(report, level, verdicts, approval_set, used):
         if level not in STRICT_LEVELS:
             found.append(finding("survivor", severity=SEVERITY_INFO, **fields))
             continue
-        approval = approval_set.covering(approvals.KIND_EQUIVALENT_MUTANT, verdict.mutant.id)
+        approval = approval_set.covering(approval_kind, verdict.mutant.id)
         if approval is None:
             found.append(finding("survived-mutant", **fields))
         else:
@@ -153,25 +153,25 @@ def module_summary(report, verdicts):
                   "operator": v.mutant.operator, "replacement": v.mutant.replacement}
                  for v in verdicts if v.verdict == "survived"]
     return {"total": len(verdicts), "verdicts": verdict_counts, "operators": operators,
-            "survivors": survivors}
+            "survivors": survivors, "tce": mutants_verdict.tce_counts(report, verdicts)}
 
 
-def module_findings(report, level, approval_set, used):
+def module_findings(report, level, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
     """(findings, summary) for one report."""
-    found, baseline_ids = mutants_verdict.baseline_findings(report)
+    found, baseline_ids = mutants_verdict.baseline_findings(report, level)
     verdicts, problems = mutants_verdict.derive(report, baseline_ids)
     found.extend(problems)
     found.extend(blindness_findings(report, verdicts))
     found.extend(unviable_findings(report, level, verdicts))
     found.extend(skipped_findings(report, level))
     found.extend(hidden_findings(report, level))
-    found.extend(survivor_findings(report, level, verdicts, approval_set, used))
+    found.extend(survivor_findings(report, level, verdicts, approval_set, used, approval_kind))
     if level in STRICT_LEVELS:
         found.extend(function_findings(report, verdicts))
     return found, module_summary(report, verdicts)
 
 
-def run(args):
+def run(args, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
     reports = mutants_report.load_reports_dir(args.results)
     levels = load_policy(args.policy)
     approval_set = approval_args.load_from_args(args)
@@ -182,7 +182,7 @@ def run(args):
         if label not in levels:
             found.append(finding("module-not-in-policy", module=label))
             continue
-        module, summaries[label] = module_findings(reports[label], levels[label], approval_set, used)
+        module, summaries[label] = module_findings(reports[label], levels[label], approval_set, used, approval_kind)
         found.extend(module)
     for label in sorted(set(levels) - set(reports)):
         found.append(finding("policy-module-without-report", module=label))

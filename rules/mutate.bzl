@@ -8,9 +8,14 @@ Pipeline (all on RE, release mode):
      own compile produced (the harness must reproduce the real build);
   3. `dynamic_output` over the mutant lists: one compile action per mutant (same command, the
      mutated copy of the source), keyed on the spec and the source;
-  4. `dynamic_output` over the compile results: an object whose hash equals the baseline object is
-     equivalent (TCE), one equal to an earlier mutant's is a duplicate, a compile error is
-     unviable; every other mutant is relinked into each test and run (one action per test);
+  4. `dynamic_output` over the compile results: an object whose hash equals the baseline object or an
+     earlier mutant's is a candidate for equivalent (TCE) or duplicate, a compile error is unviable;
+     every other mutant is relinked into each test and run (one action per test). The optimiser can
+     fold a behaviour-changing mutation to the baseline object (R001 R2, B15), so every candidate is
+     compiled again at -O0 (the same command with `-O0` appended) and so is the baseline;
+  4b. `dynamic_output` over those -O0 compiles: a candidate stays equivalent (or duplicate) only if
+     its -O0 object is identical too; otherwise it is live and its -O0 object is relinked into each
+     test and run. Mutants that already differ at -O2 cost nothing extra;
   5. one report file with the raw facts. `rigor mutants` decides; nothing here says "killed".
 """
 
@@ -95,7 +100,7 @@ def _compile_variant(actions, spec_value, src, ident):
     info = actions.declare_output("obj/{}.json".format(ident))
     return spec, msrc, obj, info
 
-def _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, strict):
+def _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, strict, extra = None):
     actions.run(
         cmd_args(
             _python(cfg.tool),
@@ -113,8 +118,9 @@ def _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, strict):
             "--strict" if strict else "--lenient",
             "--",
             cfg.prefix,
+            extra if extra else [],
         ),
-        category = "mutant_compile",
+        category = "mutant_compile_o0" if extra else "mutant_compile",
         identifier = ident,
     )
 
@@ -138,28 +144,81 @@ def _link_run(cfg, actions, objects, test, ident):
     )
     return out
 
-def _stage2(dctx, artifacts, outputs, cfg, compiled, ordered):
+def _stage2(dctx, artifacts, outputs, cfg, compiled, ordered, specs):
+    """Decide from the -O2 objects; every mutant that would be equivalent or a duplicate is compiled
+    again at -O0 (and only those), then `_stage3` decides with both."""
     actions = dctx.actions
-    seen = {}
     baseline_hash = {r: artifacts[cfg.base_info[r]].read_json()["hash"] for r in cfg.base_info}
+    results = {}
+    count = {}
+    for rel, mid in ordered:
+        result = artifacts[compiled[rel][mid][1]].read_json()
+        results[(rel, mid)] = result
+        if result["status"] == "ok":
+            count[(rel, result["hash"])] = count.get((rel, result["hash"]), 0) + 1
+    o0 = {}
+    for rel, mid in ordered:
+        result = results[(rel, mid)]
+        if result["status"] == "ok" and (result["hash"] == baseline_hash[rel] or count[(rel, result["hash"])] > 1):
+            ident = "o0/mutant/{}/{}".format(rel, mid)
+            src = cfg.src_by_rel[rel]
+            spec_value = specs[(rel, mid)]
+            spec, msrc, obj, info = _compile_variant(actions, spec_value, src, ident)
+            _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, False, ["-O0"])
+            o0[(rel, mid)] = (obj, info)
+    watched = [info for _, info in o0.values()] + [cfg.base_info_o0[r] for r in sorted(cfg.base_info_o0.keys())]
+    actions.dynamic_output(
+        dynamic = watched,
+        inputs = [],
+        outputs = [outputs[cfg.report].as_output()],
+        f = lambda d, a, o: _stage3(d, a, o, cfg, compiled, ordered, results, baseline_hash, o0),
+    )
+
+def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_hash, o0):
+    """The verdict-relevant runs. A candidate (same -O2 object as the baseline or as an earlier mutant)
+    is equivalent / a duplicate only if its -O0 object matches too (the baseline's, or that of the
+    earlier mutant with the same -O2 object); otherwise it is live and its -O0 object is run.
+    `mutants_verdict.derive` makes the same decisions from the report: keep the two in step."""
+    actions = dctx.actions
+    base_o0 = {r: artifacts[cfg.base_info_o0[r]].read_json()["hash"] for r in cfg.base_info_o0}
+    seen = {}
+    pairs = {(rel, baseline_hash[rel], base_o0[rel]): "baseline" for rel in cfg.base_info}
     manifest_mutants = {}
     for rel, mid in ordered:
         obj, info = compiled[rel][mid]
-        result = artifacts[info].read_json()
+        result = results[(rel, mid)]
         runs = {}
-        live = result["status"] == "ok" and result["hash"] != baseline_hash[rel] and (rel, result["hash"]) not in seen
+        extra = None
+        live = False
+        run_obj = obj
         if result["status"] == "ok":
-            seen.setdefault((rel, result["hash"]), mid)
+            folded = result["hash"] == baseline_hash[rel] or (rel, result["hash"]) in seen
+            if (rel, mid) in o0:
+                extra = o0[(rel, mid)][1]
+                low = artifacts[extra].read_json()
+                if low["status"] == "ok":
+                    key = (rel, result["hash"], low["hash"])
+                    if folded and key not in pairs:
+                        live = True
+                        run_obj = o0[(rel, mid)][0]
+                    if key not in pairs:
+                        pairs[key] = mid
+            seen[(rel, result["hash"])] = mid
+            live = live or not folded
         if live:
-            objects = [obj if r == rel else cfg.base_obj[r] for r in cfg.rels]
+            objects = [run_obj if r == rel else cfg.base_obj[r] for r in cfg.rels]
             for t in cfg.test_names:
                 runs[t] = _link_run(cfg, actions, objects, t, "mutant/{}/{}/{}".format(rel, mid, t))
-        manifest_mutants.setdefault(rel, {})[mid] = {"info": info, "runs": runs}
+        entry = {"info": info, "runs": runs}
+        if extra != None:
+            entry["o0"] = extra
+        manifest_mutants.setdefault(rel, {})[mid] = entry
     manifest = actions.write_json("manifest.json", {
         "label": cfg.label,
         "tests": cfg.test_names,
         "sources": [
-            {"rel": r, "gen": cfg.gens[r], "baseline": cfg.base_info[r], "original": cfg.original[r]}
+            {"rel": r, "gen": cfg.gens[r], "baseline": cfg.base_info[r], "baseline_o0": cfg.base_info_o0[r],
+             "original": cfg.original[r]}
             for r in sorted(cfg.gens.keys())
         ],
         "baseline_runs": cfg.baseline_runs,
@@ -174,6 +233,7 @@ def _stage1(dctx, artifacts, outputs, cfg):
     actions = dctx.actions
     compiled = {}
     ordered = []
+    specs = {}
     for rel in sorted(cfg.gens.keys()):
         data = artifacts[cfg.gens[rel]].read_json()
         compiled[rel] = {}
@@ -192,13 +252,14 @@ def _stage1(dctx, artifacts, outputs, cfg):
             spec, msrc, obj, info = _compile_variant(actions, spec_value, src, ident)
             _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, False)
             compiled[rel][mid] = (obj, info)
+            specs[(rel, mid)] = spec_value
             ordered.append((rel, mid))
     infos = [compiled[rel][mid][1] for rel, mid in ordered] + [cfg.base_info[r] for r in sorted(cfg.base_info.keys())]
     actions.dynamic_output(
         dynamic = infos,
         inputs = [],
         outputs = [outputs[cfg.report].as_output()],
-        f = lambda d, a, o: _stage2(d, a, o, cfg, compiled, ordered),
+        f = lambda d, a, o: _stage2(d, a, o, cfg, compiled, ordered, specs),
     )
 
 def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -218,6 +279,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
     report = ctx.actions.declare_output("report.json")
     cfg_pieces = {
         "base_info": {},
+        "base_info_o0": {},
         "base_obj": {},
         "gens": {},
         "label": _label_text(ctx.label),
@@ -268,6 +330,17 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
         _run_compile(cfg, ctx.actions, spec, src, msrc, obj, info, ident, True)
         cfg.base_obj[rel] = obj
         cfg.base_info[rel] = info
+
+        # the same unmodified source at -O0: what a mutant that the optimiser folded is compared with (B15)
+        ident0 = "o0/baseline/" + rel
+        spec0, msrc0, obj0, info0 = _compile_variant(
+            ctx.actions,
+            {"begin": 0, "end": 0, "original": "", "replacement": ""},
+            src,
+            ident0,
+        )
+        _run_compile(cfg, ctx.actions, spec0, src, msrc0, obj0, info0, ident0, True, ["-O0"])
+        cfg.base_info_o0[rel] = info0
         real = real_objects.get(rel + ".o")
         if real == None:
             fail("{}: no Buck2 object for {}".format(ctx.label, rel))

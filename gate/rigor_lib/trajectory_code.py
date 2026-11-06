@@ -11,6 +11,28 @@ from rigor_lib.trajectory_paths import is_url
 from rigor_lib.trajectory_shell import UNRESOLVED
 
 _SCRIPT_SUFFIXES = (".sh", ".bash", ".py", ".js", ".mjs", ".pl", ".rb", ".php", ".lua")
+_NOEXEC_RE = re.compile(r"\A-[a-zA-Z]*n[a-zA-Z]*\Z")  # a shell option cluster containing `-n` (noexec / syntax check)
+
+
+def _syntax_check_only(args):
+    """True when a shell's options ask for a syntax check only (`-n`, `--noexec`, `-o noexec`), which runs nothing."""
+    skip = False
+    for i, arg in enumerate(args):
+        if skip:
+            skip = False
+            continue
+        if arg == "--":
+            break
+        if arg == "--noexec" or _NOEXEC_RE.match(arg):
+            return True
+        if arg in ("-o", "+o"):
+            if i + 1 < len(args) and args[i + 1] == "noexec":
+                return True
+            skip = True
+        elif not arg.startswith("-"):
+            break
+    return False
+
 
 _ENV_WHOLE_RE = re.compile(r"\bos\.environ\b(?!\s*\[|\s*\.\s*(?:get|setdefault|pop)\b)|"
                            r"\bprocess\.env\b(?!\s*[.\[])|\bENV\.(?:to_h|each|keys|to_a)\b|\bgetenv\(\s*\)")
@@ -115,6 +137,8 @@ class CodeMixin:
 
     def _interpreter(self, name, args, raw, depth, env):
         is_shell = name in rules.SHELLS
+        if is_shell and _syntax_check_only(args):  # `bash -n FILE` checks syntax, runs nothing (T052, ruling 6)
+            return
         at, flagged = cmds.code_word(name, args)  # T049: the interpreter's own code flags (R008 #2)
         if at is not None:
             self.code(cmds.attached_code(name, args[at]), is_shell, raw, depth, env)
@@ -134,9 +158,13 @@ class CodeMixin:
         if path_text in cmds.STDIN_PATHS:
             return
         normal = self.policy.normalize(path_text, self.cwd)
+        alias = self.aliases.get(normal)
+        if self.program_identity(path_text, alias, args, raw) and alias is not None:
+            return  # a renamed known program, judged by its real identity, not as an unknown script
         content = self.files.get(normal) if normal else None
         if normal and normal in self.unknown:
-            self.add("cmd-obfuscated-exec", raw, path_text)
+            if not self.worktree_tracked(normal):  # a tracked worktree file is reviewed in the diff (T052, ruling 7)
+                self.add("cmd-obfuscated-exec", raw, path_text)
         elif normal and normal in self.dirty:
             self.add("cmd-unresolved", "script changed after it was written, audited as written: " + path_text)
         elif content is None and normal and self._is_scratch_script(normal, interpreter, path_text):
@@ -148,6 +176,7 @@ class CodeMixin:
             env = self.base_env()
             env.update({str(i): a for i, a in enumerate(args, start=1)})
             env["#"] = str(len(args))
+            env["0"] = env["BASH_SOURCE"] = normal  # the script's own path (`cd "$(dirname "$0")"`, T052)
             env["@"] = env["*"] = " ".join(args)
             is_shell = interpreter in rules.SHELLS or interpreter == "sh" or (
                 interpreter == "exec" and _shebang_is_shell(content))

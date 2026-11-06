@@ -9,6 +9,7 @@ environment) ends the proof for that clone.
 """
 
 import posixpath
+import re
 
 from rigor_lib import trajectory_cmds as cmds
 from rigor_lib import trajectory_rules as rules
@@ -38,8 +39,203 @@ def _refused_clone_option(args):
     return False
 
 
+_PARAM_RE = re.compile(r"\s*'((?:[^']|'\\'')*)'(?:=('(?:[^']|'\\'')*'))?")
+_CONFIG_FILES = ("GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM")
+# config keys whose value git runs as a shell command (T057, R008 #10); `alias.*` is handled apart
+_COMMAND_KEYS = ("core.pager", "core.sshcommand", "core.editor", "sequence.editor")
+
+
+def _env_confs(genv):
+    """The `-c KEY=VALUE` overrides git takes from its environment: GIT_CONFIG_COUNT/KEY_<n>/VALUE_<n>,
+    GIT_CONFIG_PARAMETERS, and a config file named by GIT_CONFIG(_GLOBAL|_SYSTEM) (its content is unknown)."""
+    confs = []
+    count = genv.get("GIT_CONFIG_COUNT")
+    if count is not None:
+        number = int(count) if count.isdigit() else -1
+        for index in range(min(number, 64) if number >= 0 else 0):
+            key = genv.get("GIT_CONFIG_KEY_%d" % index, UNRESOLVED)
+            confs.append(key + "=" + genv.get("GIT_CONFIG_VALUE_%d" % index, ""))
+        if number < 0:
+            confs.append(UNRESOLVED + "=")
+    params = genv.get("GIT_CONFIG_PARAMETERS")
+    if params is not None:
+        pos = 0
+        while pos < len(params.rstrip()):
+            match = _PARAM_RE.match(params, pos)
+            if match is None or match.end() == pos:
+                confs.append(UNRESOLVED + "=")
+                break
+            key = match.group(1).replace("'\\''", "'")
+            value = (match.group(2) or "''")[1:-1].replace("'\\''", "'")
+            confs.append(key + "=" + value)
+            pos = match.end()
+    for name in _CONFIG_FILES:
+        if name in genv:
+            confs.append("include.path=" + genv[name])
+    return confs
+
+
+_ALWAYS_WRITE = ("commit", "merge", "rebase", "reset", "cherry-pick", "revert", "am", "checkout", "switch",
+                 "restore", "update-ref", "clean", "gc", "prune", "prune-packed", "rm", "mv", "add", "notes",
+                 "replace", "update-index", "filter-branch", "repack", "init", "fast-import", "worktree")
+_BRANCH_WRITE_FLAGS = ("-d", "-D", "-m", "-M", "-c", "-C", "-f", "--force", "--delete", "--move", "--copy",
+                       "-u", "--set-upstream-to", "--unset-upstream", "--edit-description")
+
+
+def _git_is_write(sub, sub_args):
+    """True when a git subcommand modifies a repository or its worktree (so an outside `-C`/`--git-dir` is
+    `write-outside`). A listing form of branch/tag/reflog/stash/symbolic-ref is a read."""
+    if sub in _ALWAYS_WRITE:
+        return True
+    plain = [a for a in sub_args if not a.startswith("-")]
+    if sub == "branch":
+        return any(a in _BRANCH_WRITE_FLAGS for a in sub_args) or bool(plain)
+    if sub == "tag":
+        if any(a in ("-l", "--list", "-n") or a.startswith("--list") for a in sub_args):
+            return False
+        return any(a in ("-d", "--delete", "-f", "--force", "-a", "-s", "-m", "--annotate") for a in sub_args) \
+            or bool(plain)
+    if sub == "reflog":
+        return bool(plain) and plain[0] in ("expire", "delete", "drop")
+    if sub == "stash":
+        return bool(plain) and plain[0] in ("push", "save", "pop", "apply", "drop", "clear", "store", "create")
+    if sub == "symbolic-ref":
+        return len(plain) >= 2
+    return False
+
+
+def _ref_write_targets(sub, sub_args):
+    """The refs a git command writes (update-ref, symbolic-ref write, branch create/delete/move/copy)."""
+    plain = [a for a in sub_args if not a.startswith("-")]
+    if sub == "update-ref":
+        return plain[1:2] if sub_args[:1] == ["-d"] or "--stdin" in sub_args else plain[:1]
+    if sub == "symbolic-ref":
+        return plain[:1] if len(plain) >= 2 else []
+    if sub == "branch":
+        if any(a in _BRANCH_WRITE_FLAGS for a in sub_args):
+            move = any(a in ("-m", "-M", "-c", "-C", "--move", "--copy") for a in sub_args)
+            return plain[-1:] if move and len(plain) >= 2 else plain
+        return plain  # creating a new branch
+    return []
+
+
 class GitMixin:
     """State and decisions about the agent's own local clones; mixed into the Analyzer."""
+
+    def effective_git_argv(self, argv, genv):
+        """`argv` with the environment's config overrides as leading `-c` pairs and `--config-env=KEY=VAR` turned into
+        `-c KEY=<value of VAR>` (T057, R008 #10): they are judged exactly like `-c`."""
+        out, i = [argv[0]], 1
+        for conf in _env_confs(genv):
+            out += ["-c", conf]
+        while i < len(argv) and argv[i].startswith("-"):
+            arg = argv[i]
+            spec = None
+            if arg.startswith("--config-env="):
+                spec = arg[len("--config-env="):]
+            elif arg == "--config-env" and i + 1 < len(argv):
+                spec, i = argv[i + 1], i + 1
+            if spec is None:
+                out.append(arg)
+                if arg in ("-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix") \
+                        and i + 1 < len(argv):
+                    out.append(argv[i + 1])
+                    i += 1
+            else:
+                key, _, var = spec.partition("=")
+                out += ["-c", key + "=" + genv.get(var, UNRESOLVED)]
+            i += 1
+        return out + argv[i:]
+
+    def git_write_dir(self, argv):
+        """The repository/worktree directory a git command writes to (T057, R008 #13): `--work-tree`, else
+        `--git-dir`/`GIT_DIR` (its parent when it ends in `.git`), else cwd with `-C` applied. None when unknown."""
+        genv = self.cmd_env
+        git_dir, work, cdir, i = genv.get("GIT_DIR"), genv.get("GIT_WORK_TREE"), self.cwd, 1
+        while i < len(argv) and argv[i].startswith("-"):
+            arg = argv[i]
+            if arg == "-C" and i + 1 < len(argv):
+                cdir = self.policy.normalize(argv[i + 1], cdir) or UNRESOLVED
+                i += 2
+                continue
+            if arg.startswith("--git-dir="):
+                git_dir = arg[len("--git-dir="):]
+            elif arg == "--git-dir" and i + 1 < len(argv):
+                git_dir, i = argv[i + 1], i + 1
+            elif arg.startswith("--work-tree="):
+                work = arg[len("--work-tree="):]
+            elif arg == "--work-tree" and i + 1 < len(argv):
+                work, i = argv[i + 1], i + 1
+            i += 1
+        chosen = work or git_dir
+        if not chosen:
+            return None if UNRESOLVED in cdir else cdir
+        normal = self.policy.normalize(chosen, cdir)
+        if normal is None:
+            return None
+        return posixpath.dirname(normal) if (not work and posixpath.basename(normal) == ".git") else normal
+
+    def git_shared_store(self, argv, raw):
+        """The shared ref/object store rules (T057, R008 #13): a writing subcommand whose directory is outside the
+        worktree and scratch is `write-outside`; in the shared repo (not a proven scratch clone), a ref write outside
+        HEAD and the task's own branch is `cmd-git-ref-write`, and `stash clear/drop`, `reflog expire` and
+        `gc --prune` (and `git prune`) are `cmd-git-prune`."""
+        confs, sub, sub_args = cmds.git_parts(self.effective_git_argv(argv, self.cmd_env))
+        if _git_is_write(sub, sub_args):
+            target = self.git_write_dir(argv)
+            if target is not None and not self.policy.write_ok(target):
+                self.add("write-outside", raw, target)
+        if self.git_in_own_clone(argv):
+            return
+        for ref in _ref_write_targets(sub, sub_args):
+            if not self._own_ref(ref) and not cmds._is_main_ref(ref):  # a main ref is cmd-git-main already
+                self.add("cmd-git-ref-write", raw, ref)
+        pruning = (
+            (sub == "stash" and sub_args[:1] and sub_args[0] in ("clear", "drop"))
+            or (sub == "reflog" and sub_args[:1] == ["expire"])
+            or (sub in ("prune", "prune-packed"))
+            or (sub == "gc" and any(a == "--prune" or (a.startswith("--prune=") and a != "--prune=never")
+                                    for a in sub_args)))
+        if pruning:
+            self.add("cmd-git-prune", raw, "git " + sub)
+
+    def _own_ref(self, ref):
+        """True when a ref write targets HEAD or the task's own branch (`refs/heads/task/<id>` or `task/<id>`)."""
+        own = "task/" + self.task.task_id
+        bare = ref.split("@", 1)[0].split("~", 1)[0].split("^", 1)[0]
+        return bare in ("HEAD", "ORIG_HEAD", own, "refs/heads/" + own) or bare.startswith(own + "/") \
+            or bare.startswith("refs/heads/" + own + "/")
+
+    def git_exec_strings(self, argv, raw, depth, env):
+        """git subcommands that run a shell command for the agent (T057, R008 #11): `rebase -x/--exec CMD`,
+        `bisect run CMD ARGS`, `submodule foreach CMD`."""
+        _, sub, sub_args = cmds.git_parts(self.effective_git_argv(argv, self.cmd_env))
+        if sub == "rebase":
+            for i, arg in enumerate(sub_args):
+                if arg in ("-x", "--exec") and i + 1 < len(sub_args):
+                    self.bash(sub_args[i + 1], depth + 1, env)
+                elif arg.startswith("--exec="):
+                    self.bash(arg[len("--exec="):], depth + 1, env)
+        elif sub == "bisect" and sub_args[:1] == ["run"] and len(sub_args) > 1:
+            self.bash(" ".join(sub_args[1:]), depth + 1, env)
+        elif sub == "submodule" and sub_args[:1] == ["foreach"] and len(sub_args) > 1:
+            rest = [a for a in sub_args[1:] if a != "--recursive" and not a.startswith("-q")]
+            if rest:
+                self.bash(" ".join(rest), depth + 1, env)
+
+    def git_config_code(self, argv, raw, depth, env):
+        """The value of an `alias.*` (`!CMD` is shell, else git arguments), `core.pager`, `pager.*`, `core.sshCommand`
+        or an editor key, from `-c` or the environment, is audited as the command it runs (T057, R008 #10)."""
+        confs, _, _ = cmds.git_parts(self.effective_git_argv(argv, self.cmd_env))
+        for conf in confs:
+            key, _, value = conf.partition("=")
+            key = key.lower()
+            if not value.strip():
+                continue
+            if key.startswith("alias."):
+                self.bash(value[1:] if value.startswith("!") else "git " + value, depth + 1, env)
+            elif key in _COMMAND_KEYS or key.startswith("pager."):
+                self.bash(value, depth + 1, env)
 
     def git_dir_of(self, argv):
         """The directory a git command acts in (cwd plus `-C`), or None when it cannot be known."""

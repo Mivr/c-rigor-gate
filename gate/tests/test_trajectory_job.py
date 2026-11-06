@@ -36,10 +36,12 @@ class JobTrajectoryTests(TrajectoryCase):
         for command in ("tools/job run --dir /var/tmp/cache/T098/jobs x -- true",
                         "tools/job run --deadline 9 --dir=/var/tmp/jobs x -- true",
                         "tools/job run --dir /tmp/jobs x -- true",
-                        "TMPDIR=/var/tmp/cache/T098/tmp tools/job run x -- true",
                         "export X=1; TMPDIR=/var/tmp tools/job run x -- true"):
             with self.subTest(command=command):
                 self.assertEqual(self.rules_of(command), ["write-outside"])
+        # T057 (R008 #10): the TMPDIR value names another task's cache, so it is also read-checked
+        self.assertEqual(self.rules_of("TMPDIR=/var/tmp/cache/T098/tmp tools/job run x -- true"),
+                         ["read-other-cache", "write-outside"])
 
     def test_a_tmpdir_set_earlier_in_the_call_is_the_default_dir(self):
         self.assertEqual(self.rules_of("TMPDIR=/var/tmp/cache/T098; tools/job run x -- true"), ["write-outside"])
@@ -47,7 +49,7 @@ class JobTrajectoryTests(TrajectoryCase):
 
     def test_an_exported_tmpdir_is_the_default_dir(self):
         self.assertEqual(self.rules_of("export TMPDIR=/var/tmp/cache/T098; tools/job run x -- true"),
-                         ["write-outside"])
+                         ["read-other-cache", "write-outside"])  # T057: an exported value is read-checked
         self.assertEqual(self.rules_of("export TMPDIR=%s/tmp; tools/job run x -- true" % SC), [])
         self.assertEqual(self.rules_of("export TMPDIR=%s/tmp\nexport TMPDIR=/var/tmp\ntools/job run x -- true" % SC),
                          ["write-outside"])
@@ -57,7 +59,7 @@ class JobTrajectoryTests(TrajectoryCase):
         self.assertEqual(self.rules_of("env TMPDIR=%s/tmp tools/job run x -- true" % SC), [])
         self.assertEqual(self.rules_of("env -i TMPDIR=%s/tmp PATH=/usr/bin tools/job run x -- true" % SC), [])
         self.assertEqual(self.rules_of("env TMPDIR=/var/tmp/cache/T098/tmp tools/job run x -- true"),
-                         ["write-outside"])
+                         ["read-other-cache", "write-outside"])  # T057: an `env NAME=` value is read-checked
         self.assertEqual(self.rules_of("env TMPDIR=/var/tmp tools/job run x -- true"), ["write-outside"])
         self.assertEqual(self.rules_of("export TMPDIR=%s/tmp; env TMPDIR=/var/tmp tools/job run x -- true" % SC),
                          ["write-outside"])

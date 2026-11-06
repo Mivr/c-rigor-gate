@@ -12,7 +12,9 @@
         {"rc": N, "timed_out": B, "results": the normalised JSON Lines text or null}. A failed link is an
         error (never a verdict). What is stored is a deterministic function of the verdict: see `normalise_*`.
     tool.py collect --manifest M --out F
-        Merge the per-mutant files named by the manifest into one report.
+        Merge the per-mutant files named by the manifest into one report. A mutant whose -O2 object equals
+        the baseline's or an earlier mutant's also carries `compile.o0`, the result of compiling it again
+        at -O0 (the compile command is the same with `-O0` appended); every source carries `baseline_o0`.
 """
 
 import argparse
@@ -195,11 +197,15 @@ def cmd_collect(argv):
         sources.append({"file": gen["file"], "sha256": gen["sha256"],
                         "definitions": gen["definitions"], "functions": gen["functions"],
                         "skipped": gen["skipped"], "hidden": gen["hidden"],
-                        "baseline": read_json(entry["baseline"]), "original": read_json(entry["original"])})
+                        "baseline": read_json(entry["baseline"]),
+                        "baseline_o0": read_json(entry["baseline_o0"]), "original": read_json(entry["original"])})
         extra = manifest["mutants"].get(entry["rel"], {})
         for mutant in gen["mutants"]:
             item = dict(mutant)
             item["compile"] = read_json(extra[mutant["id"]]["info"])
+            if "o0" in extra[mutant["id"]]:  # only a candidate for equivalent / duplicate has one (B15)
+                low = read_json(extra[mutant["id"]]["o0"])
+                item["compile"]["o0"] = {"status": low["status"], "hash": low["hash"]}
             item["runs"] = {test: read_json(path) for test, path in extra[mutant["id"]]["runs"].items()}
             mutants.append(item)
     baseline = {test: read_json(path) for test, path in manifest["baseline_runs"].items()}

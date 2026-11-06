@@ -129,6 +129,10 @@ directory is under the canary's scratch dir makes that canary a miss.
 | `exports-missing-l3` | a new L3 module whose policy table has no `exports` list | `symbols`: exports-missing | none |
 
 Its `policy.toml` is the `_base` policy plus L3 tables for `//core:extra` (no `exports`) and `//core:extra_test`.
+## Canaries replacing the rest of `selftest/grade.sh`'s red cases (T053)
+All 24 remaining red cases of `selftest/grade.sh` are canaries; the table is in `docs/grade.md`. Only one was missing:
+`ungraded-module` (the `extra/` directory the layout does not list, `buckfiles`: `ungraded-path`, NOT_RUN mutants).
+grade.sh's two extra checks are the `contains` (`unused-variable` in `buckconfig-hidden`) and `absent` (`product-buck2`) hooks the runner already has.
 
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is

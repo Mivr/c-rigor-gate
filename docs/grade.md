@@ -19,7 +19,7 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | Gate | What it does |
 |---|---|
 | `clone` | `git clone --no-local --no-hardlinks` of R into `<work>/src` with the hardened git environment of `gitrun` (no replace objects, grafts, fsmonitor, hooks, global config); resolves B and H **in the clone** (commit ids or refs the clone has, e.g. `origin/x`); detached checkout of H. Every later git gate reads the clone, never R. |
-| `contract`, `suppressions` | the existing gates, in process, against the clone, `--task` and `--approvals`. |
+| `contract`, `suppressions` | the existing gates, in process, against the clone, `--task` and `--approvals`. `suppressions` also scans **every file the layout grades at H** (the same file set `assemble` copies; T054, R001 R5) with the same patterns, line by line, so a suppression committed before B (an ungraded ancestor, e.g. under a sanitizer macro) is found. A hit that is in the diff is reported once, as `forbidden-pattern`; any other hit is `forbidden-pattern-in-tree` (error, with path, line, pattern). Approvals use the same scope text and cover both. |
 | `assemble` | builds `<work>/tree` from scratch (below). Findings: `bad-path`, `unsupported-entry` (symlink or gitlink that the layout would copy); info `ignored-by-gate` (a product path that matched `include` but is always excluded), info `product-manifest` (sha256 of the copied product files, so the verdict hash commits to them). An error here means no tree: `build` and `tests-*` are NOT_RUN. |
 | `buckfiles` | `rigor buckfiles` over a copy of the product files of the tree only (never the gate's own `BUCK` files). |
 | `semantic-suppressions`, `symbols` | one Buck2 build (release, `--no-remote-cache` with `--uncached`) of every `kind(c_facts, //...)` target, `gate//ctest:ctest_facts` and `toolchains//:libc_symbols`; then `rigor facts` logic with `products/<p>/policy.toml` (gate-owned, next to `product.toml`; trusted module is `gate//ctest:ctest`, and test targets need their own `[module]` entries). If the facts cannot be built (e.g. the product does not compile) both are NOT_RUN and `build` says why. Metadata has executed/cached action counts. |
@@ -183,6 +183,44 @@ grade` kills it again if anything escaped (and before reusing a work directory).
 - The product's `BUCK` files are still the product's. They can define arbitrary rules in the root
   cell; restricting them to `load("@gate//rules:...")` is the BUCK guard of T004.
 - `sign-key` must not need a passphrase.
-- Self-test: `selftest/grade.sh` (about 2 minutes, RE farm). Unit tests: `selftest/gate.sh`.
+- Self-test: `selftest/grade.sh` (property steps only, see below; RE farm). Unit tests: `selftest/gate.sh`.
 
 `gate/tools/expected.py add --product P --results DIR...` merges test ids from result files into `products/<P>/expected-tests.json` (sorted, add-only; removal needs a signed `test-removal` approval and a manual edit).
+
+## What `selftest/grade.sh` checks, and where its red cases went (T053)
+`selftest/grade.sh` keeps the properties of the pipeline that need one product graded several ways: the cold run (a fresh
+nonce, so every action executes), the warm run (nothing executes, same `core_sha256`, signature verifies under the
+verdict namespace only), the hostile inherited environment (same `core_sha256`), `--uncached` (nothing cached, flag in the
+verdict), the internal error (exit 2, FAIL verdict) and all action-count, daemon-leak and verdict-field assertions.
+After the cold run, warm, hostile, uncached and internal-error run in parallel, each in its own work subdir with its own
+Buck2 daemon, so the wall time is the cold run plus the slowest of them.
+
+Its 24 red cases were duplicated by canaries and ran cold every time. They are now only canaries, with exact expectations
+(`docs/canaries.md`); `selftest/grade.sh` prints this table when it starts.
+
+| grade.sh case | canary | notes |
+|---|---|---|
+| `outside-contract` | `outside-contract` | |
+| `nolint` | `nolint` | |
+| `buckconfig-hidden` | `buckconfig-hidden` | `contains`: `unused-variable` in `build.json` |
+| `buckconfig-plain` | `buckconfig-plain` | |
+| `product-buck2` | `product-buck2` | `absent`: the product's `tools/buck2` writes `ran` into the scratch dir; it must not exist |
+| `failing-test` | `failing-test` | |
+| `removed-test` | `removed-test` | |
+| `deleted-target` | `deleted-target` | |
+| `heap-overflow` | `heap-overflow` | also lists `no-assertions` (exact set) |
+| `kills` | `kills` | |
+| `spliced-optnone` | `spliced-optnone` | |
+| `raw-rule` | `raw-rule` | |
+| `weak-test` | `weak-test` | |
+| `hollow-module` | `hollow-module` | |
+| `unviable-shape` | `unviable-shape` | |
+| `new-module` | `new-module` | |
+| `long-function` | `structure-length` | also lists `statement-count` |
+| `recursion` | `structure-recursion` | |
+| `mode-divergent` | `mode-divergent` | |
+| `ungraded-module` | `ungraded-module` (new, T053) | `extra/` as grade.sh had it; `ungraded-path` adds `http/` with a header |
+| `excluded-code` | `excluded-code` | |
+| `stale-include` | `stale-include` | |
+| `third-party-copy` | `third-party-copy` | also `contract`: `outside-allowed` |
+| `case-collision` | `case-collision` | |

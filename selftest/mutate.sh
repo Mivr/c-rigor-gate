@@ -123,6 +123,7 @@ int in_range(int x, int lo, int hi);
 int count_below(const int *a, int n, int limit);
 int sign(int x);
 int times_one(int x);
+int unit(void);
 #endif
 EOF
 cat > pinned.c <<'EOF'
@@ -153,7 +154,15 @@ int sign(int x)
 
 int times_one(int x)
 {
-    return x * 1;
+    return x;
+}
+
+/* T051: `1 * 1` -> `1 / 1` is the same constant at -O2 and at -O0 (the front end folds it): an equivalent mutant
+   that stays equivalent when it is compiled again without the optimiser. (`x * 1` -> `x / 1` is equal at -O2
+   only: an `imul` against an `idiv` at -O0, so it is live.) */
+int unit(void)
+{
+    return 1 * 1;
 }
 EOF
 cat > pinned_test.c <<'EOF'
@@ -193,6 +202,7 @@ static void t_times_one(ctest_t *t)
 {
     CHECK_EQ_I64(t, times_one(5), 5);
     CHECK_EQ_I64(t, times_one(-3), -3);
+    CHECK_EQ_I64(t, unit(), 1);
 }
 
 CTEST_SUITE("pinned", { "in_range", t_in_range }, { "count", t_count }, { "sign", t_sign },
@@ -321,7 +331,7 @@ static void note(int *log, int v)
 
 int record(int v)
 {
-    int log = 0;
+    int log; /* T051: not `= 0`: a dead store is an equivalent mutant that -O2 hides and -O0 shows */
     note(&log, v);
     return log;
 }
@@ -574,7 +584,9 @@ printf '[module."%s:weak_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 gate "$out/only_weak"
 [ "$GATE_CODE" = 1 ] || fail "$CUR: expected exit 1, got $GATE_CODE" "$out/gate.log"
 got="$(json '"\n".join(sorted("%s|%s|%s" % (f["function"], f["operator"], f["replacement"]) for f in r["findings"] if f["rule"] == "survived-mutant"))')"
-want='double_it|function-body|{ (void)x; return 0; }
+# T051: `x + x` -> `x - x` has the object of the function-body mutant at -O2 (a duplicate), but not at -O0, so it runs (and survives)
+want='double_it|arithmetic|-
+double_it|function-body|{ (void)x; return 0; }
 find|condition|!(a[i] == v)
 find|increment|--
 find|integer-literal|1
@@ -582,8 +594,8 @@ find|relational|<=
 find|return-value|((void)(0), (int *)1)
 store|function-body|{ (void)slot; (void)v; }'
 [ "$got" = "$want" ] || fail "$CUR: survivors differ from the expected list" <(printf 'got:\n%s\nwant:\n%s\n' "$got" "$want")
-[ "$(json '[f["rule"] for f in r["findings"]].count("survived-mutant")')" = 7 ] || fail "$CUR: not exactly 7 findings"
-echo "    7 survivors, exit 1, as expected"
+[ "$(json '[f["rule"] for f in r["findings"]].count("survived-mutant")')" = 8 ] || fail "$CUR: not exactly 8 findings"
+echo "    8 survivors, exit 1, as expected"
 echo "    $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
 
 begin "RED: a generator gone blind (no mutants although there are functions) fails the gate"
@@ -730,6 +742,8 @@ gate "$out/only_macro"
 echo "    L2: exit 0, info"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
+# T051: the condition and return-value mutants of lit_get had the function-body mutant's object at -O2 (duplicates); at -O0
+# they differ, so they run, and the weak test leaves them alive too.
 begin "RED: a toolchain NULL in a condition, enumerators, strings and characters are mutated, and weak tests leave exactly their survivors (T035)"
 cat >> "$scratch/m/BUCK" <<'EOF'
 
@@ -805,8 +819,10 @@ gate "$out/only_lit"
 got="$(json '"\n".join(sorted("%s|%s|%s|%s" % (f["function"], f["operator"], f["line"], f["replacement"]) for f in r["findings"] if f["rule"] == "survived-mutant"))')"
 want="$(cat <<'EOF'
 lit_check|enum-constant|17|LIT_ERR_HIGH
+lit_get|condition|8|!(p != NULL)
 lit_get|function-body|6|{ (void)p; return 0; }
 lit_get|integer-literal|7|1
+lit_get|return-value|11|((void)(v), (int)0)
 lit_letter|char-literal|27|('q' + 1)
 lit_name|string-literal|25|""
 lit_name|string-literal|25|m
@@ -824,7 +840,7 @@ assert ops["enum-constant"] == {"lit_check"} and ops["string-literal"] == {"lit_
 assert not d["sources"][0]["hidden"], "a toolchain macro was reported as hidden code"
 print("    new operators:", {k: sorted(v) for k, v in sorted(ops.items()) if k in ("condition", "enum-constant", "string-literal", "char-literal")})
 PY
-# (the condition and relational mutants of `p != NULL` compile to the function-body mutant's object here: duplicates)
+# (the condition and return-value mutants of `p != NULL` compile to the function-body mutant's object at -O2 but not at -O0)
 echo "    survivors exactly as expected: $(printf '%s\n' "$got" | wc -l)"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
@@ -1014,6 +1030,34 @@ gate "$out/shifted"
 echo "    same id $id, line moved $old_line -> $((old_line + 1))"
 sed -i '1d' "$scratch/m/equiv.c"
 
+# T058 / B18 (R001 R6): ids are bound to the mutated token and to the body of the function. The approved `<=` -> `<`
+# of twice_pos is rewritten so that the same group and ordinal now names a mutation that changes the result for
+# n = 100 and that no test checks. The old approval must not cover it. (This is a step here and not a canary because
+# the canary pack carries no signed approvals.)
+begin "approval drift: after the function body changes, the old equivalent-mutant approval covers nothing"
+cp "$scratch/m/equiv.c" "$out/equiv.c.orig"
+cat > "$scratch/m/equiv.c" <<'EOF'
+#include "equiv.h"
+
+int twice_pos(int n)
+{
+    if (n > 0 && n <= 100) {
+        return n * 2;
+    }
+    return 0;
+}
+EOF
+run "$out/build_drift.log" build "$pkg:equiv_mutants" --show-full-output || fail "$CUR: build" "$out/build_drift.log"
+p="$(awk -v t="$pkg:equiv_mutants" 'index($1, t) {print $2}' "$out/build_drift.log" | tail -1)"
+mkdir -p "$out/drift"; cp "$p" "$out/drift/equiv.json"
+gate "$out/drift" --approvals "$out/approvals" "${AP[@]}"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: the old approval covered the drifted function (exit $GATE_CODE)" "$out/gate.log"
+[ "$(json '[f["id"] for f in r["findings"] if f["rule"] == "survived-mutant" and f["original"] == "<=" and f["replacement"] == "<"] != []')" = True ] || fail "$CUR: the untested <= -> < mutant is not a survivor" "$out/gate.log"
+[ "$(json '[f for f in r["findings"] if f.get("id") == "'"$id"'"]')" = "[]" ] || fail "$CUR: the old id still names a mutant of the edited function" "$out/gate.log"
+[ "$(json 'r["metadata"]["approvals_used"]')" = "[]" ] || fail "$CUR: the old approval was used" "$out/gate.log"
+echo "    old id $id names nothing now; no approval used; the same-ordinal <= -> < survives"
+cp "$out/equiv.c.orig" "$scratch/m/equiv.c"
+
 begin "WARM: an unchanged tree executes no action"
 build_all "$out/build2.log" || fail "$CUR: buck2 build failed" "$out/build2.log"
 n="$(executed "$out/build2.log")"
@@ -1100,6 +1144,77 @@ det_build "$n1" "$out/det_a.json"
 det_build "$n2" "$out/det_b.json"
 cmp -s "$out/det_a.json" "$out/det_b.json" || fail "$CUR: the two reports differ" <(diff <("${PY[@]}" -m json.tool "$out/det_a.json") <("${PY[@]}" -m json.tool "$out/det_b.json"))
 echo "    reports identical: $(wc -c < "$out/det_a.json") bytes, sha256 $(sha256sum "$out/det_a.json" | cut -c1-16)"
+
+begin "RED/GREEN: a mutation the optimiser folds to the baseline object at -O2 is not equivalent unless it is at -O0 too (T051, B15)"
+cat >> "$scratch/m/BUCK" <<'EOF'
+
+c_library(name = "fold", srcs = ["fold.c"], headers = ["fold.h"])
+c_test(name = "fold_test", srcs = ["fold_test.c"], deps = [":fold"])
+c_mutants(name = "fold_mutants", module = ":fold", tests = [":fold_test"])
+EOF
+printf '#ifndef FOLD_H\n#define FOLD_H\nint fold_flag(int a);\nint fold_unit(void);\n#endif\n' > "$scratch/m/fold.h"
+# `a + 1 < a` is false for every int that is defined: signed overflow is undefined, so the optimiser assumes the branch never
+# runs and deletes it. A mutation in that branch (7 -> 8) therefore compiles to the baseline object at -O2. Without the
+# optimiser the addition wraps, the branch runs for INT_MAX, and the mutation changes what the function returns.
+cat > "$scratch/m/fold.c" <<'EOF'
+#include "fold.h"
+
+int fold_flag(int a)
+{
+    return (a + 1 < a) ? 7 : 3;
+}
+
+int fold_unit(void)
+{
+    return 1 * 1;
+}
+EOF
+cat > "$scratch/m/fold_test.c" <<'EOF'
+#include "ctest/ctest.h"
+#include "fold.h"
+
+static void t_fold(ctest_t *t)
+{
+    CHECK_EQ_I64(t, fold_flag(0), 3);
+    CHECK_EQ_I64(t, fold_flag(2147483647), 3);
+    CHECK_EQ_I64(t, fold_unit(), 1);
+}
+
+CTEST_SUITE("fold", { "fold", t_fold })
+EOF
+run "$out/build_fold.log" build "$pkg:fold_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_fold.log"
+p="$(awk -v t="$pkg:fold_mutants" 'index($1, t) {print $2}' "$out/build_fold.log" | tail -1)"
+[ -f "$p" ] || fail "$CUR: no report for fold"
+echo "    built, executed $(executed "$out/build_fold.log") actions"
+mkdir -p "$out/only_fold"; cp "$p" "$out/only_fold/fold.json"
+"${PY[@]}" - "$out/only_fold/fold.json" <<'PY' || fail "$CUR: bad fold report"
+import json, sys
+d = json.load(open(sys.argv[1]))
+base, base0 = d["sources"][0]["baseline"]["hash"], d["sources"][0]["baseline_o0"]["hash"]
+folded = [m for m in d["mutants"] if m["function"] == "fold_flag" and m["original"] == "7" and m["replacement"] == "8"][0]
+assert folded["compile"]["hash"] == base, "the -O2 optimiser no longer folds the mutation to the baseline object"
+assert folded["compile"]["o0"]["hash"] != base0 and folded["runs"], "the folded mutation was not compiled and run at -O0"
+unit = [m for m in d["mutants"] if m["function"] == "fold_unit" and m["operator"] == "arithmetic"][0]
+assert unit["compile"]["hash"] == base and unit["compile"]["o0"]["hash"] == base0 and not unit["runs"], unit["compile"]
+print("    fold_flag 7 -> 8: -O2 object == baseline, -O0 object differs, ran;  fold_unit 1 * 1 -> 1 / 1: identical at both, no run")
+count = sum(1 for m in d["mutants"] if "o0" in m["compile"])
+print("    -O0 compiles in this report: %d of %d mutants, plus %d baseline" % (count, len(d["mutants"]), len(d["sources"])))
+PY
+printf '[module."%s:fold_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_fold"
+[ "$GATE_CODE" = 1 ] || fail "$CUR: expected exit 1, got $GATE_CODE" "$out/gate.log"
+got="$(json '"\n".join(sorted("%s|%s|%s" % (f["function"], f["operator"], f["replacement"]) for f in r["findings"]))')"
+want='fold_flag|integer-literal|0'
+[ "$got" = "$want" ] || fail "$CUR: findings differ from the expected list" <(printf 'got:\n%s\nwant:\n%s\n' "$got" "$want")
+"${PY[@]}" - "$out/result.json" <<'PY' || fail "$CUR: tce metadata"
+import json, sys
+m = json.load(open(sys.argv[1]))["metadata"]["modules"].popitem()[1]
+t = m["tce"]
+assert 0 < t["equivalent_o0"] < t["equivalent_o2"] and m["verdicts"]["equivalent"] == t["equivalent_o0"], m
+assert m["verdicts"]["killed-assert"] >= 2 and m["verdicts"]["survived"] == 1, m
+print("    tce:", t, " verdicts:", {k: v for k, v in m["verdicts"].items() if v})
+PY
+echo "    the folded mutants ran at -O0: the INT_MAX check kills the ones that change the result, 1 -> 0 survives (it returns 3 like the optimised build); fold_unit stays equivalent"
 
 echo "elapsed ${SECONDS}s"
 echo "selftest/mutate.sh: all checks passed in $SECONDS s"

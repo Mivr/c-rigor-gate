@@ -1,0 +1,9 @@
+{
+  "bypass": "equivalent mutant hidden by the optimiser",
+  "description": "A branch -O2 deletes (signed overflow is undefined) hides mutations from the tests: -O2 folds them to the baseline object, so they used to be 'equivalent' and never ran. They are compiled again at -O0, run, and survive.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}

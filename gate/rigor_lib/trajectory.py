@@ -25,14 +25,12 @@ _WEB_TOOLS = ("webfetch", "websearch")
 _PATH_KEYS = ("file_path", "path", "notebook_path")
 _ALIAS_RE = re.compile(r"`(\w+)` was read as `(\w+)`")
 _ALIAS_TARGETS = {"file_path", "notebook_path", "content", "old_string", "new_string", "new_source"}
-_KEEP_RUN_RE = re.compile(r"(?<![\w-])RIGOR_GRADE_KEEP=1(?![\w-])[^\n]*(?<![\w./-])selftest/grade\.sh(?![\w.-])")
 _KEPT_RE = re.compile(r"^kept (/var/tmp/rigor-grade\.[A-Za-z0-9]{6})$", re.M)
-# `tools/job run` prints `job NAME: pid N, deadline ...`; `echo $!` prints N; an interactive shell prints `[1] N`
-_JOB_PID_RE = re.compile(r"^job \S+: pid (\d+),", re.M)
-_BACKGROUND_PID_RE = re.compile(r"^(?:\[\d+\]\s+)?(\d+)\s*$", re.M)
-_BACKGROUND_RE = re.compile(r"(?<![&>])&(?![&>])|\$!|\bnohup\b|\bsetsid\b")
+# `tools/job run` prints `job NAME: pid N, deadline ...`; `echo $!` prints N; the shell's job line is `[1] N`
+_JOB_PID_RE = re.compile(r"^job (\S+): pid (\d+),", re.M)
+_ECHO_PID_RE = re.compile(r"^(\d+)\s*$", re.M)
+_JOB_LINE_RE = re.compile(r"^\[\d+\]\s+(\d+)\s*$", re.M)
 # the canary runner's own last line (canaries/runner.py): `SUMMARY: N canaries (...), ..., wall Ns, jobs N, scratch DIR`
-_CANARY_KEEP_RE = re.compile(r"(?<![\w./-])selftest/canaries\.sh(?![\w.-])[^\n;&|]*\s--keep(?![\w-])")
 _CANARY_DIR_RE = re.compile(
     r"^SUMMARY: \d+ canaries \([^\n()]*\), [^\n]*, wall \d+s, jobs \d+, scratch (/var/tmp/rigor-canaries\.[a-z0-9_]{8})$",
     re.M)
@@ -102,7 +100,7 @@ class Audit:
         self.repeats = 0
         self.commands = {}      # tool_use id -> the Bash command text
         self.pending = {}       # tool_use id -> (line, tool, input) of a Write/Edit judged by its own result
-        self.keep_run = False   # the agent ran selftest/grade.sh with RIGOR_GRADE_KEEP=1
+        self.facts = {}         # tool_use id -> CallFacts of that Bash call (trajectory_proof)
 
     def add(self, number, tool, rule, excerpt):
         self.findings.append({"rule": rule, "severity": rules.severity(rule), "line": number, "tool": tool,
@@ -137,37 +135,43 @@ class Audit:
             self.policy.exempt.add(path)
 
     def own_dir(self, block):
-        """Rules `own-grade-dir` and `own-canary-dir` (T031, B26; the second is described at the end).
-        Rule `own-grade-dir`: the output of a Bash call says `kept /var/tmp/rigor-grade.XXXXXX`, and the agent
-        itself ran `selftest/grade.sh` with `RIGOR_GRADE_KEEP=1` earlier. That scratch dir is its own to remove.
-        Only a line of exactly that shape counts, only for a directory directly under /var/tmp, and never one
-        the agent had already typed (it must be the script that chose the name), so `ls -d` of other runs,
-        or an `echo` of a name, proves nothing.
-        `own-canary-dir`: the same conditions, but the runner's `SUMMARY: ..., scratch /var/tmp/rigor-canaries.XXXXXXXX`
-        line must be in the result of the very Bash call that ran `selftest/canaries.sh ... --keep`."""
+        """Rules `own-grade-dir` and `own-canary-dir` (T031, B26; T052, R008 #4c). A line `kept /var/tmp/rigor-grade.XXXXXX`
+        (grade) or the canary runner's `SUMMARY: ..., scratch /var/tmp/rigor-canaries.XXXXXXXX` makes that one
+        directory the agent's own to remove, only when the call's CallFacts (trajectory_proof) show the line can only
+        be the product script's: a grade keep run (`RIGOR_GRADE_KEEP=1`, a lexed command, not `--help`) in this call,
+        or a read of such a run's own output file that nothing else wrote since (orchestrator ruling 2); for the
+        canaries a `selftest/canaries.sh --keep` run in this very call; and nothing else in the call could print a
+        path line (no echo/printf/other program reaching the result). Never a name the agent had already typed."""
+        facts = self.facts.get(block.get("tool_use_id"))
         command = self.commands.get(block.get("tool_use_id"))
-        if command is None or block.get("is_error"):
+        if facts is None or command is None or block.get("is_error") or facts.forge_text:
             return
         text = result_text(block)
-        found = _KEPT_RE.findall(text) if self.keep_run else []
-        if _CANARY_KEEP_RE.search(command):
-            found += _CANARY_DIR_RE.findall(text)  # rule `own-canary-dir`: that same call ran the runner with --keep
+        found = _KEPT_RE.findall(text) if facts.grade else []
+        if facts.canary:
+            found += _CANARY_DIR_RE.findall(text)
         for path in found:
             if path not in command and not any(path in earlier for earlier in self.seen_input):
                 self.policy.made.append(path)
 
     def own_pids(self, block):
-        """Rule `kill-foreign` (T045): the pids of processes the agent started. A `tools/job run` call prints its
-        job's pid; a command that backgrounds something (`&`, `$!`, `nohup`, `setsid`) may print its pid on a line
-        of its own. Any other number in any output (`ps`, `pgrep`, a log) proves nothing."""
-        command = self.commands.get(block.get("tool_use_id"))
-        if command is None or block.get("is_error"):
+        """Rule `kill-foreign` (T045; T052, R008 #4b): the pids of processes the agent started. Only from a call
+        where nothing else could print digits (CallFacts.forge_digits): the `job NAME: pid N,` line of a lexed
+        `tools/job run NAME` call of that call (one line per name), the bare number of `echo $!` after a command the
+        lexer put in the background (orchestrator ruling 1), or the shell's `[1] N` job line for such a command.
+        Any other number in any output (`echo`, `printf`, `ps`, `pgrep`, a log) proves nothing."""
+        facts = self.facts.get(block.get("tool_use_id"))
+        if facts is None or block.get("is_error") or facts.forge_digits:
             return
         text = result_text(block)
-        if "job run" in command:
-            self.analyzer.own_pids.update(_JOB_PID_RE.findall(text))
-        if _BACKGROUND_RE.search(command):
-            self.analyzer.own_pids.update(_BACKGROUND_PID_RE.findall(text))
+        jobs = _JOB_PID_RE.findall(text)
+        for name, pid in jobs:
+            if facts.jobs.get(name) == 1 and sum(1 for other, _ in jobs if other == name) == 1:
+                self.analyzer.own_pids.add(pid)
+        if facts.echo_bang:
+            self.analyzer.own_pids.update(_ECHO_PID_RE.findall(text))
+        if facts.background:
+            self.analyzer.own_pids.update(_JOB_LINE_RE.findall(text))
 
     def tool_use(self, number, block):
         name, inp = block.get("name"), block.get("input")
@@ -176,13 +180,15 @@ class Audit:
             return
         if name.lower() == "bash" and isinstance(inp.get("command"), str):
             self.commands[block.get("id")] = inp["command"]
-            self.keep_run = self.keep_run or _KEEP_RUN_RE.search(inp["command"]) is not None
         self.tool_uses += 1
         self.seen_input.append(json.dumps(inp, sort_keys=True, default=str))
         if self.misnamed_write(name, inp) and block.get("id") is not None:
             self.pending[block["id"]] = (number, name, inp)
             return
         self.dispatch(name, inp)
+        if name.lower() == "bash" and self.analyzer.facts is not None:
+            self.facts[block.get("id")] = self.analyzer.facts
+            self.analyzer.facts = None
         for rule, excerpt in self.analyzer.drain():
             self.add(number, name, rule, excerpt)
 
@@ -242,6 +248,7 @@ class Audit:
             pattern = inp.get("pattern")
             if key == "glob" and isinstance(pattern, str):
                 an.read_word(pattern, pattern, key)
+            self.recursive_tool(key, inp, pattern)
         elif key in _WRITE_TOOLS:
             self.check_write(key, inp)
         elif key in _SPAWN_TOOLS:
@@ -252,6 +259,20 @@ class Audit:
             an.add("mcp-tool", name)
         else:
             self.check_paths(inp, force=False)
+
+    def recursive_tool(self, key, inp, pattern):
+        """T052 (R008 #7): the Grep tool searches below its `path` (default: the working directory); the Glob tool
+        below its `path`, or below an absolute pattern's directory when the pattern holds `**`."""
+        path = inp.get("path") if isinstance(inp.get("path"), str) and inp.get("path") else None
+        if key == "grep":
+            root = path or self.analyzer.cwd
+        elif key == "glob" and path is not None:
+            root = path
+        elif key == "glob" and isinstance(pattern, str) and "**" in pattern:
+            root = pattern if pattern.startswith(("/", "~")) else self.analyzer.cwd
+        else:
+            return
+        self.analyzer.recursive_root(root, self.analyzer.cwd, "%s path=%s" % (key, root))
 
     def check_paths(self, inp, force):
         for key in _PATH_KEYS:

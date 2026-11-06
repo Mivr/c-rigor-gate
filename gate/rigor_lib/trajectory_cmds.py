@@ -8,7 +8,7 @@ from rigor_lib import trajectory_rules as rules
 from rigor_lib.trajectory_shell import UNRESOLVED
 
 KEYWORDS = ("{", "}", "!", "then", "do", "else", "if", "while", "until", "fi", "done", "elif", "for", "case",
-            "esac", "function", "select")
+            "esac", "function", "select", "coproc")
 _ASSIGN_WORD = re.compile(r"\A[A-Za-z_][A-Za-z0-9_]*=")
 _HOST_RE = re.compile(r"\A(?:[\w-]+@)?(?P<host>\[[0-9a-fA-F:]+\]|[A-Za-z0-9_.-]+)(?::\d+)?(?:[:/].*)?\Z")
 _CURL_VALUE_OPTS = ("-o", "-H", "-d", "-X", "-u", "-A", "-e", "-K", "-T", "-w", "-m", "-x", "-b", "-c", "-F",
@@ -157,6 +157,10 @@ def unwrap_once(argv):
     """(inner argv, extra rule ids) for a wrapper command (inner may be empty); (None, []) if not one."""
     name = name_of(argv[0])
     extra = []
+    if name == "busybox" and len(argv) > 1:
+        return argv[1:], []  # `busybox X ...` runs applet X (T057, R008 #11/#12)
+    if name == "flock" and any(a in ("-c", "--command") or a.startswith("--command=") for a in argv[1:]):
+        return None, []  # `flock FILE -c CMD`: a code string, audited by _command_strings, not a wrapped argv
     if name == "env":
         i = 1
         while i < len(argv):
@@ -178,6 +182,17 @@ def unwrap_once(argv):
         "xargs": ("-I", "-n", "-P", "-d", "-L", "-s", "-E", "-a", "-J"), "timeout": ("-k", "-s", "--signal",
                                                                                    "--kill-after"),
         "flock": ("-w", "-E"), "watch": ("-n", "-d"),
+        "taskset": ("-c", "--cpu-list", "-p", "--pid"), "chrt": ("-p", "--pid"),
+        "chroot": ("--userspec", "--groups"), "prlimit": (), "setpriv": (
+            "--reuid", "--regid", "--groups", "--inh-caps", "--ambient-caps", "--bounding-set", "--securebits",
+            "--pdeathsig", "--selinux-label", "--apparmor-profile"),
+        "numactl": ("-N", "-m", "-C", "-c", "-p", "--cpunodebind", "--membind", "--physcpubind", "--preferred",
+                    "--interleave"),
+        "strace": ("-o", "-e", "-p", "-s", "-a", "-E", "-O", "-u", "-S", "-P", "-b", "-I", "-D", "--output",
+                   "--trace", "--seccomp-bpf"),
+        "ltrace": ("-o", "-e", "-p", "-s", "-u", "-a", "-l", "-F"),
+        "unshare": ("--map-user", "--map-group", "--setgroups", "-S", "-G", "--wd"),
+        "nsenter": ("-t", "--target", "-S", "-G", "-C", "-W"),
     }
     if name not in table:
         return None, []
@@ -186,8 +201,11 @@ def unwrap_once(argv):
     if name in rules.SUDO_COMMANDS:
         extra.append("cmd-sudo")
     i = _skip_options(argv, 1, table[name])
-    if name in ("timeout", "flock", "watch") and i < len(argv):
-        i += 1  # duration / lock file
+    if name in ("timeout", "flock", "watch", "chrt", "chroot") and i < len(argv):
+        i += 1  # duration / lock file / scheduling priority / new root
+    if name == "taskset" and i < len(argv) and not any(
+            a in ("-c", "--cpu-list") or a.startswith("--cpu-list=") for a in argv[1:i]):
+        i += 1  # the CPU affinity mask, given positionally (not via -c)
     return argv[i:], extra
 
 
@@ -214,6 +232,59 @@ def env_wrappers(prefix):
                 break
             i += 1
     return assigns, clean
+
+
+def env_chdir(prefix):
+    """The directory of `env -C DIR` / `env --chdir=DIR` among the wrappers stripped in front of a command, or None."""
+    found, i = None, 0
+    while i < len(prefix):
+        if name_of(prefix[i]) == "env":
+            j = i + 1
+            while j < len(prefix) and prefix[j].startswith("-"):
+                arg = prefix[j]
+                if arg in ("-C", "--chdir") and j + 1 < len(prefix):
+                    found = prefix[j + 1]
+                    j += 1
+                elif arg.startswith("--chdir="):
+                    found = arg[len("--chdir="):]
+                elif arg.startswith("-C") and len(arg) > 2:
+                    found = arg[2:]
+                elif arg in ("-u", "-S", "--unset", "--split-string"):
+                    j += 1
+                j += 1
+            i = j
+        else:
+            i += 1
+    return found
+
+
+_CHDIR_OPTS = {"tar": ("-C", "--directory"), "make": ("-C", "--directory"), "gmake": ("-C", "--directory"),
+               "git": ("-C",)}
+
+
+def arg_dirs(name, argv, cwd, normalize):
+    """The directory each argument of `tar`/`make`/`git` is resolved in: a `-C DIR` (`-CDIR`, `--directory=DIR`)
+    applies to the arguments after it (T052, R008 #6). None for other commands."""
+    opts = _CHDIR_OPTS.get(name)
+    if opts is None:
+        return None
+    dirs, here, i = [], cwd, 0
+    while i < len(argv):
+        arg, value, skip = argv[i], None, False
+        if i > 0 and arg in opts and i + 1 < len(argv):
+            value, skip = argv[i + 1], True
+        elif i > 0 and "-C" in opts and arg.startswith("-C") and len(arg) > 2:
+            value = arg[2:]
+        elif i > 0 and arg.startswith("--directory=") and "--directory" in opts:
+            value = arg[len("--directory="):]
+        dirs.append(here)
+        if skip:
+            dirs.append(here)
+            i += 1
+        if value is not None:
+            here = normalize(value, here) or UNRESOLVED
+        i += 1
+    return dirs
 
 
 def clean_environment(assigns, clean):
@@ -260,6 +331,99 @@ def job_run(argv):
     if i + 1 >= len(argv):
         return None
     return directory, i
+
+
+# -- command strings (T057, R008 #11) --------------------------------------------------------
+_AWK_SYSTEM_RE = re.compile(r'\bsystem\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)')
+_SED_E_RE = re.compile(r'(?:\A|[;\n])[ \t]*(?:[0-9$]+|/(?:[^/\\]|\\.)*/)?[ \t]*,?[ \t]*'
+                       r'(?:[0-9$]+|/(?:[^/\\]|\\.)*/)?[ \t]*e[ \t]+(\S[^\n]*)')
+
+
+def opt_value(args, names):
+    """The value of the first `-c`/`--command`-style option in `args` (`-cCMD`, `--command=CMD`, or the next word)."""
+    for i, arg in enumerate(args):
+        if arg in names and i + 1 < len(args):
+            return args[i + 1]
+        for name in names:
+            if name.startswith("--") and arg.startswith(name + "="):
+                return arg[len(name) + 1:]
+            if not name.startswith("--") and len(name) == 2 and arg.startswith("-") and not arg.startswith("--"):
+                if arg.startswith(name) and len(arg) > 2:
+                    return arg[2:]  # `-cCMD`
+                if arg.endswith(name[1]) and len(arg) > 2 and i + 1 < len(args):
+                    return args[i + 1]  # a cluster ending in the code letter (`-qc CMD`)
+    return None
+
+
+def awk_system_calls(argv):
+    """The shell commands of literal `system("...")` calls in an awk program (the first non-option word, or -e/-f
+    values; -f names a file the audit does not have, so it is skipped)."""
+    args = argv[1:]
+    programs, i = [], 0
+    value_opts = ("-F", "-v", "--field-separator", "--assign")
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            i += 1
+            if i < len(args):
+                programs.append(args[i])
+            break
+        if arg.startswith("-") and arg != "-":
+            if arg in ("-f", "--file", "--source", "-e"):
+                i += 2
+                continue
+            if arg in value_opts:
+                i += 2
+                continue
+            i += 1
+            continue
+        programs.append(arg)
+        break
+    out = []
+    for program in programs:
+        out.extend(_AWK_SYSTEM_RE.findall(program))
+    return out
+
+
+def sed_exec_commands(argv):
+    """The shell commands of `e command` directives in a sed script (`-e` values, or the first positional)."""
+    args = argv[1:]
+    scripts, i, explicit = [], 0, False
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-e", "--expression") and i + 1 < len(args):
+            scripts.append(args[i + 1])
+            explicit = True
+            i += 2
+            continue
+        if arg.startswith("--expression="):
+            scripts.append(arg[len("--expression="):])
+            explicit = True
+        elif arg in ("-f", "--file") and i + 1 < len(args):
+            i += 2
+            continue
+        i += 1
+    if not explicit:
+        plain = [args[i] for i in positionals(args, ("-e", "--expression", "-f", "--file"))]
+        if plain:
+            scripts.append(plain[0])
+    out = []
+    for script in scripts:
+        out.extend(m.group(1) for m in _SED_E_RE.finditer(script))
+    return out
+
+
+def parallel_commands(args):
+    """The shell commands `parallel` runs: the template before `:::`, or (no template) each argument after it."""
+    seps = (":::", "::::", ":::+", "::::+")
+    if not any(s in args for s in seps):
+        template = [a for a in args if not a.startswith("-")]
+        return [" ".join(template)] if template else []
+    cut = next(i for i, a in enumerate(args) if a in seps)
+    template = [a for a in args[:cut] if not a.startswith("-")]
+    if template:
+        return [" ".join(template)]
+    return [a for a in args[cut + 1:] if a not in seps and not a.startswith("-")]
 
 
 # -- git -------------------------------------------------------------------------------------
@@ -313,8 +477,10 @@ def git_hits(argv):
             found.append("cmd-no-verify")
         elif key not in rules.GIT_ALLOWED_C_KEYS:
             found.append("git-config-override")
-    if sub == "push":
-        found.append("cmd-git-push")
+    if sub in ("push", "send-pack", "http-push") or (sub == "lfs" and sub_args[:1] == ["push"]):
+        found.append("cmd-git-push")  # send-pack and http-push are push plumbing (T057, R008 #9)
+    if (sub == "credential" and sub_args[:1] != ["capability"]) or sub.startswith("credential-"):
+        found.append("cmd-git-credential")
     if sub in ("commit", "merge", "push", "am", "rebase", "cherry-pick", "revert") and any(
             a == "--no-verify" or (sub in ("commit", "merge") and _CLUSTER_N.match(a)) for a in sub_args):
         found.append("cmd-no-verify")
@@ -330,7 +496,9 @@ def git_hits(argv):
 
 def git_is_networked(argv):
     confs, sub, sub_args = git_parts(argv)
-    if sub in ("fetch", "pull", "ls-remote", "clone"):
+    if sub in ("fetch", "pull", "ls-remote", "clone", "fetch-pack", "lfs"):
+        return True
+    if sub == "archive" and any(a == "--remote" or a.startswith("--remote=") for a in sub_args):
         return True
     if sub == "remote" and sub_args[:1] == ["update"]:
         return True
@@ -340,10 +508,19 @@ def git_is_networked(argv):
 def git_remote_ok(argv):
     """True when the remote of a networked git command is a local path or an allowlisted URL."""
     confs, sub, sub_args = git_parts(argv)
-    plain = [sub_args[i] for i in positionals(sub_args)]
+    if sub == "lfs":
+        return False  # git-lfs talks to its own server (T057, R008 #9)
+    if sub == "archive":  # `--remote=REPO` / `--remote REPO`: the same test as any other remote
+        values = [a.split("=", 1)[1] for a in sub_args if a.startswith("--remote=")]
+        values += [sub_args[i + 1] for i, a in enumerate(sub_args[:-1]) if a == "--remote"]
+        return bool(values) and all(_remote_word_ok(v) for v in values)
+    plain = [sub_args[i] for i in positionals(sub_args, ("--remote", "--exec", "--upload-pack"))]
     if sub in ("submodule", "remote") or not plain:
         return False
-    remote = plain[0]
+    return _remote_word_ok(plain[0])
+
+
+def _remote_word_ok(remote):
     if remote.startswith(("/", "./", "../")):
         return True
     return _local_or_url(remote) and host_allowed(remote, False)
@@ -354,11 +531,25 @@ def _local_or_url(word):
 
 
 # -- install / env dump ----------------------------------------------------------------------
+_RUNNERS = ("npx", "bunx", "uvx", "pnpx")  # fetch a package and run it (T060, R008 #15)
+_RUNNER_SUBS = {"pnpm": ("dlx",), "yarn": ("dlx",), "pipx": ("run",), "npm": ("exec", "x"), "bun": ("x",)}
+_UV_WITH = ("--with", "--with-requirements", "--with-editable")
+
+
 def install_hit(argv):
     name = name_of(argv[0])
     args = argv[1:]
     if re.fullmatch(r"python[0-9.]*", name) and args[:2] == ["-m", "pip"]:
         return "install" in args[2:3] + args[3:4]
+    if name in _RUNNERS:
+        return True
+    plain = [args[i] for i in positionals(args)]
+    if plain and plain[0] in _RUNNER_SUBS.get(name, ()):
+        return True
+    if name == "uv" and plain[:1] == ["run"] and any(a.split("=", 1)[0] in _UV_WITH for a in args):
+        return True
+    if name == "go" and plain[:1] == ["run"] and any("@" in a for a in plain[1:]):
+        return True  # `go run pkg@version` downloads the module
     subs = rules.INSTALLERS.get(name)
     if subs is None:
         return False
@@ -405,8 +596,8 @@ def host_allowed(url_or_host, loopback_ok=True):
             continue
         if prefix == "":
             return True
-        if path and (path.startswith(prefix) or path == prefix.rstrip("/")
-                     or path.startswith(prefix.rstrip("/") + ".git")):
+        pfx = prefix.rstrip("/")  # the prefix must end at a path-segment boundary (T057, R008 #14)
+        if path and (path == pfx or path.startswith(pfx + "/") or path.startswith(pfx + ".git")):
             return True
     return False
 
@@ -421,9 +612,15 @@ def network_destinations(name, args):
     return [w for w in found if "://" in w or UNRESOLVED in w or (_HOST_RE.match(w) and re.search(r"[A-Za-z]", w))]
 
 
+_OPENSSL_NET = ("s_client", "s_time")
+
+
 def network_hit(argv):
     name = name_of(argv[0])
     args = argv[1:]
+    if name == "openssl" and args[:1] and args[0] in _OPENSSL_NET:  # a TLS client (T060, R008 #15)
+        dest = opt_value(args, ("-connect",)) or "localhost:4433"
+        return UNRESOLVED in dest or not host_allowed(dest)
     if name == "rsync":
         remote = [a for a in args if "://" in a or re.match(r"\A[\w-]+@[\w.-]+:", a) or re.match(r"\A[\w.-]+::", a)]
         return bool(remote) and not all(host_allowed(a, False) for a in remote)
@@ -432,6 +629,15 @@ def network_hit(argv):
     dests = network_destinations(name, args)
     loopback_ok = name not in rules.SSH_FAMILY
     return not dests or not all(host_allowed(d, loopback_ok) for d in dests)
+
+
+_SOCKET_RE = re.compile(r"\A/dev/(?:tcp|udp)/([^/]*)(?:/|\Z)")
+
+
+def socket_host(path):
+    """The host of bash's `/dev/tcp/HOST/PORT` (or udp) socket path, or None for any other path (T060, R008 #15)."""
+    match = _SOCKET_RE.match(path)
+    return match.group(1) if match is not None else None
 
 
 # -- writes ----------------------------------------------------------------------------------
@@ -482,6 +688,55 @@ _VALUE_OPTS = {"cp": ("-t", "--target-directory", "-S", "--suffix"), "mv": ("-t"
 def _in_place(args):
     return any(a == "--in-place" or a.startswith("--in-place=") or re.fullmatch(r"-[a-zA-Z]*i[a-zA-Z.]*", a)
                for a in args)
+
+
+_GREP_VALUE_OPTS = ("-A", "-B", "-C", "-m", "-g", "--glob", "-t", "--type", "--include", "--exclude", "--exclude-dir",
+                    "-d", "-D", "--max-count", "-e", "--regexp", "-f", "--file", "-T", "--type-add")
+_TAR_VALUE_OPTS = ("-f", "--file", "-C", "--directory", "-T", "--files-from", "-X", "--exclude-from", "--exclude", "-b",
+                   "-H", "--format", "-K", "-N", "-V", "-I", "--use-compress-program")
+_CP_VALUE_OPTS = ("-t", "--target-directory", "-S", "--suffix")
+_RSYNC_VALUE_OPTS = ("-e", "--rsh", "--exclude", "--include", "--filter", "-f", "--files-from", "--exclude-from",
+                     "--include-from", "--log-file", "--partial-dir", "--temp-dir", "-T", "--chmod", "--chown")
+
+
+def recursive_roots(name, argv):
+    """The argv indexes a recursive reader descends from (T052, R008 #7), [] when it defaults to the working
+    directory, None when the command is not a recursive read: `grep -r/-R`, rg/ag/ack, `find`, `tar -c`,
+    `cp -r/-R/-a`, rsync (sources), `du`, `ls -R`."""
+    args = argv[1:]
+    cluster = lambda letters: any(re.fullmatch(r"-[A-Za-z]*[%s][A-Za-z]*" % letters, a) for a in args)
+    if name in ("grep", "egrep", "fgrep"):
+        if not (cluster("rR") or any(a in ("--recursive", "--dereference-recursive", "--directories=recurse")
+                                     for a in args) or ("-d" in args and "recurse" in args)):
+            return None
+        return _after_pattern(args)
+    if name in ("rg", "ag", "ack"):
+        return _after_pattern(args)
+    if name == "find":
+        return [i + 1 for i in _find_roots(args)]
+    if name in ("du",) or (name == "ls" and (cluster("R") or "--recursive" in args)):
+        return [i + 1 for i in positionals(args)]
+    if name == "tar":
+        first = args[0] if args else ""
+        if not (cluster("c") or "--create" in args or (first and not first.startswith("-") and "c" in first)):
+            return None
+        plain = positionals(args, _TAR_VALUE_OPTS)
+        if first and not first.startswith("-"):  # `tar czf out.tgz DIR`: the old-style cluster and its f value
+            plain = plain[2:] if "f" in first else plain[1:]
+        return [i + 1 for i in plain]
+    if name == "cp" and (cluster("rRa") or any(a in ("--recursive", "--archive") for a in args)):
+        plain = positionals(args, _CP_VALUE_OPTS)
+        targeted = any(a in ("-t", "--target-directory") or a.startswith("--target-directory=") for a in args)
+        return [i + 1 for i in (plain if targeted else plain[:-1])]
+    if name == "rsync":
+        return [i + 1 for i in positionals(args, _RSYNC_VALUE_OPTS)[:-1]]
+    return None
+
+
+def _after_pattern(args):
+    plain = positionals(args, _GREP_VALUE_OPTS)
+    explicit = any(a in ("-e", "--regexp", "-f", "--file") or a.startswith(("--regexp=", "--file=")) for a in args)
+    return [i + 1 for i in (plain if explicit else plain[1:])]
 
 
 def _find_roots(args):
