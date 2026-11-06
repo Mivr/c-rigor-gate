@@ -94,10 +94,36 @@ class Types:
                 self.typedefs[node["name"]] = under if known == under else None
             elif kind == "RecordDecl" and node.get("completeDefinition") and node.get("name"):
                 key = "%s %s" % (node.get("tagUsed", "struct"), node["name"])
-                fields = [c.get("type", {}).get("qualType", "") for c in children(node) if c.get("kind") == "FieldDecl"]
-                self.records.setdefault(key, []).extend(fields)
+                self.records.setdefault(key, []).extend(self.members(node))
             stack.extend(children(node))
         self.busy = set()
+
+    def members(self, record):
+        """The members of a record: a type text each, or, for a member whose type is an unnamed struct or union
+        (the declaration just before the field), the list of that record's members."""
+        items, pending = [], []
+        for child in children(record):
+            if child.get("kind") == "RecordDecl" and not child.get("name") and child.get("completeDefinition"):
+                pending.append(child)
+            elif child.get("kind") == "FieldDecl":
+                text = child.get("type", {}).get("qualType", "")
+                if _UNNAMED.search(text) and "*" not in text and pending:
+                    items.append(self.members(pending.pop(0)))
+                else:
+                    items.append(text)
+        return items
+
+    def item_types(self, item):
+        """The function types of one member (see `members`); None = cannot tell."""
+        if isinstance(item, str):
+            return self.function_types(item, True)
+        found = []
+        for sub in item:
+            part = self.item_types(sub)
+            if part is None:
+                return None
+            found += part
+        return sorted(set(found))
 
     def tokens(self, text):
         """The type's tokens with typedefs expanded, or None."""
@@ -212,7 +238,7 @@ class Types:
         self.busy.add(name)
         found = []
         for field in self.records[name]:
-            part = self.function_types(field, True)
+            part = self.item_types(field)
             if part is None:
                 found = None
                 break
@@ -430,6 +456,18 @@ def peel(expr):
     return expr
 
 
+def is_null_constant(node):
+    """A null pointer constant (`0`, `(void *)0`, `NULL`): converting it to a function pointer type is fine."""
+    while isinstance(node, dict):
+        if node.get("castKind") == "NullToPointer" or (node.get("kind") == "IntegerLiteral" and node.get("value") == "0"):
+            return True
+        inner = children(node)
+        if node.get("kind") not in ("ParenExpr", "ImplicitCastExpr", "CStyleCastExpr") or len(inner) != 1:
+            return False
+        node = inner[0]
+    return False
+
+
 def is_function_ref(node):
     ref = node.get("referencedDecl") if node.get("kind") == "DeclRefExpr" else None
     return ref if isinstance(ref, dict) and ref.get("kind") == "FunctionDecl" else None
@@ -520,7 +558,8 @@ class Measure:
     def convert(self, node):
         kind = node.get("kind")
         inner = children(node)
-        if kind in ("ImplicitCastExpr", "CStyleCastExpr") and inner and node.get("castKind") not in SAFE_CASTS:
+        if kind in ("ImplicitCastExpr", "CStyleCastExpr") and inner and node.get("castKind") not in SAFE_CASTS \
+                and not is_null_constant(inner[0]):
             self.retyped(node, "cast", spelled(inner[0]), spelled(node))
         elif kind == "VAArgExpr":
             self.retyped(node, "vararg", "int", spelled(node))
@@ -536,12 +575,14 @@ class Measure:
         """Reading a union member of another type reinterprets it: a union with a function pointer in it and a
         member of another type is a conversion."""
         types = self.resolver.types
-        fields = [spelled(c) for c in children(node) if c.get("kind") == "FieldDecl"]
-        held = [types.function_types(f, True) for f in fields]
+        fields = types.members(node)
+        held = [types.item_types(f) for f in fields]
         if None in held:
             return self.note(node, "union", None)
         flat = sorted({t for h in held for t in h})
-        if flat and len({tuple(types.tokens(f) or ()) for f in fields}) > 1:
+        shapes = {tuple(types.tokens(f) or ("?",)) if isinstance(f, str) else ("aggregate", i)
+                  for i, f in enumerate(fields)}
+        if flat and len(shapes) > 1:
             self.note(node, "union", flat)
 
     def copy(self, node, dst, src):
