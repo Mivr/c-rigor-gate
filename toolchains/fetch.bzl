@@ -45,3 +45,38 @@ fetched_tree = rule(
         "url": attrs.string(),
     },
 )
+
+# ---------------------------------------------------------------------------
+# Verified reuse (T030). `--uncached` grades pass --no-remote-cache, which would re-run the
+# 120 s `tar` of `fetched_tree`. Instead the grader first builds `tree_ref` (cache allowed: the
+# tree may come from the action cache) and then, in the SAME Buck2 daemon, `verified_tree` with
+# --no-remote-cache: that action hashes every byte of the tree against the checked-in manifest
+# on a worker, uncached, so a planted cache entry fails the grade. See docs/toolchain.md.
+# ---------------------------------------------------------------------------
+
+def _tree_ref_impl(ctx: AnalysisContext) -> list[Provider]:
+    return [DefaultInfo(default_output = ctx.attrs.tree[DefaultInfo].default_outputs[0])]
+
+tree_ref = rule(
+    impl = _tree_ref_impl,
+    attrs = {"tree": attrs.exec_dep()},
+)
+
+def _verified_tree_impl(ctx: AnalysisContext) -> list[Provider]:
+    tree = ctx.attrs.tree[DefaultInfo].default_outputs[0]
+    out = ctx.actions.declare_output("verified.txt")
+    ctx.actions.run(
+        cmd_args(["python3", "-I", ctx.attrs.script, "verify", tree, ctx.attrs.manifest, out.as_output()]),
+        category = "verify_tree",
+        identifier = ctx.label.name,
+    )
+    return [DefaultInfo(default_output = out)]
+
+verified_tree = rule(
+    impl = _verified_tree_impl,
+    attrs = {
+        "manifest": attrs.source(),
+        "script": attrs.source(),
+        "tree": attrs.exec_dep(),
+    },
+)

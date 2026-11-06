@@ -2,7 +2,7 @@ load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_to
 load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
 load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
-load(":fetch.bzl", "fetched_tree")
+load(":fetch.bzl", "fetched_tree", "tree_ref", "verified_tree")
 load(":platforms.bzl", "exec_platform", "target_platform")
 load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "system_roots")
 
@@ -163,6 +163,21 @@ fetched_tree(
     ],
     visibility = ["PUBLIC"],
 )
+
+# Verified reuse of the two trees by an `--uncached` grade (gate/rigor_lib/toolchain_verify.py).
+[
+    (
+        tree_ref(name = t + "_ref", tree = ":" + t, visibility = ["PUBLIC"]),
+        verified_tree(
+            name = t + "_verified",
+            tree = ":" + t,
+            manifest = t + ".manifest",
+            script = "verify_tree.py",
+            visibility = ["PUBLIC"],
+        ),
+    )
+    for t in ["llvm", "sysroot"]
+]
 
 # ---------------------------------------------------------------------------
 # Tools

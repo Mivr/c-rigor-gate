@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 
-from rigor_lib import grade_context, jsonio
+from rigor_lib import grade_context, jsonio, toolchain_verify
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
 
@@ -21,7 +21,19 @@ _TAIL_CHARS = 4000
 
 
 def run_buck(tree, args):
-    """Run the pinned Buck2 in `tree`; returns (exit code, stdout text, stderr text)."""
+    """Run the pinned Buck2 in `tree`; returns (exit code, stdout text, stderr text).
+
+    An uncached `build` first verifies the cached toolchain trees against their manifest
+    (toolchain_verify); if that fails the build is not started and exit code 1 is returned.
+    """
+    if toolchain_verify.needs_verification(args):
+        problem = toolchain_verify.prepare(_run_buck, tree)
+        if problem is not None:
+            return 1, "", problem
+    return _run_buck(tree, args)
+
+
+def _run_buck(tree, args):
     command = ["bash", os.path.join(tree, "gate", "tools", "buck2")] + args
     try:
         done = subprocess.run(command, cwd=tree, stdin=subprocess.DEVNULL, capture_output=True,

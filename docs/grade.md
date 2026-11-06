@@ -101,6 +101,11 @@ every build, so no cache is read or written and every action runs on a worker. T
 service may still deduplicate identical in-flight actions; the selftest checks that an uncached grade
 reports 0 cache hits.)
 
+**Toolchain trees (T030).** `--no-remote-cache` would also re-unpack the 1.6 GB LLVM archive (about two minutes per
+daemon). An uncached build instead first takes the tree from the action cache and verifies every byte of it,
+uncached on a worker, against the gate-owned `toolchains/*.manifest`; a mismatch fails the build (a `build-failed`
+finding with a `TOOLCHAIN VERIFICATION FAILED` stderr tail), never a silent re-fetch. See `docs/toolchain.md`.
+
 ## Daemons
 Every grading tree starts its own Buck2 daemon; the build gate kills it in a `finally`, and `rigor
 grade` kills it again if anything escaped (and before reusing a work directory).
