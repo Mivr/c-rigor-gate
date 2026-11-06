@@ -109,3 +109,28 @@ class Repo:
 
     def branch(self, name):
         self.git("checkout", "-q", "-b", name)
+
+
+class Signer:
+    """A throwaway ssh key pair plus an allowed_signers file that trusts it."""
+
+    NAMESPACE = "c-rigor-gate"
+
+    def __init__(self, directory, name="owner", principal="owner", namespaces=None):
+        self.directory = Path(directory)
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.key = self.directory / name
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", name,
+                        "-f", str(self.key)], check=True, capture_output=True)
+        public = (self.directory / (name + ".pub")).read_text(encoding="utf-8").strip()
+        options = 'namespaces="%s"' % (namespaces or self.NAMESPACE)
+        self.allowed_line = "%s %s %s\n" % (principal, options, public)
+
+    def write_allowed_signers(self, path, extra_lines=()):
+        Path(path).write_text("".join(extra_lines) + self.allowed_line, encoding="utf-8")
+        return Path(path)
+
+    def sign_file(self, data_path, namespace=None):
+        subprocess.run(["ssh-keygen", "-Y", "sign", "-q", "-n", namespace or self.NAMESPACE,
+                        "-f", str(self.key), str(data_path)], check=True, capture_output=True)
+        return Path(str(data_path) + ".sig")
