@@ -1,0 +1,45 @@
+[cells]
+  root = .
+  prelude = prelude
+  toolchains = toolchains
+  none = none
+
+[cell_aliases]
+  gate = root
+  config = prelude
+  ovr_config = prelude
+  fbcode = none
+  fbsource = none
+  fbcode_macros = none
+  buck = none
+
+[external_cells]
+  prelude = bundled
+
+[project]
+  ignore = .git, buck-out, cache
+
+[build]
+  execution_platforms = toolchains//:platforms
+
+[buck2_re_client]
+engine_address = grpc://forge.internal:9092
+action_cache_address = grpc://forge.internal:9092
+cas_address = grpc://forge.internal:9092
+tls = false
+execution_concurrency_limit = 64
+min_connections = 4
+max_connections = 16
+max_concurrency_per_connection = 32
+max_concurrent_uploads_per_action = 16
+find_missing_blobs_batch_size = 250
+max_decoding_message_size = 33554432
+grpc_keepalive_time_secs = 60
+grpc_keepalive_timeout_secs = 30
+
+[http]
+  connect_timeout_ms = 120000
+  read_timeout_ms = 900000
+
+[parser]
+  target_platform_detector_spec = target:root//...->toolchains//:linux_release

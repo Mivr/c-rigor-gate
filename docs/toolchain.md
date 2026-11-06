@@ -1,0 +1,54 @@
+# Hermetic C toolchain (T001)
+
+Everything compiles, links and tests on the RE farm (`grpc://forge.internal:9092`, concurrency 64) with a
+toolchain and sysroot that Buck2 downloads by sha256. Nothing on the host or in the worker image is used for
+compiling or linking: no host clang, no `/usr/include`, no `/usr/lib`.
+
+## Pins
+
+| What | URL | sha256 |
+|---|---|---|
+| Buck2 client | `/usr/local/bin/buck2` (`tools/buck2.version`; `tools/buck2` refuses any other binary) | `400f5fde930a62ff6f64513fb5a7e88fa1847afa85758cadd9484dc93446fa94` |
+| Prelude | bundled in that binary (`[external_cells] prelude = bundled`) | n/a |
+| LLVM 19.1.7 | `https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz` | `4a5ec53951a584ed36f80240f6fbf8fdd46b4cf6c7ee87cc2d5018dc37caf679` |
+| glibc sysroot (Chromium Debian bullseye amd64) | `https://commondatastorage.googleapis.com/chrome-linux-sysroot/f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` | `f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` |
+
+`toolchains/fetch.bzl` (`fetched_tree`) downloads each archive (hash-checked) and runs `tar` on RE to unpack only
+the listed members, so the 7 GB LLVM release becomes a ~0.9 GB tree and each action sees only the sub-paths it
+names (`toolchains/tools.bzl`, `.project(...)`). A pattern that matches nothing fails the build.
+
+## Modes
+
+A mode is a target platform. The default (`[parser] target_platform_detector_spec`) is `release`.
+
+| Mode | Command | Flags |
+|---|---|---|
+| release | `tools/buck2 test //...` | `-O2` |
+| san | `tools/buck2 test --target-platforms toolchains//:linux_san //...` | `-O1 -g -fsanitize=address,undefined,leak -fno-sanitize-recover=all -fno-omit-frame-pointer` |
+| cov | `tools/buck2 test --target-platforms toolchains//:linux_cov //...` | `-fprofile-instr-generate -fcoverage-mapping -fcoverage-mcdc` |
+| fuzz | `tools/buck2 test --target-platforms toolchains//:linux_fuzz //...` | `-fsanitize=fuzzer,address,undefined` (+ `-O1 -g -fno-sanitize-recover=all -fno-omit-frame-pointer`) |
+
+Coverage report (line, branch, MC/DC), also on RE, via the fetched `llvm-profdata` / `llvm-cov`:
+
+```sh
+tools/buck2 build --target-platforms toolchains//:linux_cov //examples/hello:hello_test_coverage --show-output
+```
+
+`c_binary` and `c_test` are incompatible with `fuzz` (libFuzzer supplies `main`); `c_fuzz` is only built in `fuzz`.
+`c_fuzz` is a test that runs `-seed=1 -runs=200000`; it fails when the fuzzer finds a crash.
+
+## Sealed flags
+
+`rules/c.bzl` appends `-std=c17 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wsign-conversion -Wshadow
+-Wcast-qual -Wvla -Wframe-larger-than=512 -Wformat=2 -Wnull-dereference -Wimplicit-fallthrough` after the mode
+flags. The macros `c_library`, `c_binary`, `c_test`, `c_fuzz` have no flag parameters.
+
+## Known limits (deviations)
+
+- clang has no `-Wstack-usage`; `-Wframe-larger-than=512` is used instead.
+- Tools (clang, lld, llvm-*) and test binaries dynamically load the worker image's glibc/libstdc++/libz/libxml2/ICU
+  at run time. Headers, link libraries, crt files and sanitizer runtimes come only from the pinned archives.
+- `python_bootstrap` and `genrule` toolchains use the worker's `python3` and `/bin/sh` (script interpreters only).
+- Sanitizer reports are unsymbolized (no `llvm-symbolizer` wired in); report kinds are still printed.
+
+Self-test: `selftest/toolchain.sh`.

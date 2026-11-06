@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Pinned Buck2 client: refuses to run unless the binary matches tools/buck2.version.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bin="${BUCK2_BIN:-/usr/local/bin/buck2}"
+want="$(tr -d '[:space:]' < "$here/buck2.version")"
+have="$(sha256sum "$bin" | cut -d' ' -f1)"
+if [ "$have" != "$want" ]; then
+  echo "tools/buck2: sha256 of $bin is $have, expected $want" >&2
+  exit 1
+fi
+exec "$bin" "$@"

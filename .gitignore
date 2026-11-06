@@ -3,3 +3,4 @@ buck-out/
 /cache/
 *.profraw
 *.profdata
+selftest/scratch/
