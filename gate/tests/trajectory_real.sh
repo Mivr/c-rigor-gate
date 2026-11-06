@@ -58,8 +58,9 @@ CASES = [
     # run printed as `kept`. T024: `cp "${!r1_*}"` (a name listing with a lowercase prefix) in a script it wrote.
     ("T011-gate.jsonl", "T011", "implementer", "/var/tmp/wt/c-rigor-gate/T011",
      ["/var/tmp/cache/T011", "/tmp/claude-1000"], [], None),
+    # T021 line 113: pattern pkill, ruled a true block by the orchestrator (T045).
     ("T021-gate.jsonl", "T021", "implementer", "/var/tmp/wt/c-rigor-gate/T021",
-     ["/var/tmp/cache/T021", "/tmp/claude-1000"], [], None),
+     ["/var/tmp/cache/T021", "/tmp/claude-1000"], ["kill-foreign"], None),
     ("T022-gate.jsonl", "T022", "implementer", "/var/tmp/wt/c-rigor-gate/T022",
      ["/var/tmp/cache/T022", "/tmp/claude-1000"], [], None),
     ("T024-gate.jsonl", "T024", "implementer", "/var/tmp/wt/c-rigor-gate/T024",

@@ -111,8 +111,21 @@ class LiteralTests(unittest.TestCase):
         code_text = "ROOT = '/a/b'\nshutil.rmtree(ROOT + '/_tmp')\n"
         self.assertEqual(literals.path_literals(code_text), ["/a/b", "/_tmp", "/a/b/_tmp"])
 
+    def test_a_call_written_inside_a_string_is_text(self):
+        self.assertEqual(literals.path_literals("old = \'\'\'x = open('/s/k')\'\'\'\nopen(p)\n"), [])
+        self.assertEqual(literals.path_literals("old = \"open('/s/k')\"\n"), [])
+        self.assertEqual(literals.path_literals("# it's here\nopen('/s/j')\n"), ["/s/j"])
+
+    def test_code_inside_an_fstring_and_after_a_stray_quote_is_still_code(self):
+        self.assertEqual(literals.path_literals("print(f\"{open('/s/k')}\")"), ["/s/k"])
+        self.assertEqual(literals.path_literals("n = \"it's\"\nopen('/s/k')\n"), ["/s/k"])
+        self.assertEqual(literals.path_literals("exec(\"open('/s/k')\")"), ["open('/s/k')"])
+
+    def test_write_text_arguments_are_the_text_written(self):
+        self.assertEqual(literals.path_literals("p.write_text('/s/k')\nPath('/s/j').write_text('x')"), ["/s/j"])
+
     def test_unterminated_input_never_raises(self):
-        for code in ("open('", "open(", "x = 'a", 'open("""'):
+        for code in ("open('", "open(", "x = 'a", 'open("""', "#", "f'", "rb", "\"\"\"#"):
             literals.path_literals(code)
 
 

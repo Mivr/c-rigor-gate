@@ -86,6 +86,36 @@ write, dump, log, iteration, `str`/`format`). Any other use of the copy (printin
 code that is not in the text) is `cmd-env-dump` as before, and so is `os.environ` itself. Pieces of a path built from a
 variable and a literal (`ROOT + "/tmp"`) are joined in source order.
 
+**A call inside a string is text (T045).** `open('/var/tmp/.config/k')` written inside a string literal of the code
+(test data in `old = '''...'''`, a template that is `.replace`d into a test file) is not a call, so a heredoc that
+only writes such a test file is not `read-secret-dir`. Still code: a call outside any string, the inside of an
+f-string, a string handed to `exec`/`eval` (its text is searched for the forbidden fragments), a path held in a
+variable and used in a call, and every argument of `Path(...)`. Quotes are scanned left to right and `#` comments
+are skipped, so an apostrophe in a comment or in another string does not hide the code after it. The argument of
+`write_text`/`write_bytes` is the text written, not a path. A heredoc that is executed and itself opens the path
+stays `read-secret-dir`.
+
+### Variables, `env`, kill (T045)
+* **`export NAME=value`** (also `declare`/`typeset`/`local`/`readonly`) binds the variable for the commands after it in
+  the same Bash call, in order, like a plain `NAME=value;`. `export HOME=<own cache>/home; mkdir -p "$HOME"` is
+  a write inside the cache. An unknown value stays unresolved (`write-unresolved`, review), never allowed; `~` still
+  means the policy home. `$!` is the last background job, a process the agent started.
+* **`env -i`** removes the inherited environment, so the code it starts has only the assignments written after `-i`.
+  `env -i PATH=/usr/bin:/bin python3 -I -c 'print(os.environ)'` (also with `LC_ALL=C` or `-X utf8`) and `env -i A=b`
+  alone are not `cmd-env-dump`, unless one of the assignments has a secret-looking name. `env` without `-i`,
+  `printenv`, `set`, `declare -p`, `export -p`, `/proc/*/environ` stay blocks. A nested `bash -c` under `env -i` is
+  analysed without this exemption.
+* **`env TMPDIR=... tools/job run ...`** and `export TMPDIR=...` earlier in the call set the default job directory
+  (see below); under `env -i` without a `TMPDIR` assignment there is none (tools/job refuses it).
+* **`kill-foreign` (block).** `pkill`, `killall` (any argument) and `kill [-SIG] PID...` where a PID is not one of the
+  agent's own processes. Own: `%N` job specs, `$!` (also through a variable), and a literal pid that appeared (in a
+  successful result, earlier in the transcript) as `job NAME: pid N,` printed by `tools/job run`, or alone on a line
+  (`echo $!`, `[1] N`) in the output of a command that backgrounds something (`&`, `$!`, `nohup`, `setsid`). A pid seen
+  only in `ps`/`pgrep`/a log, `$(pgrep ...)`, `pgrep ... | xargs kill` (no pid on the command line) and an unknown
+  variable are foreign. One finding per `kill` command. `kill -l` and `kill -0` signal nothing; `buck2 kill` is not
+  `kill`. Pids printed by `tools/job run` are the job's child and its runner; a kill of the process group
+  (`kill -- -PID`) uses the same number.
+
 ### The persisted tool-output exception
 A `tool_result` whose text starts with `Output too large (N KB). Full output saved to: <path>` (optionally inside
 `<persisted-output>`) makes exactly `<path>` readable by later calls: not its directory, not a sibling, not a
@@ -130,6 +160,7 @@ is decided; a unit test requires a fixture for every rule.
 | `spawn-agent-tool` | block | Contributors do not spawn other agents. |
 | `web-tool` | block | Web tools reach hosts outside the allowlist. |
 | `mcp-tool` | review | An MCP tool is outside the normal contributor toolset. |
+| `kill-foreign` | block | Signalling a process the agent did not start can kill another lane's work. |
 | `cmd-env-dump` | block | Dumping the environment exposes every secret in it. |
 | `secret-env-access` | block | A command expands or looks up a secret-looking environment variable. |
 | `secret-env-mention` | review | A command mentions a secret-looking variable name without reading it. |

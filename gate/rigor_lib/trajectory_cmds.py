@@ -86,6 +86,56 @@ def unwrap_once(argv):
     return argv[i:], extra
 
 
+def env_wrappers(prefix):
+    """(assignments, clean) given by the `env` wrappers in the words stripped in front of a command:
+    {NAME: value} of `env NAME=value ...` and whether `env -i` emptied the inherited environment (the
+    assignments after it are then the whole environment). Later words win."""
+    assigns, clean, i = {}, False, 0
+    while i < len(prefix):
+        if name_of(prefix[i]) != "env":
+            i += 1
+            continue
+        i += 1
+        while i < len(prefix):
+            arg = prefix[i]
+            if arg in ("-i", "--ignore-environment", "-"):
+                assigns, clean = {}, True
+            elif arg in ("-u", "-C", "-S", "--unset", "--chdir", "--split-string"):
+                i += 1
+            elif _ASSIGN_WORD.match(arg):
+                key, _, value = arg.partition("=")
+                assigns[key] = value
+            elif not arg.startswith("-"):
+                break
+            i += 1
+    return assigns, clean
+
+
+def clean_environment(assigns, clean):
+    """True when `env -i` left an environment without a secret-looking variable name: not an env dump."""
+    return clean and not any(rules.SECRET_NAME_RE.search(name) for name in assigns)
+
+
+def kill_targets(argv):
+    """The process ids/job specs a `kill` command names (options and signal names removed); None for
+    `kill -l` (lists signal names) and `kill -0` (tests existence) signal nothing."""
+    found, i, plain = [], 1, False
+    while i < len(argv):
+        arg = argv[i]
+        if not plain and arg == "--":
+            plain = True
+        elif not plain and arg in ("-s", "-n", "-q", "--signal", "--queue"):
+            i += 1
+        elif not plain and arg in ("-l", "-L", "--list", "--table"):
+            return None
+        elif not plain and arg in ("-0", "-s0", "-n0"):
+            return None  # signal 0 only tests whether the process exists
+        elif plain or not arg.startswith("-"):
+            found.append(arg)
+        i += 1
+    return found
+
+
 def job_run(argv):
     """(index of the `--dir` value word or None, index of the `--`) for `tools/job run ... -- CMD`, else None.
 
