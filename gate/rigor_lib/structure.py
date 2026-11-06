@@ -10,7 +10,10 @@ not ours). Findings, all errors unless noted (the limits are in structure_limits
                              recursion across files included; names the cycle. Every level.
   indirect-cycle-possible    an L3 module (info for L2) takes the address of one of its own functions F, and some
                              function G of the product makes a call through a value (or passes a function
-                             pointer to code outside the product), and F reaches G by direct calls.
+                             pointer to code outside the product), F reaches G by direct calls, and the call can
+                             reach F by function type (structure_types; untyped wherever a function pointer is
+                             converted between types or a type is unknown: docs/structure.md).
+  indirect-untyped-fallback  info: a call through a value not resolved by type, with the reason
   function-length, parameter-count, nesting-depth, cyclomatic-complexity, statement-count
                              a function over the limit of its level (the strictest level of the modules that
                              contain it; one definition in a shared header is judged once)
@@ -27,7 +30,7 @@ Tests and fuzz targets (kind c_test, c_fuzz) must be present but are not graded.
 
 import tomllib
 
-from rigor_lib import jsonio, structure_data, structure_graph, structure_limits
+from rigor_lib import jsonio, structure_data, structure_graph, structure_limits, structure_types
 from rigor_lib.errors import InternalError
 from rigor_lib.facts_data import LABEL
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
@@ -201,37 +204,97 @@ def include_findings(model):
 
 
 def call_sites(model):
-    """node -> list of (file, line, kind) of the calls it makes through a value, or passes a function
-    pointer to code the product does not define (that code may call it back)."""
+    """node -> list of (file, line, kind, type) of the calls it makes through a value (type: canonical function
+    type of the pointee, None if unknown), or passes a function pointer to code the product does not define
+    (kind `callback:NAME`, never typed: that code may call it back with anything)."""
     sites = {}
     for node, entry in model.nodes.items():
         func = entry["func"]
-        here = [(f, n, "pointer") for f, n in func.indirect]
+        here = [(f, n, "pointer", t) for f, n, t in func.indirect]
         for to, fp in func.calls:
             if fp and not any(model.resolve(to, label) for label in entry["modules"]):
-                here.append((func.file, func.line, "callback:" + to))
+                here.append((func.file, func.line, "callback:" + to, None))
         if here:
-            sites[node] = sorted(set(here))
+            sites[node] = sorted(set(here), key=lambda s: (s[0], s[1], s[2], s[3] or ""))
     return sites
 
 
 def address_taken(model):
-    """(module, node) for every module that takes the address of a function it defines itself."""
-    taken = set()
+    """(module, node) -> the types its address is taken at, for every module that takes the address of a
+    function it defines itself (a type is None when the reference carries none)."""
+    taken = {}
     for label, structure in model.graded.items():
+        own = {model.node_id(f.key, label): f for u in structure.units for f in u.functions}
         for unit in structure.units:
-            refs = list(unit.refs) + [r for f in unit.functions for r in f.refs]
-            own = {model.node_id(f.key, label) for u in structure.units for f in u.functions}
-            taken.update((label, model.node_id(to, label)) for to, _, _ in refs
-                         if model.node_id(to, label) in own)
-    return sorted(taken)
+            for to, _, _, typ in list(unit.refs) + [r for f in unit.functions for r in f.refs]:
+                node = model.node_id(to, label)
+                if node in own:
+                    taken.setdefault((label, node), set()).update({own[node].type, typ})
+    return taken
+
+
+class Typing:
+    """Which call sites a function may be called through (T063).
+
+    Typed mode needs conversion facts from every function and unit of the graded product. Without them (older
+    facts) nothing is typed: the rule is the untyped one, silently, as before. With them, a call site of type T
+    may reach a function F only if F's type is compatible with T, except when T is unknown, unprototyped,
+    variadic, or compatible with a type some conversion involves (or a conversion could not name its types, which
+    unties every site): such a site may reach any address-taken function, and is reported as info."""
+
+    def __init__(self, model):
+        self.reason = None
+        self.involved = []
+        self.memo = {}
+        graded = [(l, s) for l, s in model.graded.items()]
+        facts = [u.conversions for _, s in graded for u in s.units]
+        facts += [f.conversions for _, s in graded for u in s.units for f in u.functions]
+        self.enabled = any(c is not None for c in facts)
+        if not self.enabled:
+            return
+        if any(c is None for c in facts):
+            self.reason = "some facts carry no conversion list"
+        for conv in [c for part in facts if part for c in part]:
+            if conv.types is None:
+                self.reason = self.reason or "%s:%d: a %s the scanner could not type" % (conv.file, conv.line, conv.kind)
+            else:
+                self.involved += [(t, "%s:%d" % (conv.file, conv.line)) for t in conv.types]
+
+    def why_untyped(self, kind, typ):
+        """None when the site is typed, else the reason it is not (only in typed mode)."""
+        if (kind, typ) not in self.memo:
+            self.memo[(kind, typ)] = self.decide(kind, typ)
+        return self.memo[(kind, typ)]
+
+    def decide(self, kind, typ):
+        if not self.enabled:
+            return None
+        if kind != "pointer":
+            return "a function pointer handed to code the product does not define"
+        if self.reason:
+            return self.reason
+        if typ is None:
+            return "the type of the pointer is unknown"
+        if structure_types.wild(typ):
+            return "an unprototyped or variadic function pointer type"
+        for other, where in self.involved:
+            if structure_types.compatible(typ, other):
+                return "a function pointer of this type is converted at " + where
+        return None
+
+    def may_reach(self, typ, taken_types, why):
+        """May a call site of type `typ` (untyped for reason `why`) reach a function address-taken at these types?"""
+        if not self.enabled or why:
+            return True
+        return any(structure_types.compatible(typ, t) for t in taken_types)
 
 
 def indirect_findings(model):
     graph = model.graph()
     sites = call_sites(model)
+    typing = Typing(model)
     found = []
-    for module, node in address_taken(model):
+    for (module, node), types in sorted(address_taken(model).items()):
         level = model.level_of(module)
         if level == "L1":
             continue
@@ -239,25 +302,46 @@ def indirect_findings(model):
         target = model.nodes[node]["func"]
         for caller in sorted(set(sites) & reachable):
             origin = model.nodes[caller]["func"]
+            hit = [s for s in sites[caller] if typing.may_reach(s[3], types, typing.why_untyped(s[2], s[3]))]
+            if not hit:
+                continue
+            path = structure_graph.shortest_path(graph, node, caller)
             found.append(finding(
                 "indirect-cycle-possible", module=module, function=target.name, file=target.file,
                 line=target.line, caller=origin.name, caller_file=origin.file,
-                sites=["%s:%d %s" % s for s in sites[caller]],
+                sites=["%s:%d %s" % s[:3] for s in hit], path=[model.nodes[n]["func"].name for n in path],
                 severity="error" if level == "L3" else SEVERITY_INFO))
+    return found + fallback_findings(model, sites, typing)
+
+
+def fallback_findings(model, sites, typing):
+    """Info for every call through a value that is not resolved by type, so that the loss of precision is
+    visible. (A callback handed to outside code keeps the untyped rule by design and is not a fallback.)"""
+    found = []
+    for caller, listed in sorted(sites.items()):
+        origin = model.nodes[caller]["func"]
+        for file, line, kind, typ in listed:
+            why = typing.why_untyped(kind, typ) if kind == "pointer" else None
+            if why:
+                found.append(finding("indirect-untyped-fallback", severity=SEVERITY_INFO, function=origin.name,
+                                     file=file, line=line, site=kind, reason=why))
     return found
 
 
 def metadata(model, notes):
     graph = model.graph()
+    typing = Typing(model)
     return {
         "notes": notes,
         "modules": {label: {"level": model.level_of(label), "functions": sum(1 for e in model.nodes.values()
                                                                           if label in e["modules"])}
                     for label in sorted(model.graded)},
         "functions": len(model.nodes),
+        "typing": {"enabled": typing.enabled, "untyped": typing.reason,
+                   "converted": sorted({"%s (%s)" % (t, w) for t, w in typing.involved})},
         "calls": sum(len(v) for v in graph.values()),
-        "indirect_sites": {k: ["%s:%d %s" % s for s in v] for k, v in sorted(call_sites(model).items())},
-        "address_taken": ["%s %s" % t for t in address_taken(model)],
+        "indirect_sites": {k: ["%s:%d %s" % s[:3] for s in v] for k, v in sorted(call_sites(model).items())},
+        "address_taken": ["%s %s" % t for t in sorted(address_taken(model))],
     }
 
 

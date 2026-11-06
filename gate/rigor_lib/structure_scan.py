@@ -19,6 +19,9 @@ Per function (a definition outside the toolchain's own headers): where it is, th
 `}` line), parameters, deepest nesting of control statements and blocks, cyclomatic count, statement count, the
 direct calls (callee key, expanded macros included, a `cleanup` attribute counts as a call), every call through
 a value (`indirect`), and for a direct call whether a function or function-pointer value is passed along (`fp_args`).
+Types (T063): each function carries its canonical function `type` and the `type` of each call through a value and
+of each address taken; every place a function pointer may change type is a `conversion` (cast, union, copy,
+va_arg) naming the function types involved, per function and per unit. See `Types` and docs/structure.md.
 Per unit: every file the compiler read outside the toolchain (lines, bytes, longest line), and every reference to
 a function that is not the callee of a call (`refs`: its address is taken).
 
@@ -43,6 +46,179 @@ DECISIONS = ("IfStmt", "WhileStmt", "ForStmt", "DoStmt", "CaseStmt", "Conditiona
 PEEL_CAST = ("ImplicitCastExpr", "ParenExpr", "CStyleCastExpr")
 _VOLATILE_SEGMENT = re.compile(r"^[0-9a-f]{16}$")
 _INCLUDE_LINE = re.compile(r"^(\.+) (.+)$")
+
+
+QUALIFIERS = frozenset(("const", "volatile", "restrict", "__restrict", "__restrict__", "_Atomic"))
+INT_WORDS = frozenset(("unsigned", "signed", "short", "long", "int", "char"))
+TYPE_WORDS = INT_WORDS | QUALIFIERS | frozenset(("void", "float", "double", "_Bool", "_Complex", "struct", "union",
+                                                 "enum", "__int128", "__builtin_va_list"))
+TOKEN = re.compile(r"[A-Za-z_][A-Za-z_0-9]*|\.\.\.|[0-9]+|\S")
+_ATTRIBUTE = re.compile(r"__attribute__\s*\(\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)\)")
+_UNNAMED = re.compile(r"\((?:unnamed|anonymous)[^()]*\)")
+SAFE_CASTS = frozenset(("FunctionToPointerDecay", "LValueToRValue", "ArrayToPointerDecay", "NullToPointer",
+                        "ToVoid", "BuiltinFnToFnPtr"))
+COPIERS = frozenset(("memcpy", "memmove", "memcpy_s", "bcopy", "__builtin_memcpy", "__builtin_memmove",
+                     "__memcpy_chk", "__memmove_chk", "__builtin___memcpy_chk", "__builtin___memmove_chk"))
+
+
+def int_token(words):
+    """One token for a run of integer keywords (`long unsigned int` and `unsigned long` are the same type)."""
+    unsigned = "unsigned" in words
+    if "char" in words:
+        return "unsigned_char" if unsigned else ("signed_char" if "signed" in words else "char")
+    longs = words.count("long")
+    base = "short" if "short" in words else "long_long" if longs >= 2 else "long" if longs else "int"
+    return ("unsigned_" if unsigned else "") + base
+
+
+class Types:
+    """Canonical function types from clang's type spellings.
+
+    The dump prints a type with its typedefs resolved at the top only (`desugaredQualType`); a typedef inside a
+    parameter list stays a name. So every typedef of the translation unit is expanded here (a name defined two
+    ways is unknown), qualifiers are dropped (looser, so safe), integer spellings are unified, and `enum X` is
+    the token `enum` (compatible with any integer type, C11 6.7.2.2p4). A canonical function type is its tokens
+    joined by single spaces, `RET ( P , P )`: no parameter names, no pointer. Anything this cannot read is None:
+    unknown, which the decision treats as matching everything."""
+
+    def __init__(self, root):
+        self.typedefs = {}
+        self.records = {}
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            kind = node.get("kind")
+            if kind == "TypedefDecl" and node.get("name"):
+                under = node.get("type", {}).get("qualType")
+                known = self.typedefs.get(node["name"], under)
+                self.typedefs[node["name"]] = under if known == under else None
+            elif kind == "RecordDecl" and node.get("completeDefinition") and node.get("name"):
+                key = "%s %s" % (node.get("tagUsed", "struct"), node["name"])
+                fields = [c.get("type", {}).get("qualType", "") for c in children(node) if c.get("kind") == "FieldDecl"]
+                self.records.setdefault(key, []).extend(fields)
+            stack.extend(children(node))
+        self.busy = set()
+
+    def tokens(self, text):
+        """The type's tokens with typedefs expanded, or None."""
+        text = _UNNAMED.sub(" __anon__ ", _ATTRIBUTE.sub(" ", text))
+        toks = [t for t in (TOKEN.findall(text) or []) if t not in QUALIFIERS]
+        for _ in range(200):
+            at = self.next_typedef(toks)
+            if at is None:
+                break
+            toks = self.expand(toks, at)
+            if toks is None:
+                return None
+        else:
+            return None
+        return self.unify(toks)
+
+    def next_typedef(self, toks):
+        for i, tok in enumerate(toks):
+            if tok in TYPE_WORDS or not (tok[0].isalpha() or tok[0] == "_") or (i and toks[i - 1] in ("struct", "union", "enum")):
+                continue
+            if tok in self.typedefs:
+                return i
+        return None
+
+    def expand(self, toks, i):
+        under = self.typedefs[toks[i]]
+        if under is None:
+            return None
+        under = [t for t in TOKEN.findall(_ATTRIBUTE.sub(" ", under)) if t not in QUALIFIERS]
+        j = i + 1
+        while j < len(toks) and toks[j] == "*":
+            j += 1
+        stars = ["*"] * (j - i - 1)
+        if "[" in under:
+            return None
+        if "(" not in under:
+            return toks[:i] + under + stars + toks[j:]
+        k = under.index("(")
+        if under[k + 1:k + 3] == ["*", ")"]:                  # a function pointer: the stars go inside
+            return toks[:i] + under[:k + 2] + stars + under[k + 2:] + toks[j:]
+        if stars and under[k + 1] != "*":                      # a function type: `fn_t *` is a pointer
+            return toks[:i] + under[:k] + ["(", "*"] + stars[1:] + [")"] + under[k:] + toks[j:]
+        return None
+
+    def unify(self, toks):
+        out, run, tag = [], [], False
+        for tok in toks + [None]:
+            if tok in INT_WORDS:
+                run.append(tok)
+                continue
+            if run:
+                out.append(int_token(run))
+                run = []
+            if tok is None:
+                break
+            if tag:                                   # the tag of `enum X` is dropped
+                tag = False
+                if out[-1] == "enum" and tok[0].isalpha():
+                    continue
+            tag = tok == "enum"
+            out.append(tok)
+        return out
+
+    def function(self, text, pointer):
+        """Canonical function type of a function (pointer=False) or of a pointer to one (pointer=True), or None."""
+        toks = self.tokens(text)
+        if toks is None or "(" not in toks or "[" in toks or "__anon__" in toks:
+            return None
+        k = toks.index("(")
+        ret, rest = toks[:k], toks[k:]
+        if pointer:
+            if rest[:4] != ["(", "*", ")", "("]:
+                return None
+            rest = rest[3:]
+        elif rest[1:2] == ["*"]:
+            return None
+        depth = 0
+        for at, tok in enumerate(rest):
+            depth += (tok == "(") - (tok == ")")
+            if depth < 0 or (depth == 0 and at != len(rest) - 1):
+                return None
+        if not ret or depth != 0 or rest[-1] != ")":
+            return None
+        return " ".join(ret + rest)
+
+    def function_types(self, text, deep):
+        """The function types a value of type `text` holds: a function pointer (behind any pointer or array
+        levels), and with `deep` a struct or union by value (its members, nested). None = cannot tell."""
+        toks = self.tokens(text)
+        if toks is None:
+            return None
+        if "(" in toks:
+            k = toks.index("(")
+            e = k + 1
+            while e < len(toks) and (toks[e] in ("*", "[", "]") or toks[e].isdigit()):
+                e += 1
+            if e == k + 1 or e >= len(toks) or toks[e] != ")" or toks[k + 1] != "*":
+                return None
+            found = self.function(" ".join(toks[:k + 1] + ["*", ")"] + toks[e + 1:]), True)
+            return None if found is None else [found]
+        while toks and (toks[-1] in ("]", "[") or toks[-1].isdigit()):
+            toks.pop()
+        if not deep or "*" in toks or toks[:1] not in (["struct"], ["union"]):
+            return []
+        return self.record_types(" ".join(toks[:2]))
+
+    def record_types(self, name):
+        if name.endswith("__anon__"):
+            return None
+        if name in self.busy or name not in self.records:
+            return []
+        self.busy.add(name)
+        found = []
+        for field in self.records[name]:
+            part = self.function_types(field, True)
+            if part is None:
+                found = None
+                break
+            found += part
+        self.busy.discard(name)
+        return None if found is None else sorted(set(found))
 
 
 class ScanError(Exception):
@@ -200,6 +376,7 @@ class Resolver:
         self.files = files
         self.find, self.groups = collect_decls(root)
         self.keys = {}
+        self.types = Types(root)
 
     def key_of(self, decl):
         """`decl` is a node or the `referencedDecl` stub of a DeclRefExpr."""
@@ -258,6 +435,12 @@ def is_function_ref(node):
     return ref if isinstance(ref, dict) and ref.get("kind") == "FunctionDecl" else None
 
 
+def spelled(node):
+    """The type text of a node (a declaration or an expression): the top-level desugared spelling when given."""
+    typ = node.get("type", {})
+    return typ.get("desugaredQualType") or typ.get("qualType", "")
+
+
 def pointer_typed(node):
     typ = node.get("type", {})
     return "(*" in typ.get("qualType", "") or "(*" in typ.get("desugaredQualType", "")
@@ -270,6 +453,7 @@ class Measure:
         self.resolver = resolver
         self.files = files
         self.callee_nodes = set()
+        self.conversions = {}
 
     def run(self, func):
         self.calls = {}
@@ -288,6 +472,8 @@ class Measure:
     def site(self, node):
         place = node.get("_begin")
         if place is None or place.expansion is None:
+            if node.get("kind") != "CallExpr":
+                return {"file": "unknown", "line": 0}
             raise ScanError("a call without a location")
         file, line, _ = place.expansion
         return {"file": display_file(file), "line": line}
@@ -300,7 +486,9 @@ class Measure:
         ref = is_function_ref(callee) if isinstance(callee, dict) else None
         args = inner[1:]
         if ref is None:
-            self.indirect.append(self.site(node))
+            site = self.site(node)
+            site["type"] = self.resolver.types.function(spelled(inner[0]), True)
+            self.indirect.append(site)
             return
         self.callee_nodes.add(id(callee))
         fp_args = any(is_function_ref(peel(a)) is not None or pointer_typed(a) for a in args)
@@ -309,12 +497,72 @@ class Measure:
                                                       "line": self.site(node)["line"]})
         entry["line"] = min(entry["line"], self.site(node)["line"])
 
+    def note(self, node, kind, types):
+        """A function pointer may change type here (or cannot be told): `types` are the function types involved,
+        or None when unknown."""
+        site = self.site(node)
+        key = (site["file"], site["line"], kind, None if types is None else tuple(types))
+        self.conversions[key] = {"file": site["file"], "line": site["line"], "kind": kind,
+                                 "types": None if types is None else list(types)}
+
+    def retyped(self, node, kind, src, dst):
+        """Record a change from type text `src` to `dst` if a function type is involved and they differ."""
+        types = self.resolver.types
+        a, b = types.tokens(src), types.tokens(dst)
+        if a is not None and a == b:
+            return
+        held = [types.function_types(src, False), types.function_types(dst, False)]
+        if a is None or b is None or None in held:
+            return self.note(node, kind, None)
+        if held[0] or held[1]:
+            self.note(node, kind, sorted(set(held[0] + held[1])))
+
+    def convert(self, node):
+        kind = node.get("kind")
+        inner = children(node)
+        if kind in ("ImplicitCastExpr", "CStyleCastExpr") and inner and node.get("castKind") not in SAFE_CASTS:
+            self.retyped(node, "cast", spelled(inner[0]), spelled(node))
+        elif kind == "VAArgExpr":
+            self.retyped(node, "vararg", "int", spelled(node))
+        elif kind == "RecordDecl" and node.get("tagUsed") == "union" and node.get("completeDefinition"):
+            self.union(node)
+        elif kind == "CallExpr" and len(inner) >= 3:
+            callee = peel(inner[0])
+            ref = is_function_ref(callee) if isinstance(callee, dict) else None
+            if ref is not None and ref.get("name") in COPIERS:
+                self.copy(node, inner[1], inner[2])
+
+    def union(self, node):
+        """Reading a union member of another type reinterprets it: a union with a function pointer in it and a
+        member of another type is a conversion."""
+        types = self.resolver.types
+        fields = [spelled(c) for c in children(node) if c.get("kind") == "FieldDecl"]
+        held = [types.function_types(f, True) for f in fields]
+        if None in held:
+            return self.note(node, "union", None)
+        flat = sorted({t for h in held for t in h})
+        if flat and len({tuple(types.tokens(f) or ()) for f in fields}) > 1:
+            self.note(node, "union", flat)
+
+    def copy(self, node, dst, src):
+        """memcpy and friends between objects of two types, one of which holds a function pointer, copy the
+        pointer unseen."""
+        types = self.resolver.types
+        texts = []
+        for arg in (dst, src):
+            while isinstance(arg, dict) and arg.get("kind") in PEEL_CAST and len(children(arg)) == 1:
+                arg = children(arg)[0]
+            text = spelled(arg).strip()
+            texts.append(text[:-1] if text.endswith("*") else re.sub(r"\s*\[[^\]]*\]$", "", text))
+        self.retyped(node, "copy", texts[0], texts[1])
+
     def reference(self, node):
         ref = is_function_ref(node)
         if ref is None or id(node) in self.callee_nodes:
             return
         site = self.site(node)
-        self.refs.append({"to": self.resolver.key_of(ref), "file": site["file"], "line": site["line"]})
+        self.refs.append({"to": self.resolver.key_of(ref), "file": site["file"], "line": site["line"],
+                          "type": self.resolver.types.function(spelled(ref), False)})
 
     def cleanup(self, node):
         target = node.get("cleanup_function")
@@ -341,6 +589,7 @@ class Measure:
         kind = node.get("kind", "")
         inner = node.get("inner", [])
         place = node.get("_begin")
+        self.convert(node)
         if place is not None and place.expansion and place.expansion[0] != self.home:
             self.foreign = True   # text of another file (an `#include` inside the body)
         if kind == "CompoundStmt":
@@ -428,7 +677,13 @@ def scan_function(func, resolver, files):
         "calls": sorted(measured.calls.values(), key=lambda c: (c["to"], c["fp_args"])),
         "indirect": measured.indirect,
         "refs": measured.refs,
+        "type": resolver.types.function(spelled(func), False),
+        "conversions": sorted(measured.conversions.values(), key=conv_order),
     }
+
+
+def conv_order(entry):
+    return (entry["file"], entry["line"], entry["kind"], json.dumps(entry["types"]))
 
 
 def top_level_refs(nodes, resolver, files):
@@ -450,17 +705,30 @@ def top_level_refs(nodes, resolver, files):
             place = node.get("_begin")
             if ref is not None and id(node) not in measure.callee_nodes and place is not None:
                 file, line, _ = place.expansion
-                found.append({"to": resolver.key_of(ref), "file": display_file(file), "line": line})
+                found.append({"to": resolver.key_of(ref), "file": display_file(file), "line": line,
+                              "type": resolver.types.function(spelled(ref), False)})
         stack.extend(reversed(children(node)))
     return found
 
 
+def top_level_conversions(nodes, resolver, files):
+    """Function-pointer conversions outside every function body (initialisers, unions, casts in tables)."""
+    measure = Measure(resolver, files)
+    stack = list(nodes)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict) and node:
+            measure.convert(node)
+            stack.extend(children(node))
+    return sorted(measure.conversions.values(), key=conv_order)
+
+
 def analyse(ast, main_file, files):
-    """-> (functions, top-level refs, names of all files the dump located something in)."""
+    """-> (functions, top-level refs, top-level conversions, names of all files the dump located something in)."""
     annotator = Annotator(files)
     annotator.visit(ast)
     resolver = Resolver(ast, files)
-    functions, rest = [], []
+    functions, rest, mine = [], [], []
     for top in children(ast):
         body = body_of(top) if top.get("kind") == "FunctionDecl" else None
         place = top.get("_loc")
@@ -473,6 +741,7 @@ def analyse(ast, main_file, files):
             functions.append(scan_function(top, resolver, files))
         else:
             rest.append(top)
+            mine.append(top)
     # every definition the tree holds must have been accounted for (a nested or odd one is a scan failure)
     placed = sum(1 for m in (n for g in resolver.groups.values() for n in g)
                  if body_of(m) is not None and not m.get("isImplicit")
@@ -481,7 +750,7 @@ def analyse(ast, main_file, files):
         raise ScanError("the tree holds %d function definitions, the scan accounted for %d"
                         % (placed, len(functions)))
     refs = top_level_refs(rest, resolver, files)
-    return functions, refs, annotator.main_seen
+    return functions, refs, top_level_conversions(mine, resolver, files), annotator.main_seen
 
 
 def file_facts(names, files):
@@ -562,7 +831,7 @@ def check_wrapper(src, include_text, seen, files):
 
 def unit_facts(label, src, ast, include_text, files):
     main = os.path.normpath(src)
-    functions, refs, seen = analyse(ast, main, files)
+    functions, refs, conversions, seen = analyse(ast, main, files)
     if not any(os.path.normpath(n) == main for n in seen):
         check_wrapper(src, include_text, seen, files)
     names = {main}
@@ -570,7 +839,8 @@ def unit_facts(label, src, ast, include_text, files):
     names.update(os.path.normpath(n) for n in seen if not n.startswith("<") and not files.is_system(n))
     return {"src": display_file(src), "files": file_facts(sorted(names), files),
             "functions": sorted(functions, key=lambda f: (f["file"], f["line"], f["key"])),
-            "refs": sorted(refs, key=lambda r: (r["file"], r["line"], r["to"]))}
+            "refs": sorted(refs, key=lambda r: (r["file"], r["line"], r["to"])),
+            "conversions": conversions}
 
 
 def canonical(obj):
