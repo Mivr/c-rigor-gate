@@ -24,124 +24,136 @@ exports = ["annas_code_name", "annas_config_load", "annas_ctx_init", "annas_down
     "op_begin", "op_check", "redact_into", "req_check", "ws_split"]
 
 [module."//annas:config_test"]
-allow = ["bcmp", "memset", "snprintf", "strlen"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:ctx_test"]
-allow = ["memset"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:download_big_test"]
-allow = ["memcpy", "snprintf"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:download_err_test"]
-allow = ["snprintf"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:download_fs_test"]
-allow = ["snprintf"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:download_ok_test"]
-allow = ["memset", "snprintf", "strlen"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:fast_err_test"]
-allow = ["memcpy", "memset", "snprintf"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:fast_net_test"]
-allow = ["strlen"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:fast_ok_test"]
-allow = ["memset", "snprintf", "strlen"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:fast_request_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:format_test"]
-allow = ["memset"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:leak_test"]
-allow = ["memset", "snprintf", "strlen"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
 exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
-    "kit_check_no_partial", "kit_check_ok", "kit_connect", "kit_connect_err", "kit_contains",
-    "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get", "kit_fail_read",
-    "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401", "kit_fixture_404",
-    "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload", "kit_prepare", "kit_put",
-    "kit_put_str", "kit_req", "kit_respond", "kit_respond_n", "kit_set_base", "kit_set_dir",
-    "kit_set_key", "kit_set_timeout_s", "kit_use_fs", "main"]
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
 
 [module."//annas:testkit"]
 level = "L1"
@@ -157,160 +169,160 @@ exports = ["app_cli_parse", "app_cli_run", "app_dotenv_parse", "app_echo_cut", "
     "app_scratch_ok", "app_utf8_clean"]
 
 [module."//app:cli_err_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:cli_run_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:dotenv_test"]
-allow = ["memset", "snprintf", "strlen"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:leak_test"]
-allow = ["snprintf"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:mcp_args_test"]
-allow = ["snprintf", "strcmp"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strcmp", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:mcp_bad_test"]
-allow = ["memcpy", "memset", "strchr", "strlen", "strncmp"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strncmp", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:mcp_call_test"]
-allow = ["memcpy", "snprintf"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:mcp_proto_test"]
-allow = ["snprintf", "strchr"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:parse_err_test"]
-allow = ["bcmp", "memset", "snprintf", "strlen"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:parse_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:scratch_test"]
-allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:scrub_utf8_test"]
-allow = ["snprintf"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
 exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
     "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
     "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
-    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_connect",
-    "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api",
-    "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302",
-    "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json",
-    "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
     "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
-    "kit_use_fs", "main"]
+    "kit_step_clock", "kit_use_fs", "main"]
 
 [module."//app:testkit"]
 level = "L1"
@@ -370,7 +382,7 @@ exports = ["main"]
 
 [module."//http:http"]
 level = "L3"
-allow = ["memset"]
+allow = ["memchr", "memset"]
 exports = ["http_authority_parse", "http_chunk_size_line", "http_detect_challenge",
     "http_header_line", "http_headers_end", "http_host_valid", "http_is_redirect_status",
     "http_parser_eof", "http_parser_init", "http_parser_next", "http_redirect_resolve",
@@ -547,36 +559,46 @@ allow = ["memchr"]
 exports = ["posix_env_init", "posix_env_port"]
 
 [module."//posix_fs:fs_args_test"]
-allow = []
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy",
+    "memset", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strcmp"]
+deny_exempt = ["fopen", "getenv", "unlink"]
 exports = ["kf_entry", "kf_entry_count", "kf_entry_is", "kf_fail", "kf_fail2", "kf_init", "kf_log",
     "kf_log_reset", "kf_open_fds", "kf_open_fs", "kf_open_tmp", "kf_preload", "kf_sys",
     "kit_dir_count", "kit_dir_put", "kit_dir_read", "kit_env_begin_fake", "kit_env_begin_real",
     "kit_env_end", "kit_fd_count", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
 
 [module."//posix_fs:fs_commit_test"]
-allow = ["memcmp", "memset", "strlen"]
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcmp",
+    "memcpy", "memset", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strcmp", "strlen"]
+deny_exempt = ["fopen", "getenv", "unlink"]
 exports = ["kf_entry", "kf_entry_count", "kf_entry_is", "kf_fail", "kf_fail2", "kf_init", "kf_log",
     "kf_log_reset", "kf_open_fds", "kf_open_fs", "kf_open_tmp", "kf_preload", "kf_sys",
     "kit_dir_count", "kit_dir_put", "kit_dir_read", "kit_env_begin_fake", "kit_env_begin_real",
     "kit_env_end", "kit_fd_count", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
 
 [module."//posix_fs:fs_contract_test"]
-allow = ["snprintf", "strlen"]
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy",
+    "memset", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strcmp", "strlen"]
+deny_exempt = ["fopen", "getenv", "unlink"]
 exports = ["kf_entry", "kf_entry_count", "kf_entry_is", "kf_fail", "kf_fail2", "kf_init", "kf_log",
     "kf_log_reset", "kf_open_fds", "kf_open_fs", "kf_open_tmp", "kf_preload", "kf_sys",
     "kit_dir_count", "kit_dir_put", "kit_dir_read", "kit_env_begin_fake", "kit_env_begin_real",
     "kit_env_end", "kit_fd_count", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
 
 [module."//posix_fs:fs_errno_test"]
-allow = ["strchr"]
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy",
+    "memset", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strchr", "strcmp"]
+deny_exempt = ["fopen", "getenv", "unlink"]
 exports = ["kf_entry", "kf_entry_count", "kf_entry_is", "kf_fail", "kf_fail2", "kf_init", "kf_log",
     "kf_log_reset", "kf_open_fds", "kf_open_fs", "kf_open_tmp", "kf_preload", "kf_sys",
     "kit_dir_count", "kit_dir_put", "kit_dir_read", "kit_env_begin_fake", "kit_env_begin_real",
     "kit_env_end", "kit_fd_count", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
 
 [module."//posix_fs:fs_real_test"]
-allow = ["__lxstat", "__xstat", "chdir", "getcwd", "mkdir", "rmdir", "snprintf", "symlink", "umask"]
-deny_exempt = ["rename", "unlink"]
+allow = ["__lxstat", "__xstat", "bcmp", "chdir", "closedir", "fclose", "ferror", "fgetc", "fread",
+    "fwrite", "getcwd", "memcpy", "memset", "mkdir", "mkdtemp", "opendir", "readdir", "rmdir",
+    "snprintf", "strcmp", "symlink", "umask"]
+deny_exempt = ["fopen", "getenv", "rename", "unlink"]
 exports = ["kf_entry", "kf_entry_count", "kf_entry_is", "kf_fail", "kf_fail2", "kf_init", "kf_log",
     "kf_log_reset", "kf_open_fds", "kf_open_fs", "kf_open_tmp", "kf_preload", "kf_sys",
     "kit_dir_count", "kit_dir_put", "kit_dir_read", "kit_env_begin_fake", "kit_env_begin_real",
@@ -775,7 +797,8 @@ exports = []
 
 [module."//tls_stream:tls_stream"]
 level = "L2"
-allow = []
+allow = ["__errno_location", "close", "freeaddrinfo", "getaddrinfo", "getsockopt", "memchr", "memcpy",
+    "memset", "poll", "recv", "send", "snprintf"]
 deny_exempt = ["connect", "socket"]
 third_party = ["gate//third_party/mbedtls:mbedtls"]
 exports = ["tls_active", "tls_bio_recv", "tls_bio_send", "tls_claim", "tls_deadline_passed",
@@ -800,7 +823,7 @@ allow = ["memset"]
 exports = ["main"]
 
 [module."//url:url_build_test"]
-allow = ["memset", "strlen"]
+allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
 
 [module."//url:url"]
@@ -822,3 +845,236 @@ exports = ["main"]
 [module."//url:url_redact_test"]
 allow = ["memcpy", "memset"]
 exports = ["main"]
+
+[module."//annas:edge_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
+exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
+
+[module."//annas:pin_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
+exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
+
+[module."//annas:timeout_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen", "strstr"]
+exports = ["kit_api", "kit_begin", "kit_check_err", "kit_check_file", "kit_check_fs_untouched",
+    "kit_check_no_partial", "kit_check_ok", "kit_clock_calls", "kit_connect", "kit_connect_err",
+    "kit_contains", "kit_download", "kit_eof", "kit_expect", "kit_expect_api", "kit_expect_get",
+    "kit_fail_read", "kit_fail_write", "kit_fast", "kit_fixture_302", "kit_fixture_401",
+    "kit_fixture_404", "kit_get", "kit_head", "kit_http", "kit_ok_json", "kit_preload",
+    "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond", "kit_respond_n",
+    "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s", "kit_step_clock",
+    "kit_use_fs", "main"]
+
+[module."//app:survivor_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
+exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_check_reply",
+    "ak_check_stream", "ak_clear", "ak_cli", "ak_deps", "ak_dotenv", "ak_env", "ak_eq", "ak_err",
+    "ak_mcp", "ak_mcp_n", "ak_out", "kit_api", "kit_begin", "kit_check_err", "kit_check_file",
+    "kit_check_fs_untouched", "kit_check_no_partial", "kit_check_ok", "kit_clock_calls",
+    "kit_connect", "kit_connect_err", "kit_contains", "kit_download", "kit_eof", "kit_expect",
+    "kit_expect_api", "kit_expect_get", "kit_fail_read", "kit_fail_write", "kit_fast",
+    "kit_fixture_302", "kit_fixture_401", "kit_fixture_404", "kit_get", "kit_head", "kit_http",
+    "kit_ok_json", "kit_preload", "kit_prepare", "kit_put", "kit_put_str", "kit_req", "kit_respond",
+    "kit_respond_n", "kit_set_base", "kit_set_dir", "kit_set_key", "kit_set_timeout_s",
+    "kit_step_clock", "kit_use_fs", "main"]
+
+[module."//core:buf_truncate_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//http:survivor_edges_test"]
+allow = ["snprintf"]
+exports = ["main"]
+
+[module."//http:survivor_head_test"]
+allow = ["memcpy", "snprintf"]
+exports = ["main"]
+
+[module."//http:survivor_redirect_test"]
+
+[module."//http:survivor_url_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//ports:survivor_test"]
+[module."//bin:annas-c"]
+level = "L1"
+exports = ["main"]
+
+[module."//bin:annas-c-mcp"]
+level = "L1"
+exports = ["main"]
+
+[module."//wire:ca_test"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "strcmp", "strlen", "strncmp", "strncpy"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:dotenv_test"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp", "strlen", "strncmp", "strncpy"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:e2e_mcp_test"]
+allow = ["bcmp", "memchr", "memcpy", "memmove", "memset", "snprintf", "strcmp", "strlen", "strncpy",
+    "strstr", "tls_peer_ca_pem", "tls_peer_close_notify", "tls_peer_other_ca_pem", "tls_peer_put",
+    "tls_peer_received", "tls_peer_send", "tls_peer_start", "tls_peer_step", "tls_peer_stop",
+    "tls_peer_take"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_e2e_setup",
+    "kw_env", "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill",
+    "kw_file_n", "kw_files_clear", "kw_http", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem",
+    "kw_net_env", "kw_out", "kw_out_len", "kw_out_line", "kw_peer_ca", "kw_peer_closes",
+    "kw_peer_connect_err", "kw_peer_connects", "kw_peer_deadline", "kw_peer_host",
+    "kw_peer_identity", "kw_peer_other_ca", "kw_peer_port", "kw_peer_request", "kw_peer_reset",
+    "kw_peer_respond", "kw_peer_transport", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:e2e_secret_test"]
+allow = ["bcmp", "memchr", "memcpy", "memmove", "memset", "snprintf", "strcmp", "strlen", "strncpy",
+    "strstr", "tls_peer_ca_pem", "tls_peer_close_notify", "tls_peer_other_ca_pem", "tls_peer_put",
+    "tls_peer_received", "tls_peer_send", "tls_peer_start", "tls_peer_step", "tls_peer_stop",
+    "tls_peer_take"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_e2e_setup",
+    "kw_env", "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill",
+    "kw_file_n", "kw_files_clear", "kw_http", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem",
+    "kw_net_env", "kw_out", "kw_out_len", "kw_out_line", "kw_peer_ca", "kw_peer_closes",
+    "kw_peer_connect_err", "kw_peer_connects", "kw_peer_deadline", "kw_peer_host",
+    "kw_peer_identity", "kw_peer_other_ca", "kw_peer_port", "kw_peer_request", "kw_peer_reset",
+    "kw_peer_respond", "kw_peer_transport", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:e2e_test"]
+allow = ["bcmp", "memchr", "memcpy", "memmove", "memset", "snprintf", "strcmp", "strlen", "strncmp",
+    "strncpy", "strstr", "tls_peer_ca_pem", "tls_peer_close_notify", "tls_peer_other_ca_pem",
+    "tls_peer_put", "tls_peer_received", "tls_peer_send", "tls_peer_start", "tls_peer_step",
+    "tls_peer_stop", "tls_peer_take"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_e2e_setup",
+    "kw_env", "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill",
+    "kw_file_n", "kw_files_clear", "kw_http", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem",
+    "kw_net_env", "kw_out", "kw_out_len", "kw_out_line", "kw_peer_ca", "kw_peer_closes",
+    "kw_peer_connect_err", "kw_peer_connects", "kw_peer_deadline", "kw_peer_host",
+    "kw_peer_identity", "kw_peer_other_ca", "kw_peer_port", "kw_peer_request", "kw_peer_reset",
+    "kw_peer_respond", "kw_peer_transport", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:io_test"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "strcmp", "strlen", "strncpy"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:loop_bad_test"]
+allow = ["bcmp", "memchr", "memcpy", "memmove", "memset", "strcmp", "strlen", "strncpy"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:loop_test"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "strcmp", "strlen", "strncpy"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:survivor_e2e_test"]
+allow = ["bcmp", "memchr", "memcpy", "memmove", "memset", "snprintf", "strcmp", "strlen", "strncpy",
+    "strstr", "tls_peer_ca_pem", "tls_peer_close_notify", "tls_peer_other_ca_pem", "tls_peer_put",
+    "tls_peer_received", "tls_peer_send", "tls_peer_start", "tls_peer_step", "tls_peer_stop",
+    "tls_peer_take"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_e2e_setup",
+    "kw_env", "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill",
+    "kw_file_n", "kw_files_clear", "kw_http", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem",
+    "kw_net_env", "kw_out", "kw_out_len", "kw_out_line", "kw_peer_ca", "kw_peer_closes",
+    "kw_peer_connect_err", "kw_peer_connects", "kw_peer_deadline", "kw_peer_host",
+    "kw_peer_identity", "kw_peer_other_ca", "kw_peer_port", "kw_peer_request", "kw_peer_reset",
+    "kw_peer_respond", "kw_peer_transport", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:survivor_test"]
+allow = ["__errno_location", "bcmp", "close", "memchr", "memcpy", "memset", "strcmp", "strlen",
+    "strncpy"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:sys_fd_test"]
+allow = ["bcmp", "close", "memchr", "memcpy", "memset", "read", "strcmp", "strlen", "strncpy",
+    "write"]
+deny_exempt = ["dup2", "pipe"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:sys_test"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "strcmp", "strlen", "strncpy"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:testkit"]
+level = "L1"
+exports = []
+
+[module."//wire:usage_test"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "strcmp", "strlen", "strncpy"]
+exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_key",
+    "kw_check_reply_lines", "kw_clear_output", "kw_contains", "kw_contains_n", "kw_env",
+    "kw_env_clear", "kw_err", "kw_err_len", "kw_file", "kw_file_err", "kw_file_fill", "kw_file_n",
+    "kw_files_clear", "kw_in", "kw_in_fill", "kw_in_n", "kw_io", "kw_mem", "kw_net_env", "kw_out",
+    "kw_out_len", "kw_out_line", "kw_read_path", "kw_reads", "kw_reset", "kw_run",
+    "kw_use_transport", "main"]
+
+[module."//wire:wire"]
+allow = ["__errno_location", "close", "read", "write"]
+deny_exempt = ["clock_gettime", "open"]
+exports = ["wire_ca_load", "wire_deps_build", "wire_env_get", "wire_env_setup", "wire_io_libc",
+    "wire_lazyfs_close", "wire_lazyfs_init", "wire_lazyfs_port", "wire_mcp_loop", "wire_read_some",
+    "wire_run", "wire_sys_libc", "wire_write_all"]
+
