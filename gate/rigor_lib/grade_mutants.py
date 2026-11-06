@@ -181,13 +181,20 @@ def policy_text(modules, indexes=None):
                      for i, m in zip(indexes, modules))
 
 
+def write_gate_package(tree, package_dir, build_text):
+    """Write a gate-owned package (`<package_dir>/BUCK`) and the root `PACKAGE` file that makes the product's
+    targets visible to it. Refuses to touch anything the product put in their place. Returns the BUCK sha256.
+    Shared with the hidden-test package of B7."""
+    for name in (package_dir, PACKAGE_FILE):
+        if os.path.lexists(os.path.join(tree, name)):
+            raise InternalError("%s exists in the grading tree before the gate package was written" % name)
+    write_file(tree, PACKAGE_FILE, PACKAGE_TEXT.encode("utf-8"), 0o644)
+    return write_file(tree, package_dir + "/BUCK", build_text.encode("utf-8"), 0o644)
+
+
 def write_package(run, modules):
-    """Write the gate-owned package; refuses to touch anything the product put in its place."""
-    for name in (PACKAGE_DIR, PACKAGE_FILE):
-        if os.path.lexists(os.path.join(run.tree, name)):
-            raise InternalError("%s exists in the grading tree before the mutants step" % name)
-    write_file(run.tree, PACKAGE_FILE, PACKAGE_TEXT.encode("utf-8"), 0o644)
-    return write_file(run.tree, PACKAGE_DIR + "/BUCK", build_file_text(modules).encode("utf-8"), 0o644)
+    """Write the `c_mutants` package of the tree."""
+    return write_gate_package(run.tree, PACKAGE_DIR, build_file_text(modules))
 
 
 def build_reports(run, uncached, modules):

@@ -230,11 +230,10 @@ class Gate(TempDirTestCase):
         return SimpleNamespace(args=args, work=str(work), tree=str(tree), src=str(work / "src"), head="",
                                status=done)
 
-    def test_it_is_registered_last_and_in_the_order_file(self):
+    def test_it_is_registered_after_the_tests_and_before_the_witness_gates_and_is_in_the_order_file(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
-        self.assertEqual(ids[-1], "mutants")
-        self.assertEqual(ids[-2:], ["tests-san", "mutants"])
-        self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-1], "mutants")
+        self.assertEqual(ids[-4:], ["tests-san", "mutants", "witness-tests", "mutants-witness"])
+        self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-4:], ids[-4:])
 
     def test_it_does_not_run_unless_the_tree_was_built_and_every_test_passed(self):
         for gate in ("assemble", "buckfiles", "build", "tests-release", "tests-san"):
