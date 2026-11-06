@@ -256,3 +256,17 @@ Its 24 red cases were duplicated by canaries and ran cold every time. They are n
 | `stale-include` | `stale-include` | |
 | `third-party-copy` | `third-party-copy` | also `contract`: `outside-allowed` |
 | `case-collision` | `case-collision` | |
+
+## Audit grade of annas-c (T059)
+An audit grades the whole product at one head with `products/annas-c/tasks/whole-repo.toml` (`allowed = ["**"]`).
+The `contract` gate fails `submodule` for any gitlink in the diff, and annas-c's `gate` submodule pointer is bumped
+from time to time. So the **base must be the last commit that changed the `gate` pointer** (the pointer is then equal
+at base and head, and nothing under `gate` is in the diff): find it with `git log -1 --format=%h -- gate` in the
+product repo at the head. It is `596f56b` (gate bump to `67c2230`) for annas-c main `81012ea` and `f990233`. The commit
+that added the submodule (`ce5fb09`) is not usable once the pointer has been bumped. The other gates read the whole
+tree at the head, whatever the base, and the in-diff gates only see changes after the base: for a first audit that
+must also cover earlier changes use the product's root commit and expect the single `submodule` finding on `gate`.
+```sh
+gate/rigor grade --product-repo annas-c-clone --base $(git -C annas-c-clone log -1 --format=%h -- gate) --head HEAD \
+    --task products/annas-c/tasks/whole-repo.toml --product products/annas-c/product.toml --work WORK --out verdict.json
+```

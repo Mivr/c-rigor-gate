@@ -25,7 +25,7 @@ RULES = {
     "read-process-environ": (BLOCK, "/proc/*/environ exposes the whole environment, secrets included."),
     "path-unresolved": (REVIEW, "A path built from an expansion could not be resolved; a human must look."),
     "write-outside": (BLOCK, "Writes are allowed only in the task worktree and the declared scratch dirs."),
-    "write-unresolved": (REVIEW, "A write target built from an expansion could not be resolved."),
+    "write-unresolved": (REVIEW, "A write target (or the files a writer touches) could not be resolved."),
     "write-not-allowed": (REVIEW, "A write inside the worktree falls outside the task's allowed paths."),
     "cmd-gh": (BLOCK, "Contributors have no GitHub access."),
     "cmd-git-push": (BLOCK, "Contributors never push."),
@@ -79,8 +79,10 @@ DEFAULT_HOME = "/var/tmp"
 _PART = r"[A-Z][A-Z0-9]*"
 SECRET_NAME_RE = re.compile(
     r"(?<![A-Za-z0-9_])(?:"
-    r"(?:%(p)s_)+(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?)"
+    r"(?:%(p)s_)*(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?)"  # T062 (R008 O4): bare `TOKEN` too
     r"|(?:%(p)s_)*(?:API|ACCESS|PRIVATE|SECRET|AUTH|SIGNING)_?KEY"
+    r"|[A-Z][A-Z0-9]*(?:PASSWORD|PASSWD)"  # T062 (R008 O4): `PGPASSWORD`
+    r"|(?:%(p)s_)+PAT"  # T062 (R008 O4): a personal access token, `GITHUB_PAT`
     r"|SSH_AUTH_SOCK"
     r")(?![A-Za-z0-9_])" % {"p": _PART})
 

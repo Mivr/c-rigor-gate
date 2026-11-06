@@ -127,6 +127,27 @@ class RealRulesTests(unittest.TestCase):
         paths = [p.decode() for p in out.split(b"\0") if p]
         self.assertEqual(aff.unmatched(paths, self.rules), [])
 
+    def test_no_selftest_or_canary_reads_a_product_directory_its_rule_does_not_select(self):
+        """T066: a product directory named in a selftest, canary or script must select that selftest."""
+        out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--", "products", "canaries", "selftest"],
+                             capture_output=True, check=True).stdout
+        products = sorted({p.decode().split("/")[1] for p in out.split(b"\0") if p.startswith(b"products/")})
+        self.assertIn("selftest", products)
+        for raw in out.split(b"\0"):
+            path = raw.decode()
+            if path.startswith("canaries/"):
+                kinds = {"canaries"}
+            elif path.startswith("selftest/"):
+                kinds = self.pick(path) - {"gate"}
+            else:
+                continue
+            text = (ROOT / path).read_text(errors="replace")
+            for product in products:
+                if "products/%s" % product in text:
+                    chosen = self.pick("products/%s/x.c" % product)
+                    self.assertTrue(kinds <= chosen, "%s mentions products/%s, whose rule selects %s"
+                                    % (path, product, sorted(chosen)))
+
 
 class CliTests(unittest.TestCase):
     def run_tool(self, *args):

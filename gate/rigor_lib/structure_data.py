@@ -16,6 +16,10 @@ KINDS = ("c_library", "c_binary", "c_test", "c_fuzz")
 EXEMPT_KINDS = ("c_test", "c_fuzz")   # present, but not graded
 FUNCTION_KEYS = ("name", "key", "static", "file", "line", "end_line", "body_lines", "split", "macro",
                  "params", "nesting", "cyclomatic", "statements", "calls", "indirect", "refs")
+# Type facts (T063). Optional so that facts made before them still read; their absence means "untyped": the
+# decision then falls back to the rule that needs no types (structure.py).
+FUNCTION_TYPE_KEYS = ("type", "conversions")
+CONVERSION_KINDS = ("cast", "union", "copy", "vararg")
 
 
 @dataclass(frozen=True)
@@ -33,8 +37,20 @@ class Func:
     cyclomatic: int
     statements: int
     calls: tuple         # of (to, fp_args)
-    indirect: tuple      # of (file, line)
-    refs: tuple          # of (to, file, line): the function's address is taken
+    indirect: tuple      # of (file, line, canonical type of the pointee function, or None)
+    refs: tuple          # of (to, file, line, type of the referenced declaration or None): the address is taken
+    type: object = None  # canonical function type of the definition, or None (unknown or absent)
+    conversions: object = None   # tuple of Conversion, or None when the facts carry none
+
+
+@dataclass(frozen=True)
+class Conversion:
+    """A place where a function pointer may change type. `types` are the canonical function types involved;
+    None = the scanner could not tell."""
+    file: str
+    line: int
+    kind: str
+    types: object
 
 
 @dataclass(frozen=True)
@@ -51,6 +67,7 @@ class Unit:
     files: tuple
     functions: tuple
     refs: tuple
+    conversions: object = None   # tuple of Conversion made outside every function, or None when absent
 
 
 @dataclass(frozen=True)
@@ -96,20 +113,51 @@ def _list(path, value, what):
     return value
 
 
+def _optional(path, obj, required, optional, what):
+    if not isinstance(obj, dict) or not set(required) <= set(obj) <= set(required) | set(optional):
+        _fail(path, "%s must be an object with the keys %s and maybe %s" % (what, sorted(required), sorted(optional)))
+    return obj
+
+
+def _type(path, value, what):
+    """A canonical function type, or null for unknown (a key that is absent is unknown as well)."""
+    if value is not None and (not isinstance(value, str) or "(" not in value or not value.endswith(")")):
+        _fail(path, "%s must be a canonical function type `RET ( PARAMS )` or null" % what)
+    return value
+
+
 def _sites(path, entries, what):
     found = []
     for entry in _list(path, entries, what):
-        _exact(path, entry, ("file", "line"), what)
-        found.append((_text(path, entry["file"], what), _int(path, entry["line"], what)))
+        _optional(path, entry, ("file", "line"), ("type",), what)
+        found.append((_text(path, entry["file"], what), _int(path, entry["line"], what),
+                      _type(path, entry.get("type"), what + " type")))
     return tuple(found)
 
 
 def _refs(path, entries, what):
     found = []
     for entry in _list(path, entries, what):
-        _exact(path, entry, ("to", "file", "line"), what)
+        _optional(path, entry, ("to", "file", "line"), ("type",), what)
         found.append((_text(path, entry["to"], what), _text(path, entry["file"], what),
-                      _int(path, entry["line"], what)))
+                      _int(path, entry["line"], what), _type(path, entry.get("type"), what + " type")))
+    return tuple(found)
+
+
+def _conversions(path, entries):
+    if entries is None:
+        return None
+    found = []
+    for entry in _list(path, entries, "conversions"):
+        _exact(path, entry, ("file", "line", "kind", "types"), "conversion")
+        if entry["kind"] not in CONVERSION_KINDS:
+            _fail(path, "bad conversion kind %r" % (entry["kind"],))
+        types = entry["types"]
+        if types is not None:
+            types = tuple(_type(path, t, "conversion type") or _fail(path, "a conversion type is null")
+                          for t in _list(path, types, "conversion types"))
+        found.append(Conversion(_text(path, entry["file"], "conversion file"), _int(path, entry["line"], "line"),
+                                entry["kind"], types))
     return tuple(found)
 
 
@@ -123,7 +171,7 @@ def _calls(path, entries):
 
 
 def parse_function(path, entry):
-    _exact(path, entry, FUNCTION_KEYS, "function")
+    _optional(path, entry, FUNCTION_KEYS, FUNCTION_TYPE_KEYS, "function")
     _bool(path, entry["static"], "static")
     split = _bool(path, entry["split"], "split")
     body = entry["body_lines"]
@@ -136,7 +184,8 @@ def parse_function(path, entry):
         macro=_bool(path, entry["macro"], "macro"), params=_int(path, entry["params"], "params"),
         nesting=_int(path, entry["nesting"], "nesting"), cyclomatic=_int(path, entry["cyclomatic"], "cyclomatic"),
         statements=_int(path, entry["statements"], "statements"), calls=_calls(path, entry["calls"]),
-        indirect=_sites(path, entry["indirect"], "indirect"), refs=_refs(path, entry["refs"], "refs"))
+        indirect=_sites(path, entry["indirect"], "indirect"), refs=_refs(path, entry["refs"], "refs"),
+        type=_type(path, entry.get("type"), "function type"), conversions=_conversions(path, entry.get("conversions")))
 
 
 def parse_file(path, entry):
@@ -146,7 +195,7 @@ def parse_file(path, entry):
 
 
 def parse_unit(path, unit):
-    _exact(path, unit, ("src", "files", "functions", "refs"), "unit")
+    _optional(path, unit, ("src", "files", "functions", "refs"), ("conversions",), "unit")
     files = tuple(parse_file(path, f) for f in _list(path, unit["files"], "files"))
     if len({f.path for f in files}) != len(files):
         _fail(path, "a file listed twice in a unit")
@@ -154,7 +203,7 @@ def parse_unit(path, unit):
     if src not in {f.path for f in files}:
         _fail(path, "unit %s does not list its own source among its files" % src)
     return Unit(src, files, tuple(parse_function(path, f) for f in _list(path, unit["functions"], "functions")),
-                _refs(path, unit["refs"], "refs"))
+                _refs(path, unit["refs"], "refs"), _conversions(path, unit.get("conversions")))
 
 
 def parse_structure(path, data):

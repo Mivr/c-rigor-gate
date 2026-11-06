@@ -33,19 +33,20 @@ if [ -n "${STRUCTURE_COLD:-}" ]; then
 fi
 
 GREEN="clean"
-RED="selfrec mutual macrorec cleanuprec asmrec aliasrec len51 params7 nest5 fpcycle callbackcycle gotos linehide packed longline macrofn file501 splitbody"
+RED="selfrec mutual macrorec cleanuprec asmrec aliasrec len51 params7 nest5 fpcycle callbackcycle gotos linehide packed longline macrofn file501 splitbody castcycle voidcastcycle"
+TYPED="ports"
 OTHER="xa xb"
 # Modules whose real build is refused before any fact exists.
-IMPOSSIBLE="included stmtexprrec stmtnest"
+IMPOSSIBLE="included stmtexprrec stmtnest unprotocycle"
 
 targets() { local n; for n in "$@"; do printf '%s ' "$pkg:${n}_s"; done; }
 
 build_all() {
   local log="$1" name path
   # shellcheck disable=SC2046
-  run "$log" build $(targets $GREEN $RED $OTHER) --show-full-output || return 1
+  run "$log" build $(targets $GREEN $TYPED $RED $OTHER) --show-full-output || return 1
   rm -rf "$out/facts"; mkdir -p "$out/facts"
-  for name in $GREEN $RED $OTHER; do
+  for name in $GREEN $TYPED $RED $OTHER; do
     path="$(awk -v t="$pkg:${name}_s" 'index($1, t) {print $2}' "$log" | tail -1)"
     [ -f "$path" ] || { echo "no facts for $name: '$path'" >&2; return 1; }
     cp "$path" "$out/facts/$name.json"
@@ -69,7 +70,7 @@ rules() { json 'sorted({f["rule"] for f in r["findings"]})'; }
 nfind() { json 'len(r["findings"])'; }
 
 # --------------------------------------------------------------------------------------
-begin "build the structure facts of 22 modules on RE (cold if STRUCTURE_COLD=1)"
+begin "build the structure facts of 25 modules on RE (cold if STRUCTURE_COLD=1)"
 t0=$SECONDS
 build_all "$out/build1.log" || fail "$CUR: buck2 build failed" "$out/build1.log"
 COLD="$(executed "$out/build1.log")"
@@ -129,6 +130,32 @@ check_red fpcycle indirect-cycle-possible
 check_red callbackcycle indirect-cycle-possible
 echo "    callbackcycle sites: $(json 'r["findings"][0]["sites"]')"
 
+begin "T063: calls through a value are resolved by function type; a conversion of a function pointer unties the types"
+LEVEL=L3 gate ports
+[ "$GATE_CODE" = 0 ] && [ "$(nfind)" = 0 ] || fail "$CUR: two ops tables of different types must pass (the untyped rule found a cycle here)" "$out/gate.log"
+echo "    ports: lazy_read (int(int)) reaches sys_write, which calls through long(long,long): no cycle, no finding"
+# castcycle and voidcastcycle: exactly one error, the cycle, plus the info that says why the types were not trusted
+check_typed_red() {
+  local name="$1"
+  LEVEL=L3 gate "$name"
+  [ "$GATE_CODE" = 1 ] || fail "$CUR: $name passed (exit $GATE_CODE)" "$out/gate.log"
+  [ "$(json 'sorted({f["rule"] for f in r["findings"] if f["severity"] == "error"})')" = "['indirect-cycle-possible']" ] \
+    || fail "$CUR: $name gave $(rules), expected the cycle" "$out/gate.log"
+  [ "$(json 'sum(1 for f in r["findings"] if f["severity"] == "error")')" = 1 ] || fail "$CUR: $name gave several errors" "$out/gate.log"
+  [ "$(json 'sorted({f["rule"] for f in r["findings"] if f["severity"] == "info"})')" = "['indirect-untyped-fallback']" ] \
+    || fail "$CUR: $name: the untyped fallback must be reported as info" "$out/gate.log"
+  echo "    $name -> indirect-cycle-possible via $(json 'r["findings"][0]["path"]'); fallback: $(json '[f["reason"] for f in r["findings"] if f["rule"] == "indirect-untyped-fallback"]')"
+}
+check_typed_red castcycle
+check_typed_red voidcastcycle
+"${PY[@]}" - "$out/facts/castcycle.json" <<'PY' || fail "$CUR: the cast facts are missing"
+import json, sys
+funcs = {f["name"]: f for u in json.load(open(sys.argv[1]))["units"] for f in u["functions"]}
+assert funcs["run"]["indirect"][0]["type"] == "int ( int )", funcs["run"]["indirect"]
+assert funcs["hidden"]["type"] == "long ( long )" and funcs["hidden"]["conversions"], funcs["hidden"]
+print("    castcycle facts: run() calls int(int), hidden() is long(long) and is cast to it")
+PY
+
 begin "RED (B2): the limits, one case each, the boundary exact (50 passes in the green module, 51 fails)"
 check_red len51 function-length 51
 check_red linehide function-length 51
@@ -181,6 +208,9 @@ begin "IMPOSSIBLE: what the real build refuses never reaches the gate (#include 
 run "$out/inc.log" build "$pkg:included_s" && fail "$CUR: a source that includes another .c built" "$out/inc.log"
 grep -q "'inc2.c' file not found" "$out/inc.log" || fail "$CUR: expected 'file not found'" "$out/inc.log"
 echo "    included: 'inc2.c' file not found (only the source being compiled and declared headers are inputs)"
+run "$out/unproto.log" build "$pkg:unprotocycle_s" && fail "$CUR: a call through an unprototyped pointer built" "$out/unproto.log"
+grep -q "Wstrict-prototypes" "$out/unproto.log" || fail "$CUR: expected -Wstrict-prototypes for unprotocycle" "$out/unproto.log"
+echo "    unprotocycle: refused by -Werror (-Wstrict-prototypes)"
 for n in stmtexprrec stmtnest; do
   run "$out/$n.log" build "$pkg:${n}_s" && fail "$CUR: $n built" "$out/$n.log"
   grep -q "Wgnu-statement-expression" "$out/$n.log" || fail "$CUR: expected -Wgnu-statement-expression for $n" "$out/$n.log"

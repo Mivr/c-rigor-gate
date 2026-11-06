@@ -1,0 +1,9 @@
+{
+  "bypass": "recursion through a function pointer, hidden by a function-pointer cast",
+  "description": "core_hidden (long (long)) is cast through void (*)(void) to the int (*)(int) that core_run_step calls through, and calls it back (T063). Typed call targets must fall back to the untyped rule at the cast.",
+  "fail": {
+    "structure": [
+      "indirect-cycle-possible"
+    ]
+  }
+}
