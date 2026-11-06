@@ -94,3 +94,31 @@ allow = ["snprintf"]
 
 [module."//json:writer_test"]
 allow = ["memcpy", "memset", "strlen"]
+
+[module."//ports:ports"]
+level = "L2"
+allow = ["bcmp", "memchr", "memcpy"]
+
+[module."//ports:clock_test"]
+allow = []
+
+[module."//ports:env_test"]
+allow = []
+
+[module."//ports:fs_inject_test"]
+allow = []
+
+[module."//ports:fs_test"]
+allow = []
+
+[module."//ports:stream_error_test"]
+allow = []
+
+[module."//ports:stream_init_test"]
+allow = []
+
+[module."//ports:stream_mismatch_test"]
+allow = ["strlen"]
+
+[module."//ports:stream_test"]
+allow = []
