@@ -803,4 +803,5 @@ for m in san cov fuzz; do
   grep -q "is incompatible with" "$out/inc.log" || fail "$CUR: $m failed for the wrong reason" "$out/inc.log"
 done
 
+echo "elapsed ${SECONDS}s"
 echo "ALL CHECKS PASSED ($step)"

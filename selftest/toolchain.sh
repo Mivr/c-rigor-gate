@@ -173,4 +173,5 @@ must_pass build //examples/hello:hello
 n="$("${B[@]}" log what-ran 2>/dev/null | strip_ansi | grep -vc '^Showing\|^$')"
 [ "$n" = 0 ] || fail "$CUR: $n actions executed on the second build"
 
+echo "elapsed ${SECONDS}s"
 echo "ALL CHECKS PASSED ($step)"
