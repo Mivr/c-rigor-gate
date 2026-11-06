@@ -48,7 +48,7 @@ class Heredoc:
 
 
 class Command:
-    __slots__ = ("words", "assigns", "redirects", "heredocs", "group", "raw", "depth")
+    __slots__ = ("words", "assigns", "redirects", "heredocs", "group", "raw", "depth", "background")
 
     def __init__(self, group):
         self.words = []
@@ -58,6 +58,7 @@ class Command:
         self.group = group   # commands joined by `|` share a group
         self.raw = ""
         self.depth = 0       # `( ... )` subshell nesting; a `cd` inside does not outlive the parentheses
+        self.background = False  # ended by the `&` operator (T052: a background job, decided by the lexer)
 
     def empty(self):
         return not (self.words or self.assigns or self.redirects or self.heredocs)
@@ -363,6 +364,9 @@ class Lexer:
             self.end_command(new_group=False)
         else:
             self.pos += 1
+            if char == "&":  # `cmd &`, `( ... ) &` (`&&`, `&>` and `>&` are handled above and in _redirect)
+                target = self.cur if not self.cur.empty() or not self.commands else self.commands[-1]
+                target.background = True
             if char == "(":
                 self.depth += 1
             elif char == ")":
