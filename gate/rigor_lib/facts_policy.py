@@ -7,6 +7,7 @@
     allow = ["memcpy"]              # external symbols this module may reference besides its deps' exports
     deny_exempt = ["open"]          # entries of global.deny it may use (implies allow)
     allow_builtins = ["__builtin_trap"]   # guarded builtins (semantic_table.GUARDED_BUILTINS) it may use
+    third_party = ["gate//third_party/mbedtls:mbedtls"]   # gate-owned libraries it may depend on
 """
 
 import tomllib
@@ -22,6 +23,7 @@ class Module:
     allow: frozenset = frozenset()
     deny_exempt: frozenset = frozenset()
     allow_builtins: frozenset = frozenset()
+    third_party: frozenset = frozenset()
 
 
 @dataclass(frozen=True)
@@ -46,7 +48,7 @@ def _only(where, table, allowed):
 
 def _module(label, table, deny):
     where = "module %s" % label
-    _only(where, table, ("allow", "deny_exempt", "allow_builtins"))
+    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party"))
     exempt = _names(where + " deny_exempt", table.get("deny_exempt", []))
     if not exempt <= deny:
         raise InternalError("policy: %s deny_exempt names symbols that are not denied: %s"
@@ -54,7 +56,8 @@ def _module(label, table, deny):
     builtins = _names(where + " allow_builtins", table.get("allow_builtins", []))
     if not builtins <= set(semantic_table.GUARDED_BUILTINS):
         raise InternalError("policy: %s allow_builtins names unguarded builtins" % label)
-    return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins)
+    third = _names(where + " third_party", table.get("third_party", []), LABEL)
+    return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins, third)
 
 
 def load_policy(path):

@@ -2,11 +2,14 @@
 A user `#line` that renames the file or goes back is a finding too: it is how text would be made
 to look like a system header.
 
+Gate-owned third-party libraries (kind `c_third_party`, label on the allowlist) are not scanned; a
+`c_third_party` facts file the allowlist does not name is a finding.
+
 Decided on the preprocessed text of every source (facts from `cscan.py`): after macros, token
 pasting, `_Pragma` and line splices have been resolved, so none of them can hide anything.
 """
 
-from rigor_lib import semantic_table
+from rigor_lib import facts_third_party, semantic_table
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
 
@@ -41,8 +44,9 @@ def identifier_findings(name, file, line, module, where):
     return [finding("forbidden-builtin", name=name, file=file, line=line, **where)]
 
 
-def run(facts_by_label, policy):
-    found = []
+def run(facts_by_label, policy, third=None):
+    third = facts_third_party.load() if third is None else third
+    facts_by_label, _, found = facts_third_party.split(facts_by_label, third)
     units = 0
     for label in sorted(facts_by_label):
         facts = facts_by_label[label]

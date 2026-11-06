@@ -156,3 +156,102 @@ class BuckFilesCase(TempDirTestCase):
         self.assertExit(run_rigor(["buckfiles", "--root", self.tmp / "nope", "--out", out]), 2)
         self.assertEqual(read_json(out)["status"], "FAIL")
         self.assertEqual(read_json(out)["findings"][0]["rule"], "internal-error")
+
+
+MBED = "gate//third_party/mbedtls:mbedtls"
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+class ThirdPartyLabelCase(TempDirTestCase):
+    """Exact labels from the gate-owned allowlist are the only cell-prefixed deps a product may name."""
+
+    def check(self, source, code, allowed=MBED + "\n", extra=()):
+        root = self.sub("product")
+        (root / "BUCK").write_text(source, encoding="utf-8")
+        argv = ["buckfiles", "--root", root, "--out", self.tmp / "out.json"]
+        if allowed is not None:
+            lst = self.tmp / "ALLOWED_LABELS"
+            lst.write_text(allowed, encoding="utf-8")
+            argv += ["--allowed-labels", lst]
+        outcome = run_rigor(argv + list(extra))
+        self.assertExit(outcome, code)
+        out = self.tmp / "out.json"
+        return sorted((f["rule"], f.get("why")) for f in read_json(out)["findings"])
+
+    def dep(self, label, code, **kw):
+        return self.check(LOAD + 'c_library(name = "a", srcs = ["a.c"], deps = ["%s"])\n' % label, code, **kw)
+
+    def test_the_allowlisted_label_is_accepted_by_every_macro(self):
+        for macro in ("c_library", "c_binary", "c_test"):
+            with self.subTest(macro=macro):
+                source = 'load("@gate//rules:c.bzl", "%s")\n%s(name = "a", srcs = ["a.c"], deps = [":b", "%s"])\n' % (
+                    macro, macro, MBED)
+                self.assertEqual(self.check(source, 0), [])
+                self.setUp()
+
+    def test_other_third_party_looking_labels_are_refused(self):
+        for label in ("gate//third_party/curl:curl", "gate//third_party/mbedtls:mbedtls_x", "gate//third_party/mbedtls:mbed",
+                      "gate//third_party/mbedtls/:mbedtls", "gate//third_party/mbedtls:mbedtls:x",
+                      "gate//third_party/mbedtls:*", "gate//third_party/...", "gate//third_party/mbedtls:all",
+                      "third_party//mbedtls:mbedtls", "gate//third_party:mbedtls",
+                      "gate//third_party/mbedtls:mbedtls_symbols", "gate//third_party/mbedtls:mbedtls_facts"):
+            with self.subTest(label=label):
+                self.assertEqual(self.dep(label, 1), [("bad-argument", "dep")])
+                self.setUp()
+
+    def test_near_misses_of_the_allowlisted_label_are_refused(self):
+        for label in (MBED + " ", " " + MBED, "@" + MBED, "@gate//third_party/mbedtls:mbedtls", "GATE//third_party/mbedtls:mbedtls",
+                      "gate//third_party/mbedtls:Mbedtls", "gate//third_party//mbedtls:mbedtls",
+                      "gate//third_party/./mbedtls:mbedtls", "gate//third_party/mbedtls:mbedtls\n",
+                      "root//third_party/mbedtls:mbedtls", "gate//third_party/mbedtls:mbedtls#x"):
+            with self.subTest(label=label):
+                self.assertEqual(self.dep(label.replace("\n", "\\n"), 1), [("bad-argument", "dep")])
+                self.setUp()
+
+    def test_the_label_is_not_allowed_without_the_list_naming_it(self):
+        self.assertEqual(self.dep(MBED, 1, allowed="gate//third_party/other:other\n"), [("bad-argument", "dep")])
+        self.setUp()
+        self.assertEqual(self.dep(MBED, 1, allowed=""), [("bad-argument", "dep")])
+
+    def test_the_label_is_not_a_prefix_match(self):
+        self.assertEqual(self.dep(MBED + "x", 1, allowed=MBED + "\n"), [("bad-argument", "dep")])
+
+    def test_the_label_in_any_other_keyword_is_not_a_dep(self):
+        # srcs/headers entries are checked by the macros (plain file names), visibility is not a dep.
+        found = self.check(LOAD + 'c_library(name = "a", srcs = ["a.c"], visibility = ["%s"])\n' % MBED, 0)
+        self.assertEqual(found, [])
+
+    def test_a_bare_string_dep_is_not_a_list(self):
+        self.assertEqual(self.check(LOAD + 'c_library(name = "a", deps = "%s")\n' % MBED, 1), [("bad-argument", "dep")])
+
+    def test_list_defects_are_exit_2(self):
+        for text in ("# comment\n" + MBED + "\n", MBED + "\n\n", "\n" + MBED + "\n", MBED + "\n" + MBED + "\n",
+                     MBED + " \n", "//third_party/mbedtls:mbedtls\n", "gate//third_party/*:x\n",
+                     "gate//third_party/mbedtls:mbedtls", MBED + "\r\n", "\xe9\n", "gate//ctest:ctest\n",
+                     "gate//x/y:z\n", "prelude//cxx:cxx\n"):
+            with self.subTest(text=text):
+                self.check(LOAD + 'c_library(name = "a")\n', 2, allowed=text)
+                self.setUp()
+
+    def test_a_missing_or_empty_list_file(self):
+        self.check(LOAD + 'c_library(name = "a")\n', 2, allowed=None, extra=["--allowed-labels", self.tmp / "nope"])
+        self.setUp()
+        self.check(LOAD + 'c_library(name = "a")\n', 0, allowed="")
+
+    def test_a_symlinked_list_is_refused(self):
+        real = self.tmp / "real"
+        real.write_text(MBED + "\n", encoding="utf-8")
+        link = self.tmp / "link"
+        os.symlink(real, link)
+        root = self.sub("product")
+        (root / "BUCK").write_text(LOAD + 'c_library(name = "a")\n', encoding="utf-8")
+        self.assertExit(run_rigor(["buckfiles", "--root", root, "--allowed-labels", link]), 2)
+
+    def test_the_default_list_is_the_gate_s_own_and_names_mbedtls_only(self):
+        with open(os.path.join(REPO, "third_party", "ALLOWED_LABELS"), encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), MBED + "\n")
+        found = self.check(LOAD + 'c_library(name = "a", deps = ["%s"])\n' % MBED, 0, allowed=None)
+        self.assertEqual(found, [])
+        self.setUp()
+        self.assertEqual(self.check(LOAD + 'c_library(name = "a", deps = ["gate//third_party/curl:curl"])\n', 1,
+                                    allowed=None), [("bad-argument", "dep")])

@@ -4,8 +4,14 @@ A product module may reference only symbols that its declared deps define, or th
 entry allows; a global deny list names what no product module may touch at all (process control,
 clock, environment, files, network, ...). It may not define a symbol the C library or a trusted
 gate module (ctest) exports, which would interpose it. Trusted modules are the gate's own code.
+
+Gate-owned third-party libraries (`facts_third_party`) are trusted the same way, with two additions:
+a module may depend on one only if its policy entry lists the label (`third_party = [...]`), and the
+exports of the library, computed by the build from its objects, are reserved together with the
+reserved prefixes (`mbedtls_`, `psa_`), so no product can define a name the library owns.
 """
 
+from rigor_lib import facts_third_party
 from rigor_lib.facts_policy import Module
 from rigor_lib.findings import GateResult, finding
 
@@ -28,20 +34,25 @@ def exports_of(facts):
     return frozenset().union(*(unit.defined for unit in facts.units)) if facts.units else frozenset()
 
 
-def dep_exports(facts, facts_by_label, found):
+def dep_exports(facts, facts_by_label, libs, module, found):
     exports = set()
     for dep in facts.deps:
-        if dep in facts_by_label:
+        if dep in libs:
+            if facts_third_party.canonical(dep) in module.third_party:
+                exports |= exports_of(libs[dep])
+            else:
+                found.append(finding("third-party-not-permitted", target=facts.label, dep=dep))
+        elif dep in facts_by_label:
             exports |= exports_of(facts_by_label[dep])
         else:
             found.append(finding("missing-dep-facts", target=facts.label, dep=dep))
     return exports
 
 
-def unit_findings(facts, unit, module, policy, allowed, own, reserved):
+def unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes):
     where = {"target": facts.label, "unit": unit.name}
     found = []
-    for symbol in sorted(unit.defined & reserved):
+    for symbol in sorted(s for s in unit.defined if s in reserved or s.startswith(prefixes)):
         found.append(finding("symbol-collision", symbol=symbol, **where))
     for symbol in sorted(unit.weak):
         found.append(finding("weak-symbol", symbol=symbol, **where))
@@ -53,20 +64,26 @@ def unit_findings(facts, unit, module, policy, allowed, own, reserved):
     return found
 
 
-def run(facts_by_label, policy, libc):
-    found = policy_coverage_findings(facts_by_label, policy)
+def run(facts_by_label, policy, libc, third=None):
+    third = facts_third_party.load() if third is None else third
+    facts_third_party.check_policy(policy, third)
+    products, libs, found = facts_third_party.split(facts_by_label, third)
+    found.extend(policy_coverage_findings(products, policy))
     reserved = set(libc)
-    for label in policy.trusted & set(facts_by_label):
-        reserved |= exports_of(facts_by_label[label])
+    for label in policy.trusted & set(products):
+        reserved |= exports_of(products[label])
+    for lib in libs.values():
+        reserved |= exports_of(lib)
+    prefixes = tuple(third.prefixes)
     units = 0
-    for label in sorted(facts_by_label):
+    for label in sorted(products):
         if label in policy.trusted:
             continue
-        facts = facts_by_label[label]
+        facts = products[label]
         module = policy.modules.get(label, Module())
-        allowed = dep_exports(facts, facts_by_label, found)
+        allowed = dep_exports(facts, products, libs, module, found)
         own = exports_of(facts)
         for unit in facts.units:
             units += 1
-            found.extend(unit_findings(facts, unit, module, policy, allowed, own, reserved))
-    return GateResult(GATE_ID, found, {"targets": len(facts_by_label), "units": units})
+            found.extend(unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes))
+    return GateResult(GATE_ID, found, {"targets": len(products), "libraries": len(libs), "units": units})

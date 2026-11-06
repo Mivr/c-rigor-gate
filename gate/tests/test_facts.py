@@ -284,3 +284,188 @@ class FactsCase(TempDirTestCase):
     def test_gate_choice_is_required_and_checked(self):
         self.assertExit(run_rigor(["facts", "--facts", self.tmp, "--policy", self.tmp]), 2)
         self.assertExit(run_rigor(["facts", "--gate", "tests", "--facts", self.tmp, "--policy", self.tmp]), 2)
+
+
+MBED = "gate//third_party/mbedtls:mbedtls"
+PERMIT = 'third_party = ["%s"]\n' % MBED
+TP_ALLOWED = MBED + "\n"
+TP_PREFIXES = "mbedtls_\npsa_\n"
+
+
+def tp_facts(label=MBED, units=None):
+    """What the `c_third_party` facts target writes: symbols only, from the objects."""
+    units = units or [unit("ssl_tls.c.o", defined=["mbedtls_ssl_read", "mbedtls_ssl_write", "psa_crypto_init"],
+                           undefined=["memcpy", "getrandom", "fopen"])]
+    return facts(label, units, kind="c_third_party")
+
+
+class ThirdPartyFactsCase(TempDirTestCase):
+    run_gate = FactsCase.run_gate
+    rules = FactsCase.rules
+
+    def tp_dir(self, allowed=TP_ALLOWED, prefixes=TP_PREFIXES):
+        directory = self.sub("tp")
+        (directory / "ALLOWED_LABELS").write_text(allowed, encoding="utf-8")
+        (directory / "RESERVED_PREFIXES").write_text(prefixes, encoding="utf-8")
+        return directory
+
+    def tsym(self, targets, code, permit=True, tp=None, **kw):
+        tp = tp_facts() if tp is None else tp
+        if "policy" not in kw:
+            kw["policy"] = GLOBAL + "".join(
+                '[module."%s"]\n%s' % (t["label"], PERMIT if permit else "")
+                for t in targets)
+        extra = kw.pop("extra", ["--third-party", self.tp_dir()])
+        return self.rules("symbols", targets + [CTEST, tp], code, extra=extra, **kw)
+
+    def user(self, undefined=("mbedtls_ssl_read",), defined=("f",), deps=(MBED,)):
+        return facts("//p:user", [unit(defined=defined, undefined=undefined)], deps=deps)
+
+    def test_a_permitted_module_may_use_the_library_s_exports(self):
+        self.assertEqual(self.tsym([self.user(undefined=["mbedtls_ssl_read", "psa_crypto_init"])], 0), [])
+
+    def test_a_dependency_without_policy_permission_fails(self):
+        self.assertEqual(self.tsym([self.user()], 1, permit=False),
+                         [("third-party-not-permitted", MBED), ("undeclared-symbol", "mbedtls_ssl_read")])
+
+    def test_permission_is_per_module(self):
+        other = facts("//p:other", [unit(undefined=["mbedtls_ssl_write"])], deps=[MBED])
+        policy = GLOBAL + '[module."//p:user"]\n' + PERMIT + '[module."//p:other"]\n'
+        self.assertEqual(self.tsym([self.user(), other], 1, policy=policy),
+                         [("third-party-not-permitted", MBED), ("undeclared-symbol", "mbedtls_ssl_write")])
+
+    def test_a_symbol_the_library_does_not_export_is_undeclared(self):
+        self.assertEqual(self.tsym([self.user(undefined=["mbedtls_ssl_read", "mbedtls_made_up"])], 1),
+                         [("undeclared-symbol", "mbedtls_made_up")])
+
+    def test_exports_need_a_direct_dependency(self):
+        self.assertEqual(self.tsym([self.user(deps=[])], 1), [("undeclared-symbol", "mbedtls_ssl_read")])
+
+    def test_exports_are_not_transitive(self):
+        mid = facts("//p:mid", [unit(defined=["mid_f"], undefined=["mbedtls_ssl_read"])], deps=[MBED])
+        top = facts("//p:top", [unit(undefined=["mid_f", "mbedtls_ssl_read"])], deps=["//p:mid"])
+        policy = GLOBAL + '[module."//p:mid"]\n' + PERMIT + '[module."//p:top"]\n' + PERMIT
+        self.assertEqual(self.tsym([mid, top], 1, policy=policy), [("undeclared-symbol", "mbedtls_ssl_read")])
+
+    def test_defining_a_symbol_the_library_exports_is_a_collision(self):
+        self.assertEqual(self.tsym([self.user(defined=["mbedtls_ssl_read"], undefined=[])], 1),
+                         [("symbol-collision", "mbedtls_ssl_read")])
+
+    def test_a_collision_is_found_even_without_a_dependency(self):
+        self.assertEqual(self.tsym([self.user(defined=["psa_crypto_init"], undefined=[], deps=[])], 1),
+                         [("symbol-collision", "psa_crypto_init")])
+
+    def test_reserved_prefixes_hold_without_the_library_s_facts(self):
+        user = facts("//p:user", [unit(defined=["mbedtls_ssl_read", "psa_anything", "mbedtls", "f"])])
+        policy = GLOBAL + '[module."//p:user"]\n'
+        outcome, result = self.run_gate("symbols", [user, CTEST], policy=policy, expect_code=1,
+                                        extra=["--third-party", self.tp_dir()])
+        self.assertEqual(sorted((f["rule"], f["symbol"]) for f in result["findings"]),
+                         [("symbol-collision", "mbedtls_ssl_read"), ("symbol-collision", "psa_anything")])
+
+    def test_a_weak_definition_of_a_reserved_name_is_both(self):
+        user = self.user(defined=["psa_x"], undefined=[], deps=[])
+        user["units"][0]["weak"] = ["psa_x"]
+        self.assertEqual(self.tsym([user], 1), [("symbol-collision", "psa_x"), ("weak-symbol", "psa_x")])
+
+    def test_the_library_itself_is_not_scanned(self):
+        # Its own undefined symbols (fopen is denied) and a pragma in its facts are not findings.
+        noisy = tp_facts(units=[unit("a.c.o", defined=["mbedtls_x"], undefined=["fopen", "kill", "exit"],
+                                     pragmas=[(1, "clang diagnostic ignored \"-Wall\"")],
+                                     attributes=[("weak", 2)], identifiers=[("__asm__", 3)])])
+        self.assertEqual(self.tsym([self.user(undefined=["mbedtls_x"])], 0, tp=noisy), [])
+        outcome, result = self.run_gate("semantic-suppressions", [facts("//p:lib", [unit()]), CTEST, noisy],
+                                        expect_code=0, extra=["--third-party", self.tp_dir()])
+        self.assertEqual(result["findings"], [])
+
+    def test_a_library_the_allowlist_does_not_name_is_refused(self):
+        rogue = tp_facts(label="gate//third_party/rogue:rogue")
+        self.assertEqual(self.tsym([self.user()], 1, tp=rogue, permit=False),
+                         [("missing-dep-facts", MBED), ("third-party-not-allowed", "gate//third_party/rogue:rogue"),
+                          ("undeclared-symbol", "mbedtls_ssl_read")])
+        outcome, result = self.run_gate("semantic-suppressions", [facts("//p:lib", [unit()]), CTEST, rogue],
+                                        expect_code=1, extra=["--third-party", self.tp_dir()])
+        self.assertEqual([f["rule"] for f in result["findings"]], ["third-party-not-allowed"])
+
+    def test_the_kind_alone_does_not_make_a_product_label_trusted(self):
+        # A product-cell label with the same path is not the gate's library.
+        fake = tp_facts(label="//third_party/mbedtls:mbedtls")
+        fake["label"] = "root//third_party/mbedtls:mbedtls"
+        outcome, result = self.run_gate("symbols", [fake, CTEST], expect_code=1, policy=GLOBAL,
+                                        extra=["--third-party", self.tp_dir()])
+        self.assertIn("third-party-not-allowed", [f["rule"] for f in result["findings"]])
+
+    def test_the_gate_cell_may_print_the_label_without_the_cell(self):
+        # With the gate as the root cell Buck2 prints `//third_party/mbedtls:mbedtls`.
+        tp = tp_facts(label="//third_party/mbedtls:mbedtls")
+        user = self.user(deps=["//third_party/mbedtls:mbedtls"])
+        self.assertEqual(self.tsym([user], 0, tp=tp), [])
+
+    def test_a_product_kind_facts_file_cannot_pose_as_a_library(self):
+        # A c_library with the allowlisted label is an ordinary module: it needs a policy entry like any other.
+        posing = facts(MBED, [unit(defined=["f"], undefined=["fopen"])])
+        outcome, result = self.run_gate("symbols", [posing, CTEST], policy=GLOBAL, expect_code=1,
+                                        extra=["--third-party", self.tp_dir()])
+        self.assertEqual(sorted(f["rule"] for f in result["findings"]), ["denied-symbol", "module-not-in-policy"])
+
+    def test_the_library_not_built_is_a_missing_dependency(self):
+        outcome, result = self.run_gate("symbols", [self.user(), CTEST], expect_code=1,
+                                        policy=GLOBAL + '[module."//p:user"]\n' + PERMIT,
+                                        extra=["--third-party", self.tp_dir()])
+        self.assertEqual(sorted(f["rule"] for f in result["findings"]), ["missing-dep-facts", "undeclared-symbol"])
+
+    def test_the_default_lists_are_the_gate_s_own(self):
+        outcome, result = self.run_gate("symbols", [self.user(), CTEST, tp_facts()], expect_code=0,
+                                        policy=GLOBAL + '[module."//p:user"]\n' + PERMIT)
+        self.assertEqual(result["findings"], [])
+        self.setUp()
+        user = facts("//p:user", [unit(defined=["mbedtls_ssl_read"])])
+        outcome, result = self.run_gate("symbols", [user, CTEST], expect_code=1, policy=GLOBAL + '[module."//p:user"]\n')
+        self.assertEqual([f["rule"] for f in result["findings"]], ["symbol-collision"])
+
+    def test_policy_defects_are_exit_2(self):
+        bad = {
+            "permission for an unlisted label": GLOBAL + '[module."//p:user"]\nthird_party = ["gate//third_party/rogue:rogue"]\n',
+            "permission is a string": GLOBAL + '[module."//p:user"]\nthird_party = "%s"\n' % MBED,
+            "permission is not a label": GLOBAL + '[module."//p:user"]\nthird_party = ["mbedtls"]\n',
+            "duplicate permission": GLOBAL + '[module."//p:user"]\nthird_party = ["%s", "%s"]\n' % (MBED, MBED),
+            "module entry for the library": GLOBAL + '[module."//p:user"]\n[module."%s"]\n' % MBED,
+        }
+        for name, policy in bad.items():
+            with self.subTest(name):
+                self.setUp()
+                outcome, _ = self.run_gate("symbols", [self.user(), CTEST, tp_facts()], policy=policy,
+                                           extra=["--third-party", self.tp_dir()])
+                self.assertExit(outcome, 2)
+
+    def test_list_defects_are_exit_2(self):
+        for allowed, prefixes in (("# c\n" + TP_ALLOWED, TP_PREFIXES), (TP_ALLOWED, "mbedtls\n"), (TP_ALLOWED, "\n"),
+                                  (TP_ALLOWED, "psa_\npsa_\n"), (TP_ALLOWED.rstrip("\n"), TP_PREFIXES),
+                                  (TP_ALLOWED, "psa_"), ("gate//x:y\n", TP_PREFIXES), (TP_ALLOWED, "_x_\n")):
+            with self.subTest(allowed=allowed, prefixes=prefixes):
+                self.setUp()
+                outcome, _ = self.run_gate("symbols", [self.user(), CTEST, tp_facts()], expect_code=2,
+                                           policy=GLOBAL + '[module."//p:user"]\n' + PERMIT,
+                                           extra=["--third-party", self.tp_dir(allowed, prefixes)])
+
+    def test_missing_list_files_and_directory_are_exit_2(self):
+        for case in ("ALLOWED_LABELS", "RESERVED_PREFIXES", "dir"):
+            with self.subTest(case=case):
+                self.setUp()
+                directory = self.tp_dir()
+                if case == "dir":
+                    directory = self.tmp / "nope"
+                else:
+                    os.remove(directory / case)
+                outcome, _ = self.run_gate("symbols", [self.user(), CTEST, tp_facts()], expect_code=2,
+                                           policy=GLOBAL + '[module."//p:user"]\n' + PERMIT,
+                                           extra=["--third-party", directory])
+
+    def test_symlinked_list_is_exit_2(self):
+        directory = self.tp_dir()
+        os.remove(directory / "ALLOWED_LABELS")
+        real = self.tmp / "real"
+        real.write_text(TP_ALLOWED, encoding="utf-8")
+        os.symlink(real, directory / "ALLOWED_LABELS")
+        outcome, _ = self.run_gate("symbols", [self.user(), CTEST, tp_facts()], expect_code=2,
+                                   policy=GLOBAL + '[module."//p:user"]\n' + PERMIT, extra=["--third-party", directory])
