@@ -29,7 +29,9 @@ class Run:
 @dataclass(frozen=True)
 class Source:
     file: str
-    functions: tuple
+    functions: tuple      # names of the functions that were mutated or have a reason
+    unmutated: tuple      # of those, the names that carry the reason "no-mutable-token"
+    definitions: int      # function definitions in the AST, counted independently of the above
     skipped: tuple  # of (name, file, reason): functions with a body that no mutant can reach
     baseline_status: str
     baseline_hash: str
@@ -102,16 +104,35 @@ def parse_run(path, run, what):
 
 
 def parse_source(path, entry):
-    _exact(path, entry, ("file", "sha256", "functions", "skipped", "baseline", "original"), "source")
+    _exact(path, entry, ("file", "sha256", "definitions", "functions", "skipped", "baseline", "original"),
+           "source")
     baseline = _exact(path, entry["baseline"], ("status", "hash"), "baseline")
     original = _exact(path, entry["original"], ("status", "hash"), "original")
     if not isinstance(entry["functions"], list):
         _fail(path, "functions must be a list")
-    names = tuple(_text(path, f["name"], "function name") for f in entry["functions"])
+    names, unmutated = parse_functions(path, entry["functions"])
     status, base_hash = _digest(path, baseline, "baseline")
     _, original_hash = _digest(path, original, "original")
-    return Source(_text(path, entry["file"], "file"), names, parse_skipped(path, entry["skipped"]),
+    return Source(_text(path, entry["file"], "file"), names, unmutated,
+                  _int(path, entry["definitions"], "definitions"), parse_skipped(path, entry["skipped"]),
                   status, base_hash, original_hash)
+
+
+def parse_functions(path, entries):
+    """(names, names with the reason "no-mutable-token") of a source's `functions` list."""
+    names = []
+    unmutated = []
+    for item in entries:
+        if not isinstance(item, dict) or set(item) not in ({"name", "line"}, {"name", "line", "reason"}):
+            _fail(path, "a function entry must be {name, line} or {name, line, reason}")
+        name = _text(path, item["name"], "function name")
+        _int(path, item["line"], "function line")
+        if "reason" in item:
+            if item["reason"] != "no-mutable-token":
+                _fail(path, "bad function reason %r" % (item["reason"],))
+            unmutated.append(name)
+        names.append(name)
+    return tuple(names), tuple(unmutated)
 
 
 def parse_skipped(path, entries):

@@ -13,6 +13,7 @@ REVIEW = "review"
 RULES = {
     "unparseable-line": (BLOCK, "A transcript line that is not a JSON object could hide a tool call."),
     "malformed-entry": (BLOCK, "A message or tool_use block of an unexpected shape cannot be audited."),
+    "write-rejected": (REVIEW, "A Write/Edit whose own result is an error wrote nothing; it stays visible."),
     "no-tool-use": (REVIEW, "A transcript without any tool call is suspicious for a coding task."),
     "read-secret-dir": (BLOCK, "The orchestrator's secret/config directory is off limits."),
     "read-claude-state": (BLOCK, "The harness state directory holds other sessions' transcripts and credentials."),

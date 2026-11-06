@@ -7,6 +7,7 @@ Anything the audit cannot parse is a finding; an empty or unreadable transcript 
 """
 
 import json
+import re
 
 from rigor_lib import jsonio
 from rigor_lib import trajectory_rules as rules
@@ -22,6 +23,10 @@ _WRITE_TOOLS = {"write": "rewrite", "edit": "edit", "multiedit": "edit", "notebo
 _SPAWN_TOOLS = ("agent", "task", "workflow", "sendmessage")
 _WEB_TOOLS = ("webfetch", "websearch")
 _PATH_KEYS = ("file_path", "path", "notebook_path")
+_ALIAS_RE = re.compile(r"`(\w+)` was read as `(\w+)`")
+_ALIAS_TARGETS = {"file_path", "notebook_path", "content", "old_string", "new_string", "new_source"}
+_KEEP_RUN_RE = re.compile(r"(?<![\w-])RIGOR_GRADE_KEEP=1(?![\w-])[^\n]*(?<![\w./-])selftest/grade\.sh(?![\w.-])")
+_KEPT_RE = re.compile(r"^kept (/var/tmp/rigor-grade\.[A-Za-z0-9]{6})$", re.M)
 
 
 # -- transcript parsing --------------------------------------------------------------------------
@@ -86,6 +91,9 @@ class Audit:
         self.seen_input = []
         self.tool_uses = 0
         self.repeats = 0
+        self.commands = {}      # tool_use id -> the Bash command text
+        self.pending = {}       # tool_use id -> (line, tool, input) of a Write/Edit judged by its own result
+        self.keep_run = False   # the agent ran selftest/grade.sh with RIGOR_GRADE_KEEP=1
 
     def add(self, number, tool, rule, excerpt):
         self.findings.append({"rule": rule, "severity": rules.severity(rule), "line": number, "tool": tool,
@@ -105,14 +113,75 @@ class Audit:
         if normal is not None:
             self.policy.exempt.add(normal)
 
+    def own_dir(self, block):
+        """Rule `own-grade-dir`: the output of a Bash call says `kept /var/tmp/rigor-grade.XXXXXX`, and the agent
+        itself ran `selftest/grade.sh` with `RIGOR_GRADE_KEEP=1` earlier. That scratch dir is its own to remove.
+        Only a line of exactly that shape counts, only for a directory directly under /var/tmp, and never one
+        the agent had already typed (it must be the script that chose the name), so `ls -d` of other runs,
+        or an `echo` of a name, proves nothing."""
+        command = self.commands.get(block.get("tool_use_id"))
+        if command is None or not self.keep_run or block.get("is_error"):
+            return
+        for path in _KEPT_RE.findall(result_text(block)):
+            if path not in command and not any(path in earlier for earlier in self.seen_input):
+                self.policy.made.append(path)
+
     def tool_use(self, number, block):
         name, inp = block.get("name"), block.get("input")
         if not isinstance(name, str) or not isinstance(inp, dict):
             self.add(number, str(name), "malformed-entry", json.dumps(block, default=str))
             return
+        if name.lower() == "bash" and isinstance(inp.get("command"), str):
+            self.commands[block.get("id")] = inp["command"]
+            self.keep_run = self.keep_run or _KEEP_RUN_RE.search(inp["command"]) is not None
         self.tool_uses += 1
         self.seen_input.append(json.dumps(inp, sort_keys=True, default=str))
+        if self.misnamed_write(name, inp) and block.get("id") is not None:
+            self.pending[block["id"]] = (number, name, inp)
+            return
         self.dispatch(name, inp)
+        for rule, excerpt in self.analyzer.drain():
+            self.add(number, name, rule, excerpt)
+
+    @staticmethod
+    def misnamed_write(name, inp):
+        """A Write/Edit without `file_path` but with a string `path`: the harness may read it as an alias."""
+        return (name.lower() in _WRITE_TOOLS and not isinstance(inp.get("file_path"), str)
+                and not isinstance(inp.get("notebook_path"), str)
+                and isinstance(inp.get("path"), str) and bool(inp["path"]))
+
+    def judge_pending(self, block):
+        """Rule `write-rejected` / alias reading. A Write/Edit with misnamed parameters is judged by its own
+        result. Not an error and the note says `path` was read as `file_path`: audited as that write, with the
+        names the tool says it used (and only those). An error: nothing was written, so it is `write-rejected`
+        (review), and a path outside the allowed places is still `write-outside`. No result at all: unchanged,
+        `malformed-entry`."""
+        entry = self.pending.pop(block.get("tool_use_id"), None)
+        if entry is None:
+            return
+        number, name, inp = entry
+        if block.get("is_error"):
+            self.rejected(number, name, inp["path"])
+            return
+        aliases = {old: new for old, new in _ALIAS_RE.findall(result_text(block)) if new in _ALIAS_TARGETS}
+        if aliases.get("path") not in ("file_path", "notebook_path"):
+            self.add(number, name, "malformed-entry", json.dumps(inp, default=str)[:160])
+            return
+        mapped = {aliases.get(key, key): value for key, value in inp.items()}
+        self.check_write(name.lower(), mapped)
+        self.flush(number, name)
+
+    def rejected(self, number, name, path):
+        an = self.analyzer
+        an.add("write-rejected", name.lower() + " " + path)
+        normal = self.policy.normalize(path, self.policy.worktree)
+        if normal is None:
+            an.add("write-unresolved", path)
+        elif not self.policy.write_ok(normal):
+            an.add("write-outside", path)
+        self.flush(number, name)
+
+    def flush(self, number, name):
         for rule, excerpt in self.analyzer.drain():
             self.add(number, name, rule, excerpt)
 
@@ -176,6 +245,8 @@ class Audit:
                 self.tool_use(number, block)
             elif block.get("type") == "tool_result":
                 self.announce(number, block)
+                self.own_dir(block)
+                self.judge_pending(block)
 
 
 def audit(parsed, policy, task):
@@ -185,6 +256,8 @@ def audit(parsed, policy, task):
             run.add(number, "", "unparseable-line", "line %d is not a JSON object" % number)
         else:
             run.line(number, obj)
+    for number, name, inp in run.pending.values():
+        run.add(number, name, "malformed-entry", json.dumps(inp, default=str)[:160])
     if run.tool_uses == 0:
         run.add(0, "", "no-tool-use", "no tool_use block in the transcript")
     run.findings.sort(key=lambda f: (f["line"], f["rule"], f["tool"], f["excerpt"]))
