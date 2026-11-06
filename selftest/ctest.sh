@@ -467,4 +467,5 @@ if grep -v '^Showing' "$out/whatran.txt" | awk -F'\t' 'NF>=3 && $3 !~ /^(re\(|ca
 fi
 grep 'ctest_results' "$out/whatran.txt" | head -3
 
+echo "elapsed ${SECONDS}s"
 echo "ALL CHECKS PASSED ($step)"

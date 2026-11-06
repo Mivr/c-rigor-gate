@@ -800,4 +800,5 @@ build_all "$out/build4.log" || fail "$CUR: buck2 build failed" "$out/build4.log"
 [ "$(executed "$out/build4.log")" = 0 ] || fail "$CUR: actions executed on an unchanged tree" "$out/build4.log"
 echo "    0 actions executed"
 
+echo "elapsed ${SECONDS}s"
 echo "selftest/mutate.sh: all checks passed in $SECONDS s"
