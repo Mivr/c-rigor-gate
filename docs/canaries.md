@@ -134,6 +134,18 @@ All 24 remaining red cases of `selftest/grade.sh` are canaries; the table is in 
 `ungraded-module` (the `extra/` directory the layout does not list, `buckfiles`: `ungraded-path`, NOT_RUN mutants).
 grade.sh's two extra checks are the `contains` (`unused-variable` in `buckconfig-hidden`) and `absent` (`product-buck2`) hooks the runner already has.
 
+## Witness canaries (T040)
+The runner grades every canary with `--witness`: `canaries/<id>/witness/` if present, else the shared
+`canaries/_base/witness/` (the base `core.c` and `util.c`, `written_against` is a placeholder). Every `policy.toml`
+carries `impl` for its L2+ modules (T039's `impl-missing`). The red witness cases of `selftest/grade.sh` live here.
+
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `witness-survivor` | head drops the positive `core_sign` checks and the `> 0` branch (its own mutants die); the base witness keeps the branch | `mutants-witness`: witness-survived-mutant | none |
+| `witness-test-fails` | a strong new `core_add(1, 1) == 2`; the witness `core_add` returns `a + b + 1` | `witness-tests`: witness-test-not-pass | mutants-witness |
+| `witness-missing` | a core test change; the canary's bundle lists only `//util:util` | `witness-tests`: witness-missing | mutants-witness |
+| `witness-green` (control) | a strong new core test and the base witness | none: PASS | none |
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
