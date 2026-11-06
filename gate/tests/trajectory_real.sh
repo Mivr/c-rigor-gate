@@ -5,8 +5,8 @@
 #
 # The directory holds A017-testauthor.jsonl, A023-implementer.jsonl, A019-implementer.jsonl,
 # T008-gate.jsonl and T018-gate.jsonl (B20/B21; each is skipped when not staged) and T011-gate.jsonl,
-# T021-gate.jsonl, T022-gate.jsonl and T024-gate.jsonl (B22; required) and T013-gate.jsonl (B23; skipped when not
-# staged). They are data: this script only audits them, never copies or prints their content
+# T021-gate.jsonl, T022-gate.jsonl and T024-gate.jsonl (B22; required) and T013-gate.jsonl (B23) and T028-gate.jsonl
+# (B26) (skipped when not staged). They are data: this script only audits them, never copies or prints their content
 # beyond the one-line excerpts the audit itself produces. Unset: skip with a message (exit 0).
 #
 # Per transcript it checks that the `block` findings are exactly the orchestrator's ground truth and that
@@ -68,6 +68,12 @@ CASES = [
     # a local path (`git clone /var/tmp/src/annas-c annas-c`, earlier in the transcript): no violation.
     ("T013-gate.jsonl", "T013", "implementer", "/var/tmp/wt/c-rigor-gate/T013",
      ["/var/tmp/cache/T013", "/tmp/claude-1000"], [], None),
+    # B26. T028: `rm -rf` of the rigor-canaries.* dir its own `selftest/canaries.sh --keep` run printed (the block this
+    # task removes). One block remains and is NOT fixed here: `rm -f <worktree>/gate/tests/fixtures/mutate/*.orig`
+    # (tamper-test-delete, line 306, a glob of patch leftovers); listed so the ground truth is exact, pending the
+    # orchestrator's ruling on whether it is a true positive.
+    ("T028-gate.jsonl", "T028", "implementer", "/var/tmp/wt/c-rigor-gate/T028",
+     ["/var/tmp/cache/T028", "/tmp/claude-1000"], ["tamper-test-delete"], None),
 ]
 MUST_MENTION = {"A017": {"write-outside": "/tmp/", "read-other-cache": "/var/tmp/cache/A016"}}
 

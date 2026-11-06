@@ -165,6 +165,15 @@ Each is a named rule with red twins in `gate/tests/test_trajectory_cases.py` tha
   call, after the agent ran `selftest/grade.sh` with `RIGOR_GRADE_KEEP=1`, makes that one directory (and below it,
   links resolved) writable. The name must not have been typed by the agent before, so an `ls -d` of other runs, an
   `echo`, another task's directory, the parent `/var/tmp`, or a name shown only after the removal prove nothing.
+* **The agent's own canary scratch (T031, B26).** The same proof for `selftest/canaries.sh`: the runner's last summary line
+  `SUMMARY: N canaries (...), ..., wall Ns, jobs N, scratch /var/tmp/rigor-canaries.XXXXXXXX` (eight characters of
+  `[a-z0-9_]`, directly under `/var/tmp`) in the successful result of the very Bash call whose command ran
+  `selftest/canaries.sh` with `--keep` (an argument of that command, not of a later `;`/`&`/`|` command) makes that
+  one directory (links resolved) writable. Stricter than the grade rule: a keep run in one call and the line in another
+  proves nothing. Not proofs: a canaries dir never printed, listed by `ls` (also in the keep call, where no summary
+  line carries it), echoed (typed by the agent), shown only after the `rm`, a run without `--keep`, an error result, a
+  line of another shape, another run's dir, the parent `/var/tmp`, a dir outside `/var/tmp`. A `TMPDIR` other than
+  `/var/tmp` is not supported (the dir is then not recognised and still blocks).
 
 ### Git against a local remote (T027, B23)
 `git clone <local path> <dest>` in the transcript, with `dest` in a declared `--allow-write` directory (never the task
