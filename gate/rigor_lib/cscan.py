@@ -5,11 +5,18 @@
 
 It reports facts, never verdicts (the decision is `rigor facts`):
   * from each `clang -E` output (real compile flags, comments gone, macros expanded, line
-    splices joined, tokens pasted): every `#pragma` line, every identifier from WATCHED_IDENTIFIERS,
-    and every identifier inside `__attribute__((...))` / `[[...]]`;
+    splices joined, tokens pasted): every `#pragma` line, every watched identifier (WATCHED_IDENTIFIERS
+    and every identifier with a WATCHED_PREFIXES prefix: the compiler builtins), and every identifier
+    inside `__attribute__((...))` / `[[...]]`;
   * from each object: the defined, weak/indirect-defined and undefined external symbols (llvm-nm).
 Text that comes from a system header (a file under a --system-root) is skipped: those are the
-pinned toolchain's own headers, which are full of `__asm__` and attributes.
+pinned toolchain's own headers, which are full of `__asm__` and attributes. A product reaches code in
+them only by naming it, and can change them only through macros, so (T014):
+  * a product use of a function (or initialised object) defined in toolchain text is charged with
+    every watched identifier its body reaches, at the place of the use (`ToolchainCode`);
+  * a product `#define`/`#undef` of a reserved identifier, a keyword or a macro the toolchain defines,
+    and a toolchain header entered inside a product brace, are reported (as identifier facts named
+    `#define X`, `#undef X`, `#include <h>`: the facts schema has no other place for them).
 """
 
 import argparse
@@ -25,8 +32,26 @@ SCHEMA = 1
 WATCHED_IDENTIFIERS = (
     "asm", "__asm", "__asm__",
     "_Pragma", "__pragma",
-    "__builtin_trap", "__builtin_unreachable", "__builtin_debugtrap",
+    # alloca under every spelling (the builtin itself has the `__builtin_` prefix).
+    "alloca", "__alloca", "_alloca",
+    # Builtins of the pinned clang (19.1.7, -std=c17, x86-64) without a family prefix that are not C
+    # library functions (calls to those keep their symbol, which the `symbols` gate judges). Found by
+    # asking `__has_builtin` about every identifier in the clang binary (docs/product-checks.md).
+    "__arithmetic_fence", "__rdtsc", "__xray_customevent", "__xray_typedevent",
+    "_mm_clflush", "_mm_getcsr", "_mm_lfence", "_mm_mfence", "_mm_pause", "_mm_prefetch",
+    "_mm_setcsr", "_mm_sfence",
 )
+# Every identifier with one of these prefixes is a compiler builtin: reported, and default-deny.
+WATCHED_PREFIXES = (
+    "__builtin_", "__sync_", "__atomic_", "__c11_atomic_", "__opencl_atomic_", "__hip_atomic_",
+    "__scoped_atomic_",
+)
+# Names a product must not define or undefine besides reserved identifiers (C17 7.1.2p4, 7.1.3).
+KEYWORDS = frozenset("""
+    auto break case char const continue default do double else enum extern float for goto if inline
+    int long register restrict return short signed sizeof static struct switch typedef union unsigned
+    void volatile while
+""".split())
 ATTRIBUTE_INTRODUCERS = ("__attribute__", "__attribute")
 # nm types of defined symbols that are weak, indirect (ifunc) or unique.
 WEAK_DEFINED_TYPES = ("W", "V", "i", "I", "u")
@@ -35,7 +60,7 @@ UNDEFINED_TYPES = ("U", "w", "v")
 _MARKER = re.compile(r'^\s*#\s*(\d+)\s+"((?:[^"\\]|\\.)*)"((?:\s+\d+)*)\s*$')
 # The compile command keeps macro definitions in the output (-dD); their bodies only matter when
 # expanded, and the expansion is what the rest of the text shows.
-_DEFINITION = re.compile(r"^\s*#\s*(define|undef)\b")
+_DEFINITION = re.compile(r"^\s*#\s*(define|undef)\b\s*([A-Za-z_][A-Za-z_0-9]*)?")
 _PRAGMA = re.compile(r"^\s*#\s*pragma\b(.*)$")
 _TOKEN = re.compile(r"""
     (?P<space>\s+)
@@ -43,8 +68,9 @@ _TOKEN = re.compile(r"""
   | (?P<char>(?:u8|u|U|L)?'(?:[^'\\\n]|\\.)*')
   | (?P<ident>[A-Za-z_][A-Za-z_0-9]*)
   | (?P<number>\.?[0-9](?:[eEpP][+-]|[A-Za-z0-9_.])*)
-  | (?P<punct>.)
+  | (?P<punct>%:%:|<%|%>|<:|:>|%:|.)
 """, re.X | re.S)
+_DIGRAPHS = {"<%": "{", "%>": "}", "<:": "[", ":>": "]", "%:": "#", "%:%:": "##"}
 _VOLATILE_SEGMENT = re.compile(r"^[0-9a-f]{16}$")
 
 
@@ -55,12 +81,23 @@ def display_file(path):
     return "/".join("~" if _VOLATILE_SEGMENT.match(part) else part for part in path.split("/"))
 
 
+def watched(name):
+    return name in WATCHED_IDENTIFIERS or name.startswith(WATCHED_PREFIXES)
+
+
+def reserved(name):
+    """A name the product may not (re)define: reserved for the implementation, or a keyword."""
+    return name.startswith("__") or (name[:1] == "_" and name[1:2].isupper()) or name in KEYWORDS
+
+
 def tokens(line):
-    """(kind, text) for every token of one preprocessed line, whitespace excluded."""
+    """(kind, text) for every token of one preprocessed line, whitespace excluded; digraphs are
+    returned in their primary spelling."""
     for match in _TOKEN.finditer(line):
         kind = match.lastgroup
         if kind != "space":
-            yield kind, match.group()
+            text = match.group()
+            yield kind, _DIGRAPHS.get(text, text) if kind == "punct" else text
 
 
 class AttributeTracker:
@@ -96,6 +133,159 @@ class AttributeTracker:
         return inside
 
 
+def _close(items, end):
+    """Index of the `(` that matches the `)` at items[end]."""
+    level = 0
+    for index in range(end, -1, -1):
+        level += (items[index] == ")") - (items[index] == "(")
+        if level == 0:
+            return index
+    return None
+
+
+_LABELS = ("__attribute__", "__attribute", "__asm__", "__asm", "asm")
+_AGGREGATES = ("struct", "union", "enum")
+
+
+def _top_equals(items):
+    """Index of the first `=` outside every parenthesis (an initialiser), or None."""
+    level = 0
+    for index, text in enumerate(items):
+        level += (text == "(") - (text == ")")
+        if level == 0 and text == "=":
+            return index
+    return None
+
+
+def owners(head):
+    """What a `{` at file scope opens, from the declaration head before it: ("function", [name]),
+    ("init", [names]) for an initialiser, ("aggregate", []) for a struct/union/enum body, or None
+    when the shape is not one the toolchain headers use (the caller then stops trusting the text)."""
+    equals = _top_equals(head)
+    if equals is not None:
+        return "init", declared_names(head[:equals])
+    items = list(head)
+    while items and items[-1] == ")":
+        start = _close(items, len(items) - 1)
+        if start is None:
+            return None
+        before = items[start - 1] if start > 0 else None
+        if before in _LABELS:          # trailing __attribute__((...)) or asm("label")
+            items = items[:start - 1]
+            continue
+        if before == "(" and start > 1 and items[start - 2] in _LABELS:
+            items = items[:start - 2]
+            continue
+        if before is not None and _IDENT.fullmatch(before) and before not in KEYWORDS:
+            return "function", [before]
+        if before == ")":              # int (f)(void) / int (*f(void))(int)
+            inner = items[_close(items, start - 1) or 0:start]
+            names = [t for t in inner if _IDENT.fullmatch(t) and t not in KEYWORDS and t not in _LABELS]
+            return ("function", names) if names else None
+        return None
+    if any(word in _AGGREGATES for word in head):
+        return "aggregate", []
+    return None
+
+
+def declared_names(items):
+    """Names a file-scope declarator list declares (fail-closed: every non-keyword identifier)."""
+    return [t for t in items if _IDENT.fullmatch(t) and t not in KEYWORDS and t not in _LABELS]
+
+
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z_0-9]*")
+
+
+class ToolchainCode:
+    """Function bodies and initialisers in toolchain-header text, by name. A product that names one of
+    them is charged with every watched identifier the code reaches (`reach`). The text is trusted
+    only while it has the shapes the toolchain headers really use; on anything else (a `}` that
+    closes nothing, a definition whose name cannot be read, a body left open when the product's text
+    resumes) every watched identifier of toolchain text from there on is reported where it is."""
+
+    def __init__(self):
+        self.depth = 0
+        self.head = []           # token texts of the file-scope declaration being read
+        self.opened = None       # (kind, names) of the open body
+        self.body = set()
+        self.pending = []        # watched (name, file, line) seen in the open body and head
+        self.bodies = {}         # name -> identifiers its body or initialiser names
+        self.lost = False
+        self.direct = set()      # (name, file, line) reported where they are
+
+    def feed(self, kind, text, where):
+        if kind == "ident" and watched(text):
+            if self.lost:
+                self.direct.add((text,) + where)
+                return
+            self.pending.append((text,) + where)
+        if self.lost:
+            return
+        if self.depth == 0:
+            self.file_scope(kind, text)
+        else:
+            self.in_body(kind, text)
+
+    def file_scope(self, kind, text):
+        if text == "{":
+            self.opened = owners(self.head)
+            if self.opened is None:
+                self.lose()
+                return
+            self.depth, self.body = 1, set()
+        elif text == "}":
+            self.lose()
+        elif text == ";":
+            equals = _top_equals(self.head)
+            if equals is not None:
+                values = {t for t in self.head[equals:] if _IDENT.fullmatch(t)}
+                for name in declared_names(self.head[:equals]):
+                    self.bodies.setdefault(name, set()).update(values)
+            if [t for t in self.head if t != "__extension__"][:1] in (["asm"], ["__asm"], ["__asm__"]):
+                self.direct.update(self.pending)    # file-scope asm: code nobody has to call
+            self.head, self.pending = [], []
+        else:
+            self.head.append(text)
+
+    def in_body(self, kind, text):
+        if kind == "ident":
+            self.body.add(text)
+        self.depth += (text == "{") - (text == "}")
+        if self.depth:
+            return
+        kind_of, names = self.opened
+        for name in names:
+            self.bodies.setdefault(name, set()).update(self.body)
+        if kind_of == "function":
+            self.head, self.pending = [], []
+        else:                    # the declaration goes on after a struct body or `= {...}`
+            self.head.append("{}")
+
+    def leave(self):
+        """The product's text resumes: a body that is still open spans both."""
+        if self.depth and not self.lost:
+            self.lose()
+
+    def lose(self):
+        self.lost = True
+        self.direct.update(self.pending)
+
+    def reach(self):
+        """name -> every watched identifier its code reaches, through other toolchain code."""
+        found = {name: {i for i in body if watched(i)} for name, body in self.bodies.items()}
+        calls = {name: {i for i in body if i in self.bodies and i != name}
+                 for name, body in self.bodies.items()}
+        changed = True
+        while changed:
+            changed = False
+            for name, callees in calls.items():
+                for callee in callees:
+                    if not found[callee] <= found[name]:
+                        found[name] |= found[callee]
+                        changed = True
+        return found
+
+
 class Collector:
     def __init__(self, system_roots):
         self.roots = [os.path.normpath(root) + "/" for root in system_roots]
@@ -106,12 +296,24 @@ class Collector:
         self.stack = []        # files we will return to (flag 1 pushes, flag 2 pops)
         self.current = None    # the file the compiler is really in; None before the first marker
         self.number = 0
+        self.toolchain = ToolchainCode()
+        self.uses = {}         # identifier -> {(file, line)} of every use in product text
+        self.macros = []       # (directive, name, file, line) of every product #define/#undef
+        self.toolchain_macros = set()
+        self.depth = 0         # brace depth of the product's own text
 
     def is_system(self, path):
         if path.startswith("<"):   # "<built-in>" and "<command line>": the compiler's own text
             return True
         norm = os.path.normpath(path) + "/"
         return any(norm.startswith(root) for root in self.roots)
+
+    def header_name(self, path):
+        norm = os.path.normpath(path)
+        for root in self.roots:
+            if (norm + "/").startswith(root):
+                return norm[len(root):]
+        return display_file(path)
 
     def marker(self, match):
         """Follow one line marker. The compiler writes flag 1 (enter include) and flag 2 (return)
@@ -124,6 +326,7 @@ class Collector:
         if self.current is None:
             self.current, self.number = name, line - 1
         elif "1" in flags:
+            self.entering(name)
             self.stack.append(self.current)
             self.current, self.number = name, line - 1
         elif "2" in flags:
@@ -140,11 +343,20 @@ class Collector:
             self.line_directive(name)
             self.number = line - 1
 
+    def entering(self, name):
+        """A toolchain header entered inside a product brace (a function body, a struct) puts its
+        text, and whatever product macros made of it, into the product's code."""
+        if self.depth > 0 and not name.startswith("<") and self.is_system(name) \
+                and not self.is_system(self.current):
+            self.identifiers.add(("#include <%s>" % self.header_name(name),
+                                  display_file(self.current), self.number))
+
     def line_directive(self, name):
         self.line_directives.add((name, display_file(self.current), self.number + 1))
 
     def scan(self, text):
         attributes = AttributeTracker()
+        was_system = True
         for raw in text.split("\n"):
             self.number += 1
             marker = _MARKER.match(raw)
@@ -152,27 +364,60 @@ class Collector:
                 self.marker(marker)
                 continue
             current = self.current if self.current is not None else "<unknown>"
-            if self.is_system(current) or _DEFINITION.match(raw):
-                continue
+            system = self.is_system(current)
+            if was_system and not system:
+                self.toolchain.leave()
+            was_system = system
             where = (display_file(current), self.number)
+            definition = _DEFINITION.match(raw)
+            if definition:
+                if system:
+                    self.toolchain_macros.add(definition.group(2))
+                else:
+                    self.macros.append((definition.group(1), definition.group(2)) + where)
+                continue
             pragma = _PRAGMA.match(raw)
+            if system:
+                if not pragma:
+                    for kind, tok in tokens(raw):
+                        self.toolchain.feed(kind, tok, where)
+                continue
             if pragma:
                 self.pragmas.add(where + (pragma.group(1).strip(),))
                 continue
             self.scan_line(raw, where, attributes)
+        self.toolchain.leave()
 
     def scan_line(self, raw, where, attributes):
         for kind, tok in tokens(raw):
             if attributes.feed(kind, tok):
                 self.attributes.add((tok,) + where)
-            if kind == "ident" and tok in WATCHED_IDENTIFIERS:
-                self.identifiers.add((tok,) + where)
+            if kind == "ident":
+                self.uses.setdefault(tok, set()).add(where)
+                if watched(tok):
+                    self.identifiers.add((tok,) + where)
+            self.depth += (tok == "{") - (tok == "}")
+
+    def charged(self):
+        """Watched identifiers the product reaches through toolchain code, at the places it names it."""
+        found = set(self.toolchain.direct)
+        for name, reached in self.toolchain.reach().items():
+            for file, line in self.uses.get(name, ()):
+                found.update((ident, file, line) for ident in reached)
+        return found
+
+    def macro_facts(self):
+        """Product #define/#undef of a reserved name, a keyword or a macro the toolchain defines."""
+        return {("#%s %s" % (directive, name or "?"), file, line)
+                for directive, name, file, line in self.macros
+                if name is None or reserved(name) or name in self.toolchain_macros}
 
     def result(self):
+        identifiers = self.identifiers | self.charged() | self.macro_facts()
         return {
             "pragmas": [{"file": f, "line": n, "text": t} for f, n, t in sorted(self.pragmas)],
             "attributes": [{"name": a, "file": f, "line": n} for a, f, n in sorted(self.attributes)],
-            "identifiers": [{"name": a, "file": f, "line": n} for a, f, n in sorted(self.identifiers)],
+            "identifiers": [{"name": a, "file": f, "line": n} for a, f, n in sorted(identifiers)],
             "line_directives": [{"name": a, "file": f, "line": n} for a, f, n in sorted(self.line_directives)],
         }
 
