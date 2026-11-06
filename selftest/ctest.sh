@@ -43,7 +43,7 @@ done
 cat > "$scratch/basic/t.c" <<'C'
 #include <stdlib.h>
 #include <unistd.h>
-#include "ctest.h"
+#include "ctest/ctest.h"
 
 static int *volatile g_null;
 static volatile unsigned long g_spin;
@@ -77,7 +77,7 @@ CTEST_SUITE("basic",
 C
 
 cat > "$scratch/checks/t.c" <<'C'
-#include "ctest.h"
+#include "ctest/ctest.h"
 
 static void t_i64_ok(ctest_t *t) { CHECK_EQ_I64(t, -5, -5); }
 static void t_i64_bad(ctest_t *t) { CHECK_EQ_I64(t, -5, 7); }
@@ -103,7 +103,7 @@ C
 
 cat > "$scratch/order/t.c" <<'C'
 #include <stdio.h>
-#include "ctest.h"
+#include "ctest/ctest.h"
 
 /* Tests are isolated in forked children; the only way to depend on order is the file system. */
 static void t_a_creates(ctest_t *t) {
@@ -125,13 +125,13 @@ CTEST_SUITE("order",
 C
 
 cat > "$scratch/badname/t.c" <<'C'
-#include "ctest.h"
+#include "ctest/ctest.h"
 static void t_x(ctest_t *t) { CHECK(t, 1); }
 CTEST_SUITE("badname", { "ok_name", t_x }, { "Bad-Name", t_x })
 C
 
 cat > "$scratch/dup/t.c" <<'C'
-#include "ctest.h"
+#include "ctest/ctest.h"
 static void t_x(ctest_t *t) { CHECK(t, 1); }
 CTEST_SUITE("dup", { "same", t_x }, { "same", t_x })
 C
@@ -139,7 +139,7 @@ C
 cat > "$scratch/san/t.c" <<'C'
 #include <stdlib.h>
 #include <string.h>
-#include "ctest.h"
+#include "ctest/ctest.h"
 
 static volatile int g_idx = 4;
 static void *volatile g_sink;
@@ -172,10 +172,10 @@ EXPECT = {
     "zero_checks": ("fail", 0, r"no checks executed"),
     "segfault": ("fail", 0, r"killed by signal 11"),
     "abort": ("fail", 0, r"killed by signal 6"),
-    "exit_zero_early": ("fail", 0, r"exited without reporting"),
-    "raw_exit_zero_early": ("fail", 0, r"exited without reporting"),
-    "check_then_exit_zero": ("fail", 0, r"exited without reporting"),
-    "check_then_raw_exit_zero": ("fail", 0, r"exited without reporting"),
+    "exit_zero_early": ("fail", 0, r"exited without reporting.*"),
+    "raw_exit_zero_early": ("fail", 0, r"exited without reporting.*"),
+    "check_then_exit_zero": ("fail", 0, r"exited without reporting.*"),
+    "check_then_raw_exit_zero": ("fail", 0, r"exited without reporting.*"),
     "exit_one": ("fail", 0, r"exited with status 1 before reporting"),
     "hang": ("fail", 0, r"timeout after 10 s"),
     "hang_no_checks": ("fail", 0, r"timeout after 10 s"),
@@ -184,14 +184,14 @@ EXPECT = {
     "i64_ok": ("pass", 1, r""),
     "i64_bad": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_I64\(-5, 7\): -5 != 7"),
     "u64_ok": ("pass", 1, r""),
-    "u64_bad": ("fail", 1, r"CHECK_EQ_U64\(1U, 2U\): 1 != 2"),
+    "u64_bad": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_U64\(1U, 2U\): 1 != 2"),
     "str_ok": ("pass", 2, r""),
-    "str_bad": ("fail", 1, r"CHECK_EQ_STR\(\"abc\", \"abd\"\): \"abc\" != \"abd\""),
-    "str_null": ("fail", 1, r"CHECK_EQ_STR\(\"abc\", NULL\): \"abc\" != \(null\)"),
-    "str_escapes": ("fail", 1, r"CHECK_EQ_STR"),
+    "str_bad": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_STR\(\"abc\", \"abd\"\): \"abc\" != \"abd\""),
+    "str_null": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_STR\(\"abc\", NULL\): \"abc\" != \(null\)"),
+    "str_escapes": ("fail", 1, r"(?s)1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_STR.*: \"a\"b\\c\nd\t\x01\u00ff\" != \"x\""),
     "mem_ok": ("pass", 2, r""),
-    "mem_bad": ("fail", 1, r"CHECK_EQ_MEM\(.*\): first difference at offset 3"),
-    "mem_len": ("fail", 1, r"CHECK_EQ_MEM\(.*\): lengths 3 != 2"),
+    "mem_bad": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_MEM\(.*\): first difference at offset 3"),
+    "mem_len": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_MEM\(.*\): lengths 3 != 2"),
     "continues": ("fail", 3, r"2 of 3 checks failed; first: .*t\.c:\d+: CHECK\(0\)"),
   },
   "order": None,   # checked separately
@@ -327,6 +327,10 @@ build_out hello_res release //examples/hello:hello_test_results
 grep -q '"id":"hello/' "$hello_res" || fail "$CUR: hello results lack ids: $(cat "$hello_res")"
 
 begin "cov and fuzz modes: <name>_results is not buildable (incompatible); buck2 test //examples/hello works in cov"
+for m in cov fuzz; do
+  if run "$out/inc.log" build --target-platforms ${PLAT}$m //examples/hello:hello_test_results; then fail "$CUR: results built in $m" "$out/inc.log"; fi
+  grep -q "is incompatible with" "$out/inc.log" || fail "$CUR: $m failed for the wrong reason" "$out/inc.log"
+done
 must_pass test --target-platforms ${PLAT}cov //examples/hello/...
 
 begin "cache: rebuilding unchanged results executes 0 actions"

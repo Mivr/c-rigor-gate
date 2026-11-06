@@ -1,0 +1,8 @@
+load("@gate//rules:c.bzl", "c_library")
+
+c_library(
+    name = "ctest",
+    srcs = ["ctest.c"],
+    headers = ["ctest.h"],
+    visibility = ["PUBLIC"],
+)
