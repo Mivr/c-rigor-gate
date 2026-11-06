@@ -14,12 +14,19 @@ deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace",
 trusted = ["gate//ctest:ctest"]
 
 [module."//core:core"]
+level = "L3"
 allow = ["bcmp", "memcpy", "strlen"]
 
+[module."//json:json"]
+level = "L3"
+allow = []
+
 [module."//url:url"]
+level = "L3"
 allow = []
 
 [module."//fsname:fsname"]
+level = "L3"
 allow = ["memcpy"]
 
 [module."//core:arena_test"]
@@ -57,3 +64,33 @@ allow = ["memchr", "memset"]
 
 [module."//url:url_redact_test"]
 allow = ["memcpy", "memset"]
+
+[module."//json:arena_test"]
+allow = []
+
+[module."//json:corpus_test"]
+allow = []
+
+[module."//json:limits_test"]
+allow = []
+
+[module."//json:number_test"]
+allow = []
+
+[module."//json:roundtrip_test"]
+allow = []
+
+[module."//json:string_test"]
+allow = []
+
+[module."//json:syntax_test"]
+allow = []
+
+[module."//json:utf8_test"]
+allow = []
+
+[module."//json:value_test"]
+allow = []
+
+[module."//json:writer_test"]
+allow = []
