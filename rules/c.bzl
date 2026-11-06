@@ -7,6 +7,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 
 load("@gate//rules:cov.bzl", "cov_report")
+load("@gate//rules:ctest.bzl", "ctest_results")
 
 _SEALED = [
     "-std=c17",
@@ -95,15 +96,29 @@ def c_binary(name, srcs = [], deps = []):
         target_compatible_with = _NOT_IN_FUZZ,
     )
 
+# `<name>_results` is built in release and san only (cov and fuzz do not produce verdicts).
+_RELEASE_OR_SAN = select({
+    "toolchains//:release": [],
+    "toolchains//:san": [],
+    "DEFAULT": ["toolchains//:never"],
+})
+
 def c_test(name, srcs = [], deps = []):
     _check("c_test", srcs, [])
     native.cxx_test(
         name = name,
         srcs = srcs,
-        deps = deps,
+        deps = deps + ["gate//ctest:ctest"],
         compiler_flags = _compile_flags(),
         linker_flags = _link_flags(),
         target_compatible_with = _NOT_IN_FUZZ,
+    )
+
+    # `<name>_results`: the ctest JSON Lines, produced on RE as a cacheable artifact.
+    ctest_results(
+        name = name + "_results",
+        test = ":" + name,
+        target_compatible_with = _RELEASE_OR_SAN,
     )
 
     # `<name>_coverage` renders the line/branch/MC-DC report; only built in the cov mode.
