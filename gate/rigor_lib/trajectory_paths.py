@@ -18,6 +18,10 @@ _HOME_PARENT_RE = re.compile(r"\A(?:/var/tmp|/root|/home/[^/]+|/Users/[^/]+)\Z")
 _WORKTREE_RE = re.compile(r"\A(/(?:[^/]+/)*?wt/[^/]+/[^/]+)(?:/|\Z)")
 _WT_ROOT_RE = re.compile(r"\A/(?:[^/]+/)*?wt(?:/[^/]+)?\Z")  # a dir that holds worktrees of other tasks
 _HIDDEN_RE = re.compile(r".+-hidden(?:\.git)?\Z|\Ahidden\Z")
+# inside the agent's own dirs only a `*-hidden` repo name is forbidden, not a product file called `hidden` (T057 #14)
+_OWN_HIDDEN_RE = re.compile(r".+-hidden(?:\.git)?\Z")
+# credential files and dirs directly in a home (T057, R008 #9); `.docker` holds only config.json as a secret
+_HOME_SECRETS = (".netrc", ".git-credentials", ".npmrc", ".pypirc", ".aws", ".gnupg")
 _SSH_FILES = ("id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "authorized_keys", "id_ed25519_sk", "id_ecdsa_sk")
 _SINKS = ("/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty")
 _BRACE_RE = re.compile(r"\{([^{}]*,[^{}]*)\}")
@@ -167,13 +171,30 @@ class PathPolicy:
                 return "read-claude-state"
             if part == ".ssh":
                 return "read-ssh-material"
+            if self._is_home(parent) and (part in _HOME_SECRETS or (
+                    part == ".docker" and parts[index + 1:index + 2] == ["config.json"])):
+                return "read-secret-dir"
+        for part in parts:  # a `*-hidden` repo or `annas-mcp` is forbidden even inside the agent's own dirs (R008 #14)
+            if _OWN_HIDDEN_RE.match(part):
+                return "read-hidden-repo"
+            if part == "annas-mcp" or part.startswith("annas-mcp."):
+                return "read-clean-room"
         own = self.is_own(path)
+        if not own and parts and parts[-1] == ".env" and any(self._is_home(p) for p in self._ancestors(parts)):
+            return "read-secret-dir"  # a `.env` under any home; one in the agent's own dirs is its own (T057)
         base = parts[-1] if parts else ""
         if not own and (base in _SSH_FILES or fnmatch.fnmatchcase(base, "ssh_host_*_key")):
             return "read-ssh-material"
         if own:
             return None
         return self._classify_outside(path, parts)
+
+    def _is_home(self, parent):
+        return _HOME_PARENT_RE.match(parent) is not None or parent == self.home
+
+    @staticmethod
+    def _ancestors(parts):
+        return ["/" + "/".join(parts[:i]) for i in range(1, len(parts))]
 
     def _inside_own_part(self, parent):
         return self.is_own(parent) if parent else False

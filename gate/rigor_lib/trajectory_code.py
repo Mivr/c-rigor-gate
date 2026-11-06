@@ -158,6 +158,9 @@ class CodeMixin:
         if path_text in cmds.STDIN_PATHS:
             return
         normal = self.policy.normalize(path_text, self.cwd)
+        alias = self.aliases.get(normal)
+        if self.program_identity(path_text, alias, args, raw) and alias is not None:
+            return  # a renamed known program, judged by its real identity, not as an unknown script
         content = self.files.get(normal) if normal else None
         if normal and normal in self.unknown:
             if not self.worktree_tracked(normal):  # a tracked worktree file is reviewed in the diff (T052, ruling 7)
