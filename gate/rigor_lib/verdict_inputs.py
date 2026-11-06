@@ -10,8 +10,9 @@ gate results, never recomputed afterwards. See docs/grade.md ("Verdict inputs").
 
 import os
 import re
+import stat
 
-from rigor_lib import approvals, jsonio
+from rigor_lib import approvals, jsonio, witness_bundle
 from rigor_lib.errors import InternalError
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
@@ -23,17 +24,18 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 INPUTS_DIR = "inputs"
 TASK_NAME = "TASK.toml"
 APPROVALS_NAME = "approvals"
+WITNESS_NAME = "witness"
 # Files beside product.toml that the grade reads; the name is kept so path arithmetic still works.
 PRODUCT_FILES = ("product.toml", "policy.toml", "expected-tests.json", "expected-tests.previous.json")
 
 SHA_KEYS = ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
             "expected_tests_previous_sha256", "approvals_sha256", "allowed_signers_sha256",
             "order_sha256", "buckconfig_sha256", "toolchain_buck_sha256", "llvm_sha256",
-            "sysroot_sha256", "buck2_sha256")
+            "sysroot_sha256", "buck2_sha256", "witness_sha256")
 COMMIT_KEYS = ("gate_sha", "head", "base", "merge_base")
 INPUT_KEYS = frozenset(SHA_KEYS + COMMIT_KEYS + ("gate_clean", "product", "uncached"))
-# Absent on purpose in many grades: no approvals bundle, no previous expected-tests file.
-OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256"})
+# Absent on purpose in many grades: no approvals bundle, no previous expected-tests file, no witness.
+OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256", "witness_sha256"})
 
 
 # ---------------------------------------------------------------- snapshot (read once, use the copy)
@@ -109,6 +111,65 @@ def snapshot_inputs(args, work):
     if args.approvals is not None:
         args.approvals = approvals_copy
     return hashes
+
+
+def _copy_regular(source, destination):
+    """Copy one regular file without following a symlink at its last component."""
+    # O_NONBLOCK: a file swapped for a FIFO after the lstat cannot hang the grade.
+    fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise InternalError("witness bundle: not a regular file: %s" % source)
+        chunks = []
+        while True:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    finally:
+        os.close(fd)
+    with open(destination, "xb") as handle:
+        handle.write(b"".join(chunks))
+
+
+def _copy_bundle_tree(source, destination):
+    """Copy the directory `source` to `destination` (which must not exist); symlinks and special files
+    are refused. Iterative. Empty directories and extra entries are copied, so `load` refuses them."""
+    if not stat.S_ISDIR(os.lstat(source).st_mode):
+        raise InternalError("witness bundle is not a directory (or is a symlink): %s" % source)
+    os.mkdir(destination)
+    pending = [""]
+    while pending:
+        rel = pending.pop()
+        for name in sorted(os.listdir(os.path.join(source, rel))):
+            child = os.path.join(rel, name)
+            mode = os.lstat(os.path.join(source, child)).st_mode
+            if stat.S_ISLNK(mode):
+                raise InternalError("witness bundle: symlink %s" % child)
+            if stat.S_ISDIR(mode):
+                os.mkdir(os.path.join(destination, child))
+                pending.append(child)
+            elif stat.S_ISREG(mode):
+                _copy_regular(os.path.join(source, child), os.path.join(destination, child))
+            else:
+                raise InternalError("witness bundle: special file %s" % child)
+
+
+def snapshot_witness(source, destination):
+    """(Bundle, witness_sha256) of the `--witness` bundle, or (None, None) without one (P002 Q1).
+
+    The bundle is copied once to `destination`; the copy is loaded once, and that one load is both what
+    the grade uses and what is hashed. Every defect (unreadable, symlink, special file, bad format) is
+    an InternalError, so `rigor grade` stops with exit 2 before `clone`.
+    """
+    if source is None:
+        return None, None
+    try:
+        _copy_bundle_tree(source, destination)
+    except OSError as exc:
+        raise InternalError("witness bundle: cannot copy %s: %s" % (source, exc)) from exc
+    bundle = witness_bundle.load(destination)
+    return bundle, witness_bundle.digest(bundle)
 
 
 # ---------------------------------------------------------------- facts from the grade itself
@@ -236,6 +297,11 @@ def check_verdict(data, signature_path, allowed_signers, expect, require_uncache
         wanted = expect.get(option)
         if wanted is not None and inputs[key] != wanted:
             problems.append("%s is %s, expected %s" % (key, inputs[key], wanted))
+    wanted = expect.get("witness_sha")
+    if wanted is not None and inputs["witness_sha256"] is None:
+        problems.append("witness_sha256 is null (graded without --witness), expected %s" % wanted)
+    elif wanted is not None and inputs["witness_sha256"] != wanted:
+        problems.append("witness_sha256 is %s, expected %s" % (inputs["witness_sha256"], wanted))
     return problems
 
 
@@ -243,7 +309,7 @@ def run_verify(args):
     data = jsonio.read_bytes(args.verdict)
     signature = args.signature or args.verdict + ".sig"
     expect = {"head": args.expect_head, "gate": args.expect_gate,
-              "policy_sha": args.expect_policy_sha}
+              "policy_sha": args.expect_policy_sha, "witness_sha": args.expect_witness_sha}
     problems = check_verdict(data, signature, args.allowed_signers, expect, args.require_uncached)
     for problem in problems:
         print("rigor verify: REJECTED: %s" % problem)
@@ -265,6 +331,9 @@ def add_verify_parser(subparsers):
     parser.add_argument("--expect-head", help="full sha of the head the verdict must be about")
     parser.add_argument("--expect-gate", help="full sha of the gate commit that must have graded it")
     parser.add_argument("--expect-policy-sha", help="sha256 of the policy.toml it must have used")
+    parser.add_argument("--expect-witness-sha",
+                        help="witness_sha256 of the witness bundle it must have been graded with; "
+                             "a verdict graded without --witness is rejected")
     parser.add_argument("--require-uncached", action="store_true")
     parser.set_defaults(handler=run_verify, gate_id=None)
 

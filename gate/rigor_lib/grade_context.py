@@ -13,6 +13,9 @@ GATE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__f
 ORDER_FILE = os.path.join(GATE_ROOT, "gate", "order.txt")
 MODES = ("release", "san")
 SEALED_PATH = "/usr/local/bin:/usr/bin:/bin"
+# P002: the witness tree (assembled with the witness bundle overlaid) and its work subdirectory.
+WITNESS_TREE = "tree-witness"
+WITNESS_WORK = "witness"
 
 
 @dataclass
@@ -40,6 +43,9 @@ class Grading:
     inputs: dict = field(default_factory=dict)
     order_bytes: bytes = b""
     gate_clean: bool = False
+    # T037: the witness bundle loaded from its snapshot in <work>/inputs/witness (witness_bundle.Bundle),
+    # or None without --witness.
+    witness: object = None
 
 
 def gate_checkout_sha():
@@ -107,11 +113,12 @@ def kill_daemon(tree):
 
 
 def prepare_work(work):
-    """Create `work` and clear what an earlier run left in it (stopping its daemon first)."""
+    """Create `work` and clear what an earlier run left in it (stopping its daemons first)."""
     os.makedirs(work, exist_ok=True)
     kill_daemon(os.path.join(work, "tree"))
+    kill_daemon(os.path.join(work, WITNESS_TREE))
     for name in ("src", "tree", "results", "test-results", "facts", "mutants-reports", "home", "tmp",
-                 "inputs"):
+                 "inputs", WITNESS_TREE, WITNESS_WORK):
         path = os.path.join(work, name)
         if os.path.lexists(path):
             remove_tree(path)
