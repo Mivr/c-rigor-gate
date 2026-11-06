@@ -94,6 +94,50 @@ edit_spliced_optnone() {  # semantic-suppressions: attribute built by pasting, #
 edit_raw_rule() {  # buckfiles: a raw rule beside the macros (it is never built)
   printf '\nnative.cxx_library(name = "raw", srcs = ["core.c"])\n' >> core/BUCK
 }
+# Mutation testing (T008).
+edit_weak_test() {  # a check is gone: the mutants around zero in core_sign survive
+  sed -i '/core_sign(0), 0/d' core/core_test.c
+}
+edit_hollow_module() {  # all logic moves into the header: the source has nothing left to mutate
+  cat > core/core.h <<'EOT'
+#ifndef CORE_H
+#define CORE_H
+
+extern const int core_marker;
+static inline int core_add(int a, int b) { return a + b; }
+static inline int core_sign(int value) {
+    if (value < 0) {
+        return -1;
+    }
+    if (value > 0) {
+        return 1;
+    }
+    return 0;
+}
+
+#endif
+EOT
+  printf '#include "core.h"\n\nconst int core_marker = 1;\n' > core/core.c
+}
+edit_unviable_shape() {  # most mutants of this function trip -Werror (255 -> 256 in an unsigned char)
+  sed -i 's/^#endif/unsigned core_sum_ff(void);\n\n#endif/' core/core.h
+  { printf '\nunsigned core_sum_ff(void) {\n    static const unsigned char table[32] = {'
+    for i in $(seq 1 32); do printf '255, '; done
+    printf '};\n    unsigned total = 0;\n    for (unsigned i = 0; i < 32; i++) {\n        total += table[i];\n    }\n    return total;\n}\n'
+  } >> core/core.c
+  sed -i 's/^    CHECK_EQ_I64(t, core_add(-4, 4), 0);/&\n    CHECK_EQ_I64(t, core_sum_ff(), 8160);/' core/core_test.c
+}
+edit_new_module() {  # a library the policy has never heard of: no level, so the gate cannot decide how hard to test it
+  cat >> core/BUCK <<'EOT'
+
+c_library(name = "extra", srcs = ["extra.c"], headers = ["extra.h"], visibility = ["PUBLIC"])
+
+c_test(name = "extra_test", srcs = ["extra_test.c"], deps = [":extra"])
+EOT
+  printf '#ifndef EXTRA_H\n#define EXTRA_H\nint extra_twice(int a);\n#endif\n' > core/extra.h
+  printf '#include "extra.h"\n\nint extra_twice(int a) { return a + a; }\n' > core/extra.c
+  printf '#include "ctest/ctest.h"\n#include "extra.h"\n\nstatic void t_twice(ctest_t *t) {\n    CHECK_EQ_I64(t, extra_twice(4), 8);\n}\n\nCTEST_SUITE("extra", { "twice", t_twice })\n' > core/extra_test.c
+}
 edit_heap_overflow() { sed -i 's/^    return ramp;/    ramp[count] = 0;\n    return ramp;/' util/util.c; }
 
 # ---------------------------------------------------------------------------------------
@@ -111,7 +155,10 @@ got = {g["id"]: g["status"] for g in core["gates"]}
 bad = {g for g, s in got.items() if s == "FAIL"}
 not_run = {g for g, s in got.items() if s == "NOT_RUN"}
 # A failed build means there are no results or facts to judge: those gates are NOT_RUN (still a failure).
+# Mutation testing needs a clean tree and green tests: it is NOT_RUN after any of these failed.
 want_not_run = {"tests-release", "tests-san", "semantic-suppressions", "symbols"} if "build" in expected else set()
+if expected & {"assemble", "buckfiles", "build", "tests-release", "tests-san"}:
+    want_not_run.add("mutants")
 want_code = 1 if expected else 0
 print("  " + " ".join("%s=%s" % (g, s) for g, s in got.items()) + "  overall=" + core["overall"])
 ok = bad == expected and not_run == want_not_run and code == want_code and (core["overall"] == "PASS") == (not expected)
@@ -187,6 +234,19 @@ echo "  build actions executed: cold $exec_cold, warm $exec_warm"
 [ "$exec_warm" = 0 ] || fail "warm run executed $exec_warm build actions"
 exec_facts_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["symbols"]["executed_actions"])' "$work/warm.verdict.json")"
 [ "$exec_facts_warm" = 0 ] || fail "warm run executed $exec_facts_warm facts actions"
+exec_mut_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["mutants"]["executed_actions"])' "$work/warm.verdict.json")"
+[ "$exec_mut_warm" = 0 ] || fail "warm run executed $exec_mut_warm mutants actions"
+python3 -I - "$cold_verdict" <<'EOF2' || fail "cold: the mutants gate did not mutate the modules it should"
+import json, sys
+m = json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["mutants"]
+mods = m["modules"]
+for label, s in sorted(mods.items()):
+    print("  mutants %s: total %d, %s" % (label, s["total"], {k: v for k, v in s["verdicts"].items() if v}))
+assert set(mods) == {"//core:core", "//util:util"}, sorted(mods)
+assert mods["//core:core"]["total"] > 0 and mods["//core:core"]["survivors"] == [], mods["//core:core"]
+assert m["targets"].keys() == mods.keys(), m["targets"]
+assert m["executed_actions"] > 0, m
+EOF2
 sha_cold="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_sha256"])' "$cold_verdict")"
 sha_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_sha256"])' "$work/warm.verdict.json")"
 [ "$sha_cold" = "$sha_warm" ] || fail "core_sha256 differs between two runs of the same inputs"
@@ -236,6 +296,9 @@ b = u["metadata"]["gate_metadata"]["build"]
 print("  uncached: executed %d, cached %d" % (b["executed_actions"], b["cached_actions"]))
 assert u["core"]["uncached"] is True and w["core"]["uncached"] is False
 assert b["executed_actions"] > 0 and b["cached_actions"] == 0, b
+mu = u["metadata"]["gate_metadata"]["mutants"]
+print("  uncached mutants: executed %d, cached %d" % (mu["executed_actions"], mu["cached_actions"]))
+assert mu["executed_actions"] > 0 and mu["cached_actions"] == 0, mu
 f = u["metadata"]["gate_metadata"]["symbols"]
 print("  uncached facts: executed %d, cached %d" % (f["executed_actions"], f["cached_actions"]))
 assert f["executed_actions"] > 0 and f["cached_actions"] == 0, f
@@ -255,9 +318,14 @@ run_case failing-test tests-release:test-not-pass,tests-san:test-not-pass
 run_case removed-test tests-release:missing-test,tests-san:missing-test
 run_case deleted-target tests-release:missing-test,tests-san:missing-test,symbols:policy-module-without-facts
 run_case heap-overflow tests-san:test-not-pass
-run_case kills symbols:denied-symbol
+run_case kills symbols:denied-symbol,mutants:survived-mutant   # (the untested core_stop is a survivor too)
 run_case spliced-optnone semantic-suppressions:forbidden-attribute,semantic-suppressions:line-directive
 run_case raw-rule buckfiles:bad-call
+# Mutation testing (T008): each of these must be caught by `mutants` alone (or with the gate named beside it).
+run_case weak-test mutants:survived-mutant
+run_case hollow-module mutants:no-mutants,mutants:unmutated-function
+run_case unviable-shape mutants:unviable-ratio
+run_case new-module symbols:module-not-in-policy,mutants:level-missing
 
 # 3. an internal error (unreadable contract) is exit 2 and a FAIL verdict
 step=$((step + 1))

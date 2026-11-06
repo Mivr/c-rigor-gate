@@ -133,10 +133,70 @@ class MutantsTest(TempDirTestCase):
                                     "original": {"status": "ok", "hash": BASE}})
         self.fails_with(document, "no-mutants")
 
-    def test_a_source_without_functions_needs_no_mutants(self):
-        self.put(report([], functions=()))
-        outcome, _ = self.grade()
+    def test_a_module_that_has_no_mutants_at_all_fails_even_without_functions(self):
+        # T008: a gate that silently mutates nothing must fail. A pure-data module is L1, by policy.
+        for level in ("L2", "L3"):
+            self.fails_with(report([], functions=()), "no-mutants", level=level)
+
+    def test_a_module_whose_every_source_is_empty_fails_even_if_a_second_report_has_mutants(self):
+        document = report([], functions=())
+        document["sources"].append({"file": "m/b.c", "sha256": "0" * 64, "functions": [],
+                                    "skipped": [], "baseline": {"status": "ok", "hash": BASE},
+                                    "original": {"status": "ok", "hash": BASE}})
+        self.fails_with(document, "no-mutants")
+
+    # -- unviable-ratio (B11): code shaped so that mutants do not compile escapes mutation ------
+    def unviable_report(self, unviable, total):
+        mutants = [mutant(n, status="unviable") if n <= unviable else mutant(n, digest="%064x" % (n + 100))
+                   for n in range(1, total + 1)]
+        return report(mutants)
+
+    def test_more_than_a_quarter_unviable_fails_at_l3_and_above(self):
+        for level in ("L3", "L4", "L5"):
+            result = self.fails_with(self.unviable_report(5, 19), "unviable-ratio", level=level)
+            found = result["findings"][0]
+            self.assertEqual((found["module"], found["unviable"], found["total"]), (LABEL, 5, 19))
+
+    def test_exactly_a_quarter_unviable_is_accepted(self):
+        for unviable, total in ((1, 4), (5, 20), (25, 100)):
+            self.put(self.unviable_report(unviable, total))
+            outcome, result = self.grade()
+            self.assertExit(outcome, 0)
+            self.assertEqual(self.rules(result), [], (unviable, total))
+
+    def test_one_more_than_a_quarter_fails(self):
+        for unviable, total in ((2, 7), (26, 100), (6, 20)):
+            self.fails_with(self.unviable_report(unviable, total), "unviable-ratio")
+
+    def test_in_an_l2_module_the_ratio_is_info_only(self):
+        self.write_policy("L2")
+        self.put(self.unviable_report(5, 19))
+        outcome, result = self.grade()
         self.assertExit(outcome, 0)
+        self.assertEqual(self.rules(result), ["unviable-ratio"])
+        self.assertEqual(result["findings"][0]["severity"], "info")
+
+    def test_the_ratio_is_of_all_generated_mutants(self):
+        # 3 unviable of 12 generated is a quarter; 3 of 11 is not.
+        twelve = [mutant(n, status="unviable") for n in (1, 2, 3)] + [mutant(n) for n in range(4, 13)]
+        self.put(report(twelve))
+        self.assertExit(self.grade()[0], 0)
+        eleven = [mutant(n, status="unviable") for n in (1, 2, 3)] + [mutant(n) for n in range(4, 12)]
+        self.fails_with(report(eleven), "unviable-ratio")
+
+    # -- levels L4 and L5 are at least as strict as L3 ----------------------------------------
+    def test_l4_and_l5_modules_fail_on_a_survivor(self):
+        for level in ("L4", "L5"):
+            self.fails_with(report([mutant(1), mutant(2, runs={"t": PASS})]), "survived-mutant", level=level)
+
+    def test_l4_and_l5_modules_pass_when_everything_is_killed(self):
+        for level in ("L4", "L5"):
+            self.write_policy(level)
+            self.put(report([mutant(1)]))
+            self.assertExit(self.grade()[0], 0)
+
+    def test_l4_applies_the_per_function_rules_of_l3(self):
+        self.fails_with(report([mutant(1, runs={"t": CRASH})]), "crash-only-function", level="L4")
 
     def test_everything_unviable_fails(self):
         self.fails_with(report([mutant(1, status="unviable"), mutant(2, status="unviable")]),
@@ -258,7 +318,8 @@ class MutantsTest(TempDirTestCase):
         (self.results / "notes.txt").write_text("x", encoding="utf-8")
         self.assertExit(self.grade()[0], 2)
         (self.results / "notes.txt").unlink()
-        for text in ('[module."//m:mod_mutants"]\nlevel = "L1"\n', '[module."//m:mod_mutants"]\n',
+        for text in ('[module."//m:mod_mutants"]\nlevel = "L1"\n', '[module."//m:mod_mutants"]\nlevel = "L6"\n',
+                     '[module."//m:mod_mutants"]\n',
                      '[global]\nx = 1\n', 'not toml ['):
             self.policy.write_text(text, encoding="utf-8")
             self.assertExit(self.grade()[0], 2)
