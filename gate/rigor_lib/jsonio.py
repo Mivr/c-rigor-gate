@@ -50,6 +50,7 @@ def write_atomic(path, data):
     try:
         with os.fdopen(handle, "wb") as out:
             out.write(data)
+        os.chmod(temp_path, 0o644)
         os.replace(temp_path, path)
     except BaseException:
         if os.path.exists(temp_path):

@@ -4,9 +4,10 @@ import argparse
 import os
 import sys
 
+from rigor_lib.errors import InternalError
 from rigor_lib import approve, contract, jsonio, ratchet, suppressions, tests_gate, verdict
 from rigor_lib.findings import GateResult, finding
-from rigor_lib.runner import EXIT_ERROR
+from rigor_lib.runner import EXIT_ERROR, EXIT_FAIL, EXIT_PASS
 
 # Each module has add_parser(subparsers).
 COMMANDS = [contract, suppressions, tests_gate, ratchet, verdict, approve]
@@ -50,7 +51,10 @@ def main(argv):
     args = None
     try:
         args = build_parser().parse_args(argv)
-        return args.handler(args)
+        code = args.handler(args)
+        if type(code) is not int or code not in (EXIT_PASS, EXIT_FAIL):  # bool is not accepted
+            raise InternalError("handler returned %r instead of 0 or 1" % (code,))
+        return code
     except Exception as exc:  # fail closed: every error is exit 2
         report_internal_error(args, exc)
         return EXIT_ERROR

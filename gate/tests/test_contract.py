@@ -121,6 +121,32 @@ class ContractGreenTests(ContractCase):
         self.assertEqual(len(first["findings"]), 2)
 
 
+class ContractHostileConfigTests(ContractCase):
+    """Settings inside the graded repository's own git config must not change the verdict."""
+
+    def hostile_config(self):
+        self.repo.git("config", "diff.ignoreSubmodules", "all")
+        self.repo.git("config", "diff.renames", "copies")
+        self.repo.git("config", "diff.external", "/bin/false")
+        self.repo.git("config", "core.attributesFile", "/dev/null")
+
+    def test_submodule_still_flagged_when_config_ignores_submodules(self):
+        self.hostile_config()
+        self.repo.add_gitlink("src/vendor", "b" * 40)
+        head = self.repo.commit("add gitlink", add_all=False)
+        outcome, result = self.grade(["src/**"], head=head)
+        self.assertExit(outcome, 1)
+        self.assertEqual(self.rules(result), [("submodule", "src/vendor")])
+
+    def test_rename_still_reports_both_names_when_config_detects_copies(self):
+        self.hostile_config()
+        self.repo.git("mv", "docs/x.md", "docs/y.md")
+        outcome, result = self.grade(["src/**"])
+        self.assertExit(outcome, 1)
+        self.assertEqual(self.rules(result), [("outside-allowed", "docs/x.md"),
+                                              ("outside-allowed", "docs/y.md")])
+
+
 class ContractRedTests(ContractCase):
     def test_modify_outside_allowed(self):
         self.repo.write("tool.sh", "changed\n")

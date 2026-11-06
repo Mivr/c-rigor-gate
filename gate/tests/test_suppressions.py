@@ -249,6 +249,23 @@ class SuppressionRedGreenTests(SuppressionCase):
         self.assertEqual(len(first["findings"]), 2)
 
 
+class SuppressionHostileConfigTests(SuppressionCase):
+    def test_external_diff_and_ignored_submodule_config_change_nothing(self):
+        self.repo.git("config", "diff.external", "/bin/false")
+        self.repo.git("config", "diff.ignoreSubmodules", "all")
+        self.repo.git("config", "diff.renames", "copies")
+        self.repo.write("src/a.c", "int a;\n// NOLINT\n")
+        self.assertFlags([("forbidden-pattern", "src/a.c", 2, "nolint")])
+
+    def test_textconv_attribute_cannot_rewrite_the_scanned_text(self):
+        self.repo.git("config", "diff.hide.textconv", "/bin/true")
+        self.repo.write(".gitattributes", "*.c diff=hide\n")
+        self.repo.write("src/a.c", "int a;\n// NOLINT\n")
+        outcome, result = self.grade()
+        self.assertExit(outcome, 1)
+        self.assertIn(("forbidden-pattern", "src/a.c", 2, "nolint"), self.triples(result))
+
+
 class BinaryArtifactTests(SuppressionCase):
     def test_added_artifacts_are_flagged(self):
         for name in ("build/x.o", "lib/a.a", "lib/b.so", "cov/p.profdata", "p.profraw"):

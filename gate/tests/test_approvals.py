@@ -241,6 +241,14 @@ class ApprovalForgedTests(ApprovalCase):
         (self.dir / ("ab" * 32 + ".json")).mkdir()
         self.assertEqual(self.reasons(self.load()), ["unrecognised-file"])
 
+    def test_approval_that_is_a_symlink(self):
+        path = self.make()
+        real = self.tmp / "elsewhere.json"
+        real.write_bytes(path.read_bytes())
+        path.unlink()
+        path.symlink_to(real)
+        self.assertEqual(self.reasons(self.load()), ["unrecognised-file"])
+
     def test_signed_but_not_json(self):
         self.put_raw(b"not json\n")
         self.assertEqual(self.reasons(self.load()), ["malformed"])
