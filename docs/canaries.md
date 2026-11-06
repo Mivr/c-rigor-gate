@@ -123,6 +123,11 @@ with the same `product.toml` variant. The expectation is exact (grade.sh only ch
 The runner also ports grade.sh's leaked-daemon check (`find_daemons`): after each canary, a process whose working
 directory is under the canary's scratch dir makes that canary a miss.
 
+## Canaries replacing the rest of `selftest/grade.sh`'s red cases (T053)
+All 24 remaining red cases of `selftest/grade.sh` are canaries; the table is in `docs/grade.md`. Only one was missing:
+`ungraded-module` (the `extra/` directory the layout does not list, `buckfiles`: `ungraded-path`, NOT_RUN mutants).
+grade.sh's two extra checks are the `contains` (`unused-variable` in `buckconfig-hidden`) and `absent` (`product-buck2`) hooks the runner already has.
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
