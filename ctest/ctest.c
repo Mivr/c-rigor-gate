@@ -1,6 +1,7 @@
 /* ctest runtime. See ctest.h. Fork per test; the child reports its counts over a pipe. */
 #define _GNU_SOURCE
 #include "ctest.h"
+#include "sanlog.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -24,7 +25,10 @@ enum {
     OUT_CAP = 1 << 20, /* all result lines; overflow is a framework error */
     MAX_TESTS = 512,
     NAME_CAP = 64,
-    TIMEOUT_S = 10 /* fixed; deliberately not configurable by a test file */
+    TIMEOUT_S = 10, /* fixed; deliberately not configurable by a test file */
+    SAN_TEXT_CAP = 1 << 16, /* one test's sanitizer log; longer logs are cut */
+    SAN_REPORT_CAP = 1 << 20,
+    SAN_SUM_CAP = 200
 };
 #define REPORT_MAGIC 0x43544531U
 
@@ -57,6 +61,13 @@ static size_t g_out_len;
 static result_t g_res;
 static char g_line[LINE_CAP];
 static size_t g_order[MAX_TESTS];
+static const char *g_san_log;    /* --san-log: prefix of the sanitizer log files (<prefix>.<pid>) */
+static const char *g_san_report; /* --san-report: where the normalized logs of failing tests go */
+static char g_san_text[SAN_TEXT_CAP];
+static char g_san_sum[SAN_SUM_CAP]; /* static: keeps the stack frames of the inlined helpers small */
+static char g_san_head[2 * NAME_CAP + 16];
+static char g_san_out[SAN_REPORT_CAP];
+static size_t g_san_out_len;
 
 /* ------------------------------------------------------------------ checks (run in the child) */
 
@@ -268,7 +279,7 @@ static int emit_summary(size_t total, size_t passed) {
 }
 
 /* The results file is opened only here, after every test child is gone, so no test can hold it. */
-static int write_out(const char *path) {
+static int write_file(const char *path, const char *buf, size_t len) {
     int fd = STDOUT_FILENO;
     int rc;
     if (path != NULL) {
@@ -277,11 +288,18 @@ static int write_out(const char *path) {
             return -1;
         }
     }
-    rc = write_all(fd, g_out, g_out_len);
+    rc = write_all(fd, buf, len);
     if (path != NULL && close(fd) != 0) {
         rc = -1;
     }
     return rc;
+}
+
+static int write_out(const char *path) {
+    if (write_file(path, g_out, g_out_len) != 0) {
+        return -1;
+    }
+    return g_san_report == NULL ? 0 : write_file(g_san_report, g_san_out, g_san_out_len);
 }
 
 /* ------------------------------------------------------------------ running one test */
@@ -377,8 +395,42 @@ static void timed_out(result_t *res) {
     (void)snprintf(res->reason, sizeof res->reason, "timeout after %d s", TIMEOUT_S);
 }
 
+static void keep_san_text(const char *suite, const char *name, size_t n) {
+    int h = snprintf(g_san_head, sizeof g_san_head, "== %s/%s ==\n", suite, name);
+    if (h < 0 || g_san_out_len + (size_t)h + n >= sizeof g_san_out) {
+        static const char cut[] = "[san report truncated]\n";
+        if (g_san_out_len + sizeof cut < sizeof g_san_out) {
+            memcpy(g_san_out + g_san_out_len, cut, sizeof cut - 1);
+            g_san_out_len += sizeof cut - 1;
+        }
+        return;
+    }
+    memcpy(g_san_out + g_san_out_len, g_san_head, (size_t)h);
+    memcpy(g_san_out + g_san_out_len + (size_t)h, g_san_text, n);
+    g_san_out_len += (size_t)h + n;
+}
+
+/* The child's sanitizer log (if any) only ever adds information or turns a pass into a fail. */
+static void apply_san(const char *suite, const char *name, pid_t pid, result_t *res) {
+    size_t used;
+    size_t n = sanlog_take(g_san_log, (long)pid, g_san_text, sizeof g_san_text);
+    if (n == 0) {
+        return;
+    }
+    n = sanlog_normalize(g_san_text, n);
+    sanlog_summary(g_san_text, n, g_san_sum, sizeof g_san_sum);
+    keep_san_text(suite, name, n);
+    if (res->pass) {
+        res->pass = 0;
+        (void)snprintf(res->reason, sizeof res->reason, "sanitizer report in a test that looked passing: %s", g_san_sum);
+        return;
+    }
+    used = strlen(res->reason);
+    (void)snprintf(res->reason + used, sizeof res->reason - used, "; %s", g_san_sum);
+}
+
 /* 0 = result filled in, -1 = framework error. The child inherits no descriptor of ours. */
-static int run_one(const ctest_case_t *c, result_t *res) {
+static int run_one(const char *suite, const ctest_case_t *c, result_t *res) {
     int status = 0;
     int wt;
     pid_t pid;
@@ -409,6 +461,9 @@ static int run_one(const ctest_case_t *c, result_t *res) {
     } else {
         classify(status, res);
     }
+    if (g_san_log != NULL) {
+        apply_san(suite, c->name, pid, res);
+    }
     return 0;
 }
 
@@ -417,6 +472,8 @@ static int run_one(const ctest_case_t *c, result_t *res) {
 typedef struct {
     uint64_t seed;
     const char *out;
+    const char *san_log;
+    const char *san_report;
 } opts_t;
 
 static int parse_u64(const char *s, uint64_t *v) {
@@ -438,6 +495,8 @@ static int parse_args(int argc, char **argv, opts_t *o) {
     int seen_seed = 0;
     o->seed = 1;
     o->out = NULL;
+    o->san_log = NULL;
+    o->san_report = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc && !seen_seed) {
             seen_seed = 1;
@@ -446,11 +505,15 @@ static int parse_args(int argc, char **argv, opts_t *o) {
             }
         } else if (strcmp(argv[i], "--out") == 0 && i + 1 < argc && o->out == NULL) {
             o->out = argv[++i];
+        } else if (strcmp(argv[i], "--san-log") == 0 && i + 1 < argc && o->san_log == NULL) {
+            o->san_log = argv[++i];
+        } else if (strcmp(argv[i], "--san-report") == 0 && i + 1 < argc && o->san_report == NULL) {
+            o->san_report = argv[++i];
         } else {
             return -1;
         }
     }
-    return 0;
+    return (o->san_log == NULL) == (o->san_report == NULL) ? 0 : -1; /* only together */
 }
 
 static int valid_name(const char *s) {
@@ -509,7 +572,7 @@ static int run_all(const char *suite, const ctest_case_t *cases, size_t n, size_
     *passed = 0;
     for (size_t i = 0; i < n; i++) {
         const ctest_case_t *c = &cases[g_order[i]];
-        if (run_one(c, &g_res) != 0 || emit_result(suite, c->name, &g_res) != 0) {
+        if (run_one(suite, c, &g_res) != 0 || emit_result(suite, c->name, &g_res) != 0) {
             return -1;
         }
         *passed += g_res.pass ? 1U : 0U;
@@ -522,7 +585,7 @@ int ctest_run(int argc, char **argv, const char *suite, const ctest_case_t *case
     int rc;
     size_t passed = 0;
     if (parse_args(argc, argv, &o) != 0 || validate(suite, cases, n) != 0) {
-        (void)fputs("ctest: usage: <binary> [--seed N] [--out FILE]; or invalid suite\n", stderr);
+        (void)fputs("ctest: usage: <binary> [--seed N] [--out FILE] [--san-log PREFIX --san-report FILE]; or invalid suite\n", stderr);
         return 2;
     }
     if (getrandom(&g_nonce, sizeof g_nonce, 0) != (ssize_t)sizeof g_nonce) {
@@ -532,6 +595,8 @@ int ctest_run(int argc, char **argv, const char *suite, const ctest_case_t *case
     if (g_rep == MAP_FAILED) {
         return 2;
     }
+    g_san_log = o.san_log;
+    g_san_report = o.san_report;
     shuffle(n, o.seed);
     rc = run_all(suite, cases, n, &passed);
     if (rc == 0) {

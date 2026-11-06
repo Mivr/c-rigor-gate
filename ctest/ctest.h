@@ -13,7 +13,8 @@
  * least one check, had no failed check and exited with status 0. There is no skip and no
  * expected-failure. Results are JSON Lines, see docs/ctest.md.
  *
- * Usage: <test-binary> [--seed N] [--out FILE]   (exit 0: all passed, 1: a test failed, 2: error)
+ * Usage: <test-binary> [--seed N] [--out FILE] [--san-log PREFIX --san-report FILE]
+ *        (exit 0: all passed, 1: a test failed, 2: error). See docs/ctest.md for the sanitizer options.
  */
 #ifndef CTEST_H
 #define CTEST_H

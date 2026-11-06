@@ -141,22 +141,47 @@ cat > "$scratch/san/t.c" <<'C'
 #include <string.h>
 #include "ctest/ctest.h"
 
+/* Lines marked BUG:<case> are where the sanitizer must point; the self-test greps for the marker. */
 static volatile int g_idx = 4;
 static void *volatile g_sink;
 static volatile int g_big = 2147483647;
+static int *volatile g_bad = (int *)16; /* not NULL, so UBSan stays quiet and the access raises SIGSEGV */
 
 static void t_fine(ctest_t *t) { CHECK(t, 1); }
 static void t_heap_overflow(ctest_t *t) {
     char *p = malloc(4);
     CHECK(t, p != NULL);
-    if (p != NULL) { p[g_idx] = 1; free(p); }
+    if (p != NULL) {
+        p[g_idx] = 1; /* BUG:heap_overflow */
+        free(p);
+    }
 }
-static void t_leak(ctest_t *t) { g_sink = malloc(16); CHECK(t, g_sink != NULL); g_sink = NULL; }
-static void t_ub_overflow(ctest_t *t) { int v = g_big + 1; CHECK(t, v != 0); }
+static void t_use_after_free(ctest_t *t) {
+    char *p = malloc(8);
+    CHECK(t, p != NULL);
+    if (p != NULL) {
+        free(p);
+        ((volatile char *)p)[0] = 1; /* BUG:use_after_free */
+    }
+}
+static void t_leak(ctest_t *t) {
+    g_sink = malloc(16); /* BUG:leak */
+    CHECK(t, g_sink != NULL);
+    g_sink = NULL;
+}
+static void t_ub_overflow(ctest_t *t) {
+    int v = g_big + 1; /* BUG:ub_overflow */
+    CHECK(t, v != 0);
+}
+static void t_segv(ctest_t *t) {
+    CHECK(t, 1);
+    *g_bad = 1; /* BUG:segv */
+}
 
 CTEST_SUITE("san",
     { "fine", t_fine }, { "heap_overflow", t_heap_overflow },
-    { "leak", t_leak }, { "ub_overflow", t_ub_overflow })
+    { "use_after_free", t_use_after_free }, { "leak", t_leak },
+    { "ub_overflow", t_ub_overflow }, { "segv", t_segv })
 C
 
 cat > "$scratch/fds/t.c" <<'C'
@@ -231,12 +256,7 @@ EXPECT = {
     "after": ("pass", 1, r""),
   },
   "order": None,   # checked separately
-  "san": {
-    "fine": ("pass", 1, r""),
-    "heap_overflow": ("fail", 0, r"exited with status \d+ before reporting|killed by signal"),
-    "leak": ("fail", 1, r"exited with status \d+ after reporting"),
-    "ub_overflow": ("fail", 0, r"exited with status \d+ before reporting|killed by signal"),
-  },
+  "san": None,     # checked separately: reasons must name file:line function
 }
 
 def load(path):
@@ -285,6 +305,39 @@ if __name__ == "__main__":
     elif cmd == "same":
         a, b = open(sys.argv[2], "rb").read(), open(sys.argv[3], "rb").read()
         assert a == b, "files differ: %s %s" % (sys.argv[2], sys.argv[3])
+    elif cmd == "san":
+        # args: results.jsonl san_report.txt source.c
+        rows, _ = load(sys.argv[2])
+        report = open(sys.argv[3], encoding="utf-8").read()
+        src = open(sys.argv[4], encoding="utf-8").read().split("\n")
+        marks = {}
+        for n, text in enumerate(src, 1):
+            m = re.search(r"BUG:(\w+)", text)
+            if m:
+                marks[m.group(1)] = n
+        func = {k: "t_" + k for k in marks}
+        kinds = {"heap_overflow": "AddressSanitizer: heap-buffer-overflow",
+                 "use_after_free": "AddressSanitizer: heap-use-after-free",
+                 "leak": "LeakSanitizer: detected memory leaks",
+                 "ub_overflow": "UBSan: signed integer overflow",
+                 "segv": "AddressSanitizer: SEGV"}
+        got = {r["id"].split("/", 1)[1]: r for r in rows}
+        assert set(got) == set(kinds) | {"fine"}, sorted(got)
+        assert got["fine"]["status"] == "pass" and got["fine"]["reason"] == "", got["fine"]
+        for name, kind in kinds.items():
+            r = got[name]
+            assert r["status"] == "fail", r
+            want = r"; %s.* at selftest/scratch_ctest/san/t\.c:%d %s$" % (re.escape(kind), marks[name], func[name])
+            assert re.search(want, r["reason"]), (name, r["reason"], want)
+            assert len(r["reason"]) <= 512, r["reason"]
+            assert not re.search(r"0x[0-9a-fA-F]|(?<![\w.'])/[A-Za-z]|==\d+==", r["reason"]), ("address, pid or absolute path", r["reason"])
+            assert ("== san/%s ==" % name) in report, ("not in the san report", name)
+            print("  %-14s reason: %s" % (name, r["reason"]))
+        assert "== san/fine ==" not in report
+        assert not re.search(r"0x[0-9a-fA-F]|==\d+==|BuildId|/data/work|/var/tmp|/work/[0-9a-f]{8}-", report), "report holds addresses, pids or worker paths"
+        for f in ("t.c:%d" % n for n in marks.values()):
+            assert f in report, ("frame missing in the report", f)
+        print("  san: 5 sanitizer cases name the right file:line function; report is normalized")
     elif cmd == "show":
         sys.stdout.write(open(sys.argv[2]).read())
     elif cmd == "orders":
@@ -313,9 +366,30 @@ chk suite checks "$checks_res" || fail "$CUR"
 build_out fds_res release "$pkg/fds:t_results"
 chk suite fds "$fds_res" || fail "$CUR: a test altered the results file or leaked a descriptor"
 
-begin "san: heap overflow, leak and UB abort are fails; the clean test passes (results built on RE)"
+begin "san: heap overflow, use-after-free, UBSan overflow, leak and SIGSEGV are fails naming file:line function (RE, hermetic llvm-symbolizer)"
 build_out san_res san "$pkg/san:t_results"
-chk suite san "$san_res" || fail "$CUR"
+san_report="$(dirname "$san_res")/san_report.txt"
+[ -s "$san_report" ] || fail "$CUR: no san_report.txt next to the results"
+chk san "$san_res" "$san_report" "$scratch/san/t.c" || fail "$CUR"
+run "$out/sub.log" build --target-platforms ${PLAT}san "$pkg/san:t_results[san_report]" --show-output || fail "$CUR: sub-target t_results[san_report]" "$out/sub.log"
+sub="$(awk '/buck-out/ {print $2}' "$out/sub.log" | tail -1)"
+cmp -s "$sub" "$san_report" || fail "$CUR: t_results[san_report] is not the report"
+
+begin "san: two cold runs (a fresh action key each; ASLR and addresses differ) give byte-identical results and report"
+cp "$san_res" "$out/san.1.jsonl"; cp "$san_report" "$out/san.1.txt"
+printf 'const char ctest_scratch_nonce_a[] = "%s";\n' "$(date +%s%N)-$$" >> "$scratch/san/t.c"
+build_out san_res2 san "$pkg/san:t_results"
+"${B[@]}" log what-ran 2>/dev/null | strip_ansi | grep -q 'ctest_results' || fail "$CUR: the second cold run did not execute the results action"
+cp "$san_res2" "$out/san.2.jsonl"; cp "$(dirname "$san_res2")/san_report.txt" "$out/san.2.txt"
+chk same "$out/san.1.jsonl" "$out/san.2.jsonl" || fail "$CUR: results differ between cold runs"
+chk same "$out/san.1.txt" "$out/san.2.txt" || fail "$CUR: san report differs between cold runs"
+echo "  cold/cold: results.jsonl and san_report.txt byte-identical"
+
+begin "san: a warm rebuild executes 0 actions"
+must_pass build --target-platforms ${PLAT}san "$pkg/san:t_results"
+n="$("${B[@]}" log what-ran 2>/dev/null | strip_ansi | grep -vc '^Showing\|^$')"
+[ "$n" = 0 ] || fail "$CUR: $n actions executed on the warm san build"
+echo "  warm san build: $n actions executed"
 
 begin "the order package: seed 1 on RE equals seed 1 locally, and order dependence shows up under other seeds"
 build_out order_res release "$pkg/order:t_results"
