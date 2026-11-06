@@ -112,6 +112,32 @@ No mutation is made under `case` labels, enumerator values, bit-field widths, `_
 | `return-value` | `return e;` -> `return ((void)(e), (T)0);` with T the expression's type (`(T)1` when it was `0`); not for struct, union, complex or void; `e` is still evaluated, so no variable or parameter becomes unused |
 | `statement-deletion` | an expression statement that is a call -> `(void)0;` |
 | `function-body` | body of a scalar function -> `{ (void)p; ... return 0; }`, void -> `{ (void)p; ... }` (pseudo-tested function check) |
+| `enum-constant` | an enumerator used as a value (return, assignment, argument, comparison operand) -> the next enumerator of the same enum in declaration order, wrapping; none when the enum has one value |
+| `string-literal` | a non-empty `"..."` -> `""`; and its first byte incremented (second mutant; none when the byte is an escape start, non-ASCII, or the next byte would be `"` or `\\`) |
+| `char-literal` | `'c'` -> `('c' + 1)`, any spelling (`'\\n'`, `L'x'`) |
+
+### Toolchain macros in conditions and returns (T035; R003 G2, B28)
+A condition (`if`, `while`, `do`, `for`) or a `return` value that contains macros of the **toolchain** only
+(`NULL`, `true`/`false`, `INT_MAX`, `assert`, ...: spelled in a `--system-root`, in `<built-in>`, or a plain macro
+argument) has a main-file location even though its range ends in an expansion: the text from the first token to
+the last as the main file shows it (a macro's name at its use, a function-like macro's call up to its closing
+parenthesis; `visible_span`). That location is the **G2 location rule**. It gives the `condition` mutant
+(`if (a == NULL || b == NULL)` -> `if (!(a == NULL || b == NULL))`), and `return true;`/`return INT_MAX;` its
+`return-value` mutant (`false`, `NULL` and any constant 0 flip to 1). The text must have balanced parentheses, so a
+macro that swallows half an expression (`SYS_ID(x) > 3`) is not cut. Mutants rewrite main-file bytes around the macro
+token, never inside it. A single product macro anywhere below the expression (`IS_NULL(p)`) keeps the expression
+unmutated and under `macro-hidden-code`, as in T028 (unchanged). An `if` whose branch ends in a toolchain macro
+(`if (p == NULL) return NULL;`) is no longer skipped as a whole for its condition. The relational and logical
+operators next to such macros were already mutated by T028.
+
+### Literal operators (T035; R003 G3, B29)
+Kill semantics: `enum-constant` is killed by a test that pins *which* enumerator comes out (not just `!= OK`);
+`string-literal` by one that compares the text (not just `!= NULL`); `char-literal` by one that checks the character.
+Never mutated: case labels, enumerator values, bit-field widths, `_Static_assert`, `sizeof`/array sizes (a string
+that initialises an unsized array, `char buf[] = "..."`, sizes it), attribute arguments, assembler text, and
+literals a macro spells (a product macro's text is a finding; a toolchain's is not ours). A mutant that does not
+compile (a shadowed enumerator, a format check on `""`) is `unviable`, as for any operator, never a survivor; one whose
+object is identical (two enumerators of equal value) is `equivalent`.
 
 If two operators propose the same text change, one mutant is kept. Compile failure (including a warning
 that is an error under the sealed flags) = `unviable`.
