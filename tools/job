@@ -1,0 +1,416 @@
+#!/usr/bin/env -S python3 -I
+"""Background jobs for agents, waited on with one blocking call instead of polling (T042). Stdlib only.
+
+    tools/job run [--deadline SECONDS] [--dir DIR] NAME -- CMD [ARG...]
+    tools/job wait NAME [--max SECONDS] [--dir DIR]
+    tools/job status NAME [--dir DIR]
+    tools/job list [--dir DIR]
+
+`run` starts CMD as an argv (never through a shell) in a new session, stdin /dev/null, stdout and stderr to
+DIR/NAME/log, with the caller's cwd and environment unchanged, and returns at once. A detached runner
+process holds DIR/NAME/lock for the job's whole life, records the exit code and end time, and at the
+deadline (default 3600 s) kills the job's process group. `wait` blocks on that lock (no polling) until the
+job ends or `--max` seconds pass. DIR defaults to $TMPDIR/jobs and must resolve, without symlinks, to a
+directory inside /var/tmp/cache/. See docs/lanes.md, "Waiting on long jobs".
+
+Exit codes of wait/status: the job's exit code when it finished (128+N when a signal ended it), 124 while
+it is still running, 2 on any tool error and for a `lost` job (its runner died without recording an exit).
+"""
+
+import fcntl
+import json
+import os
+import re
+import select
+import shlex
+import signal
+import subprocess
+import sys
+import time
+
+CACHE_ROOT = "/var/tmp/cache"
+# Measured (docs/lanes.md): the harness moves a foreground Bash call to the background after min(timeout,
+# 180 s), and the Bash tool's default timeout is 120 s. `wait` must return before either.
+WAIT_DEFAULT = 110
+WAIT_LIMIT = 170
+DEADLINE_DEFAULT = 3600
+KILL_GRACE = 3            # seconds between SIGTERM and SIGKILL of the job's process group
+TAIL_LINES = 30
+TAIL_LINE_CHARS = 400
+TAIL_READ_MAX = 1 << 22   # never read more than 4 MiB of a log to find its last lines
+EXIT_RUNNING = 124
+EXIT_ERROR = 2
+NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[PX^_][^\x1b]*\x1b\\|[@-Z\\-_])")
+USAGE = __doc__.split("\n\n")[1]
+
+
+class JobError(Exception):
+    """A usage or tool problem: printed, exit 2."""
+
+
+class _Expired(Exception):
+    pass
+
+
+# -- arguments -------------------------------------------------------------------------------
+def seconds(text, option, minimum, maximum=None):
+    if not re.fullmatch(r"[0-9]{1,7}", text) or int(text) < minimum or (maximum is not None and int(text) > maximum):
+        bound = "" if maximum is None else " and at most %d" % maximum
+        raise JobError("%s takes whole seconds, at least %d%s (got %r)" % (option, minimum, bound, text))
+    return int(text)
+
+
+def parse_run(args):
+    """(deadline, dir or None, name, cmd) of the `run` arguments. rigor_lib/trajectory_cmds.job_run mirrors
+    this exactly: options and NAME before the first `--`, CMD after it."""
+    deadline, directory, names, i = DEADLINE_DEFAULT, None, [], 0
+    while i < len(args) and args[i] != "--":
+        arg = args[i]
+        if arg in ("--deadline", "--dir"):
+            if i + 1 >= len(args):
+                raise JobError(arg + " needs a value")
+            option, value, i = arg, args[i + 1], i + 2
+        elif arg.startswith(("--deadline=", "--dir=")):
+            (option, value), i = arg.split("=", 1), i + 1
+        elif arg.startswith("-"):
+            raise JobError("unknown option %r for run" % arg)
+        else:
+            names.append(arg)
+            i += 1
+            continue
+        if option == "--deadline":
+            deadline = seconds(value, option, 1)
+        else:
+            directory = value
+    if len(names) != 1:
+        raise JobError("run takes exactly one NAME before `--` (got %d)" % len(names))
+    if i + 1 >= len(args):
+        raise JobError("run needs `-- CMD [ARG...]` after NAME")
+    return deadline, directory, check_name(names[0]), args[i + 1:]
+
+
+def parse_plain(args, allowed, positional):
+    """({option: value}, [positional]) for wait/status/list."""
+    options, plain, i = {}, [], 0
+    while i < len(args):
+        arg = args[i]
+        option, has_value, value = arg.partition("=")
+        if arg.startswith("-") and option in allowed and (has_value or i + 1 < len(args)):
+            options[option] = value if has_value else args[i + 1]
+            i += 1 if has_value else 2
+        elif arg.startswith("-"):
+            raise JobError("unknown option or missing value: %r" % arg)
+        else:
+            plain.append(arg)
+            i += 1
+    if len(plain) != positional:
+        raise JobError("expected %d NAME argument(s), got %d" % (positional, len(plain)))
+    return options, [check_name(p) for p in plain]
+
+
+def check_name(name):
+    if not NAME_RE.match(name):
+        raise JobError("NAME must match [A-Za-z0-9][A-Za-z0-9._-]{0,63} (got %r)" % name)
+    return name
+
+
+# -- the job directory -----------------------------------------------------------------------
+def no_links(path, what):
+    if os.path.realpath(path) != path:
+        raise JobError("%s %s resolves through a symlink (to %s); use a plain directory"
+                       % (what, path, os.path.realpath(path)))
+
+
+def job_root(directory):
+    """The absolute job directory: --dir, else $TMPDIR/jobs; inside /var/tmp/cache/, no symlinks."""
+    if directory is None:
+        tmp = os.environ.get("TMPDIR", "")
+        if not tmp:
+            raise JobError("TMPDIR is not set: run as `TMPDIR=/var/tmp/cache/<task>/tmp tools/job ...` or pass --dir")
+        directory = os.path.join(tmp, "jobs")
+    path = os.path.abspath(directory)
+    if not path.startswith(CACHE_ROOT + "/"):
+        raise JobError("job directory %s is not inside %s/" % (path, CACHE_ROOT))
+    no_links(path, "job directory")
+    os.makedirs(path, exist_ok=True)
+    no_links(path, "job directory")
+    return path
+
+
+def job_dir(root, name, create=False):
+    path = os.path.join(root, name)
+    if create:
+        os.makedirs(path, exist_ok=True)
+    elif not os.path.isdir(path):
+        raise JobError("no job %r in %s" % (name, root))
+    no_links(path, "job")
+    return path
+
+
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            value = json.load(handle)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        raise JobError("cannot read %s: %s" % (path, exc)) from exc
+    return value if isinstance(value, dict) else None
+
+
+def write_json(path, value):
+    """Atomically: a reader sees the old file or the whole new one."""
+    temp = path + ".tmp"
+    with open(temp, "w", encoding="utf-8") as handle:
+        json.dump(value, handle, sort_keys=True)
+        handle.write("\n")
+    os.replace(temp, path)
+
+
+def open_lock(path, write):
+    flags = (os.O_RDWR | os.O_CREAT if write else os.O_RDONLY) | os.O_CLOEXEC | os.O_NOFOLLOW
+    try:
+        return os.open(path, flags, 0o644)
+    except OSError as exc:
+        raise JobError("cannot open %s: %s" % (path, exc)) from exc
+
+
+# -- run -------------------------------------------------------------------------------------
+def cmd_run(args):
+    deadline, directory, name, argv = parse_run(args)
+    path = job_dir(job_root(directory), name, create=True)
+    lock = open_lock(os.path.join(path, "lock"), write=True)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise JobError("job %r is still running in %s: `tools/job wait %s` or pick another NAME"
+                       % (name, path, name)) from None
+    for old in ("exit.json", "job.json", "log"):
+        try:
+            os.unlink(os.path.join(path, old))
+        except FileNotFoundError:
+            pass
+    reader, writer = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(reader)
+        runner(path, name, argv, deadline, lock, writer)
+    os.close(writer)
+    os.close(lock)  # the runner holds the same open file description, so the lock stays held
+    with os.fdopen(reader, "rb") as pipe:
+        answer = pipe.read().decode("utf-8", "replace").strip()
+    os.waitpid(pid, 0)  # the first fork exits as soon as the runner is detached
+    if not answer.startswith("pid "):
+        raise JobError("job %r did not start: %s" % (name, answer or "the runner died"))
+    print("job %s: pid %s, deadline %ds, log %s/log: %s" % (name, answer[4:], deadline, path, shlex.join(argv)))
+    return 0
+
+
+def runner(path, name, argv, deadline, lock, writer):
+    """The detached supervisor (never returns). Double fork: the first child exits, the runner is orphaned
+    into its own session with stdio on /dev/null, so the caller's Bash call ends at once."""
+    try:
+        os.setsid()
+        if os.fork() != 0:
+            os._exit(0)
+        null = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(null, fd)
+        start = 3
+        for keep in sorted((lock, writer)):  # close every inherited descriptor but these two
+            os.closerange(start, keep)
+            start = keep + 1
+        os.closerange(start, max(os.sysconf("SC_OPEN_MAX"), start + 1024))
+        supervise(path, name, argv, deadline, writer)
+    finally:
+        os._exit(0)
+
+
+def supervise(path, name, argv, deadline, writer):
+    start = time.time()
+    record = {"name": name, "argv": argv, "cwd": os.getcwd(), "start": start, "deadline": deadline,
+              "runner_pid": os.getpid(), "pid": None}
+    with open(os.path.join(path, "log"), "ab", buffering=0) as log:
+        try:
+            child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                     start_new_session=True, close_fds=True)
+        except OSError as exc:
+            log.write(("tools/job: cannot start %s: %s\n" % (shlex.join(argv), exc)).encode("utf-8", "replace"))
+            write_json(os.path.join(path, "job.json"), record)
+            write_json(os.path.join(path, "exit.json"), {"code": 127, "end": time.time(), "killed": False,
+                                                          "signal": None})
+            os.write(writer, ("cannot start: %s" % exc).encode("utf-8", "replace"))
+            return
+    record["pid"] = child.pid
+    write_json(os.path.join(path, "job.json"), record)
+    os.write(writer, b"pid %d\n" % child.pid)
+    os.close(writer)
+    killed, status = watch(child, start + deadline)
+    write_json(os.path.join(path, "exit.json"), {
+        "code": 128 - status if status < 0 else status, "end": time.time(), "killed": killed,
+        "signal": -status if status < 0 else None})
+
+
+def watch(child, deadline_at):
+    """(killed, returncode). Sleeps in the kernel on a pidfd until the child exits or the deadline passes;
+    at the deadline SIGTERM, then SIGKILL after KILL_GRACE, goes to the whole process group."""
+    with_pidfd = os.pidfd_open(child.pid)
+    try:
+        ready, _, _ = select.select([with_pidfd], [], [], max(0.0, deadline_at - time.time()))
+        if ready:
+            return False, child.wait()
+        kill_group(child.pid, signal.SIGTERM)
+        ready, _, _ = select.select([with_pidfd], [], [], KILL_GRACE)
+        if not ready:
+            kill_group(child.pid, signal.SIGKILL)
+        return True, child.wait()
+    finally:
+        os.close(with_pidfd)
+
+
+def kill_group(pgid, signum):
+    try:
+        os.killpg(pgid, signum)
+    except ProcessLookupError:
+        pass
+
+
+# -- wait / status / list --------------------------------------------------------------------
+def held(lock, max_seconds):
+    """True when the runner still holds the lock after up to `max_seconds` (blocking in flock, no polling)."""
+    if max_seconds == 0:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        return False
+
+    def expire(signum, frame):
+        raise _Expired()
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, max_seconds)
+        fcntl.flock(lock, fcntl.LOCK_SH)
+    except _Expired:
+        return True
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    return False
+
+
+def state_of(path, max_seconds):
+    """(state, exit code, record, ending): state is running / exit / killed / lost."""
+    lock = open_lock(os.path.join(path, "lock"), write=False)
+    try:
+        running = read_json(os.path.join(path, "exit.json")) is None and held(lock, max_seconds)
+    finally:
+        os.close(lock)
+    record = read_json(os.path.join(path, "job.json")) or {}
+    ending = read_json(os.path.join(path, "exit.json"))
+    if running:
+        return "running", EXIT_RUNNING, record, None
+    if ending is None:
+        return "lost", EXIT_ERROR, record, None
+    code = ending.get("code")
+    if not isinstance(code, int):
+        raise JobError("malformed exit record in %s" % path)
+    return ("killed" if ending.get("killed") else "exit"), code, record, ending
+
+
+def elapsed(record, ending):
+    start = record.get("start")
+    end = ending.get("end") if ending else time.time()
+    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+        return 0
+    return max(0, int(round(end - start)))
+
+
+def headline(state, code, record, ending):
+    took = elapsed(record, ending)
+    if state == "running":
+        return "running %ds" % took
+    if state == "killed":
+        return "KILLED after %d s (deadline %ss, exit %d)" % (took, record.get("deadline"), code)
+    if state == "lost":
+        return "LOST after %d s: the runner (pid %s) died without recording an exit; job pid was %s" % (
+            took, record.get("runner_pid"), record.get("pid"))
+    by_signal = " (signal %d)" % ending["signal"] if ending.get("signal") else ""
+    return "exit %d%s after %d s" % (code, by_signal, took)
+
+
+def clean(line):
+    line = ANSI_RE.sub("", line).rstrip("\r")
+    line = line.rsplit("\r", 1)[-1]  # a progress line redrawn with \r: what a terminal would show
+    return line if len(line) <= TAIL_LINE_CHARS else line[:TAIL_LINE_CHARS] + "..."
+
+
+def log_tail(path, count=TAIL_LINES):
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            at, data = handle.tell(), b""
+            while at > 0 and data.count(b"\n") <= count and len(data) < TAIL_READ_MAX:
+                step = min(1 << 16, at)
+                at -= step
+                handle.seek(at)
+                data = handle.read(step) + data
+    except FileNotFoundError:
+        return []
+    lines = data.decode("utf-8", "replace").split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return [clean(line) for line in lines[-count:]]
+
+
+def report(path, max_seconds):
+    state, code, record, ending = state_of(path, max_seconds)
+    print(headline(state, code, record, ending))
+    if state != "running":
+        lines = log_tail(os.path.join(path, "log"))
+        print("--- last %d lines of %s/log ---" % (len(lines), path))
+        for line in lines:
+            print(line)
+    return code
+
+
+def cmd_wait(args, status_only):
+    options, (name,) = parse_plain(args, ("--max", "--dir") if not status_only else ("--dir",), 1)
+    limit = 0 if status_only else seconds(options.get("--max", str(WAIT_DEFAULT)), "--max", 0, WAIT_LIMIT)
+    return report(job_dir(job_root(options.get("--dir")), name), limit)
+
+
+def cmd_list(args):
+    options, _ = parse_plain(args, ("--dir",), 0)
+    root = job_root(options.get("--dir"))
+    for name in sorted(os.listdir(root)):
+        path = os.path.join(root, name)
+        if not NAME_RE.match(name) or os.path.islink(path) or not os.path.isfile(os.path.join(path, "lock")):
+            continue
+        state, code, record, ending = state_of(path, 0)
+        print("%s  %s  %s" % (name, headline(state, code, record, ending), shlex.join(record.get("argv") or [])))
+    return 0
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(USAGE)
+        return 0 if argv else EXIT_ERROR
+    command, rest = argv[0], argv[1:]
+    try:
+        if command == "run":
+            return cmd_run(rest)
+        if command in ("wait", "status"):
+            return cmd_wait(rest, command == "status")
+        if command == "list":
+            return cmd_list(rest)
+        raise JobError("unknown command %r (run, wait, status, list)" % command)
+    except (JobError, OSError) as exc:
+        print("tools/job: error: %s" % exc, file=sys.stderr)
+        return EXIT_ERROR
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
