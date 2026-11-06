@@ -46,11 +46,45 @@ Every tool input, not only Bash.
   is data (for `cat > f`, `tee`, `git commit -F -`) unless its consumer is an interpreter reading stdin or the
   pipeline ends in one. A script the agent wrote earlier in the transcript (Write tool or here-document) and later
   runs (`bash f`, `./f`, `source f`) is audited as if its text had been typed.
-* The working directory follows `cd` across tool calls; shell variables do not.
+  `for NAME in WORDS; do ...; done` with a known word list (literals, known variables, brace expansions, at most
+  64 values) is unrolled: the body is audited once per value with the variable bound, so `cat /x/$n` is checked as
+  `/x/api`, `/x/state`. A list that is empty, too long, a glob or a command substitution leaves the variable
+  unresolved and the body is audited once, as before. `do`/`then`/`else`/`{` before an assignment or command are
+  not the command (`do ARGS=...`). `${v%p}`, `${v%%p}`, `${v#p}`, `${v##p}` of a known value are evaluated, `$((...))`
+  is arithmetic (not a command; substitutions inside it are still audited), and a script the agent wrote and runs
+  with arguments (`./run.sh san`) sees them as `$1`, `$2`, `$#`, `$@`.
+* The working directory follows `cd` across tool calls; shell variables do not. It is tracked per command, so a
+  relative path after `cd <scratch> && ...` resolves inside the scratch directory and after `cd <worktree>` back in
+  the worktree (`cd`, `cd -P DIR`, `pushd`; an unresolvable or `-` target changes nothing). A `cd` inside `( ... )`,
+  `$( ... )`, `bash -c`, or a script the agent runs ends with it.
+* A here-document body (`cat > f <<EOF`, `cat <<EOF > f`, `cat >> f`, `tee f`) is file text: it is never parsed as
+  commands, only the write target and `secret-env-in-file` apply. The text is remembered as the content of `f`
+  (an append extends it), and when `f` is run later (`bash f`, `./f`, `python3 f`) that text is audited as code,
+  resolved against the working directory of the run, not as a read of `f`. A file the transcript changed afterwards
+  by other means (`sed -i`, `>`, `mv`, an `Edit`) is audited as written and also `cmd-unresolved` (review); so is a
+  script lying directly in a declared scratch directory that the transcript never wrote. Scripts in the worktree
+  (the product's own code), deeper scratch trees (checkouts) and compiled programs are not reported.
 
 Paths are made absolute and normalised (`..`, `//`, `/./`, `~`, `~user`, `/proc/self/root`, `/proc/self/cwd`) and
 also resolved through symlinks that exist on the disk where the audit runs. Wildcards and braces are matched against
 the forbidden locations. Command names are the basename after quote removal (`g"h"`, `$'\x67h'`, `\gh`, `/usr/bin/gh`).
+
+### Inline code and here-documents
+Text fed to an interpreter (`python3 - <<EOF`, `python3 -c`, `node -e`, `bash <<EOF`) is code. Shell code is
+audited as shell. For other languages only string literals used as paths or commands count: the arguments of
+file and process calls (`open`, `Path`, `os.listdir`, `subprocess.*`, `os.system`, `readFileSync`, `File.read`, ...),
+plus literals those arguments name through a `name = "literal"` assignment, and the pieces of a concatenation, are
+checked for forbidden locations. A path in a comment, a `print`, a docstring or text being edited is not an
+access. Whole-environment dumps, secret lookups, decode-then-exec and network libraries are still searched in
+the whole code text. Text that `cat > file`/`tee`/`git commit -F -` writes is file content: only the write target
+matters, plus `secret-env-in-file`.
+
+A copy of the environment is not a dump when it is only a child's environment: `env = dict(os.environ)` (also
+`os.environ.copy()`, `{**os.environ}`) that is changed or read by key (`env[k]`, `.get`, `.update`, `.setdefault`,
+`.pop`), passed as `env=`, or handed to a function defined in the same text whose body shows nothing (no print,
+write, dump, log, iteration, `str`/`format`). Any other use of the copy (printing, iterating, serialising, passing to
+code that is not in the text) is `cmd-env-dump` as before, and so is `os.environ` itself. Pieces of a path built from a
+variable and a literal (`ROOT + "/tmp"`) are joined in source order.
 
 ### The persisted tool-output exception
 A `tool_result` whose text starts with `Output too large (N KB). Full output saved to: <path>` (optionally inside
@@ -107,6 +141,17 @@ is decided; a unit test requires a fixture for every rule.
 | `tamper-test-rewrite` | block | An implementer overwrote a test file it had read. |
 | `test-edit` | review | An implementer edited a pre-existing test file. |
 
+### Writes with an unknown last component
+A write target whose only unknown part is its final path component (`$SCRATCH/$name`, `/scratch/build_$mode.log`)
+has a known directory. Outside the allowed places that is `write-outside` (block); inside a declared `--allow-write`
+directory it is fine (nothing there is protected or a test file); inside the worktree it stays `write-unresolved`
+(review), because the component could be a protected or test file. Limit: the unknown component is assumed to
+be one component (not `..`).
+
+### Repeated reviews
+Identical `review` findings (same rule, tool and excerpt) are reported once, at the first line, and counted in
+`metadata.repeats_collapsed`: a script run twenty times is one thing to look at. A `block` is never collapsed.
+
 ### Decisions worth knowing
 * **Secret-looking names** (`*_SECRET`, `*_TOKEN`, `*_PASSWORD`, `*_API_KEY`, `*_ACCESS_KEY`, `*_PRIVATE_KEY`,
   `*_SECRET_KEY`, `*_AUTH_KEY`, `SSH_AUTH_SOCK`, ...). `secret-env-access` (block) is an expansion
@@ -129,5 +174,11 @@ is decided; a unit test requires a fixture for every rule.
   Inline Python/Node code is searched for the forbidden path fragments, whole-environment dumps, secret lookups and
   decode-then-exec idioms only.
 * Symlink resolution uses the disk of the machine running the audit; a link that no longer exists cannot be followed.
-* The rule set was built from synthetic transcripts only (`gate/tests/fixtures/trajectory/`, generated by
-  `gate/tests/test_trajectory_cases.py`). It has not been calibrated on real transcripts.
+* Not resolved, so still `review`: a path or command name taken from the output of a command (`f=$(grep ... | awk
+  ...)`, `for b in $(cat list)`), `while read` loops, globs as loop lists, `${v/a/b}`, functions.
+* The fixtures are synthetic (`gate/tests/fixtures/trajectory/`, generated by `gate/tests/test_trajectory_cases.py`).
+  The rules were calibrated (T019) on five real transcripts, which are not in the repository: re-run
+  `TRAJECTORY_REAL_DIR=<dir> gate/tests/trajectory_real.sh`. It checks the `block` rules against the
+  orchestrator's ground truth and at most 10 `review` findings per transcript. T020 (B21) added a gate-task
+  transcript (T018, no violation: 0 blocks).
+* A `cd` to a target that cannot be resolved keeps the previous directory; `cat <<EOF | tee f` does not record `f`.

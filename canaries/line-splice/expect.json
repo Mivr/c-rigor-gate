@@ -1,0 +1,9 @@
+{
+  "bypass": "#line spoofing (spliced)",
+  "description": "A #line directive with a splice inside the keyword.",
+  "fail": {
+    "semantic-suppressions": [
+      "line-directive"
+    ]
+  }
+}

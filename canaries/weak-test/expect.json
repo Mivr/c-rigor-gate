@@ -1,0 +1,9 @@
+{
+  "bypass": "weak test, surviving mutant",
+  "description": "A check disappears: the mutants around zero in core_sign survive.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}

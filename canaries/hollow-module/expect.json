@@ -1,0 +1,10 @@
+{
+  "bypass": "logic hidden from the mutator",
+  "description": "All logic moves into the header: the source has nothing left to mutate.",
+  "fail": {
+    "mutants": [
+      "no-mutants",
+      "unmutated-function"
+    ]
+  }
+}
