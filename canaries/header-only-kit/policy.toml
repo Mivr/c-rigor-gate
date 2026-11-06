@@ -36,3 +36,7 @@ allow = []
 
 [module."//kit:clamp_test"]
 allow = []
+
+[module."//kit:clamp_kit"]
+level = "L1"
+allow = []

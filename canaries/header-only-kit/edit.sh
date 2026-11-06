@@ -6,7 +6,7 @@ load("@gate//rules:c.bzl", "c_library", "c_test")
 c_library(name = "clamp", srcs = ["clamp.c"], headers = ["clamp.h"], visibility = ["PUBLIC"])
 
 # Test scaffolding with no source of its own: only a header, so the library has no archive.
-c_library(name = "clamp_kit", headers = ["clamp_kit.h"], deps = [":clamp"])
+c_library(name = "clamp_kit", headers = ["clamp_kit.h"], deps = [":clamp"], visibility = ["PUBLIC"])
 
 c_test(name = "clamp_test", srcs = ["clamp_test.c"], deps = [":clamp", ":clamp_kit"])
 EOT
