@@ -123,6 +123,7 @@ int in_range(int x, int lo, int hi);
 int count_below(const int *a, int n, int limit);
 int sign(int x);
 int times_one(int x);
+int unit(void);
 #endif
 EOF
 cat > pinned.c <<'EOF'
@@ -153,7 +154,15 @@ int sign(int x)
 
 int times_one(int x)
 {
-    return x * 1;
+    return x;
+}
+
+/* T051: `1 * 1` -> `1 / 1` is the same constant at -O2 and at -O0 (the front end folds it): an equivalent mutant
+   that stays equivalent when it is compiled again without the optimiser. (`x * 1` -> `x / 1` is equal at -O2
+   only: an `imul` against an `idiv` at -O0, so it is live.) */
+int unit(void)
+{
+    return 1 * 1;
 }
 EOF
 cat > pinned_test.c <<'EOF'
@@ -193,6 +202,7 @@ static void t_times_one(ctest_t *t)
 {
     CHECK_EQ_I64(t, times_one(5), 5);
     CHECK_EQ_I64(t, times_one(-3), -3);
+    CHECK_EQ_I64(t, unit(), 1);
 }
 
 CTEST_SUITE("pinned", { "in_range", t_in_range }, { "count", t_count }, { "sign", t_sign },
