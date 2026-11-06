@@ -85,6 +85,7 @@ class Audit:
         self.findings = []
         self.seen_input = []
         self.tool_uses = 0
+        self.repeats = 0
 
     def add(self, number, tool, rule, excerpt):
         self.findings.append({"rule": rule, "severity": rules.severity(rule), "line": number, "tool": tool,
@@ -187,7 +188,24 @@ def audit(parsed, policy, task):
     if run.tool_uses == 0:
         run.add(0, "", "no-tool-use", "no tool_use block in the transcript")
     run.findings.sort(key=lambda f: (f["line"], f["rule"], f["tool"], f["excerpt"]))
+    run.findings, run.repeats = collapse_repeats(run.findings)
     return run
+
+
+def collapse_repeats(findings):
+    """Keep the first of identical `review` findings (same rule, tool and excerpt); never touch a `block`.
+
+    A script run twenty times is one thing for a reviewer to look at, not twenty. Returns the findings and
+    the number collapsed."""
+    seen, kept, dropped = set(), [], 0
+    for finding in findings:
+        key = (finding["rule"], finding["tool"], finding["excerpt"])
+        if finding["severity"] == rules.REVIEW and key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        kept.append(finding)
+    return kept, dropped
 
 
 # -- output ----------------------------------------------------------------------------------
@@ -195,7 +213,7 @@ def result_document(run, task, worktree, lines):
     status = "FAIL" if any(f["severity"] == rules.BLOCK for f in run.findings) else "PASS"
     return {"gate": GATE_ID, "status": status, "findings": run.findings,
             "metadata": {"task": task.task_id, "role": task.role, "worktree": worktree, "lines": lines,
-                         "tool_uses": run.tool_uses}}
+                         "tool_uses": run.tool_uses, "repeats_collapsed": run.repeats}}
 
 
 def format_table(document):
