@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <poll.h>
+#include <sys/mman.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +21,7 @@ enum {
     MSG_CAP = 256,
     REASON_CAP = 512,
     LINE_CAP = 2048,
+    OUT_CAP = 1 << 20, /* all result lines; overflow is a framework error */
     MAX_TESTS = 512,
     NAME_CAP = 64,
     TIMEOUT_S = 10 /* fixed; deliberately not configurable by a test file */
@@ -49,7 +51,9 @@ typedef struct {
 
 static ctest_t g_t;
 static uint64_t g_nonce;
-static unsigned char g_rbuf[sizeof(report_t) + 1]; /* one spare byte detects extra data */
+static report_t *g_rep; /* anonymous shared page: the child reports through memory, so no descriptor reaches a test */
+static char g_out[OUT_CAP];
+static size_t g_out_len;
 static result_t g_res;
 static char g_line[LINE_CAP];
 static size_t g_order[MAX_TESTS];
@@ -230,7 +234,16 @@ static void put_u64(line_t *l, uint64_t v) {
     put(l, b, (size_t)n);
 }
 
-static int emit_result(int fd, const char *suite, const char *name, const result_t *r) {
+static int keep_line(const line_t *l) {
+    if (l->bad || g_out_len + l->len > sizeof g_out) {
+        return -1;
+    }
+    memcpy(g_out + g_out_len, g_line, l->len);
+    g_out_len += l->len;
+    return 0;
+}
+
+static int emit_result(const char *suite, const char *name, const result_t *r) {
     line_t l = {0, 0};
     put_str(&l, "{\"id\":\"");
     put_esc(&l, suite);
@@ -241,75 +254,49 @@ static int emit_result(int fd, const char *suite, const char *name, const result
     put_str(&l, ",\"reason\":\"");
     put_esc(&l, r->reason);
     put_str(&l, "\"}\n");
-    return l.bad ? -1 : write_all(fd, g_line, l.len);
+    return keep_line(&l);
 }
 
-static int emit_summary(int fd, size_t total, size_t passed) {
+static int emit_summary(size_t total, size_t passed) {
     line_t l = {0, 0};
     put_str(&l, "{\"summary\":{\"total\":");
     put_u64(&l, total);
     put_str(&l, ",\"passed\":");
     put_u64(&l, passed);
     put_str(&l, "}}\n");
-    return l.bad ? -1 : write_all(fd, g_line, l.len);
+    return keep_line(&l);
+}
+
+/* The results file is opened only here, after every test child is gone, so no test can hold it. */
+static int write_out(const char *path) {
+    int fd = STDOUT_FILENO;
+    int rc;
+    if (path != NULL) {
+        fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+        if (fd < 0) {
+            return -1;
+        }
+    }
+    rc = write_all(fd, g_out, g_out_len);
+    if (path != NULL && close(fd) != 0) {
+        rc = -1;
+    }
+    return rc;
 }
 
 /* ------------------------------------------------------------------ running one test */
 
-static void child_main(const ctest_case_t *c, int rfd, int wfd) {
-    report_t r;
-    if (close(rfd) != 0 || setpgid(0, 0) != 0 || dup2(2, 1) < 0) {
+static void child_main(const ctest_case_t *c) {
+    if (setpgid(0, 0) != 0 || dup2(2, 1) < 0) {
         _exit(4);
     }
     c->fn(&g_t); /* a test that exits or crashes never reaches the report below */
-    memset(&r, 0, sizeof r);
-    r.magic = REPORT_MAGIC;
-    r.nonce = g_nonce;
-    r.asserts = g_t.asserts;
-    r.failed = g_t.failed;
-    memcpy(r.msg, g_t.msg, sizeof r.msg);
-    r.msg[MSG_CAP - 1] = '\0';
-    if (write_all(wfd, &r, sizeof r) != 0 || close(wfd) != 0) {
-        _exit(3);
-    }
+    g_rep->nonce = g_nonce;
+    g_rep->asserts = g_t.asserts;
+    g_rep->failed = g_t.failed;
+    memcpy(g_rep->msg, g_t.msg, sizeof g_rep->msg);
+    g_rep->magic = REPORT_MAGIC; /* last: a half-written report has no magic */
     exit(0); /* not _exit: runs atexit, so the leak sanitizer can still fail the test */
-}
-
-/* Reads until EOF, a full buffer, or the deadline. 0 = EOF/full, 1 = timeout, -1 = error. */
-static int collect(int fd, int64_t deadline, size_t *len) {
-    *len = 0;
-    for (;;) {
-        int64_t now = now_ms();
-        struct pollfd pf = {fd, POLLIN, 0};
-        int pr;
-        ssize_t n;
-        if (now < 0) {
-            return -1;
-        }
-        if (now >= deadline) {
-            return 1;
-        }
-        pr = poll(&pf, 1, (int)(deadline - now));
-        if (pr < 0 && errno != EINTR) {
-            return -1;
-        }
-        if (pr <= 0) {
-            continue;
-        }
-        n = read(fd, g_rbuf + *len, sizeof g_rbuf - *len);
-        if (n < 0 && errno != EINTR) {
-            return -1;
-        }
-        if (n == 0) {
-            return 0;
-        }
-        if (n > 0) {
-            *len += (size_t)n;
-            if (*len == sizeof g_rbuf) {
-                return 0;
-            }
-        }
-    }
 }
 
 /* Waits for the child to be reaped until the deadline. 0 = reaped, 1 = timeout, -1 = error. */
@@ -345,15 +332,16 @@ static void fail_with(result_t *res, uint64_t asserts) {
     res->asserts = asserts;
 }
 
-static void classify(int status, const unsigned char *buf, size_t len, result_t *res) {
+static void classify(int status, result_t *res) {
     report_t r;
     memset(res, 0, sizeof *res);
+    memcpy(&r, g_rep, sizeof r);
     if (WIFSIGNALED(status)) {
         fail_with(res, 0);
         (void)snprintf(res->reason, sizeof res->reason, "killed by signal %d", WTERMSIG(status));
         return;
     }
-    if (len == 0) {
+    if (r.magic == 0) {
         fail_with(res, 0);
         if (WEXITSTATUS(status) == 0) {
             (void)snprintf(res->reason, sizeof res->reason,
@@ -364,8 +352,7 @@ static void classify(int status, const unsigned char *buf, size_t len, result_t 
         }
         return;
     }
-    memcpy(&r, buf, len < sizeof r ? len : sizeof r);
-    if (len != sizeof r || r.magic != REPORT_MAGIC || r.nonce != g_nonce) {
+    if (r.magic != REPORT_MAGIC || r.nonce != g_nonce) {
         fail_with(res, 0);
         (void)snprintf(res->reason, sizeof res->reason, "invalid report from the test process");
         return;
@@ -390,33 +377,21 @@ static void timed_out(result_t *res) {
     (void)snprintf(res->reason, sizeof res->reason, "timeout after %d s", TIMEOUT_S);
 }
 
-/* 0 = result filled in, -1 = framework error */
+/* 0 = result filled in, -1 = framework error. The child inherits no descriptor of ours. */
 static int run_one(const ctest_case_t *c, result_t *res) {
-    int fds[2];
     int status = 0;
-    int rd;
     int wt;
-    size_t len = 0;
     pid_t pid;
-    int64_t deadline;
-    if (pipe(fds) != 0) {
-        return -1;
-    }
-    deadline = now_ms() + (int64_t)TIMEOUT_S * 1000;
+    int64_t deadline = now_ms() + (int64_t)TIMEOUT_S * 1000;
+    memset(g_rep, 0, sizeof *g_rep);
     pid = fork();
     if (pid < 0) {
-        (void)close(fds[0]);
-        (void)close(fds[1]);
         return -1;
     }
     if (pid == 0) {
-        child_main(c, fds[0], fds[1]);
+        child_main(c);
     }
-    if (close(fds[1]) != 0) {
-        return -1;
-    }
-    rd = collect(fds[0], deadline, &len);
-    wt = rd == 0 ? wait_child(pid, deadline, &status) : rd;
+    wt = wait_child(pid, deadline, &status);
     if (wt != 0) {
         kill_tree(pid);
         while (waitpid(pid, &status, 0) != pid) {
@@ -426,13 +401,13 @@ static int run_one(const ctest_case_t *c, result_t *res) {
         }
     }
     kill_tree(pid); /* stragglers the test left in its process group */
-    if (close(fds[0]) != 0 || rd < 0 || wt < 0) {
+    if (wt < 0) {
         return -1;
     }
     if (wt == 1) {
         timed_out(res);
     } else {
-        classify(status, g_rbuf, len, res);
+        classify(status, res);
     }
     return 0;
 }
@@ -530,28 +505,20 @@ static void shuffle(size_t n, uint64_t seed) {
     }
 }
 
-static int open_out(const char *path) {
-    if (path == NULL) {
-        return STDOUT_FILENO;
-    }
-    return open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-}
-
-static int run_all(int fd, const char *suite, const ctest_case_t *cases, size_t n, size_t *passed) {
+static int run_all(const char *suite, const ctest_case_t *cases, size_t n, size_t *passed) {
     *passed = 0;
     for (size_t i = 0; i < n; i++) {
         const ctest_case_t *c = &cases[g_order[i]];
-        if (run_one(c, &g_res) != 0 || emit_result(fd, suite, c->name, &g_res) != 0) {
+        if (run_one(c, &g_res) != 0 || emit_result(suite, c->name, &g_res) != 0) {
             return -1;
         }
         *passed += g_res.pass ? 1U : 0U;
     }
-    return emit_summary(fd, n, *passed);
+    return emit_summary(n, *passed);
 }
 
 int ctest_run(int argc, char **argv, const char *suite, const ctest_case_t *cases, size_t n) {
     opts_t o;
-    int fd;
     int rc;
     size_t passed = 0;
     if (parse_args(argc, argv, &o) != 0 || validate(suite, cases, n) != 0) {
@@ -561,14 +528,14 @@ int ctest_run(int argc, char **argv, const char *suite, const ctest_case_t *case
     if (getrandom(&g_nonce, sizeof g_nonce, 0) != (ssize_t)sizeof g_nonce) {
         return 2;
     }
-    fd = open_out(o.out);
-    if (fd < 0) {
+    g_rep = mmap(NULL, sizeof *g_rep, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (g_rep == MAP_FAILED) {
         return 2;
     }
     shuffle(n, o.seed);
-    rc = run_all(fd, suite, cases, n, &passed);
-    if (o.out != NULL && close(fd) != 0) {
-        rc = -1;
+    rc = run_all(suite, cases, n, &passed);
+    if (rc == 0) {
+        rc = write_out(o.out);
     }
     if (rc != 0) {
         (void)fputs("ctest: framework error\n", stderr);

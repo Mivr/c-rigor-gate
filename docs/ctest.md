@@ -18,13 +18,18 @@ Test and suite names must match `[a-z0-9_]+` (<= 64 chars) and be unique.
 
 ## Why a test cannot look green by cheating
 Every test runs in a forked child (own process group, stdout redirected to stderr). The test function
-returns into framework code that sends one fixed-size report (magic, per-run random nonce, assert count,
-failed count, first failure) over a pipe, then `exit(0)`s. The parent says `pass` only if: the report is
-complete, exactly one, carries the nonce, `failed == 0`, `asserts >= 1`, and the child exited 0.
+returns into framework code that writes one fixed-size report (magic, per-run random nonce, assert count,
+failed count, first failure) into an anonymous shared page, then `exit(0)`s. The parent says `pass` only if: the report is
+written last (magic set), carries the nonce, `failed == 0`, `asserts >= 1`, and the child exited 0.
 Everything else is `fail` with a reason: `exit()`/`_exit()` before returning ("exited without reporting"),
 non-zero exit before or after reporting (this is how ASan/LSan/UBSan failures surface), death by signal,
 zero checks ("no checks executed"), invalid report, and a fixed **10 s timeout** ("timeout after 10 s";
 the process group is SIGKILLed). Order is shuffled by `--seed` (splitmix64 Fisher-Yates).
+
+No file descriptor owned by the parent reaches a test: there is no pipe (the report is shared memory) and
+the results file is **not opened until every child has finished**; the lines are kept in a fixed 1 MiB
+buffer (overflow is a framework error, exit 2) and written once with `O_CLOEXEC`. A test that
+`write`/`pwrite`s into every fd 0..255 cannot alter the results (selftest case `fds`).
 
 ## Output (JSON Lines, one object per test in run order, then the summary)
 ```

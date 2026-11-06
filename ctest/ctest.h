@@ -7,6 +7,8 @@
  *         { "other", t_other })
  *
  * which defines main(). Every test runs in its own forked child with a fixed 10 s timeout.
+ * The child holds no file descriptor of ours: it reports through anonymous shared memory and the
+ * results file is opened only after all children are gone.
  * A test passes only if its child reported its check counts back to the parent, executed at
  * least one check, had no failed check and exited with status 0. There is no skip and no
  * expected-failure. Results are JSON Lines, see docs/ctest.md.

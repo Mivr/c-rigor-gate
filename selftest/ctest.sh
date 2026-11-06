@@ -35,8 +35,8 @@ build_out() {
 # --------------------------------------------------------------------------------------
 # Test sources. Each package is one c_test with one suite.
 # --------------------------------------------------------------------------------------
-mkdir -p "$scratch"/{basic,checks,order,badname,dup,san}
-for d in basic checks order badname dup san; do
+mkdir -p "$scratch"/{basic,checks,order,badname,dup,san,fds}
+for d in basic checks order badname dup san fds; do
   printf 'load("@gate//rules:c.bzl", "c_test")\nc_test(name = "t", srcs = ["t.c"])\n' > "$scratch/$d/BUCK"
 done
 
@@ -159,6 +159,37 @@ CTEST_SUITE("san",
     { "leak", t_leak }, { "ub_overflow", t_ub_overflow })
 C
 
+cat > "$scratch/fds/t.c" <<'C'
+#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "ctest/ctest.h"
+
+/* A hostile test: tries to write or pwrite junk into every descriptor it can reach, then returns
+ * normally. It must not be able to touch the results file, and its own checks decide its status. */
+static void t_scan_fds(ctest_t *t) {
+    static const char junk[] = "{\"id\":\"fds/fails\",\"status\":\"pass\",\"asserts\":9,\"reason\":\"\"}\n";
+    long open_above_stderr = 0;
+    for (int fd = 0; fd < 256; fd++) {
+        if (fd > 2 && fcntl(fd, F_GETFD) >= 0) {
+            open_above_stderr++;
+        }
+        if (fd != 1 && fd != 2) { /* 1 and 2 are the log; keep them readable */
+            ssize_t a = pwrite(fd, junk, sizeof junk - 1, 0);
+            ssize_t b = write(fd, junk, sizeof junk - 1);
+            (void)a;
+            (void)b;
+        }
+    }
+    CHECK_EQ_I64(t, open_above_stderr, 0);
+}
+static void t_fails(ctest_t *t) { CHECK(t, 0); }
+static void t_after(ctest_t *t) { CHECK(t, 1); }
+
+CTEST_SUITE("fds", { "scan_fds", t_scan_fds }, { "fails", t_fails }, { "after", t_after })
+C
+
 # --------------------------------------------------------------------------------------
 # Expectations, checked by one Python program. Each case: id -> (status, asserts, reason regex)
 # --------------------------------------------------------------------------------------
@@ -193,6 +224,11 @@ EXPECT = {
     "mem_bad": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_MEM\(.*\): first difference at offset 3"),
     "mem_len": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK_EQ_MEM\(.*\): lengths 3 != 2"),
     "continues": ("fail", 3, r"2 of 3 checks failed; first: .*t\.c:\d+: CHECK\(0\)"),
+  },
+  "fds": {
+    "scan_fds": ("pass", 1, r""),
+    "fails": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK\(0\)"),
+    "after": ("pass", 1, r""),
   },
   "order": None,   # checked separately
   "san": {
@@ -274,6 +310,8 @@ build_out basic_res release "$pkg/basic:t_results"
 build_out checks_res release "$pkg/checks:t_results"
 chk suite basic "$basic_res" || fail "$CUR"
 chk suite checks "$checks_res" || fail "$CUR"
+build_out fds_res release "$pkg/fds:t_results"
+chk suite fds "$fds_res" || fail "$CUR: a test altered the results file or leaked a descriptor"
 
 begin "san: heap overflow, leak and UB abort are fails; the clean test passes (results built on RE)"
 build_out san_res san "$pkg/san:t_results"
