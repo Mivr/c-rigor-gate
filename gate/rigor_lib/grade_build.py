@@ -25,6 +25,7 @@ def run_buck(tree, args):
     command = ["bash", os.path.join(tree, "gate", "tools", "buck2")] + args
     try:
         done = subprocess.run(command, cwd=tree, stdin=subprocess.DEVNULL, capture_output=True,
+                              env=grade_context.sealed_env(os.path.dirname(tree)),
                               timeout=BUCK_TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError) as exc:
         raise InternalError("cannot run buck2: %s" % exc) from exc
@@ -111,8 +112,10 @@ def build_mode(g, mode, labels):
     report = os.path.join(g.work, "build-report-%s.json" % mode)
     if os.path.lexists(report):
         os.unlink(report)
+    # --uncached: no remote action-cache lookups or writes, so every action runs on a worker.
+    flags = ["--no-remote-cache"] if g.args.uncached else []
     code, _, err = run_buck(g.tree, ["build", "--target-platforms", "toolchains//:linux_" + mode,
-                                     "--keep-going", "--build-report", report] + labels)
+                                     "--keep-going", "--build-report", report] + flags + labels)
     executed, cached = action_counts(g.tree)
     metadata = {"executed_actions": executed, "cached_actions": cached, "exit_code": code}
     out_dir = os.path.join(g.test_results, mode)

@@ -9,7 +9,6 @@ import os
 import subprocess
 import sys
 import time
-from argparse import Namespace
 
 from rigor_lib import grade_context, grade_pipeline, jsonio, product_layout, runner, verdict
 from rigor_lib.errors import InternalError
@@ -78,11 +77,27 @@ def start_grading(args):
     product = product_layout.load_product(args.product)
     gate_sha = grade_context.gate_checkout_sha()
     grade_context.prepare_work(args.work)
+    # From here on every subprocess (git, ssh-keygen, Buck2) inherits only the sealed environment.
+    grade_context.seal_process_environment(args.work)
     work = args.work
     return grade_context.Grading(
         args=args, product=product, gate_sha=gate_sha, work=work,
         src=os.path.join(work, "src"), tree=os.path.join(work, "tree"),
         results=os.path.join(work, "results"), test_results=os.path.join(work, "test-results"))
+
+
+def write_verdict(g):
+    """`rigor verdict` over the results, plus `uncached` in the hashed core."""
+    order = verdict.read_order(grade_context.ORDER_FILE)
+    documents = verdict.load_results(g.results, order)
+    core = verdict.build_core(order, documents)
+    core["uncached"] = bool(g.args.uncached)
+    document = verdict.build_verdict(core, grade_context.ORDER_FILE, g.results, order, documents)
+    jsonio.write_atomic(g.args.verdict_out, jsonio.canonical_dumps(document))
+    for entry in core["gates"]:
+        print("  %-14s %s" % (entry["id"], entry["status"]))
+    print("verdict: %s%s" % (core["overall"], " (uncached)" if core["uncached"] else ""))
+    return runner.EXIT_PASS if core["overall"] == verdict.STATUS_PASS else runner.EXIT_FAIL
 
 
 def run(args):
@@ -91,8 +106,7 @@ def run(args):
         failure = run_gates(g)
     finally:
         grade_context.kill_daemon(g.tree)
-    code = verdict.run(Namespace(order=grade_context.ORDER_FILE, results=g.results,
-                                 out=args.verdict_out))
+    code = write_verdict(g)
     if failure is not None:
         raise InternalError("grading stopped by an internal error: %s" % (failure,))
     if args.sign_key is not None:
@@ -115,6 +129,8 @@ def add_parser(subparsers):
     parser.add_argument("--approvals")
     parser.add_argument("--sign-key")
     parser.add_argument("--work", required=True)
+    parser.add_argument("--uncached", action="store_true",
+                        help="no remote action-cache reads or writes: every action runs on a worker")
     # Not `dest="out"`: cli.report_internal_error deletes args.out, but a failed grading must
     # leave the FAIL verdict it wrote.
     parser.add_argument("--out", dest="verdict_out", required=True)

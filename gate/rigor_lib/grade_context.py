@@ -12,6 +12,7 @@ from rigor_lib.errors import InternalError
 GATE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 ORDER_FILE = os.path.join(GATE_ROOT, "gate", "order.txt")
 MODES = ("release", "san")
+SEALED_PATH = "/usr/local/bin:/usr/bin:/bin"
 
 
 @dataclass
@@ -52,6 +53,27 @@ def remove_tree(path):
     shutil.rmtree(path, onerror=_make_writable)
 
 
+def sealed_env(work):
+    """The only environment any subprocess of a grading gets.
+
+    Buck2 reads `$HOME/.buckconfig.local` and `$HOME/.buckconfig.d/*` (found by experiment;
+    `~/.buckconfig` and XDG paths are not read), and honours BUCK*/LD_*/proxy variables, so HOME is an
+    empty directory inside the work dir and nothing else is inherited.
+    """
+    home = os.path.join(work, "home")
+    tmp = os.path.join(work, "tmp")
+    os.makedirs(home, exist_ok=True)
+    os.makedirs(tmp, exist_ok=True)
+    return {"HOME": home, "PATH": SEALED_PATH, "LANG": "C.UTF-8", "TMPDIR": tmp}
+
+
+def seal_process_environment(work):
+    """Replace this process's environment (in-process git and ssh-keygen calls inherit it)."""
+    env = sealed_env(work)
+    os.environ.clear()
+    os.environ.update(env)
+
+
 def kill_daemon(tree):
     """Stop the Buck2 daemon of a grading tree. Never raises: this runs on every exit path."""
     script = os.path.join(tree, "gate", "tools", "buck2")
@@ -59,7 +81,7 @@ def kill_daemon(tree):
         return
     try:
         subprocess.run(["bash", script, "kill"], cwd=tree, stdin=subprocess.DEVNULL,
-                       capture_output=True, timeout=120)
+                       env=sealed_env(os.path.dirname(tree)), capture_output=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
         pass
 
@@ -68,8 +90,9 @@ def prepare_work(work):
     """Create `work` and clear what an earlier run left in it (stopping its daemon first)."""
     os.makedirs(work, exist_ok=True)
     kill_daemon(os.path.join(work, "tree"))
-    for name in ("src", "tree", "results", "test-results"):
+    for name in ("src", "tree", "results", "test-results", "home", "tmp"):
         path = os.path.join(work, name)
         if os.path.lexists(path):
             remove_tree(path)
     os.makedirs(os.path.join(work, "results"))
+    sealed_env(work)  # creates the empty HOME and TMPDIR

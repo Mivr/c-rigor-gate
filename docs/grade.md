@@ -2,7 +2,7 @@
 
 ```
 gate/rigor grade --product-repo R --base B --head H --task TASK.toml --product products/<p>/product.toml \
-                 [--approvals DIR] [--sign-key KEY] --work DIR --out verdict.json
+                 [--approvals DIR] [--sign-key KEY] [--uncached] --work DIR --out verdict.json
 ```
 Exit 0 = overall PASS, 1 = FAIL, 2 = internal error (the verdict, if written, is FAIL). `--work` is
 emptied (`src`, `tree`, `results`, `test-results`) at the start; `R` must be a local directory.
@@ -47,6 +47,25 @@ product's `tools/` is never consulted.
 `core` holds only gate id, status, findings count and the findings hash. Anything volatile (shas,
 paths, seconds, action counts, stderr) is in `metadata`. Two runs of the same inputs give the same
 `core_sha256`, whether the build was cold or fully cached.
+
+## Sealed environment
+`rigor grade` replaces its own environment, and gives Buck2, git and ssh-keygen only:
+`HOME=<work>/home` (created empty, wiped at the start), `TMPDIR=<work>/tmp`,
+`PATH=/usr/local/bin:/usr/bin:/bin`, `LANG=C.UTF-8`. No `BUCK*`, `XDG_*`, `PYTHON*`, `LD_*`, `SSH_*`,
+proxy or `GIT_*` variable is inherited. Found by experiment: Buck2 reads `$HOME/.buckconfig.local` and
+`$HOME/.buckconfig.d/*` (both applied on top of the project config); it does not read `~/.buckconfig` or
+XDG paths. `/etc/buckconfig*` is not present on the grader host and is outside the gate's control.
+`selftest/grade.sh` plants hostile config in an inherited HOME plus `BUCK2_*`, `LD_PRELOAD`, proxy and
+`SSH_*` variables and requires the same `core_sha256` as the clean run.
+
+## `--uncached`: merge-decisive grades
+Test results are RE artifacts, and a cached grade trusts the shared action cache: anyone who can write it
+could plant a forged `results.jsonl` for an action digest. `--uncached` passes `--no-remote-cache` to
+every build, so no cache is read or written and every action runs on a worker. The verdict core records
+`"uncached": true|false` (hashed), so a decisive verdict is distinguishable. **Merge-decisive grades use
+`--uncached`** until the RE farm gives the grader a client-read-only action cache. (Buck2 notes the RE
+service may still deduplicate identical in-flight actions; the selftest checks that an uncached grade
+reports 0 cache hits.)
 
 ## Daemons
 Every grading tree starts its own Buck2 daemon; the build gate kills it in a `finally`, and `rigor
