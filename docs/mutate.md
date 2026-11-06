@@ -27,8 +27,36 @@ headers of its own is an analysis error (`provides neither a library nor headers
 | 1 `mutant_list` | per source: the pinned clang with the module's **exact compile command** (the argsfile Buck2 itself uses) runs `-Xclang -ast-dump=json -fsyntax-only`; `mutate/gen.py` reads the JSON and writes the sorted mutant list | RE, cached |
 | 2 baseline | each source is recompiled *unmodified* through the mutant path, each test is relinked from those objects and run; the harness objects are compared with Buck2's own objects | RE, cached |
 | 3 `mutant_compile` | `dynamic_output` over the lists: one action per mutant writes the mutated copy of the source and compiles it with the same command; result = sha256 of the object, or `unviable` | RE, cached |
-| 4 `mutant_run` | `dynamic_output` over the compile results: for every mutant whose object is new (not the baseline's, not an earlier mutant's) and every test, one action relinks the test with the mutated object and runs it with ctest (`--seed 1`) | RE, cached |
+| 3b `mutant_compile_o0` | the same for every mutant whose `-O2` object equals the baseline's or an earlier mutant's (the candidates for `equivalent` and `duplicate`), and for each source's unmodified baseline: the same command with `-O0` appended (T051, B15) | RE, cached |
+| 4 `mutant_run` | `dynamic_output` over the compile results: for every mutant that is live (see below) and every test, one action relinks the test with the mutated object (the `-O0` one for a mutant the optimiser folded) and runs it with ctest (`--seed 1`) | RE, cached |
 | 5 `mutant_report` | one `report.json` with the raw facts of all of the above | RE |
+
+### Equivalence is checked at -O0 too (T051, B15; R001 R2)
+At `-O2` the optimiser can fold a behaviour-changing mutation into the baseline object. The classic case is undefined
+behaviour: in `return (a + 1 < a) ? 7 : 3;` the condition is false for every defined `int`, so `-O2` deletes the branch and
+`7 -> 8` compiles to the baseline's bytes. Before T051 that mutant was `equivalent` and never ran, whatever the tests did.
+
+Only the candidates are compiled again (a mutant whose `-O2` object already differs costs nothing extra), the baseline once
+per source, with the module's exact compile command and `-O0` appended (the last `-O` wins). Then:
+| Candidate | At `-O0` | Verdict |
+|---|---|---|
+| `-O2` object == baseline's | object == baseline's `-O0` object | `equivalent` (not run) |
+| | different | live: its `-O0` object is relinked into each test and run; killed or `survived` like any mutant |
+| `-O2` object == an earlier mutant's | object == that mutant's `-O0` object (or another live one's) | `duplicate` of it |
+| | different | live, as above |
+| no usable `-O0` result in the report (missing or failed) | | `unrun` with a `missing-o0` finding (never equivalent: the claim could not be checked) |
+
+`rules/mutate.bzl` `_stage3` (which mutants to run) and `mutants_verdict.derive` (the verdict) apply the same rule; the report
+carries `baseline_o0` per source and `compile.o0 = {status, hash}` per candidate. The verdict metadata of a module has
+`tce = {equivalent_o2, equivalent_o0}`: how many mutants had the baseline's `-O2` object, and how many of those still have
+its `-O0` object (the `equivalent` verdicts); the difference ran as live mutants.
+
+Consequence for products: a mutation that is harmless but not folded away at `-O0` (`x * 1 -> x / 1`, a dead store
+`int v = 0;` -> `= 1`) is now live, and a test cannot kill it; it needs an `equivalent-mutant` approval or a source change.
+Only mutants identical at both levels (a constant the front end folds, `1 * 1 -> 1 / 1`) stay `equivalent`. A folded
+mutant is run at `-O0` against tests that passed at `-O2`; for undefined behaviour the two builds legitimately differ, so a
+test written against the optimised result kills such a mutant, and a test that never reaches the branch lets it survive.
+Canary `o2-folded-mutant`; selftest `mutate.sh` module `fold`.
 
 ### Deterministic results (T034, B34)
 What `mutant_run` stores is a function of the verdict, not of the execution: a mutant that reads uninitialised memory
@@ -173,8 +201,8 @@ hash, because `<`->`<=` and `<`->`>=` at one place would otherwise collide.)
 | Verdict | Meaning |
 |---|---|
 | `unviable` | the mutated source did not compile; reported, not counted against the tests |
-| `equivalent` | object byte-identical to the unmutated object (trivial compiler equivalence, TCE) |
-| `duplicate` | object identical to an earlier mutant's in the same file; that mutant's verdict stands |
+| `equivalent` | object byte-identical to the unmutated object at `-O2` and at `-O0` (trivial compiler equivalence, TCE) |
+| `duplicate` | object identical to an earlier mutant's in the same file at `-O2` and at `-O0`; that mutant's verdict stands |
 | `killed-assert` | some test failed with a check failure (`N of M checks failed; first: ...`) |
 | `killed-crash` | no check failure, but a test crashed, was killed, timed out (ctest 10 s per test, 180 s per binary), tripped a sanitizer exit, or the binary died |
 | `survived` | every test passed |
@@ -196,12 +224,13 @@ L1 is "not mutated" and never appears here; `rigor grade` writes this policy, se
 | `crash-only-function`, `no-assert-kill-function` | L3: a function with mutants none of which was killed by a failed check (only crashes, or only equivalent/unviable ones) |
 | `baseline-red` | the unmutated tests are not all passing with at least one assertion each |
 | `harness-mismatch` | the unmutated recompile is not byte-identical to Buck2's own object |
+| `missing-o0` | a mutant equal at `-O2` to the baseline or an earlier mutant has no usable `-O0` compile in the report (the verdict is `unrun`) |
 | `missing-run`, `bad-results` | a live mutant has no run, or results that are unparsable, skip a test, disagree with the exit status, or name other tests than the baseline |
 | `module-not-in-policy`, `policy-module-without-report` | report and policy disagree |
 | `forged-approval` | as in docs/gate.md |
 
 Exit 2: unreadable or malformed report or policy, a stray file in `DIR`, two reports for one label, no
-reports. Metadata per module: total, counts per verdict and per operator, survivors with `file:line`.
+reports. Metadata per module: total, counts per verdict and per operator, survivors with `file:line`, `tce` (see above).
 Approvals never cover anything but a survivor.
 
 ## Limits and notes
