@@ -40,7 +40,7 @@ log="$out/$step.log"
 run "$log" build --target-platforms ${PLAT}cov //examples/hello:hello_test_coverage --show-output || fail "$CUR" "$log"
 rep="$(awk '/hello_test_coverage/ && /buck-out/ {print $2}' "$log" | tail -1)"
 [ -f "$rep" ] || fail "$CUR: no report file" "$log"
-grep -q "MC/DC" "$rep" && grep -q "Branches" "$rep" && grep -Eq "^hello\.c +[0-9]+ +0 +100\.00%" "$rep" || fail "$CUR: report lacks expected content: $(cat "$rep")"
+grep -q "MC/DC" "$rep" && grep -q "Branches" "$rep" && grep -Eq "^(examples/hello/)?hello\.c +[0-9]+ +0 +100\.00%" "$rep" || fail "$CUR: report lacks expected content: $(cat "$rep")"
 grep -q "MC/DC" "$(dirname "$rep")/detail.txt" || true
 
 begin "sealed flags: bad/warn fails to build for -Werror (unused variable)"
