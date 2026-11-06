@@ -1,6 +1,6 @@
 """Unpack the pinned release tarball of a vendored library, exactly.
 
-Runs as a build action on RE (Python 3 stdlib only; the worker has no bzip2 binary, `tarfile` does it).
+Runs as a build action on RE (Python 3 stdlib only; `tarfile` reads the bz2, no bzip2 binary is needed).
 The archive is already checked against its sha256 by Buck2 (`download_file`). On top of that:
 
 * only regular files and directories exist inside the selected directories (a link, a device or an
