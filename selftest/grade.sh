@@ -84,6 +84,16 @@ open(p, "w").write(s)
 EOF
 }
 edit_deleted_target() { sed -i '/^c_test(name = "util_test"/d' util/BUCK; }
+# Product checks (T007). Each is spelled so that the text scan of `suppressions` cannot see it.
+edit_kills() {  # symbols: core references kill (never called)
+  printf '\nint kill(int pid, int sig);\nint core_stop(int pid);\nint core_stop(int pid) { return kill(pid, 0); }\n' >> core/core.c
+}
+edit_spliced_optnone() {  # semantic-suppressions: attribute built by pasting, #line spliced
+  printf '\n#define GLUE(a, b) a##b\nint core_slow(int a);\n__attribute__((GLUE(opt, none))) int core_slow(int a) { return a; }\n#li\\\nne 1 "fake.c"\n' >> core/core.c
+}
+edit_raw_rule() {  # buckfiles: a raw rule beside the macros (it is never built)
+  printf '\nnative.cxx_library(name = "raw", srcs = ["core.c"])\n' >> core/BUCK
+}
 edit_heap_overflow() { sed -i 's/^    return ramp;/    ramp[count] = 0;\n    return ramp;/' util/util.c; }
 
 # ---------------------------------------------------------------------------------------
@@ -100,8 +110,8 @@ core = json.load(open(path))["core"]
 got = {g["id"]: g["status"] for g in core["gates"]}
 bad = {g for g, s in got.items() if s == "FAIL"}
 not_run = {g for g, s in got.items() if s == "NOT_RUN"}
-# A failed build means there are no results to judge: the tests gates are NOT_RUN (still a failure).
-want_not_run = {"tests-release", "tests-san"} if "build" in expected else set()
+# A failed build means there are no results or facts to judge: those gates are NOT_RUN (still a failure).
+want_not_run = {"tests-release", "tests-san", "semantic-suppressions", "symbols"} if "build" in expected else set()
 want_code = 1 if expected else 0
 print("  " + " ".join("%s=%s" % (g, s) for g, s in got.items()) + "  overall=" + core["overall"])
 ok = bad == expected and not_run == want_not_run and code == want_code and (core["overall"] == "PASS") == (not expected)
@@ -175,6 +185,8 @@ check_verdict "$work/warm.verdict.json" "" "$code" || { tail -n 30 "$work/warm.l
 exec_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["build"]["executed_actions"])' "$work/warm.verdict.json")"
 echo "  build actions executed: cold $exec_cold, warm $exec_warm"
 [ "$exec_warm" = 0 ] || fail "warm run executed $exec_warm build actions"
+exec_facts_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]["symbols"]["executed_actions"])' "$work/warm.verdict.json")"
+[ "$exec_facts_warm" = 0 ] || fail "warm run executed $exec_facts_warm facts actions"
 sha_cold="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_sha256"])' "$cold_verdict")"
 sha_warm="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["core_sha256"])' "$work/warm.verdict.json")"
 [ "$sha_cold" = "$sha_warm" ] || fail "core_sha256 differs between two runs of the same inputs"
@@ -224,6 +236,9 @@ b = u["metadata"]["gate_metadata"]["build"]
 print("  uncached: executed %d, cached %d" % (b["executed_actions"], b["cached_actions"]))
 assert u["core"]["uncached"] is True and w["core"]["uncached"] is False
 assert b["executed_actions"] > 0 and b["cached_actions"] == 0, b
+f = u["metadata"]["gate_metadata"]["symbols"]
+print("  uncached facts: executed %d, cached %d" % (f["executed_actions"], f["cached_actions"]))
+assert f["executed_actions"] > 0 and f["cached_actions"] == 0, f
 assert u["core_sha256"] != w["core_sha256"]
 EOF
 [ -z "$(find_daemons "$work/uncached")" ] || fail "uncached: a process is still running"
@@ -238,8 +253,11 @@ run_case product-buck2 contract:outside-allowed
 [ ! -e "$work/tools-buck2-ran" ] || fail "the product's tools/buck2 was executed"
 run_case failing-test tests-release:test-not-pass,tests-san:test-not-pass
 run_case removed-test tests-release:missing-test,tests-san:missing-test
-run_case deleted-target tests-release:missing-test,tests-san:missing-test
+run_case deleted-target tests-release:missing-test,tests-san:missing-test,symbols:policy-module-without-facts
 run_case heap-overflow tests-san:test-not-pass
+run_case kills symbols:denied-symbol
+run_case spliced-optnone semantic-suppressions:forbidden-attribute,semantic-suppressions:line-directive
+run_case raw-rule buckfiles:bad-call
 
 # 3. an internal error (unreadable contract) is exit 2 and a FAIL verdict
 step=$((step + 1))

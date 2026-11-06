@@ -67,6 +67,7 @@ def assemble_gate(g):
     for name, data in generated.items():
         full[name] = grade_tree.write_file(g.tree, name, data, 0o644)
     full.update(manifest)
+    g.product_paths = sorted(manifest)
     metadata = {"gate_sha": g.gate_sha, "product_files": len(manifest),
                 "manifest": [[path, full[path]] for path in sorted(full)]}
     return GateResult("assemble", found, metadata)

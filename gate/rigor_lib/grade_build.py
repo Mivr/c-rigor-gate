@@ -67,7 +67,7 @@ def action_counts(tree):
     return executed, cached
 
 
-def _read_report(path):
+def read_report(path):
     if not os.path.isfile(path):
         return None
     document = jsonio.strict_loads(jsonio.read_bytes(path))
@@ -76,7 +76,7 @@ def _read_report(path):
     return document["results"]
 
 
-def _output_path(tree, label, entry):
+def output_path(tree, label, entry):
     """The one artifact of a successful target, as a path checked to be inside buck-out."""
     outputs = entry.get("outputs", {}).get("DEFAULT", [])
     if len(outputs) != 1 or not isinstance(outputs[0], str):
@@ -89,7 +89,7 @@ def _output_path(tree, label, entry):
 
 def collect_mode(tree, mode, labels, report_path, out_dir):
     """Findings for one mode; copies each target's results file into `out_dir`."""
-    results = _read_report(report_path)
+    results = read_report(report_path)
     found = []
     os.makedirs(out_dir)
     for index, label in enumerate(labels):
@@ -97,7 +97,7 @@ def collect_mode(tree, mode, labels, report_path, out_dir):
         if entry is None or entry.get("success") != "SUCCESS":
             found.append(finding("build-failed", mode=mode, target=label))
             continue
-        source = _output_path(tree, label, entry)
+        source = output_path(tree, label, entry)
         if source is None:
             found.append(finding("missing-output", mode=mode, target=label))
             continue

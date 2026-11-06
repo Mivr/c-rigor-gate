@@ -31,6 +31,10 @@ class Grading:
     built: dict = field(default_factory=dict)
     # gate id -> "PASS" | "FAIL" for the gates that have finished
     status: dict = field(default_factory=dict)
+    # relative paths of the product files copied into the tree (set by the assemble step)
+    product_paths: list = field(default_factory=list)
+    # the facts build, done once for both fact gates (set by grade_checks)
+    facts: object = None
 
 
 def gate_checkout_sha():
