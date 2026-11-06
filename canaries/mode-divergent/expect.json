@@ -1,0 +1,9 @@
+{
+  "bypass": "sanitizer-only code",
+  "description": "Code under __has_feature(address_sanitizer): the san tests compile it, the release scan never sees it (T023, R001 R5).",
+  "fail": {
+    "mode-divergence": [
+      "mode-divergent-code"
+    ]
+  }
+}
