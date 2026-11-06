@@ -1,4 +1,4 @@
-"""Self-test only: turn a library's computed export list into a private namespace.
+"""Turn a library's computed export list into a private namespace.
 
 Reads the facts file of the server copy (`<lib>_symbols`, kind c_third_party), writes
   * a map for `llvm-objcopy --redefine-syms` (`name srv_name` for every defined symbol), and

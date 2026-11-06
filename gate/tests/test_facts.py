@@ -290,6 +290,8 @@ MBED = "gate//third_party/mbedtls:mbedtls"
 PERMIT = 'third_party = ["%s"]\n' % MBED
 TP_ALLOWED = MBED + "\n"
 TP_PREFIXES = "mbedtls_\npsa_\n"
+PEER = "gate//third_party/tls_peer:tls_peer"
+TP_TEST_ALLOWED = PEER + "\n"
 
 
 def tp_facts(label=MBED, units=None):
@@ -303,9 +305,10 @@ class ThirdPartyFactsCase(TempDirTestCase):
     run_gate = FactsCase.run_gate
     rules = FactsCase.rules
 
-    def tp_dir(self, allowed=TP_ALLOWED, prefixes=TP_PREFIXES):
+    def tp_dir(self, allowed=TP_ALLOWED, prefixes=TP_PREFIXES, test_allowed=TP_TEST_ALLOWED):
         directory = self.sub("tp")
         (directory / "ALLOWED_LABELS").write_text(allowed, encoding="utf-8")
+        (directory / "ALLOWED_TEST_LABELS").write_text(test_allowed, encoding="utf-8")
         (directory / "RESERVED_PREFIXES").write_text(prefixes, encoding="utf-8")
         return directory
 
@@ -449,7 +452,7 @@ class ThirdPartyFactsCase(TempDirTestCase):
                                            extra=["--third-party", self.tp_dir(allowed, prefixes)])
 
     def test_missing_list_files_and_directory_are_exit_2(self):
-        for case in ("ALLOWED_LABELS", "RESERVED_PREFIXES", "dir"):
+        for case in ("ALLOWED_LABELS", "ALLOWED_TEST_LABELS", "RESERVED_PREFIXES", "dir"):
             with self.subTest(case=case):
                 self.setUp()
                 directory = self.tp_dir()
@@ -469,3 +472,94 @@ class ThirdPartyFactsCase(TempDirTestCase):
         os.symlink(real, directory / "ALLOWED_LABELS")
         outcome, _ = self.run_gate("symbols", [self.user(), CTEST, tp_facts()], expect_code=2,
                                    policy=GLOBAL + '[module."//p:user"]\n' + PERMIT, extra=["--third-party", directory])
+
+    def test_a_label_in_both_lists_is_exit_2(self):
+        directory = self.tp_dir(test_allowed=TP_ALLOWED)
+        self.run_gate("symbols", [self.user(), CTEST, tp_facts()], expect_code=2,
+                      policy=GLOBAL + '[module."//p:user"]\n' + PERMIT, extra=["--third-party", directory])
+
+    def test_a_symlinked_test_list_is_exit_2(self):
+        directory = self.tp_dir()
+        os.remove(directory / "ALLOWED_TEST_LABELS")
+        real = self.tmp / "real"
+        real.write_text(TP_TEST_ALLOWED, encoding="utf-8")
+        os.symlink(real, directory / "ALLOWED_TEST_LABELS")
+        self.run_gate("symbols", [self.user(), CTEST, tp_facts()], expect_code=2,
+                      policy=GLOBAL + '[module."//p:user"]\n' + PERMIT, extra=["--third-party", directory])
+
+
+class TestOnlyLibraryCase(TempDirTestCase):
+    """The TLS test peer is trusted and unscanned, but only a `c_test` may reach it."""
+
+    run_gate = FactsCase.run_gate
+    rules = FactsCase.rules
+    tp_dir = ThirdPartyFactsCase.tp_dir
+
+    def peer(self, label=PEER):
+        return tp_facts(label, [unit("tls_peer.c.o", defined=["tls_peer_start", "tls_peer_step"],
+                                     undefined=["srv_mbedtls_ssl_handshake", "memcpy"])])
+
+    def graph(self, targets, code, permit=("//p:t",)):
+        policy = GLOBAL + "".join('[module."%s"]\n%s' % (t["label"], 'third_party = ["%s"]\n' % PEER if t["label"] in permit else "")
+                                  for t in targets)
+        return self.rules("symbols", targets + [CTEST, self.peer()], code, policy=policy,
+                          extra=["--third-party", self.tp_dir()])
+
+    def node(self, label, kind, deps, undefined=()):
+        return facts(label, [unit(defined=[label.split(":")[1]], undefined=undefined)], deps=deps, kind=kind)
+
+    def test_a_test_may_use_it(self):
+        t = self.node("//p:t", "c_test", [PEER], ["tls_peer_start"])
+        self.assertEqual(self.graph([t], 0), [])
+
+    def test_a_library_may_not_name_it(self):
+        lib = self.node("//p:lib", "c_library", [PEER], ["tls_peer_start"])
+        self.assertEqual(self.graph([lib], 1, permit=("//p:lib",)), [("test-only-dep", PEER)])
+
+    def test_a_binary_and_a_fuzzer_may_not_name_it(self):
+        for kind in ("c_binary", "c_fuzz"):
+            with self.subTest(kind=kind):
+                self.setUp()
+                node = self.node("//p:x", kind, [PEER])
+                self.assertEqual(self.graph([node], 1, permit=("//p:x",)), [("test-only-dep", PEER)])
+
+    def test_transitive_through_libraries_and_through_a_test(self):
+        t = self.node("//p:t", "c_test", [PEER])
+        mid = self.node("//p:mid", "c_library", ["//p:t"])
+        top = self.node("//p:top", "c_binary", ["//p:mid"])
+        self.assertEqual(self.graph([t, mid, top], 1),
+                         [("test-only-dep", PEER), ("test-only-dep", PEER)])
+
+    def test_a_dep_without_facts_that_names_the_label_is_still_refused(self):
+        lib = self.node("//p:lib", "c_library", [PEER])
+        outcome, result = self.run_gate("symbols", [lib, CTEST], expect_code=1,
+                                        policy=GLOBAL + '[module."//p:lib"]\n', extra=["--third-party", self.tp_dir()])
+        self.assertEqual(sorted(f["rule"] for f in result["findings"]), ["missing-dep-facts", "test-only-dep"])
+
+    def test_the_gate_cell_spelling_is_the_same_label(self):
+        peer = self.peer("//third_party/tls_peer:tls_peer")
+        lib = self.node("//p:lib", "c_library", ["//third_party/tls_peer:tls_peer"])
+        policy = GLOBAL + '[module."//p:lib"]\n'
+        self.assertEqual(self.rules("symbols", [lib, CTEST, peer], 1, policy=policy, extra=["--third-party", self.tp_dir()]),
+                         [("test-only-dep", "//third_party/tls_peer:tls_peer"),
+                          ("third-party-not-permitted", "//third_party/tls_peer:tls_peer")])
+
+    def test_defining_the_peer_s_names_is_a_collision(self):
+        for name in ("srv_start", "srv_mbedtls_ssl_read", "tls_peer_start"):
+            with self.subTest(name=name):
+                self.setUp()
+                lib = facts("//p:lib", [unit(defined=[name])])
+                policy = GLOBAL + '[module."//p:lib"]\n'
+                self.assertEqual(self.rules("symbols", [lib, CTEST, self.peer()], 1, policy=policy,
+                                            extra=["--third-party", self.tp_dir(prefixes="mbedtls_\npsa_\nsrv_\ntls_peer_\n")]),
+                                 [("symbol-collision", name)])
+
+    def test_calling_the_peer_without_depending_on_it_is_undeclared(self):
+        lib = facts("//p:lib", [unit(defined=["f"], undefined=["tls_peer_start"])])
+        self.assertEqual(self.rules("symbols", [lib, CTEST, self.peer()], 1, policy=GLOBAL + '[module."//p:lib"]\n',
+                                    extra=["--third-party", self.tp_dir()]), [("undeclared-symbol", "tls_peer_start")])
+
+    def test_the_default_lists_name_the_peer_as_test_only(self):
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                               "third_party", "ALLOWED_TEST_LABELS"), encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), PEER + "\n")

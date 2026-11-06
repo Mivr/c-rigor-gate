@@ -1,4 +1,4 @@
-"""Self-test only: a private, renamed copy of a library archive (see rename.py)."""
+"""A private, renamed copy of a library archive (see rename.py)."""
 
 def _impl(ctx: AnalysisContext) -> list[Provider]:
     symbols = ctx.attrs.symbols[DefaultInfo].default_outputs[0]
@@ -22,6 +22,6 @@ srv_rename = rule(
         "lib": attrs.dep(),
         "symbols": attrs.dep(),
         "_objcopy": attrs.exec_dep(default = "toolchains//:llvm-objcopy", providers = [RunInfo]),
-        "_script": attrs.source(default = "gate//third_party/selftest:rename.py"),
+        "_script": attrs.source(default = "gate//third_party/tls_peer:rename.py"),
     },
 )

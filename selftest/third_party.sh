@@ -6,9 +6,15 @@
 #    tarball whose file set differs from the manifest fails the build;
 #  * green: the library's exports are computed by the build (spot checks, and the libc imports are
 #    exactly the reviewed set); a permitted module passes both fact gates;
-#  * a throwaway product (third_party/selftest/tls_test.c) does TLS 1.3 and TLS 1.2 handshakes with the
-#    client-only library against an in-memory server (a renamed private copy of the same release with
-#    a server enabled), in `release` and in `san`.
+#  * a throwaway product (third_party/tls_peer/selftest: a client module and its c_test) runs TLS 1.3 and
+#    1.2 sessions with the client-only library against the gate-owned in-memory peer
+#    (gate//third_party/tls_peer:tls_peer: a renamed private copy of the same release with a server
+#    enabled, and a test PKI), in `release` and in `san`: every bad identity, close_notify both ways,
+#    truncation, alerts;
+#  * red (T012): the peer is test-only. A c_library / c_binary / c_fuzz naming it, any other spelling of
+#    its label or of its internals, a dep on a test or on what a test derives, an alias, a transitive
+#    route through a test, a product defining srv_*/tls_peer_* names, a product calling the peer
+#    without the dependency, and a header-only include are all refused.
 # Needs bash, python3 (stdlib), tools/buck2 and the RE farm. Run it twice: the second run is warm.
 set -uo pipefail
 
@@ -21,13 +27,24 @@ cleanup() { rm -rf "$scratch" "$out"; }
 trap cleanup EXIT
 RIGOR=(gate/rigor)
 LIB='gate//third_party/mbedtls:mbedtls'
+PEER='gate//third_party/tls_peer:tls_peer'
 
 step=0
 fail() { echo "FAIL [$step]: $1" >&2; [ -n "${2:-}" ] && { echo "---- output ----" >&2; tail -n 40 "$2" >&2; }; exit 1; }
 begin() { step=$((step + 1)); echo "[$step] $1"; CUR="$1"; T0=$(date +%s); }
 took() { echo "  ($(( $(date +%s) - T0 )) s)"; }
 strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
-run() { local log="$1"; shift; "${B[@]}" "$@" 2>&1 | strip_ansi > "$log"; return "${PIPESTATUS[0]}"; }
+run() {
+  local log="$1" rc; shift
+  "${B[@]}" "$@" 2>&1 | strip_ansi > "$log"; rc="${PIPESTATUS[0]}"
+  # One line per buck2 call for the action tally at the end: exit code, step, executed (remote + local)
+  # actions. A fully cached build prints no "Commands:" line; any other log without one counts as 1.
+  local n
+  n="$(sed -n 's/^.*Commands: [0-9]* (cached: [0-9]*, remote: \([0-9]*\), local: \([0-9]*\)).*$/\1 \2/p' "$log" | tail -1)"
+  if [ -z "$n" ]; then if grep -q 'BUILD SUCCEEDED' "$log"; then n="0 0"; else n="1 0"; fi; fi
+  echo "$rc $step $n" | awk '{print $1, $2, $3 + $4}' >> "$out/actions.txt"
+  return "$rc"
+}
 must_pass() { local log="$out/$step.log"; run "$log" "$@" || fail "$CUR: buck2 $* failed" "$log"; }
 
 cat > "$out/tool.py" <<'PY'
@@ -42,14 +59,19 @@ def collect(log, dest):
             shutil.copy(m.group(2), os.path.join(dest, m.group(1) + ".json"))
 
 def policy(dest, specs):
-    """policy DEST SPEC...  SPEC = name[;third=1]: the global block of hello.toml plus module entries"""
+    """policy DEST SPEC...  SPEC = [pkg/]name[;third=1][;peer=1][;libc=1]: the global block of hello.toml plus modules"""
     head = open("policy/hello.toml").read().split("[module.")[0]
     text = head
     for spec in specs:
         name, *opts = spec.split(";")
-        text += '[module."//selftest/scratch_tp/p:%s"]\n' % name
-        if "third=1" in opts:
-            text += 'third_party = ["gate//third_party/mbedtls:mbedtls"]\n'
+        pkg, _, name = name.rpartition("/")
+        text += '[module."//selftest/scratch_tp/%s:%s"]\n' % (pkg or "p", name)
+        labels = (["gate//third_party/mbedtls:mbedtls"] if "third=1" in opts else []) + \
+                 (["gate//third_party/tls_peer:tls_peer"] if "peer=1" in opts else [])
+        if labels:
+            text += "third_party = [%s]\n" % ", ".join('"%s"' % l for l in labels)
+        if "libc=1" in opts:
+            text += 'allow = ["memcpy", "memmove", "memset", "strlen", "memcmp"]\n'
         text += "\n"
     open(dest, "w").write(text)
 
@@ -119,7 +141,13 @@ def results(path, expected):
         print("  not all passed: %s" % (failed or summary)); sys.exit(1)
     print("  %d tests passed" % len(want))
 
-COMMANDS = {"collect": lambda a: collect(*a), "policy": lambda a: policy(a[0], a[1:]),
+def bfrules(result, expected):
+    doc = json.load(open(result))
+    got = sorted(f["rule"] + (":" + f["why"] if f.get("why") else "") for f in doc["findings"])
+    if got != sorted(expected):
+        print("  wanted %s\n  got    %s" % (sorted(expected), got)); sys.exit(1)
+
+COMMANDS = {"bfrules": lambda a: bfrules(a[0], a[1:]), "collect": lambda a: collect(*a), "policy": lambda a: policy(a[0], a[1:]),
             "mkfd": lambda a: mkfd(a[0], a[1], a[2:]), "check": lambda a: check(a[0], a[1:]),
             "exports": lambda a: exports(a[0]), "results": lambda a: results(a[0], a[1:])}
 COMMANDS[sys.argv[1]](sys.argv[2:])
@@ -130,12 +158,14 @@ tool() { python3 -I "$out/tool.py" "$@"; }
 # Throwaway product package. Product build files only call the gate macros.
 # --------------------------------------------------------------------------------------
 mkdir -p "$scratch/p"
-cp third_party/selftest/tls_test.c "$scratch/p/tls_test.c"
+cp third_party/tls_peer/selftest/tls_client.c third_party/tls_peer/selftest/tls_client.h \
+   third_party/tls_peer/selftest/tls_client_test.c "$scratch/p/"
 cd "$scratch/p" || exit 2
 cat > BUCK <<EOF
 load("@gate//rules:c.bzl", "c_library", "c_test")
 
-c_test(name = "tls_test", srcs = ["tls_test.c"], deps = ["$LIB", "//third_party/selftest:srv"])
+c_library(name = "tls_client", srcs = ["tls_client.c"], headers = ["tls_client.h"], deps = ["$LIB"])
+c_test(name = "tls_client_test", srcs = ["tls_client_test.c"], deps = [":tls_client", "$LIB", "$PEER"])
 c_library(name = "tp_ok", srcs = ["tp_ok.c"], deps = ["$LIB"])
 c_library(name = "tp_noperm", srcs = ["tp_noperm.c"], deps = ["$LIB"])
 c_library(name = "tp_collide", srcs = ["tp_collide.c"], deps = ["$LIB"])
@@ -155,6 +185,49 @@ cat > tp_prefix.c <<'EOF'
 int psa_fake_helper(void) { return 1; }
 EOF
 cd "$root" || exit 2
+
+# The red package: every route by which a product could get the server-enabled peer into a target that
+# is not a test. Its build file is NOT valid product input (that is the point: buckfiles refuses it, and
+# the facts gates must refuse what buckfiles alone would not see).
+mkdir -p "$scratch/red"
+cat > "$scratch/red/BUCK" <<EOF
+load("@gate//rules:c.bzl", "c_library", "c_test")
+
+c_library(name = "r_direct", srcs = ["r_direct.c"], deps = ["$PEER"])
+alias(name = "r_alias", actual = "$PEER")
+c_library(name = "r_via_alias", srcs = ["r_via_alias.c"], deps = [":r_alias"])
+c_test(name = "r_test", srcs = ["r_test.c"], deps = ["$PEER"])
+c_library(name = "r_via_test", srcs = ["r_via_test.c"], deps = [":r_test"])
+c_library(name = "r_collide", srcs = ["r_collide.c"])
+c_library(name = "r_undeclared", srcs = ["r_undeclared.c"])
+c_library(name = "r_header", srcs = ["r_header.c"])
+EOF
+cat > "$scratch/red/r_direct.c" <<'EOF'
+#include "tls_peer.h"
+int r_direct(void) { return tls_peer_start(TLS_PEER_EC_VALID, TLS_PEER_BOTH_VERSIONS); }
+EOF
+sed 's/r_direct/r_via_alias/' "$scratch/red/r_direct.c" > "$scratch/red/r_via_alias.c"
+echo 'int r_via_test(void) { return 0; }' > "$scratch/red/r_via_test.c"   # the header is invisible through a test
+cat > "$scratch/red/r_test.c" <<'EOF'
+#include "ctest/ctest.h"
+#include "tls_peer.h"
+static void t_start(ctest_t *t) { CHECK_EQ_I64(t, tls_peer_start(TLS_PEER_EC_VALID, TLS_PEER_BOTH_VERSIONS), 0); }
+CTEST_SUITE("red", { "start", t_start })
+EOF
+cat > "$scratch/red/r_collide.c" <<'EOF'
+int srv_start(void) { return 1; }
+int srv_mbedtls_ssl_read(void) { return 2; }
+int tls_peer_step(void) { return 3; }
+EOF
+cat > "$scratch/red/r_undeclared.c" <<'EOF'
+/* Declares the peer's function itself and relies on a test that links the peer to resolve it. */
+int tls_peer_start(int identity, int versions);
+int r_undeclared(void) { return tls_peer_start(0, 0); }
+EOF
+cat > "$scratch/red/r_header.c" <<'EOF'
+#include "tls_peer.h"
+int r_header(void) { return TLS_PEER_ERR_FULL; }
+EOF
 
 # --------------------------------------------------------------------------------------
 begin "buckfiles: only the allowlisted label may be named; every other cell-prefixed dep is refused"
@@ -176,7 +249,57 @@ bf ctest       1 dep 'gate//ctest:ctest'
 bf prelude     1 dep 'prelude//cxx:cxx'
 bf at_label    1 dep '@gate//third_party/mbedtls:mbedtls'
 bf allowed     0 -   "$LIB"
-"${RIGOR[@]}" buckfiles --root "$scratch" > "$out/bf_scratch.txt" 2>&1 || fail "$CUR: the throwaway product's own BUCK" "$out/bf_scratch.txt"
+"${RIGOR[@]}" buckfiles --root "$scratch/p" > "$out/bf_scratch.txt" 2>&1 || fail "$CUR: the throwaway product's own BUCK" "$out/bf_scratch.txt"
+
+# --- T012: the peer is test-only ---------------------------------------------------------------------
+bfx() { # <name> <want-exit> <expected rule:why...>  (the BUCK file text on stdin)
+  local name="$1" want="$2"; shift 2
+  local d="$out/bfx/$name"; rm -rf "$d"; mkdir -p "$d"
+  cat > "$d/BUCK"
+  "${RIGOR[@]}" buckfiles --root "$d" --out "$d/r.json" > "$d/o.txt" 2>&1; local rc=$?
+  [ "$rc" = "$want" ] || fail "$CUR: $name exited $rc, wanted $want" "$d/o.txt"
+  tool bfrules "$d/r.json" "$@" || fail "$CUR: $name findings" "$d/r.json"
+  echo "  $name -> exit $rc $*"
+}
+L='load("@gate//rules:c.bzl", "c_library", "c_binary", "c_test", "c_fuzz")'
+bfx peer_in_test      0 <<EOF
+$L
+c_test(name = "t", srcs = ["t.c"], deps = [":l", "$PEER", "$LIB"])
+EOF
+for macro in c_library c_binary c_fuzz; do
+  bfx peer_in_$macro 1 bad-argument:test-only-dep <<EOF
+$L
+$macro(name = "a", srcs = ["a.c"], deps = ["$PEER"])
+EOF
+done
+bfx peer_among_good_deps 1 bad-argument:test-only-dep <<EOF
+$L
+c_library(name = "a", srcs = ["a.c"], deps = [":b", "$LIB", "$PEER"])
+EOF
+for dep in '//third_party/tls_peer:tls_peer' '@gate//third_party/tls_peer:tls_peer' 'gate//third_party/tls_peer:srv_archive' \
+           'gate//third_party/tls_peer:mbedtls_srv' 'gate//third_party/tls_peer:tls_peer_symbols' \
+           'gate//third_party/tls_peer:srv_lib' '//third_party/mbedtls:mbedtls'; do
+  bfx "spelling_$(echo "$dep" | tr -c 'a-z0-9\n' _)" 1 bad-argument:dep <<EOF
+$L
+c_test(name = "t", srcs = ["t.c"], deps = ["$dep"])
+EOF
+done
+bfx alias_of_the_peer 1 bad-call <<EOF
+$L
+alias(name = "p", actual = "$PEER")
+c_library(name = "a", srcs = ["a.c"], deps = [":p"])
+EOF
+bfx native_alias_of_the_peer 1 bad-call <<EOF
+$L
+native.alias(name = "p", actual = "$PEER")
+EOF
+for dep in ':t' ':t_facts' ':t_results' ':t_coverage'; do
+  bfx "dep_on_test_$(echo "$dep" | tr -c 'a-z0-9\n' _)" 1 bad-argument:test-target <<EOF
+$L
+c_test(name = "t", srcs = ["t.c"], deps = ["$PEER"])
+c_library(name = "a", srcs = ["a.c"], deps = ["$dep"])
+EOF
+done
 
 # --------------------------------------------------------------------------------------
 begin "build: a wrong sha256 fails, and so does a manifest that differs from the tarball"
@@ -208,7 +331,8 @@ took
 begin "build (release): the library, its computed exports, and the facts of the throwaway modules"
 must_pass build //third_party/mbedtls:mbedtls //third_party/mbedtls:mbedtls_symbols \
   //selftest/scratch_tp/p:tp_ok_facts //selftest/scratch_tp/p:tp_noperm_facts //selftest/scratch_tp/p:tp_collide_facts \
-  //selftest/scratch_tp/p:tp_prefix_facts //ctest:ctest_facts toolchains//:libc_symbols --show-output
+  //selftest/scratch_tp/p:tp_prefix_facts //selftest/scratch_tp/p:tls_client_facts //selftest/scratch_tp/p:tls_client_test_facts \
+  //third_party/tls_peer:tls_peer_symbols //ctest:ctest_facts toolchains//:libc_symbols --show-output
 tool collect "$out/$step.log" "$out/facts" || fail "$CUR: collect"
 cp "$(awk '/libc_symbols/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)" "$out/libc.symbols" || fail "$CUR: no libc list"
 lib="$(awk '/third_party\/mbedtls:mbedtls / && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
@@ -264,18 +388,72 @@ gate_case ok $SYM 0 "$out/p_ok.toml" tp_ok mbedtls --
 gate_case ok $SEM 0 "$out/p_ok.toml" tp_ok mbedtls --
 
 # --------------------------------------------------------------------------------------
-T_LIST=(tls13_ecdsa tls13_rsa tls12_server_only tls12_client_only wrong_host untrusted_ca clock_not_injected clock_injected_late entropy_is_live pinned_version)
+# T012: the TLS test peer. Green first: a product client and its c_test pass both fact gates.
+PEERLIB="//third_party/tls_peer:tls_peer"
+begin "green: the throwaway client module and its c_test (which names the peer) pass both fact gates"
+tool policy "$out/p_tls.toml" "tls_client;third=1;libc=1" "tls_client_test;third=1;peer=1;libc=1"
+for g in $SYM $SEM; do
+  gate_case tls $g 0 "$out/p_tls.toml" tls_client tls_client_test mbedtls tls_peer --
+done
 
-begin "TLS 1.3 / 1.2 handshakes against the in-memory server, release"
-must_pass build //selftest/scratch_tp/p:tls_test_results --show-output
-res="$(awk '/tls_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+begin "red (T012): a product that is not a test cannot reach the peer, by any route"
+red=(//selftest/scratch_tp/red:r_direct_facts //selftest/scratch_tp/red:r_via_alias_facts
+     //selftest/scratch_tp/red:r_test_facts //selftest/scratch_tp/red:r_via_test_facts
+     //selftest/scratch_tp/red:r_collide_facts //selftest/scratch_tp/red:r_undeclared_facts)
+must_pass build "${red[@]}" --show-output
+tool collect "$out/$step.log" "$out/facts" || fail "$CUR: collect"
+# 1. a library names the peer, even with the policy's permission
+tool policy "$out/p_r1.toml" "red/r_direct;peer=1"
+gate_case direct $SYM 1 "$out/p_r1.toml" r_direct tls_peer -- "test-only-dep:$PEERLIB"
+tool policy "$out/p_r1n.toml" "red/r_direct"
+gate_case direct_unpermitted $SYM 1 "$out/p_r1n.toml" r_direct tls_peer -- \
+  "test-only-dep:$PEERLIB" "third-party-not-permitted:$PEERLIB" "undeclared-symbol:tls_peer_start"
+# 2. through an alias: the alias has no facts, so the dep cannot be resolved (fail closed)
+tool policy "$out/p_r2.toml" "red/r_via_alias"
+gate_case alias $SYM 1 "$out/p_r2.toml" r_via_alias tls_peer -- \
+  "missing-dep-facts://selftest/scratch_tp/red:r_alias" "undeclared-symbol:tls_peer_start"
+# 3. through a test target that links the peer
+tool policy "$out/p_r3.toml" "red/r_via_test" "red/r_test;peer=1"
+gate_case via_test $SYM 1 "$out/p_r3.toml" r_via_test r_test tls_peer -- "test-only-dep:$PEERLIB"
+# 4. a product that defines names the peer owns (the renamed library's srv_ names, the API's tls_peer_ names)
+tool policy "$out/p_r4.toml" "red/r_collide"
+gate_case collide_srv $SYM 1 "$out/p_r4.toml" r_collide tls_peer -- \
+  "symbol-collision:srv_start" "symbol-collision:srv_mbedtls_ssl_read" "symbol-collision:tls_peer_step"
+gate_case collide_srv_without_the_peer_facts $SYM 1 "$out/p_r4.toml" r_collide -- \
+  "symbol-collision:srv_start" "symbol-collision:srv_mbedtls_ssl_read" "symbol-collision:tls_peer_step"
+# 5. a product that calls the peer through its own declaration and hopes a test links the peer
+tool policy "$out/p_r5.toml" "red/r_undeclared"
+gate_case undeclared $SYM 1 "$out/p_r5.toml" r_undeclared tls_peer -- "undeclared-symbol:tls_peer_start"
+# 6. a header-only include: the peer's header is not visible to a library that cannot name the peer, and
+#    it stays invisible through a test it depends on
+if run "$out/hdr.log" build //selftest/scratch_tp/red:r_header_facts; then fail "$CUR: a library included tls_peer.h" "$out/hdr.log"; fi
+grep -q "'tls_peer.h' file not found" "$out/hdr.log" || fail "$CUR: r_header failed for another reason" "$out/hdr.log"
+echo "  r_header: tls_peer.h file not found"
+# 7. buckfiles refuses the product build file of the red package, route by route
+"${RIGOR[@]}" buckfiles --root "$scratch/red" --out "$out/red_bf.json" > "$out/red_bf.txt" 2>&1 && fail "$CUR: buckfiles accepted the red package" "$out/red_bf.txt"
+tool bfrules "$out/red_bf.json" bad-argument:test-only-dep bad-call bad-argument:test-target || fail "$CUR: red package findings" "$out/red_bf.json"
+echo "  buckfiles on the red package: test-only-dep, alias (bad-call), dep on a test"
+
+# --------------------------------------------------------------------------------------
+T_LIST=(tls13_ecdsa tls13_rsa tls12_peer_only tls12_client_only chain_with_intermediate expired not_yet_valid
+        wrong_host unknown_ca other_ca_trusted_instead wrong_name_asked_for time_windows clock_not_injected
+        client_close_notify peer_close_notify_is_eof truncation_is_detected truncation_inside_a_record
+        peer_fatal_alert peer_alert_during_the_handshake bulk_data_both_ways peer_state_machine
+        peer_garbage_ends_the_session entropy_is_live pinned_version)
+
+begin "TLS 1.3 / 1.2 sessions against the in-memory peer, release"
+must_pass build //selftest/scratch_tp/p:tls_client_test_results --show-output
+res="$(awk '/tls_client_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
 tool results "$res" "${T_LIST[@]}" || fail "$CUR: results" "$res"
 took
 
-begin "TLS 1.3 / 1.2 handshakes against the in-memory server, san (ASan + UBSan on the client library)"
-must_pass build --target-platforms toolchains//:linux_san //selftest/scratch_tp/p:tls_test_results --show-output
-res="$(awk '/tls_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+begin "TLS 1.3 / 1.2 sessions against the in-memory peer, san (ASan + UBSan on the client library; the peer copy is not instrumented)"
+must_pass build --target-platforms toolchains//:linux_san //selftest/scratch_tp/p:tls_client_test_results --show-output
+res="$(awk '/tls_client_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
 tool results "$res" "${T_LIST[@]}" || fail "$CUR: results" "$res"
 took
 
+# Actions executed (not cached) by this run. A warm second run executes 0 in every build that succeeds; the
+# builds that must fail (wrong sha256, manifest mismatch, a header that is not visible) are never cached.
+awk '$1 == 0 {ok += $3} $1 != 0 {bad += $3; n++} END {printf "actions executed by successful builds: %d; by the %d builds that must fail: %d\n", ok, n, bad}' "$out/actions.txt"
 echo "selftest/third_party.sh: all steps passed"

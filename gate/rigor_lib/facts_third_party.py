@@ -4,6 +4,9 @@ Two plain-text lists live next to the vendored code and are read, never executed
 
 * `ALLOWED_LABELS`: one exact label per line (`gate//third_party/<dir>:<name>`). A product `BUCK` may
   name exactly these as `deps`; a facts file of kind `c_third_party` is trusted only for these.
+* `ALLOWED_TEST_LABELS`: the same format, for libraries only a `c_test` may depend on (the TLS test
+  peer). Disjoint from `ALLOWED_LABELS`. Trusted like the others (not scanned), but a non-test
+  target that reaches one through any chain of deps is a `test-only-dep` finding (`facts_symbols`).
 * `RESERVED_PREFIXES`: one prefix per line (`mbedtls_`). A product may not define an external symbol
   that starts with one, whether or not it depends on the library.
 
@@ -21,11 +24,12 @@ from rigor_lib.findings import finding
 
 KIND = "c_third_party"
 ALLOWED_FILE = "ALLOWED_LABELS"
+TEST_ALLOWED_FILE = "ALLOWED_TEST_LABELS"
 PREFIXES_FILE = "RESERVED_PREFIXES"
 GATE_PREFIX = "gate"
 
 LABEL = re.compile(r"gate//third_party/[a-z0-9_]+:[a-z0-9_]+")
-PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9]*_")
+PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9_]*_")
 
 DEFAULT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                            "third_party")
@@ -35,6 +39,11 @@ DEFAULT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.pa
 class ThirdParty:
     allowed: frozenset
     prefixes: tuple
+    test_allowed: frozenset = frozenset()
+
+    @property
+    def trusted(self):
+        return self.allowed | self.test_allowed
 
 
 def canonical(label):
@@ -72,8 +81,12 @@ def load(directory=None):
     directory = DEFAULT_DIR if directory is None else directory
     if not os.path.isdir(directory):
         raise InternalError("third-party directory not found: %s" % directory)
-    return ThirdParty(load_allowed_labels(os.path.join(directory, ALLOWED_FILE)),
-                      _lines(os.path.join(directory, PREFIXES_FILE), PREFIX, "prefix"))
+    allowed = load_allowed_labels(os.path.join(directory, ALLOWED_FILE))
+    test_allowed = load_allowed_labels(os.path.join(directory, TEST_ALLOWED_FILE))
+    if allowed & test_allowed:
+        raise InternalError("%s and %s share an entry: %s" % (ALLOWED_FILE, TEST_ALLOWED_FILE,
+                                                              sorted(allowed & test_allowed)))
+    return ThirdParty(allowed, _lines(os.path.join(directory, PREFIXES_FILE), PREFIX, "prefix"), test_allowed)
 
 
 def split(facts_by_label, third):
@@ -84,7 +97,7 @@ def split(facts_by_label, third):
         facts = facts_by_label[label]
         if facts.kind != KIND:
             products[label] = facts
-        elif canonical(label) in third.allowed:
+        elif canonical(label) in third.trusted:
             trusted[label] = facts
         else:
             found.append(finding("third-party-not-allowed", target=label))
@@ -95,9 +108,31 @@ def check_policy(policy, third):
     """Policy defects are exit 2: permissions for labels the gate does not allow, or a module entry
     for a trusted library."""
     for label, module in sorted(policy.modules.items()):
-        outside = sorted(module.third_party - third.allowed)
+        outside = sorted(module.third_party - third.trusted)
         if outside:
             raise InternalError("policy: module %s permits third-party labels the gate does not allow: %s"
                                 % (label, outside))
-        if canonical(label) in third.allowed:
+        if canonical(label) in third.trusted:
             raise InternalError("policy: %s is a trusted third-party library, not a module" % label)
+
+
+def test_only_findings(products, third):
+    """`test-only-dep`: a target that is not a `c_test` and reaches a test-only library through its deps,
+    directly or through any chain of product targets (a test target included). A dep with no facts that
+    names a test-only label counts too (fail closed)."""
+    found = []
+    for label in sorted(products):
+        if products[label].kind == "c_test":
+            continue
+        seen, hits, stack = set(), set(), list(products[label].deps)
+        while stack:
+            dep = stack.pop()
+            if dep in seen:
+                continue
+            seen.add(dep)
+            if canonical(dep) in third.test_allowed:
+                hits.add(dep)
+            elif dep in products:
+                stack.extend(products[dep].deps)
+        found.extend(finding("test-only-dep", target=label, dep=dep) for dep in sorted(hits))
+    return found
