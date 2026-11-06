@@ -158,7 +158,7 @@ def module_summary(report, verdicts):
 
 def module_findings(report, level, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
     """(findings, summary) for one report."""
-    found, baseline_ids = mutants_verdict.baseline_findings(report)
+    found, baseline_ids = mutants_verdict.baseline_findings(report, level)
     verdicts, problems = mutants_verdict.derive(report, baseline_ids)
     found.extend(problems)
     found.extend(blindness_findings(report, verdicts))
