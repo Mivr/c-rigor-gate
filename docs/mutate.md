@@ -16,6 +16,11 @@ verdict). `c_library` also defines `<name>_mutsrc` (its source files) which `c_m
 The product build-file guard (`rigor buckfiles`, T004) only admits the four product macros, so
 `c_mutants` targets are written by the grading driver in a gate-owned package, not by the product.
 
+A dep may be a **header-only test kit** (a `c_library` with `srcs = []`, as in annas-c): it has no archive, so it adds
+nothing to the link line (the tests were compiled against its headers by Buck2). A dep that has neither an archive nor
+headers of its own is an analysis error (`provides neither a library nor headers`), never silently dropped. Canary
+`header-only-kit`, selftest module `uninit`.
+
 ## Pipeline
 | Step | What | Where |
 |---|---|---|
@@ -24,6 +29,22 @@ The product build-file guard (`rigor buckfiles`, T004) only admits the four prod
 | 3 `mutant_compile` | `dynamic_output` over the lists: one action per mutant writes the mutated copy of the source and compiles it with the same command; result = sha256 of the object, or `unviable` | RE, cached |
 | 4 `mutant_run` | `dynamic_output` over the compile results: for every mutant whose object is new (not the baseline's, not an earlier mutant's) and every test, one action relinks the test with the mutated object and runs it with ctest (`--seed 1`) | RE, cached |
 | 5 `mutant_report` | one `report.json` with the raw facts of all of the above | RE |
+
+### Deterministic results (T034, B34)
+What `mutant_run` stores is a function of the verdict, not of the execution: a mutant that reads uninitialised memory
+or past an array must give the same stored text every time. `tool.py linkrun` therefore normalises before it writes:
+
+| Stored | Becomes |
+|---|---|
+| a failed-check reason `N of M checks failed; first: f.c:L: CHECK_X(a, b): got != want` | `0 of 0 checks failed; first: f.c:L: CHECK_X(a, b)` (place and text of the check kept; counts and observed values, numbers, strings, addresses dropped; the prefix still matches the verdict code) |
+| any other reason (`killed by signal 11`, `timeout after 10 s`, ...) | the same words with every number (decimal or `0x...`) turned into `#` |
+| `asserts` of a test line | 0 or 1 (the verdicts only ask for at least one) |
+| `rc` of the test binary | 0 or 1 as is, -9 for the timeout kill, -1 for any other way of dying |
+| a results line that is not a JSON object | the line `!`, which still does not parse |
+
+Normalising never turns a crash into a check failure or back, and keeps `status` and test ids, so no verdict changes
+(`gate/tests/test_mutate_tool.py` runs `outcome_of_run` before and after). `selftest/mutate.sh` builds the `uninit`
+module twice with different nonces in the test source (every mutant is run again) and requires byte-identical reports.
 
 An action is keyed on its inputs: the mutant spec and source for step 3, the objects for step 4. An
 unchanged tree executes **zero** actions; a changed test re-links and re-runs the live mutants of that

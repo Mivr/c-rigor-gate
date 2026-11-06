@@ -1,0 +1,1 @@
+{"control": true, "description": "a module whose tests use a header-only test kit (a library without sources, so without an archive) is mutation graded at L3 and passes"}
