@@ -884,14 +884,14 @@ echo "    graded: $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
 begin "RED: a dependency that provides neither a library nor a header is a build error, not silently dropped (T034)"
 if run "$out/bare.log" build "$pkg:bare_mutants"; then fail "$CUR: the build with a bare dependency succeeded" "$out/bare.log"; fi
 grep -q "provides neither a library nor headers" "$out/bare.log" || fail "$CUR: the build failed for another reason" "$out/bare.log"
-echo "    failed in analysis: $(grep -m1 -o 'dep [^ ]*bare_kit[^ ]* provides neither a library nor headers' "$out/bare.log")"
+echo "    failed in analysis: $(grep -m1 'provides neither a library nor headers' "$out/bare.log" | sed 's/^ *//' | cut -c1-160)"
 
 begin "DETERMINISM: two cold-keyed grades of the same module give byte-identical reports (T034)"
 # A nonce in the test source re-keys every test link and run (and the compile of the test) without changing a byte
 # the report records about the module, so every mutant is run again; the uninit mutants read garbage.
 det_build() {
   local nonce="$1" dest="$2" log="$out/det_$1.log" p
-  sed -i "1s|^/\* nonce [^ ]* \*/||; 1i /* nonce $nonce */" "$scratch/m/uninit_test.c"
+  sed -i "/^\/\* det-nonce /d; 1i /* det-nonce $nonce */" "$scratch/m/uninit_test.c"
   run "$log" build "$pkg:uninit_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$log"
   p="$(awk -v t="$pkg:uninit_mutants" 'index($1, t) {print $2}' "$log" | tail -1)"
   [ -f "$p" ] || fail "$CUR: no report" "$log"
