@@ -331,7 +331,7 @@ static void note(int *log, int v)
 
 int record(int v)
 {
-    int log = 0;
+    int log; /* T051: not `= 0`: a dead store is an equivalent mutant that -O2 hides and -O0 shows */
     note(&log, v);
     return log;
 }
