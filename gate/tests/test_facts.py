@@ -117,9 +117,14 @@ class FactsCase(TempDirTestCase):
                          [("line-directive", "buck-out/x/stdio.h")])
 
     def test_unknown_scanner_identifier_fails_closed(self):
-        outcome, _ = self.run_gate("semantic-suppressions",
-                                   [facts("//p:lib", [unit(identifiers=[("__builtin_exit", 1)])]), CTEST])
-        self.assertExit(outcome, 2)
+        # Every `__builtin_*` is now a builtin the table decides (T014); a name that is neither
+        # watched nor a macro/include fact means scanner and table drifted.
+        for name in ("printf", "__builtin", "#pragma once"):
+            with self.subTest(name=name):
+                self.setUp()
+                outcome, _ = self.run_gate("semantic-suppressions",
+                                           [facts("//p:lib", [unit(identifiers=[(name, 1)])]), CTEST])
+                self.assertExit(outcome, 2)
 
     def test_trusted_modules_are_scanned_too(self):
         trusted = facts("//ctest:ctest", [unit("ctest.c.o", pragmas=[(1, "once")])])

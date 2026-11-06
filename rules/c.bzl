@@ -27,6 +27,21 @@ _SEALED = [
     "-Wformat=2",
     "-Wnull-dereference",
     "-Wimplicit-fallthrough",
+] + [
+    # Belt and braces for the builtins the semantic gate never allows (T014): a call does not
+    # compile ("use of undeclared identifier 'c_rigor_gate_bans_...'"). Function-like and
+    # self-referential, so a toolchain header that only names them in a macro is unaffected and the
+    # preprocessed text keeps the builtin's own name for the scan. `#undef` defeats it; the semantic
+    # gate reports that (`reserved-macro`) and the use (`banned-builtin`/`forbidden-builtin`).
+    "-D{0}(...)={0}(c_rigor_gate_bans_{0})".format(b)
+    for b in [
+        "__builtin_alloca",
+        "__builtin_alloca_uninitialized",
+        "__builtin_alloca_with_align",
+        "__builtin_alloca_with_align_uninitialized",
+        "__builtin_frame_address",
+        "__builtin_return_address",
+    ]
 ]
 
 _SAN = "-fsanitize=address,undefined,leak"
