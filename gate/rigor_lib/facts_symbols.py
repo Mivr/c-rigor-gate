@@ -8,7 +8,8 @@ gate module (ctest) exports, which would interpose it. Trusted modules are the g
 Gate-owned third-party libraries (`facts_third_party`) are trusted the same way, with two additions:
 a module may depend on one only if its policy entry lists the label (`third_party = [...]`), and the
 exports of the library, computed by the build from its objects, are reserved together with the
-reserved prefixes (`mbedtls_`, `psa_`), so no product can define a name the library owns.
+reserved prefixes (`mbedtls_`, `psa_`, `srv_`, `tls_peer_`), so no product can define a name the library owns.
+A library that only tests may use (`ALLOWED_TEST_LABELS`) must not be reached by anything but a `c_test`.
 """
 
 from rigor_lib import facts_third_party
@@ -69,6 +70,7 @@ def run(facts_by_label, policy, libc, third=None):
     facts_third_party.check_policy(policy, third)
     products, libs, found = facts_third_party.split(facts_by_label, third)
     found.extend(policy_coverage_findings(products, policy))
+    found.extend(facts_third_party.test_only_findings(products, third))
     reserved = set(libc)
     for label in policy.trusted & set(products):
         reserved |= exports_of(products[label])

@@ -255,3 +255,79 @@ class ThirdPartyLabelCase(TempDirTestCase):
         self.setUp()
         self.assertEqual(self.check(LOAD + 'c_library(name = "a", deps = ["gate//third_party/curl:curl"])\n', 1,
                                     allowed=None), [("bad-argument", "dep")])
+
+
+PEER = "gate//third_party/tls_peer:tls_peer"
+LOADS = 'load("@gate//rules:c.bzl", "c_library", "c_binary", "c_test", "c_fuzz")\n'
+
+
+class TestOnlyLabelCase(TempDirTestCase):
+    """The TLS peer label is accepted from a `c_test` and from nothing else, by any route."""
+
+    def check(self, files, code, test_allowed=PEER + "\n"):
+        root = self.sub("product")
+        for rel, data in files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(data, encoding="utf-8")
+        lst = self.tmp / "ALLOWED_TEST_LABELS"
+        lst.write_text(test_allowed, encoding="utf-8")
+        allowed = self.tmp / "ALLOWED_LABELS"
+        allowed.write_text(MBED + "\n", encoding="utf-8")
+        self.assertExit(run_rigor(["buckfiles", "--root", root, "--out", self.tmp / "out.json",
+                                   "--allowed-labels", allowed, "--allowed-test-labels", lst]), code)
+        return sorted((f["rule"], f.get("why")) for f in read_json(self.tmp / "out.json")["findings"])
+
+    def test_a_test_may_name_it(self):
+        self.assertEqual(self.check({"BUCK": LOADS + 'c_test(name = "t", srcs = ["t.c"], deps = [":l", "%s", "%s"])\n' % (PEER, MBED)}, 0), [])
+
+    def test_no_other_macro_may_name_it(self):
+        for macro in ("c_library", "c_binary", "c_fuzz"):
+            with self.subTest(macro=macro):
+                self.setUp()
+                found = self.check({"BUCK": LOADS + '%s(name = "a", srcs = ["a.c"], deps = ["%s"])\n' % (macro, PEER)}, 1)
+                self.assertEqual(found, [("bad-argument", "test-only-dep")])
+
+    def test_the_list_decides(self):
+        self.assertEqual(self.check({"BUCK": LOADS + 'c_test(name = "t", deps = ["%s"])\n' % PEER}, 1, test_allowed=""),
+                         [("bad-argument", "dep")])
+
+    def test_other_spellings_are_refused(self):
+        for label in ("//third_party/tls_peer:tls_peer", "@" + PEER, "gate//third_party/tls_peer:srv_archive",
+                      "gate//third_party/tls_peer:mbedtls_srv", "gate//third_party/tls_peer:tls_peer_symbols",
+                      "//third_party/selftest:srv", "//third_party:x", "root//third_party/tls_peer:tls_peer"):
+            with self.subTest(label=label):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": LOADS + 'c_test(name = "t", deps = ["%s"])\n' % label}, 1),
+                                 [("bad-argument", "dep")])
+
+    def test_a_library_may_not_depend_on_a_test_or_on_what_a_test_derives(self):
+        for dep in (":t", ":t_facts", ":t_results", ":t_coverage", "//pkg/p:t", "//other/pkg/p:t_results", "//pkg/p:t_facts"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                files = {"p/BUCK": LOADS + 'c_test(name = "t", deps = ["%s"])\n' % PEER,
+                         "q/BUCK": LOADS + 'c_library(name = "l", srcs = ["l.c"], deps = [])\n'}
+                files["p/BUCK" if dep.startswith(":") else "q/BUCK"] += \
+                    'c_binary(name = "b", srcs = ["b.c"], deps = ["%s"])\n' % dep
+                self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
+
+    def test_similar_names_elsewhere_are_not_refused(self):
+        files = {"p/BUCK": LOADS + 'c_test(name = "t")\n',
+                 "q/BUCK": LOADS + 'c_library(name = "t", srcs = ["l.c"])\nc_binary(name = "b", deps = [":t", ":t2"])\n'}
+        self.assertEqual(self.check(files, 0), [])
+
+    def test_list_defects_are_exit_2(self):
+        for text in (PEER, "# x\n" + PEER + "\n", PEER + "\n" + PEER + "\n", "gate//ctest:ctest\n"):
+            with self.subTest(text=text):
+                self.setUp()
+                self.check({"BUCK": LOADS + 'c_test(name = "t")\n'}, 2, test_allowed=text)
+
+    def test_the_default_test_list_is_the_gate_s_own(self):
+        with open(os.path.join(REPO, "third_party", "ALLOWED_TEST_LABELS"), encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), PEER + "\n")
+        root = self.sub("product")
+        (root / "BUCK").write_text(LOADS + 'c_test(name = "t", deps = ["%s"])\nc_library(name = "l", deps = ["%s"])\n' % (PEER, PEER),
+                                   encoding="utf-8")
+        outcome = run_rigor(["buckfiles", "--root", root, "--out", self.tmp / "o.json"])
+        self.assertExit(outcome, 1)
+        self.assertEqual([(f["rule"], f["why"], f["line"]) for f in read_json(self.tmp / "o.json")["findings"]],
+                         [("bad-argument", "test-only-dep", 3)])
