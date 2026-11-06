@@ -47,6 +47,7 @@ RULES = {
     "secret-env-access": (BLOCK, "A command expands or looks up a secret-looking environment variable."),
     "secret-env-mention": (REVIEW, "A command mentions a secret-looking variable name without reading it."),
     "secret-env-in-file": (REVIEW, "Content written to the worktree names a secret-looking variable."),
+    "kill-foreign": (BLOCK, "Signalling a process the agent did not start can kill another lane's work."),
     "cmd-obfuscated-exec": (BLOCK, "Decoded or computed text is executed; the audit cannot see it."),
     "cmd-unresolved": (REVIEW, "The command name is computed; the audit cannot see what runs."),
     "nesting-too-deep": (BLOCK, "Command nesting beyond the audit's depth limit."),
@@ -98,6 +99,8 @@ INSTALLERS = {
     "npm": ("install", "i", "add", "ci"), "yarn": ("install", "add"), "pnpm": ("install", "i", "add"),
     "cargo": ("install",), "go": ("install", "get"), "gem": ("install",), "rustup": ("install", "update"),
 }
+KILL_BY_NAME = ("pkill", "killall", "killall5", "skill", "slay")
+BACKGROUND_PID = "%bg"  # what `$!` expands to: the last background job, which the agent started
 SHELLS = ("bash", "sh", "dash", "zsh", "ksh")
 INTERPRETERS = SHELLS + ("python", "python3", "node", "perl", "ruby", "php", "lua")
 

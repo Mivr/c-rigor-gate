@@ -22,6 +22,31 @@ _CALL_RE = re.compile(
     r"appendFile|readdir|readdirSync|createReadStream|createWriteStream|readlines|chdir|require|import|"
     r"__import__|exec|eval))\s*\(")
 _MAX_ARGS = 4000
+_PREFIX_RE = re.compile(r"[A-Za-z]*")
+_DATA_CALLS = ("write_text", "write_bytes")  # their arguments are the text written, never a path
+_COMMENT_RE = re.compile(r"(?:(?<=\s)|\A)#[^\n]*")
+
+
+def _inert_spans(text):
+    """(start, end) of the string literals of `text` that are only data: not f-strings (code runs inside
+    their braces), not inside a comment. Scanned left to right so that quotes in a comment, or inside
+    another string, do not start a string of their own."""
+    spans, i = [], 0
+    while i < len(text):
+        if text[i] in "'\"" or text[i] in "rRbBuUfF" and i + 1 < len(text) and (
+                text[i + 1] in "'\"" or text[i + 1] in "rRbBuUfF"):
+            match = _STRING_RE.match(text, i)
+            if match is not None and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+                if "f" not in _PREFIX_RE.match(match.group(0)).group(0).lower():
+                    spans.append((match.start(), match.end()))
+                i = match.end()
+                continue
+        elif text[i] == "#" and (i == 0 or text[i - 1].isspace()):
+            comment = _COMMENT_RE.match(text, i)
+            i = comment.end() if comment is not None else i + 1
+            continue
+        i += 1
+    return spans
 
 
 def _args(text, start):
@@ -74,9 +99,12 @@ def path_literals(text):
     for match in _ASSIGN_RE.finditer(text):
         names.setdefault(match.group(1), []).append(_unquote(match.group(2)))
     found = []
+    inert = _inert_spans(text)
     for call in _CALL_RE.finditer(text):
+        if any(start <= call.start() < end for start, end in inert):
+            continue  # a call written inside a string (test data, a template) is text, not a call
         region = _args(text, call.end())
-        literals = _pieces(region, names)
+        literals = [] if call.group(0).rstrip("( \t\n").endswith(_DATA_CALLS) else _pieces(region, names)
         found.extend(literals)
         if len(literals) > 1:
             found.append("".join(literals))  # 'a/' + '.ssh' written as separate pieces
