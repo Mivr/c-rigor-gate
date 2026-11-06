@@ -742,6 +742,8 @@ gate "$out/only_macro"
 echo "    L2: exit 0, info"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
+# T051: the condition and return-value mutants of lit_get had the function-body mutant's object at -O2 (duplicates); at -O0
+# they differ, so they run, and the weak test leaves them alive too.
 begin "RED: a toolchain NULL in a condition, enumerators, strings and characters are mutated, and weak tests leave exactly their survivors (T035)"
 cat >> "$scratch/m/BUCK" <<'EOF'
 
@@ -817,8 +819,10 @@ gate "$out/only_lit"
 got="$(json '"\n".join(sorted("%s|%s|%s|%s" % (f["function"], f["operator"], f["line"], f["replacement"]) for f in r["findings"] if f["rule"] == "survived-mutant"))')"
 want="$(cat <<'EOF'
 lit_check|enum-constant|17|LIT_ERR_HIGH
+lit_get|condition|8|!(p != NULL)
 lit_get|function-body|6|{ (void)p; return 0; }
 lit_get|integer-literal|7|1
+lit_get|return-value|11|((void)(v), (int)0)
 lit_letter|char-literal|27|('q' + 1)
 lit_name|string-literal|25|""
 lit_name|string-literal|25|m
@@ -836,7 +840,7 @@ assert ops["enum-constant"] == {"lit_check"} and ops["string-literal"] == {"lit_
 assert not d["sources"][0]["hidden"], "a toolchain macro was reported as hidden code"
 print("    new operators:", {k: sorted(v) for k, v in sorted(ops.items()) if k in ("condition", "enum-constant", "string-literal", "char-literal")})
 PY
-# (the condition and relational mutants of `p != NULL` compile to the function-body mutant's object here: duplicates)
+# (the condition and return-value mutants of `p != NULL` compile to the function-body mutant's object at -O2 but not at -O0)
 echo "    survivors exactly as expected: $(printf '%s\n' "$got" | wc -l)"
 printf '[module."%s:pinned_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 
