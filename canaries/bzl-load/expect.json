@@ -1,0 +1,19 @@
+{
+  "bypass": "hidden build file",
+  "description": "A BUCK that loads a product-supplied .bzl (the layout drops .bzl files).",
+  "fail": {
+    "buckfiles": [
+      "extra-load"
+    ],
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

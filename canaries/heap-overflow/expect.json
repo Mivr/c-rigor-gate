@@ -3,6 +3,7 @@
   "description": "A one-element heap overflow: invisible in release, fatal under ASan.",
   "fail": {
     "tests-san": [
+      "no-assertions",
       "test-not-pass"
     ]
   },

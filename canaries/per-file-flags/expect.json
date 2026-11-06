@@ -6,7 +6,7 @@
       "bad-argument"
     ],
     "build": [
-      "build-failed"
+      "query-failed"
     ]
   },
   "not_run": [

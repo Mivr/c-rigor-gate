@@ -1,6 +1,6 @@
 {
   "bypass": "recursion",
-  "description": "Self-recursion in an L3 module (B1).",
+  "description": "Self-recursion in a module (B1).",
   "fail": {
     "structure": [
       "recursion"

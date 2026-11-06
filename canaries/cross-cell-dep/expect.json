@@ -4,6 +4,9 @@
   "fail": {
     "buckfiles": [
       "bad-argument"
+    ],
+    "symbols": [
+      "missing-dep-facts"
     ]
   },
   "not_run": [
