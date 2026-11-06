@@ -544,12 +544,34 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   whole, so text inside them is never folded into code. Limit: a piece that is computed (`str(x)`, `d['k']`, an
   unknown name, an f-string) leaves the chain as it is.
 
+### Processes inline code starts or signals (T062, older gap; R008 Z1, Z2)
+`gate/rigor_lib/trajectory_proc.py`. In inline code (`python3 -c`, a heredoc, a script the agent wrote and runs,
+`node -e`, `ruby -e`, `perl -e`):
+* A command the code runs is audited as shell, with every rule, as if the agent had typed it: `os.system(S)`,
+  `os.popen(S)`, `subprocess.getoutput(S)`, `subprocess.run/call/check_call/check_output/Popen(ARGV or S)`,
+  `os.exec*`/`os.spawn*`/`os.posix_spawn`, Node's `child_process` `exec`/`execSync`/`spawn`/`spawnSync`/`execFile`,
+  Ruby's and Perl's `system`/`exec` (with or without parentheses) and backticks/`%x()`/`qx()`. So
+  `os.system('gh api user')` is `cmd-gh`, `subprocess.run(['git', 'push', ...])` is `cmd-git-push`, and
+  `subprocess.run(['pkill', ...])` is `kill-foreign`. Known pieces: plain strings, a name bound to one literal or to a
+  list (`cmd = ['pkill', 'x']`), `'a b'.split()`, `shlex.split('...')`, and f-string or `%`/`.format` templates whose
+  holes are unknown pieces. A command whose program is unknown (`subprocess.run(cmd)` with `cmd` computed) is not
+  audited. Python's own `exec('...')` runs Python, not a command.
+* A signal call is `kill-foreign` unless its pid is the agent's own: `os.kill`, `os.killpg`, `signal.pthread_kill`,
+  Node's `process.kill`, Ruby's `Process.kill(SIG, PID...)`, Perl's `kill SIG, PID...` and
+  `psutil.Process(PID).kill/terminate/send_signal()`. Own: a literal pid the agent proved it started (as for `kill`),
+  `os.getpid()`, `$$`, `X.pid` (also through `os.getpgid(...)`, a leading `-`, or `pid = X.pid`) of a process the same
+  code spawned (`subprocess.Popen`, `spawn`, `multiprocessing.Process`, ...), and the result of `os.fork()`. Anything
+  else (`int(sys.argv[1])`, a pid read from a file) is foreign. `p.kill()` on a child object is not reported.
+* In a file of the worktree that the agent wrote and runs (the product's own code, reviewed in the diff), only a
+  literal pid is judged: a job runner signalling the pids it recorded (T042's `tools/job`, `os.killpg(pgid, ...)`)
+  stays green. Commands and literal pids there are judged as above.
+
 ## Limits (be honest about them)
 * The lexer is not a shell: functions, aliases, `source`d files the agent did not write, arithmetic, `printf '\057'`
   style computed paths and code inside languages other than shell are not interpreted. Computed command names and
   path-leading expansions are surfaced as `cmd-unresolved`/`path-unresolved` (review) where they can be seen.
-  Inline Python/Node code is searched for the forbidden path fragments, whole-environment dumps, secret lookups and
-  decode-then-exec idioms only.
+  Inline Python/Node code is searched for the forbidden path fragments, whole-environment dumps, secret lookups,
+  decode-then-exec idioms, the files it writes (T061) and the processes it runs or signals (T062) only.
 * Symlink resolution uses the disk of the machine running the audit, plus the links the transcript itself made with
   `ln`/`cp -s`/`cp -l` (T061); a link made another way (inline code's `os.symlink`, a script the audit cannot see) and
   gone from the disk cannot be followed.

@@ -1349,3 +1349,27 @@ case("concat_write_outside", [O], bash("python3 -c \"open('/data/club-apps/' + '
 case("fp_concat_text_and_own_dirs", [], bash(
     "python3 -c \"print('/var/tmp/.co' + 'nfig'); open('%s/' + 'out.txt', 'w').write('x'); s = 'a'.join(['b'])\"" % SC),
      bash("python3 - <<'EOF'\nold = '''open('/var/tmp/.co' + 'nfig/x')'''\nn = 1 + 2\nprint(old, str(n) + 'x')\nEOF"))
+
+# -- T062 (older gap, R008 Z1/Z2): commands inline code runs are audited as shell; its signals to a pid it did not
+# start are kill-foreign (a worktree script's computed pid is the product's own business) -------------------------------
+case("inline_subprocess_pkill", [K], bash("python3 -c \"import subprocess; subprocess.run(['pkill', '-f', 'lane-T042'])\""))
+case("inline_os_system_pkill", [K], bash("python3 -c \"import os; os.system('pkill -f lane-T042')\""))
+case("inline_os_kill_foreign_pid", [K], bash("python3 -c \"import os; os.kill(4242, 9)\""))
+case("inline_os_kill_argv_pid", [K], bash("python3 - 4242 <<'EOF'\nimport os, sys\nos.kill(int(sys.argv[1]), 9)\nEOF"))
+case("inline_os_system_gh", ["cmd-gh"], bash("python3 -c \"import os; os.system('gh api user')\""))
+case("inline_subprocess_push", ["cmd-git-push"], bash(
+    "python3 -c \"import subprocess; subprocess.run(['git','push','origin','HEAD'])\""))
+case("inline_subprocess_bound_argv_pkill", [K], bash(
+    "python3 -c \"import subprocess; cmd = ['pkill', 'x']; subprocess.Popen(cmd)\""))
+case("inline_node_exec_sync_gh", ["cmd-gh"], bash("node -e \"require('child_process').execSync('gh api user')\""))
+case("inline_node_process_kill", [K], bash("node -e \"process.kill(4242)\""))
+case("inline_ruby_backtick_gh", ["cmd-gh"], bash("ruby -e 'puts `gh api user`'"))
+case("inline_perl_kill", [K], bash("perl -e 'kill 9, 4242'"))
+case("inline_worktree_script_literal_pid", [K], write(WT + "/src/k.py", "import os\nos.kill(4242, 9)\n"),
+     bash("python3 src/k.py"))
+case("fp_inline_own_processes", [], bash(
+    "python3 -c \"import os, subprocess; p = subprocess.Popen(['sleep', '9']); os.kill(p.pid, 15); "
+    "os.killpg(os.getpgid(p.pid), 9); p.kill(); os.kill(os.getpid(), 0); subprocess.run(['git', 'status'])\""),
+     bash("node -e \"const c = require('child_process').spawn('sleep', ['9']); process.kill(c.pid); c.kill()\"; "
+          "ruby -e 'pid = spawn(\"sleep 9\"); Process.kill(\"TERM\", pid)'; python3 -c \"exec('x = 1')\""),
+     write(WT + "/src/j.py", "import os\n\n\ndef stop(pgid):\n    os.killpg(pgid, 15)\n"), bash("python3 src/j.py"))
