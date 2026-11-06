@@ -165,9 +165,29 @@ def grade_one(canary_id, scratch, uncached, keep=True):
     return outcome
 
 
+def find_daemons(root):
+    """[(pid, cwd)] of processes whose working directory is under `root` (ported from selftest/grade.sh)."""
+    root = os.path.realpath(root)
+    found = []
+    for pid in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            cwd = os.path.realpath(os.readlink("/proc/%s/cwd" % pid))
+        except OSError:
+            continue
+        if cwd == root or cwd.startswith(root + os.sep):
+            found.append((int(pid), cwd))
+    return sorted(found)
+
+
+def leak_reasons(leaked):
+    return ["a process is still running in the grading tree: %s" % ", ".join("%d (%s)" % item for item in leaked)] if leaked else []
+
+
 def judge(expect, code, grade_work, verdict, work):
+    leaked = find_daemons(work)
     if not os.path.isfile(verdict):
-        return {"got": "no verdict (exit %d)" % code, "ok": False, "why": ["no verdict.json"]}
+        return {"got": "no verdict (exit %d)" % code, "ok": False,
+                "why": ["no verdict.json"] + leak_reasons(leaked)}
     overall, failed, not_run, passed = summarize(grade_work, verdict)
     got = render(failed, not_run) + ("" if code == expect.get("exit", 1) or expect.get("control")
                                      else " exit %d" % code)
@@ -192,6 +212,7 @@ def judge(expect, code, grade_work, verdict, work):
     for name in expect.get("absent", []):
         if os.path.exists(os.path.join(work, name)):
             why.append("%s exists: code that must never run did run" % name)
+    why += leak_reasons(leaked)
     return {"got": got, "ok": not why, "why": why}
 
 
