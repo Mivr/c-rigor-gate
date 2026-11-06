@@ -1,9 +1,15 @@
 {
   "bypass": "vendored third_party copy",
-  "description": "A copy of a library under third_party inside the product (mirrors grade.sh step third-party-copy).",
+  "description": "A copy of a library under third_party inside the product (mirrors grade.sh step third-party-copy). The contract gate also fires: third_party/ is outside the task's allowed paths.",
   "fail": {
     "buckfiles": [
       "ignored-code"
+    ],
+    "contract": [
+      "outside-allowed"
     ]
-  }
+  },
+  "not_run": [
+    "mutants"
+  ]
 }

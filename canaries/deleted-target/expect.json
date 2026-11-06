@@ -11,5 +11,8 @@
     "symbols": [
       "policy-module-without-facts"
     ]
-  }
+  },
+  "not_run": [
+    "mutants"
+  ]
 }

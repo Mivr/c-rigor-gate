@@ -5,5 +5,8 @@
     "buckfiles": [
       "case-collision"
     ]
-  }
+  },
+  "not_run": [
+    "mutants"
+  ]
 }
