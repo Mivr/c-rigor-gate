@@ -26,7 +26,10 @@ shares no code or state with the walker. The generator exits 2 if the two disagr
 just by count); `rigor mutants` repeats the comparison on the report.
 `original` and `replacement` are the bytes decoded as latin-1 (lossless). Mutants are sorted by
 (begin, end, replacement, operator). The id is the first 16 hex digits of sha256 over
-file, function, operator, original, replacement and the ordinal among equal ones in the function.
+file, function, operator, original (the mutated token's text), replacement, the sha256 of the
+function's body normalised for whitespace and comments only (see `normalise_body`), and the ordinal among
+byte-identical candidates of that same body (a tie-break only). Any change to a function's body therefore
+changes every id in it: an approval of an old id matches nothing (B18, R001 R6; fail closed, no fuzzy match).
 """
 
 import argparse
@@ -269,6 +272,7 @@ class Walker:
         self.known_system = set()  # macros seen with a token spelled in the toolchain's headers
         self.typedefs = {}  # typedef name -> "record", "complex", or the name of the typedef it aliases; see `typedef_kinds`
         self.enums = {}  # id of an enumerator -> name of the next one of its enum (wrapping); see `enum_successors`
+        self.body_hashes = {}  # body span -> sha256 of the normalised body; see `body_hash`
         self.pasted = []  # (function, macro, offset) of tokens made by ## or #, spelled nowhere
 
     def add(self, ctx, operator, begin, end, replacement):
@@ -279,7 +283,16 @@ class Walker:
             "file": self.main, "begin_offset": begin, "end_offset": end,
             "original": original.decode("latin-1"), "replacement": replacement,
             "operator": operator, "function": ctx["function"], "line": self.source.line(begin),
+            "body": self.body_hash(ctx["body"]),
         })
+
+    def body_hash(self, body):
+        """sha256 (hex) of the normalised body of the function being walked; cached per body span."""
+        span = span_of(body)
+        if span not in self.body_hashes:
+            text = normalise_body(self.source.data[span[0]:span[1]])
+            self.body_hashes[span] = hashlib.sha256(text).hexdigest()
+        return self.body_hashes[span]
 
     def visit(self, node, ctx):
         if not isinstance(node, dict) or not node:
@@ -790,8 +803,47 @@ def typedef_kinds(ast):
     return found
 
 
+def normalise_body(text):
+    """`text` (a function body) with every comment and line splice removed and every run of white space
+    outside string and character literals made one space: the only differences that do not change an id."""
+    out = bytearray()
+    pos, end = 0, len(text)
+    pending_space = False
+    while pos < end:
+        two = text[pos:pos + 2]
+        byte = text[pos:pos + 1]
+        if two == b"/*":
+            stop = text.find(b"*/", pos + 2)
+            pos = end if stop < 0 else stop + 2
+            pending_space = True
+        elif two == b"//":
+            stop = text.find(b"\n", pos)
+            pos = end if stop < 0 else stop
+            pending_space = True
+        elif two == b"\\\n":
+            pos += 2
+        elif byte in (b" ", b"\t", b"\n", b"\r", b"\f", b"\v"):
+            pos += 1
+            pending_space = True
+        else:
+            if pending_space and out:
+                out.append(32)
+            pending_space = False
+            if byte in (b'"', b"'"):
+                stop = pos + 1
+                while stop < end and text[stop:stop + 1] != byte:
+                    stop += 2 if text[stop:stop + 1] == b"\\" else 1
+                out += text[pos:stop + 1]
+                pos = stop + 1
+            else:
+                out += byte
+                pos += 1
+    return bytes(out)
+
+
 def assign_ids(mutants, file_path):
-    """Sort, keep one mutant per text change, and compute the stable ids."""
+    """Sort, keep one mutant per text change, and compute the content-bound ids. Each mutant carries
+    `body`, the hash of its function's normalised body, which is consumed here and not reported."""
     mutants.sort(key=lambda m: (m["begin_offset"], m["end_offset"], m["replacement"],
                                 OPERATORS.index(m["operator"])))
     seen_change = set()
@@ -802,7 +854,8 @@ def assign_ids(mutants, file_path):
         if change in seen_change:
             continue
         seen_change.add(change)
-        group = (mutant["function"], mutant["operator"], mutant["original"], mutant["replacement"])
+        group = (mutant["function"], mutant["operator"], mutant["original"], mutant["replacement"],
+                 mutant.pop("body"))
         ordinal = seen_group.get(group, 0)
         seen_group[group] = ordinal + 1
         material = "\0".join((file_path,) + group + (str(ordinal),))
