@@ -93,8 +93,9 @@ load("@gate//rules:c.bzl", "c_library", "c_test")
 c_library(name = "l", srcs = ["l.c"], headers = ["l.h"])
 c_test(name = "t", srcs = ["t.c"], deps = [":l"])
 BUCK
-printf '/* %s */\nint scratch_one(void);\n' "$nonce" > "$scratch/l.h"
-printf '#include "l.h"\nint scratch_one(void) { return 1; }\n' > "$scratch/l.c"
+printf 'int scratch_one(void);\n' > "$scratch/l.h"
+# The nonce lands in the object file, so compile, archive and link cannot be cache hits.
+printf '#include "l.h"\nconst char scratch_nonce[] = "%s";\nint scratch_one(void) { return 1; }\n' "$nonce" > "$scratch/l.c"
 printf '#include "l.h"\nint main(void) { return scratch_one() == 1 ? 0 : 1; }\n' > "$scratch/t.c"
 must_pass test //selftest/scratch:t
 "${B[@]}" log what-ran 2>/dev/null | strip_ansi > "$out/whatran.txt"
