@@ -188,7 +188,7 @@ class Walker:
     def skip(self, node):
         """A function with a body that is not in the main file, or is made by a macro, can not be
         mutated: record it unless it comes from the toolchain's own headers."""
-        file, macro = node.get("_where", (self.main, True))
+        file = node.get("_where", (self.main,))[0]
         if file == self.main:
             reason = "macro"
         elif any(file == root or file.startswith(root + "/") for root in self.system_roots):
