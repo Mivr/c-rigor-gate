@@ -1,0 +1,8 @@
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_001", "name": "Write", "input": {"file_path": "tests/new_test.c", "content": "int a;\n"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_001", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_002", "name": "Write", "input": {"file_path": "tests/new_test.c", "content": "int b;\n"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_002", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_003", "name": "Edit", "input": {"file_path": "tests/new_test.c", "old_string": "a", "new_string": "b"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_003", "content": "ok"}]}}
+{"type": "assistant", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}, {"type": "tool_use", "id": "toolu_004", "name": "Bash", "input": {"command": "rm tests/new_test.c"}}]}}
+{"type": "user", "cwd": "/var/tmp/wt/c-rigor-gate/T099", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_004", "content": "ok"}]}}

@@ -1,0 +1,4 @@
+id = "T099"
+role = "implementer"
+allowed = ["src/**", "tests/**", "docs/**"]
+protected = ["BUCK", "policy/**", "order.txt"]
