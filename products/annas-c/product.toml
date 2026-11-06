@@ -1,0 +1,6 @@
+name = "annas-c"
+
+[layout]
+include = ["core/**", "url/**", "fsname/**", "json/**", "html/**", "ports/**", "annas/**",
+           "adapters/**", "cli/**", "mcp/**"]
+exclude = []

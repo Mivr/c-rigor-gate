@@ -2,6 +2,9 @@ clone
 contract
 suppressions
 assemble
+buckfiles
+semantic-suppressions
+symbols
 build
 tests-release
 tests-san

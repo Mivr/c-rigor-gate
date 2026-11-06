@@ -7,13 +7,16 @@ Any exception inside a step is an internal error: the step is recorded as FAIL a
 remaining steps do not run.
 """
 
-from rigor_lib import grade_build, grade_steps
+from rigor_lib import grade_build, grade_checks, grade_steps
 
 GATES = (
     ("clone", grade_steps.clone_gate),
     ("contract", grade_steps.contract_gate),
     ("suppressions", grade_steps.suppressions_gate),
     ("assemble", grade_steps.assemble_gate),
+    ("buckfiles", grade_checks.buckfiles_gate),
+    ("semantic-suppressions", grade_checks.semantic_gate),
+    ("symbols", grade_checks.symbols_gate),
     ("build", grade_build.build_gate),
     ("tests-release", grade_steps.tests_gate_for("release")),
     ("tests-san", grade_steps.tests_gate_for("san")),
