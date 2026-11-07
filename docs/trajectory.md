@@ -312,6 +312,17 @@ finding (another task's worktree), a fetch of any other remote, or an `origin` w
 `git checkout main` and `reset --hard origin/main` in the worktree, or via `-C <worktree>` from a clone, still block.
 Red twins: `git_*` cases in `gate/tests/test_trajectory_cases.py`.
 
+**Local submodule URL (T077, B26).** `git [-c protocol.file.allow=always] -c submodule.N.url=/var/tmp/src/R submodule
+update --init N` is neither `cmd-git-network` nor `git-config-override` when all of these hold: every `-c` is a
+`submodule.<name>.url` whose value is an absolute path under `/var/tmp/src/` (no `..`, no unknown part, no `://`) or
+exactly `protocol.file.allow=always`; at least one url is set; the submodules named on the command line are exactly the
+ones given a url; the only flags are `--init`, `--checkout`, `-f/--force`, `-q/--quiet`, `--no-fetch`; and the command
+runs in the task worktree or a proven scratch clone. Still blocked: an `https://`, `ssh://`, `git@`, `file://` or
+relative url, no `-c` url (it would use `.gitmodules`), `--recursive`/`--recurse-submodules`/`--remote`/`--depth`/
+`--reference`, a url for another submodule than the one updated, any other `-c` (`core.sshCommand`, ...), a
+`protocol.file.allow` without a local url (reviewed as `git-config-override`), `submodule sync/add`, and a run outside
+the worktree or a proven clone. Tests: `gate/tests/test_trajectory_local.py`.
+
 ### Background jobs: `tools/job` (T042)
 `tools/job run [--deadline S] [--dir DIR] NAME -- CMD ARGS` is audited twice, at the point where it was typed:
 * **CMD ARGS exactly as if they had been run directly** (every rule: network, reads, writes, git, tamper, secrets,
@@ -388,6 +399,13 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
 * **Network:** a network tool needs every destination on `ALLOWED_HOSTS`; loopback is also fine, except for `ssh`,
   `scp` and `sftp` (a loopback ssh is a shell as the same uid). A URL elsewhere (test data, commit trailers, echo) is
   never a finding. `git fetch/pull/ls-remote/clone` need a local path or an allowlisted URL.
+* **Patch leftovers (T077, B26):** a delete whose last path component is a glob ending in a literal `.orig` or `.rej`
+  (`rm -f tests/*.orig`) is not `tamper-test-delete`: such a name is a `patch` leftover, never a test. The suffix set is
+  `PATCH_LEFTOVER_SUFFIXES` in `trajectory_writers.py`; the test-file rule knows `tests/` and `test/` directories and the
+  names `test_*`, `*_test.*`, `*_tests.*`, and a task's `test_globs`, none of which a name ending in those suffixes is by
+  itself. Still blocked: `*.c`, `*`, `*.or*`, `test_*`, a glob in a directory component, an unknown directory variable,
+  a plain `x.orig`, and any other operand of the same `rm` (`rm -f x.orig y_test.c`). `protected` and `allowed` are still
+  checked.
 * **Tamper:** `tamper-test-delete`/`-rewrite` apply to the `implementer` role only, and only to a test file the agent
   did not create itself in this transcript (a `Write` of a file it has not read, or a redirect creating it, marks it
   created). A rewrite counts only if the agent read the file first; an `Edit` of an existing test is a review.
