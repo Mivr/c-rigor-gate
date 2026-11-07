@@ -99,6 +99,38 @@ def parse_layout(result_targets, attributes, binaries):
     return Layout(frozenset(libs), frozenset(binary_labels), frozenset(tests), deps, frozenset(external))
 
 
+_EXTERNAL_KINDS = "^(cxx_library|prebuilt_cxx_library)$"
+_DEP_KEYS = ("deps", "exported_deps")
+
+
+def add_external(attributes, query):
+    """Add to ATTRIBUTES (label -> attributes, as the queries print them) the libraries of other cells that
+    the product reaches through `deps` and `exported_deps`, closed under the same two attributes. `query(labels)`
+    returns the attributes of those labels that are libraries. (`deps(//...)` cannot do this in the unconfigured
+    graph: it also follows the toolchain's hidden deps.) A dep that is not a library stays out and is reported
+    by `plan` as `unresolved-link-dep`."""
+    seen = set(attributes)
+    pending = set()
+
+    def note(entry):
+        for key in _DEP_KEYS:
+            deps = entry.get(key, []) if isinstance(entry, dict) else []
+            if isinstance(deps, list):
+                pending.update(d for d in deps if isinstance(d, str) and not d.startswith(_ROOT))
+    for entry in list(attributes.values()):
+        note(entry)
+    while pending - seen:
+        asked = sorted(pending - seen)
+        seen.update(asked)
+        found = query(asked)
+        if not isinstance(found, dict):
+            raise InternalError("odd query output from buck2")
+        for label, entry in found.items():
+            attributes[label] = entry
+            note(entry)
+    return attributes
+
+
 def read_layout(run):
     def query(args):
         code, out, err = grade_build.run_buck(run.tree, ["uquery"] + args)
@@ -106,12 +138,17 @@ def read_layout(run):
             raise InternalError("buck2 uquery failed: %s" % err.strip()[-500:])
         return out
     attribute = ["--output-format", "json", "--output-attribute"]
+
+    def libraries(labels):
+        expression = "kind('%s', set(%s))" % (_EXTERNAL_KINDS, " ".join(labels))
+        return jsonio.strict_loads(query([expression] + attribute + ["^(deps|exported_deps)$"]).encode("utf-8"))
     results = jsonio.strict_loads(query(["kind(ctest_results, //...)"] + attribute + ["^test$"]).encode("utf-8"))
     attributes = jsonio.strict_loads(query(
-        ["kind('^(cxx_library|prebuilt_cxx_library|cxx_binary|cxx_test|mutsrc)$', deps(//...))"]
-        + attribute + ["^(deps|exported_deps)$"]).encode("utf-8"))
+        ["kind('^(cxx_library|cxx_binary|cxx_test|mutsrc)$', //...)"] + attribute + ["^(deps|exported_deps)$"]).encode("utf-8"))
     binaries = [line.strip() for line in query(["kind(cxx_binary, //...)"]).splitlines() if line.strip()]
-    return parse_layout(results, attributes, binaries)
+    if not isinstance(attributes, dict):
+        raise InternalError("odd query output from buck2")
+    return parse_layout(results, add_external(attributes, libraries), binaries)
 
 
 def _link_deps(layout, module, tests):

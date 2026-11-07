@@ -196,6 +196,23 @@ class QueryParsing(unittest.TestCase):
         self.assertEqual(lay.deps["//core:t"], ("//core:core", "gate//ctest:ctest"))
         self.assertEqual(lay.deps["gate//third_party/m:m"], ("gate//third_party/m:h", "gate//third_party/m:e"))
 
+    def test_libraries_of_other_cells_are_queried_until_the_closure_is_complete(self):
+        known = {"gate//t:a": {"deps": ["gate//t:b"]}, "gate//t:b": {"exported_deps": ["gate//t:c", "root//x:x"]},
+                 "gate//t:c": {}}
+        asked = []
+
+        def query(labels):
+            asked.append(labels)
+            return {label: known[label] for label in labels if label in known}   # a non-library is not returned
+        attrs = {"root//x:x": {"deps": ["gate//t:a", "gate//t:notlib"]}, "root//x:t": {"deps": ["root//x:x"]}}
+        out = grade_mutants.add_external(attrs, query)
+        self.assertEqual(sorted(out), ["gate//t:a", "gate//t:b", "gate//t:c", "root//x:t", "root//x:x"])
+        self.assertEqual(asked, [["gate//t:a", "gate//t:notlib"], ["gate//t:b"], ["gate//t:c"]])
+
+    def test_a_query_that_returns_something_odd_is_an_internal_error(self):
+        with self.assertRaises(InternalError):
+            grade_mutants.add_external({"root//x:x": {"deps": ["gate//t:a"]}}, lambda labels: [])
+
     def test_odd_query_output_is_an_internal_error(self):
         for tests, attrs in (([], {}), ({"root//a:t_results": {}}, {}), ({"root//a:t_results": {"test": 3}}, {}),
                              ({}, {"root//a:a": {"deps": "x"}, "root//a:a_mutsrc": {}}), ({}, {"bad label": {}}),
