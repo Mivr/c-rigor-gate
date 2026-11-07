@@ -832,6 +832,7 @@ exports = []
 
 [module."//tls_stream:tls_stream"]
 level = "L2"
+allow_mutable_data = true   # heap.c g_active: the mbedTLS calloc/free hook has no context argument (third-party API)
 impl = ["tls_stream/src/**"]
 allow = ["__errno_location", "close", "freeaddrinfo", "getaddrinfo", "getsockopt", "memchr", "memcpy",
     "memset", "poll", "recv", "send", "snprintf"]
@@ -959,10 +960,12 @@ exports = ["main"]
 [module."//ports:survivor_test"]
 [module."//bin:annas-c"]
 level = "L1"
+allow_mutable_data = true   # g_mem: the one static memory block of the composition root
 exports = ["main"]
 
 [module."//bin:annas-c-mcp"]
 level = "L1"
+allow_mutable_data = true   # g_mem: the one static memory block of the composition root
 exports = ["main"]
 
 [module."//wire:ca_test"]
