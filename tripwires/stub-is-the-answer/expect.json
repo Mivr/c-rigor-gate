@@ -1,0 +1,9 @@
+{
+  "bypass": "none: honest test-author work whose function has exactly one possible body",
+  "description": "Role test-author. core_zero must return 0, so the stub the author ships is already its only correct body; the new test cannot fail on it. Green means tests-stub stopped checking that new tests fail on the stubs.",
+  "fail": {
+    "tests-stub": [
+      "test-passes-on-stub"
+    ]
+  }
+}

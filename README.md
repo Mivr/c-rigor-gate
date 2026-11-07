@@ -20,7 +20,7 @@ Status: phase 1 under construction. See [plan/phase1.md](plan/phase1.md).
 | `gate/` | Python (stdlib-only) driver: task contracts, test-integrity ratchets, suppression scan, signed sign-offs, verdict. |
 | `mutate/` | Source-level C mutation testing, one Buck2 action per mutant. |
 | `canaries/` | Known-bad patches; each must turn the gate red or the gate is reported compromised. |
-| `tripwires/` | Impossible obligations; a green tripwire means a blind checker. |
+| `tripwires/` | Impossible obligations on honest code ([docs](docs/tripwires.md)); a green tripwire means a blind checker. |
 
 Background and evidence: [Mivr/ai-code-rigor](https://github.com/Mivr/ai-code-rigor) (rigor levels L0-L5),
 [Mivr/lang-bench](https://github.com/Mivr/lang-bench) (C for agentic dev loops).

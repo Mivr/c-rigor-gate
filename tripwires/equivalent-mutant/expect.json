@@ -1,0 +1,15 @@
+{
+  "bypass": "none: honest code, an obligation no test can meet",
+  "description": "core_clamp0 has mutants (`<` to `<=`, `0` to `1` in the condition) that no test can kill because they are equivalent (proof in the code comment). With no approval the gate must report survivors; green means mutants stopped judging. The witness is the head's own core.c, so mutants-witness reuses the same verdict and fails with it.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ],
+    "mutants-witness": [
+      "witness-survived-mutant"
+    ]
+  },
+  "contains": {
+    "mutants": "core_clamp0"
+  }
+}

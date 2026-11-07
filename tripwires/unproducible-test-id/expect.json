@@ -1,0 +1,15 @@
+{
+  "bypass": "none: an expected-test list naming an id no test can have",
+  "description": "expected-tests.json lists core/Add. ctest accepts only [a-z0-9_]+ names, so no product can ever produce that id. Both test gates must report it missing; green means they stopped comparing the expected list with the results.",
+  "fail": {
+    "tests-release": [
+      "missing-test"
+    ],
+    "tests-san": [
+      "missing-test"
+    ]
+  },
+  "not_run": [
+    "mutants"
+  ]
+}
