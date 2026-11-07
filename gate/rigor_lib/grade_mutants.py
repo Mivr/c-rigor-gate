@@ -30,7 +30,7 @@ PACKAGE_TEXT = 'package(visibility = ["PUBLIC"], inherit = True)\n'
 REQUIRED = ("assemble", "buckfiles", "build", "tests-release", "tests-san")
 PLATFORM = "toolchains//:linux_release"
 _ROOT = "root//"
-_LABEL = re.compile(r"root//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+")
+_LABEL = re.compile(r"[A-Za-z0-9_.-]+//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+")
 _TAIL_CHARS = 4000
 
 
@@ -39,7 +39,9 @@ class Layout:
     libs: frozenset      # c_library labels ("//pkg:name")
     binaries: frozenset  # c_binary labels
     tests: frozenset     # c_test labels
-    deps: dict           # label -> tuple of direct same-cell dependency labels
+    deps: dict           # label -> tuple of direct dependency labels of the product's own cell
+    external: frozenset = frozenset()  # libraries of other cells ("gate//third_party/..:x"), linkable like libs
+    links: dict = None   # label -> direct `deps` + `exported_deps` of every cell: what the tests link (T070)
 
 
 @dataclass(frozen=True)
@@ -47,7 +49,7 @@ class Module:
     label: str
     level: str
     tests: tuple   # c_tests that depend on the module directly
-    deps: tuple    # libraries linked into those tests besides the module, dependents first
+    deps: tuple    # libraries linked into those tests besides the module (any cell), dependents first
 
 
 @dataclass(frozen=True)
@@ -57,22 +59,26 @@ class Plan:
 
 
 def _short(label):
+    """`root//pkg:name` -> `//pkg:name`; a label of another cell keeps its cell (`gate//pkg:name`)."""
     if not isinstance(label, str) or not _LABEL.fullmatch(label):
         raise InternalError("odd target label from buck2: %r" % (label,))
-    return label[len("root"):]
+    return label[len("root"):] if label.startswith(_ROOT) else label
 
 
-def _direct_deps(label, entry):
-    deps = entry.get("deps", [])
-    if not isinstance(deps, list) or not all(isinstance(d, str) for d in deps):
-        raise InternalError("%s: odd deps from buck2" % label)
-    return tuple(_short(d) for d in deps if d.startswith(_ROOT))
+def _direct_deps(label, entry, keys=("deps",)):
+    out = []
+    for key in keys:
+        deps = entry.get(key, [])
+        if not isinstance(deps, list) or not all(isinstance(d, str) for d in deps):
+            raise InternalError("%s: odd %s from buck2" % (label, key))
+        out.extend(_short(d) for d in deps)
+    return tuple(out)
 
 
 def parse_layout(result_targets, attributes, binaries):
     """Layout from the three queries: `ctest_results` targets (attribute `test`), the attributes of every
-    library, test, binary and `mutsrc` (a library `x` is a `c_library` iff `x_mutsrc` exists), and the
-    labels of the `cxx_binary` targets."""
+    library, test, binary and `mutsrc` of the product and the libraries they reach in other cells (a library `x`
+    of the product is a `c_library` iff `x_mutsrc` exists), and the labels of the `cxx_binary` targets."""
     if not isinstance(result_targets, dict) or not isinstance(attributes, dict):
         raise InternalError("odd query output from buck2")
     tests = set()
@@ -83,13 +89,49 @@ def parse_layout(result_targets, attributes, binaries):
     entries = {_short(label): entry for label, entry in attributes.items()}
     if not all(isinstance(entry, dict) for entry in entries.values()):
         raise InternalError("odd attributes from buck2")
-    libs = {label for label in entries if label + "_mutsrc" in entries}
+    ours = {label for label in entries if label.startswith("//")}
+    libs = {label for label in ours if label + "_mutsrc" in entries}
+    external = {label for label in entries if not label.startswith("//")}
     binary_labels = {_short(label) for label in binaries}
     missing = (tests | binary_labels) - set(entries)
     if missing:
         raise InternalError("no attributes for %s" % sorted(missing))
-    deps = {label: _direct_deps(label, entries[label]) for label in sorted(libs | tests | binary_labels)}
-    return Layout(frozenset(libs), frozenset(binary_labels), frozenset(tests), deps)
+    labels = sorted(libs | tests | binary_labels | external)
+    links = {label: _direct_deps(label, entries[label], _DEP_KEYS) for label in labels}
+    deps = {label: tuple(d for d in links[label] if d.startswith("//")) for label in labels if label.startswith("//")}
+    return Layout(frozenset(libs), frozenset(binary_labels), frozenset(tests), deps, frozenset(external), links)
+
+
+_EXTERNAL_KINDS = "^(cxx_library|prebuilt_cxx_library)$"
+_DEP_KEYS = ("deps", "exported_deps")
+
+
+def add_external(attributes, query):
+    """Add to ATTRIBUTES (label -> attributes, as the queries print them) the libraries of other cells that
+    the product reaches through `deps` and `exported_deps`, closed under the same two attributes. `query(labels)`
+    returns the attributes of those labels that are libraries. (`deps(//...)` cannot do this in the unconfigured
+    graph: it also follows the toolchain's hidden deps.) A dep that is not a library stays out and is reported
+    by `plan` as `unresolved-link-dep`."""
+    seen = set(attributes)
+    pending = set()
+
+    def note(entry):
+        for key in _DEP_KEYS:
+            deps = entry.get(key, []) if isinstance(entry, dict) else []
+            if isinstance(deps, list):
+                pending.update(d for d in deps if isinstance(d, str) and not d.startswith(_ROOT))
+    for entry in list(attributes.values()):
+        note(entry)
+    while pending - seen:
+        asked = sorted(pending - seen)
+        seen.update(asked)
+        found = query(asked)
+        if not isinstance(found, dict):
+            raise InternalError("odd query output from buck2")
+        for label, entry in found.items():
+            attributes[label] = entry
+            note(entry)
+    return attributes
 
 
 def read_layout(run):
@@ -99,35 +141,50 @@ def read_layout(run):
             raise InternalError("buck2 uquery failed: %s" % err.strip()[-500:])
         return out
     attribute = ["--output-format", "json", "--output-attribute"]
+
+    def libraries(labels):
+        expression = "kind('%s', set(%s))" % (_EXTERNAL_KINDS, " ".join(labels))
+        return jsonio.strict_loads(query([expression] + attribute + ["^(deps|exported_deps)$"]).encode("utf-8"))
     results = jsonio.strict_loads(query(["kind(ctest_results, //...)"] + attribute + ["^test$"]).encode("utf-8"))
     attributes = jsonio.strict_loads(query(
-        ["kind('^(cxx_library|cxx_binary|cxx_test|mutsrc)$', //...)"] + attribute + ["^deps$"]).encode("utf-8"))
+        ["kind('^(cxx_library|cxx_binary|cxx_test|mutsrc)$', //...)"] + attribute + ["^(deps|exported_deps)$"]).encode("utf-8"))
     binaries = [line.strip() for line in query(["kind(cxx_binary, //...)"]).splitlines() if line.strip()]
-    return parse_layout(results, attributes, binaries)
+    if not isinstance(attributes, dict):
+        raise InternalError("odd query output from buck2")
+    return parse_layout(results, add_external(attributes, libraries), binaries)
 
 
 def _link_deps(layout, module, tests):
-    """Libraries the module's tests need to link: the closure of their deps and of the module's,
-    without the module. A library comes before the ones it depends on (static archives, one pass)."""
+    """What the module's tests link besides the module, as `(deps, unresolved)`. `deps` is the closure of their
+    deps and of the module's over every library of the layout, first-party or from another cell (third-party
+    ones included), without the module; a library comes before the ones it depends on (static archives, one
+    pass). `unresolved` lists the labels reached that are no library of the layout: never dropped silently."""
+    linkable = layout.libs | layout.external
     wanted = set()
-    stack = [d for t in tests for d in layout.deps[t]] + list(layout.deps[module])
+    unresolved = set()
+    links = layout.deps if layout.links is None else layout.links
+    stack = [d for t in tests for d in links[t]] + list(links[module])
     while stack:
         label = stack.pop()
-        if label != module and label in layout.libs and label not in wanted:
+        if label == module or label in wanted or label in unresolved:
+            continue
+        if label in linkable:
             wanted.add(label)
-            stack.extend(layout.deps[label])
+            stack.extend(links[label])
+        else:
+            unresolved.add(label)
     order = []
 
     def visit(label):  # post-order over the library graph: dependencies are emitted first
         if label in order:
             return
-        for dep in sorted(layout.deps[label]):
+        for dep in sorted(links[label]):
             if dep in wanted:
                 visit(dep)
         order.append(label)
     for label in sorted(wanted):
         visit(label)
-    return tuple(reversed(order))
+    return tuple(reversed(order)), tuple(sorted(unresolved))
 
 
 def plan(layout, levels):
@@ -149,7 +206,11 @@ def plan(layout, levels):
             wanted += 1
             tests = tuple(sorted(t for t in layout.tests if label in layout.deps[t]))
             if tests:
-                modules.append(Module(label, level, tests, _link_deps(layout, label, tests)))
+                linked, unresolved = _link_deps(layout, label, tests)
+                for dep in unresolved:
+                    found.append(finding("unresolved-link-dep", module=label, dep=dep))
+                if not unresolved:
+                    modules.append(Module(label, level, tests, linked))
             else:
                 found.append(finding("module-without-tests", module=label, level=level))
     if not wanted:

@@ -71,7 +71,8 @@ def _link_inputs(label: Label, deps: list[Dependency]) -> list[Artifact]:
     for d in deps:
         outputs = d[DefaultInfo].default_outputs
         if len(outputs) > 0:
-            libs.append(outputs[0])
+            if outputs[0] not in libs:  # a library named twice (e.g. ctest, which every c_test links) is linked once
+                libs.append(outputs[0])
         elif not _own_headers(d):
             fail("{}: dep {} provides neither a library nor headers".format(label, d.label))
     return libs
