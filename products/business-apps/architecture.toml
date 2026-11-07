@@ -6,7 +6,9 @@ order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim
          "app-domain", "app-safety", "app-reactors", "app-adapters", "app-ui", "app-root"]
 
 [layer."lib-base"]
-modules = ["//lib/base/**"]
+# design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
+# below lib-rt: tlog uses it). Module labels cannot be excluded from a glob, so lib-fmt lists its packages.
+modules = ["//lib/base/**", "//lib/fmt/fmt:*"]
 
 [layer."lib-ds"]
 modules = ["//lib/ds/**"]
@@ -15,7 +17,9 @@ modules = ["//lib/ds/**"]
 modules = ["//lib/rt/**"]
 
 [layer."lib-fmt"]
-modules = ["//lib/fmt/**"]
+modules = ["//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*", "//lib/fmt/httpresp:*",
+           "//lib/fmt/jdom:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*", "//lib/fmt/lines:*", "//lib/fmt/mbrtu:*",
+           "//lib/fmt/url:*"]
 
 [layer."lib-io"]
 modules = []
@@ -44,8 +48,112 @@ modules = []
 [layer."app-root"]
 modules = []
 
+# Library edges. The most permissive matching edge wins, so the layer edges below are the whole story for their kinds.
+[[edge]]
+from = "//lib/fmt/fmt:fmt"
+to = "//lib/base/core:core"
+kind = "pure"
+
+[[edge]]
+from = "lib-rt"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "lib-rt"
+to = "lib-ds"
+kind = "pure"
+
+[[edge]]
+from = "//lib/rt/elog:elog"
+to = "//lib/rt/ev:ev"
+kind = "pure"
+
+# blob keeps its slots in a pool (same tier).
+[[edge]]
+from = "//lib/ds/blob:blob"
+to = "//lib/ds/pool:pool"
+kind = "pure"
+
+# ports is header-only (interface types): it uses core's types only.
+[[edge]]
+from = "//lib/base/ports:ports"
+to = "//lib/base/core:core"
+kind = "data"
+
 # lib-fmt/lines uses core's string slice type (core_str_t) only.
 [[edge]]
 from = "//lib/fmt/lines:lines"
 to = "lib-base"
+kind = "data"
+
+[[edge]]
+from = "//lib/fmt/jw:jw"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jw:jw"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jdom:jdom"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jdom:jdom"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jdom:jdom"
+to = "//lib/fmt/jw:jw"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/url:url"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpreq:httpreq"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpreq:httpreq"
+to = "//lib/fmt/url:url"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpredir:httpredir"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpredir:httpredir"
+to = "//lib/fmt/url:url"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpresp:httpresp"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpresp:httpresp"
+to = "//lib/fmt/url:url"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpresp:httpresp"
+to = "//lib/fmt/httpchunk:httpchunk"
+kind = "pure"
+
+# httpdef is header-only (types and constants): every http module in lib-fmt may read it, none may call it.
+[[edge]]
+from = "lib-fmt"
+to = "//lib/fmt/httpdef:httpdef"
 kind = "data"
