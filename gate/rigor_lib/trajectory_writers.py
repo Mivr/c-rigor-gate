@@ -339,6 +339,68 @@ def into_dir(directory, source):
     return directory.rstrip("/") + "/" + base if directory.rstrip("/") else "/" + base
 
 
+_TAR_FAMILY = ("tar", "bsdtar", "gtar")
+_TAR_FLAG_LETTERS = set("cvzjJphf")  # create, and options that cannot widen or redirect what is archived
+
+
+def tar_create_members(args):
+    """(source directory text or None, [member, ...]) of a `tar c` that writes the archive to stdout (no `-f`, or `-f -`) and names its
+    members literally (T084); None for anything else: an archive file, `-T`/`--files-from`/`-X`, a wildcard or an
+    unknown part in a member, an option this does not know, no member."""
+    directory, members, create, i = None, [], False, 0
+    while i < len(args):
+        arg = args[i]
+        i += 1
+        if arg == "--":
+            members += args[i:]
+            break
+        if arg in ("-C", "--directory") or arg.startswith("--directory="):
+            if members or directory is not None or (arg in ("-C", "--directory") and i >= len(args)):
+                return None  # a second or late `-C` changes where later members are read
+            directory, i = (args[i], i + 1) if arg in ("-C", "--directory") else (arg.split("=", 1)[1], i)
+        elif arg == "--create":
+            create = True
+        elif arg.startswith(("--exclude=", "--exclude-vcs")) or arg in ("--verbose", "--dereference"):
+            continue
+        elif arg.startswith("--"):
+            return None
+        elif (arg.startswith("-") and len(arg) > 1) or i == 1:  # a cluster, the first may lack its dash
+            letters = arg.lstrip("-")
+            if not letters or set(letters) - _TAR_FLAG_LETTERS:
+                return None
+            create = create or "c" in letters
+            if "f" in letters:
+                if i >= len(args) or args[i] != "-":
+                    return None
+                i += 1
+        else:
+            members.append(arg)
+    if not (create and members):
+        return None
+    if any(not m or any(c in m for c in "*?[{$`\\") or UNRESOLVED in m for m in members):
+        return None
+    return directory, members
+
+
+def _archive_file(args):
+    """The archive a `tar -x` reads, when it is not stdin: the value of `-f`/`--file`; None for stdin."""
+    for i, arg in enumerate(args):
+        if arg.startswith("--file="):
+            value = arg[len("--file="):]
+        elif arg == "--file" and i + 1 < len(args):
+            value = args[i + 1]
+        elif arg.startswith("-") and not arg.startswith("--") or i == 0:
+            letters = arg.lstrip("-")
+            if "f" not in letters or set(letters) - set("xvzjJpkfmoO"):
+                continue
+            value = args[i + 1] if i + 1 < len(args) else ""
+        else:
+            continue
+        if value != "-":
+            return value
+    return None
+
+
 def tree_targets(argv):
     """[(argv index or None, directory text)] below which a command writes files it does not name: `tar -x`
     (`-C DIR`, else the working directory) and `unzip` (`-d DIR`, else the working directory)."""
@@ -420,7 +482,7 @@ class WritersMixin:
         for index, text in tree_targets(argv):
             if index is not None:
                 skip.add(index)
-            self.write_tree(text, raw)
+            self.write_tree(text, raw, self._extract_keeps(item, argv, name, text, flags))
         skip |= self.note_links(argv, name, raw)
         self.move_clones(argv, name)
         if name == "patch":
@@ -430,11 +492,65 @@ class WritersMixin:
         self._xargs_writes(item, argv, raw, flags)
         return skip
 
-    def write_tree(self, text, raw):
+    def _extract_keeps(self, item, argv, name, text, flags):
+        """T084: for `(cd D && tar c[f -] m1 m2 ...) | tar x -C S` (and `tar -C D -cf - m1 m2 | tar -x -C S`) with
+        literal members, a function telling which known paths below S the extract cannot write: those not under S/m1,
+        S/m2, ... A member that covers a path leaves it replaceable, except below `.` of a source directory that is
+        the task worktree or under /var/tmp/src (the product's own files), when the same-named file there was not
+        written by the agent. None (every known file below S becomes unknown) for any other archive or `unzip`."""
+        if name not in _TAR_FAMILY or "prepared" not in flags or _archive_file(argv[1:]) is not None:
+            return None
+        producer = self._tar_producer(item, flags)
+        made = tar_create_members(producer.argv[1:]) if producer is not None else None
+        dest = self.policy.normalize(text, self.cwd)
+        source = self.policy.normalize(made[0] or ".", producer.cwd) if made else None
+        if made is None or dest is None or source is None:
+            return None
+        roots = []
+        for member in made[1]:
+            parts = [p for p in member.split("/") if p not in ("", ".")]
+            if member.startswith("/") or ".." in parts:
+                return None
+            roots.append(parts)
+        written = set(self.files) | self.unknown | self.dirty
+        trusted = self.policy.relative_to_worktree(source) is not None or self.policy.is_inside("/var/tmp/src", source)
+
+        def keeps(path):
+            for parts in roots:
+                prefix = "/".join([dest] + parts)
+                if path != prefix and not self.policy.is_inside(prefix, path):
+                    continue
+                if parts or not trusted:
+                    return False  # covered by a named member, or by `.` of a tree that is not the product's
+                if posixpath.join(source, posixpath.relpath(path, dest)) in written:
+                    return False  # the agent wrote the file that gets copied over it
+            return True
+        return keeps
+
+    @staticmethod
+    def _tar_producer(item, flags):
+        """The `tar c` whose stdout is `item`'s stdin: the stage before it, or the last command of a `( ... )` before
+        the `|` when that subshell holds nothing but it and an optional leading `cd`; no redirect on it."""
+        prepared = flags["prepared"]
+        previous = item.cmd.pipe_from
+        at = next((i for i, p in enumerate(prepared) if p.cmd is previous), None)
+        if previous is None or at is None or previous.redirects or previous.heredocs:
+            return None
+        depth, start = item.cmd.depth, at
+        while start > 0 and prepared[start - 1].cmd.depth > depth and previous.depth > depth:
+            start -= 1
+        chain = prepared[start:at]
+        if len(chain) > 1 or (chain and (not chain[0].argv or cmds.name_of(chain[0].argv[0]) != "cd")):
+            return None
+        argv = prepared[at].argv
+        return prepared[at] if argv and cmds.name_of(argv[0]) in _TAR_FAMILY else None
+
+    def write_tree(self, text, raw, keeps=None):
         """Files written below the directory `text` whose names the audit cannot know (an extracted archive, a patch
         of unknown text, `git clean`, `xargs rm`). Outside the worktree and the scratch dirs that is `write-outside`;
         in a scratch dir nothing there is protected; in the worktree a protected directory is `tamper-protected`, any
-        other is `write-unresolved` (review: a protected or test file could be among them)."""
+        other is `write-unresolved` (review: a protected or test file could be among them). `keeps(path)` (T084) says
+        a known path below the directory that the extract cannot write; its text stays known."""
         if UNRESOLVED in text:
             self._unresolved_write(text.rstrip("/") + "/" + UNRESOLVED, raw)
             return
@@ -444,7 +560,8 @@ class WritersMixin:
             return
         self.dirs.add(normal)
         for known in [f for f in self.files if self.policy.is_inside(normal, f)]:
-            self._content_changed(known, "rewrite")  # whatever was known of the files below is gone
+            if keeps is None or not keeps(known):
+                self._content_changed(known, "rewrite")  # whatever was known of the files below is gone
         normal = self.policy.through_links(normal)
         if normal is None:
             self.add("write-unresolved", raw, text)

@@ -323,6 +323,16 @@ relative url, no `-c` url (it would use `.gitmodules`), `--recursive`/`--recurse
 `protocol.file.allow` without a local url (reviewed as `git-config-override`), `submodule sync/add`, and a run outside
 the worktree or a proven clone. Tests: `gate/tests/test_trajectory_local.py`.
 
+T084 (a real false block). `git -c protocol.file.allow=always -c submodule.N.url=/var/tmp/src/R submodule update --init`
+with no path and exactly one url is not `cmd-git-network` but a review, `cmd-unresolved` ("assumed to register only the
+submodule given a url"): the audit cannot know how many submodules the repository registers, and another would be
+fetched from `.gitmodules`. The fully named form stays clean; two urls and no path stays network. A redirect (`2>&1`,
+`| tail`) never mattered: the lexer keeps it out of the argv. What also blocked the real command was the one before it
+on the same line: the `--reference` form raises `git-config-override`, which tainted the clone, so the local form no
+longer ran in a proven clone. A `git submodule` run whose only `-c` are `protocol.file.allow` and `submodule.N.url`
+does not taint (a `-c` lasts one command); any other tainting finding still does. The `--reference` form stays
+`cmd-git-network`.
+
 ### Background jobs: `tools/job` (T042)
 `tools/job run [--deadline S] [--dir DIR] NAME -- CMD ARGS` is audited twice, at the point where it was typed:
 * **CMD ARGS exactly as if they had been run directly** (every rule: network, reads, writes, git, tamper, secrets,
@@ -382,6 +392,15 @@ command breaks exactly the rules the bare command breaks).
   the real transcripts those are copies of the product tree made by gate scripts (`<scratch>/w0/tree/gate/tools/buck2`).
   Limit: a script written there by a writer the audit does not model (a gate script, computed paths in inline code)
   is therefore only reviewed; the writers of R008 #16 are modelled since T061 (below).
+  T084: an archive extract no longer makes every known file below it unknown when the copy pipeline is exact:
+  `(cd D && tar c[f -] m1 m2 ...) | tar x -C S` or `tar -C D -cf - m1 m2 | tar -x -C S`, literal members (no wildcard,
+  `-T`/`--files-from`, second `-C`, `..`, absolute path), the `( ... )` holding only an optional `cd` and the `tar c`,
+  no redirect on it, the extract reading stdin. It can only write below `S/m1`, `S/m2`, ...; a script the agent wrote
+  elsewhere in S keeps its text (it was `cmd-obfuscated-exec` when run, the real `gen_pkg.py`). Everything else (a
+  member that covers the path, a wildcard, an archive file, `unzip`, another producer) still makes the text unknown. One
+  extension: a member `.` of a source directory in the task worktree or under `/var/tmp/src` (the product's own files,
+  the real `tar c . | tar x -C S` of A060) covers a path only when the same-named file in that source was written by
+  the agent (a known, unknown or changed file of the transcript). `.` of any other tree covers everything.
 
 ### Repeated reviews
 Identical `review` findings (same rule, tool and excerpt) are reported once, at the first line, and counted in
