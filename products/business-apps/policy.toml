@@ -67,6 +67,34 @@ exports = ["main"]
 allow = []
 exports = ["main"]
 
+[module."//lib/base/ports:ports"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//lib/base/ports:ports_compile_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ds/blob:blob"]
+level = "L3"
+impl = ["lib/ds/blob/src/**"]
+allow = []
+exports = ["blob_count", "blob_give", "blob_init", "blob_owner", "blob_ptr", "blob_release",
+    "blob_size", "blob_take", "blob_used"]
+
+[module."//lib/ds/blob:blob_api_test"]
+allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/ds/blob:blob_model_test"]
+allow = ["fputs", "memset", "snprintf", "stderr"]
+exports = ["main"]
+
+[module."//lib/ds/blob:blob_own_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/ds/dset:dset"]
 level = "L3"
 impl = ["lib/ds/dset/src/**"]
@@ -198,6 +226,28 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//lib/fmt/httpredir:complexity_redirect_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/fmt/httpredir:httpredir"]
+level = "L3"
+impl = ["lib/fmt/httpredir/src/**"]
+allow = []
+exports = ["http_is_redirect_status", "http_redirect_resolve"]
+
+[module."//lib/fmt/httpredir:redirect_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/httpredir:survivor_edges_redirect_test"]
+allow = ["snprintf"]
+exports = ["main"]
+
+[module."//lib/fmt/httpredir:survivor_redirect_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/fmt/httpreq:httpreq"]
 level = "L3"
 impl = ["lib/fmt/httpreq/src/**"]
@@ -255,10 +305,6 @@ exports = ["main"]
 allow = []
 exports = ["main"]
 
-[module."//lib/fmt/httpresp:redirect_test"]
-allow = ["strlen"]
-exports = ["main"]
-
 [module."//lib/fmt/httpresp:survivor_chars_test"]
 allow = []
 exports = ["main"]
@@ -269,10 +315,6 @@ exports = ["main"]
 
 [module."//lib/fmt/httpresp:survivor_head_test"]
 allow = ["memcpy", "snprintf"]
-exports = ["main"]
-
-[module."//lib/fmt/httpresp:survivor_redirect_test"]
-allow = []
 exports = ["main"]
 
 [module."//lib/fmt/jdom:arena_test"]
@@ -383,7 +425,7 @@ exports = ["mbrtu_build", "mbrtu_crc16", "mbrtu_rx_begin", "mbrtu_rx_feed", "mbr
 
 [module."//lib/fmt/mbrtu:mbrtu_build_test"]
 allow = ["bcmp", "memcpy", "memset"]
-exports = ["fx", "fx_n", "main"]
+exports = ["main"]
 
 [module."//lib/fmt/mbrtu:mbrtu_crc_test"]
 allow = []
@@ -391,11 +433,11 @@ exports = ["main"]
 
 [module."//lib/fmt/mbrtu:mbrtu_fixture_test"]
 allow = ["bcmp", "memcpy", "memset"]
-exports = ["fx", "fx_n", "main"]
+exports = ["main"]
 
 [module."//lib/fmt/mbrtu:mbrtu_rx_test"]
 allow = ["memcpy", "memset"]
-exports = ["fx", "fx_n", "main"]
+exports = ["main"]
 
 [module."//lib/fmt/url:survivor_url_test"]
 allow = ["memset", "snprintf", "strlen"]
@@ -413,7 +455,7 @@ allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/fmt/url:url_edge_test"]
-allow = ["sysconf"]
+allow = ["mmap", "sysconf"]
 exports = ["main"]
 
 [module."//lib/fmt/url:url_pct_test"]
@@ -511,6 +553,20 @@ exports = ["main"]
 
 [module."//lib/rt/fsm:fsm_valid_test"]
 allow = []
+exports = ["main"]
+
+[module."//lib/rt/sel:sel"]
+level = "L3"
+impl = ["lib/rt/sel/src/**"]
+allow = []
+exports = ["sel_dirty", "sel_init", "sel_mark", "sel_stamp", "sel_version"]
+
+[module."//lib/rt/sel:sel_api_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/rt/sel:sel_model_test"]
+allow = ["memcpy"]
 exports = ["main"]
 
 [module."//lib/rt/tlog:tlog"]

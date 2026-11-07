@@ -5,6 +5,8 @@ name = "business-apps"
 # finding (ungraded-path), and an entry that matches nothing a finding (stale-include).
 include = ["lib/base/bits/**",
            "lib/base/core/**",
+           "lib/base/ports/**",
+           "lib/ds/blob/**",
            "lib/ds/dset/**",
            "lib/ds/fmap/**",
            "lib/ds/pool/**",
@@ -13,6 +15,7 @@ include = ["lib/base/bits/**",
            "lib/fmt/fmt/**",
            "lib/fmt/httpchunk/**",
            "lib/fmt/httpdef/**",
+           "lib/fmt/httpredir/**",
            "lib/fmt/httpreq/**",
            "lib/fmt/httpresp/**",
            "lib/fmt/jdom/**",
@@ -25,6 +28,7 @@ include = ["lib/base/bits/**",
            "lib/rt/elog/**",
            "lib/rt/ev/**",
            "lib/rt/fsm/**",
+           "lib/rt/sel/**",
            "lib/rt/tlog/**"]
 # Non-code only (docs, plans, live fixtures): an exclude that covers a BUCK or C file is a finding.
 exclude = []

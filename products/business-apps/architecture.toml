@@ -17,7 +17,7 @@ modules = ["//lib/ds/**"]
 modules = ["//lib/rt/**"]
 
 [layer."lib-fmt"]
-modules = ["//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httpreq:*", "//lib/fmt/httpresp:*",
+modules = ["//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*", "//lib/fmt/httpresp:*",
            "//lib/fmt/jdom:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*", "//lib/fmt/lines:*", "//lib/fmt/mbrtu:*",
            "//lib/fmt/url:*"]
 
@@ -69,6 +69,18 @@ from = "//lib/rt/elog:elog"
 to = "//lib/rt/ev:ev"
 kind = "pure"
 
+# blob keeps its slots in a pool (same tier).
+[[edge]]
+from = "//lib/ds/blob:blob"
+to = "//lib/ds/pool:pool"
+kind = "pure"
+
+# ports is header-only (interface types): it uses core's types only.
+[[edge]]
+from = "//lib/base/ports:ports"
+to = "//lib/base/core:core"
+kind = "data"
+
 # lib-fmt/lines uses core's string slice type (core_str_t) only.
 [[edge]]
 from = "//lib/fmt/lines:lines"
@@ -112,6 +124,16 @@ kind = "pure"
 
 [[edge]]
 from = "//lib/fmt/httpreq:httpreq"
+to = "//lib/fmt/url:url"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpredir:httpredir"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpredir:httpredir"
 to = "//lib/fmt/url:url"
 kind = "pure"
 
