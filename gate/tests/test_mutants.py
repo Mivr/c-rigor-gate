@@ -333,6 +333,48 @@ class MutantsTest(TempDirTestCase):
         outcome, _ = self.grade()
         self.assertExit(outcome, 0)
 
+    # -- T078 / B31 (R003 G6): crash-kill-ratio ----------------------------------------------------
+    def crash_mix(self, asserts, crashes, function="f"):
+        runs = [KILLED] * asserts + [CRASH] * crashes
+        return report([mutant(n, function=function, runs={"t": run}) for n, run in enumerate(runs, start=1)])
+
+    def test_a_function_with_a_majority_of_crash_kills_fails_with_its_counts(self):
+        result = self.fails_with(self.crash_mix(1, 3), "crash-kill-ratio")
+        found = result["findings"][0]
+        self.assertEqual((found["module"], found["function"], found["file"], found["asserts"], found["crashes"],
+                          found["ratio"], found["threshold"], found["severity"]),
+                         (LABEL, "f", "m/a.c", 1, 3, "0.750", "1/2", "error"))
+
+    def test_exactly_half_crash_kills_is_not_over_the_threshold(self):
+        self.put(self.crash_mix(2, 2))
+        outcome, _ = self.grade()
+        self.assertExit(outcome, 0)
+
+    def test_fewer_than_four_kills_never_trip_the_ratio(self):
+        self.put(self.crash_mix(1, 2))
+        outcome, _ = self.grade()
+        self.assertExit(outcome, 0)
+
+    def test_a_function_with_only_crash_kills_is_only_crash_only(self):
+        self.fails_with(self.crash_mix(0, 5), "crash-only-function")
+
+    def test_crash_kill_ratio_is_info_in_an_l2_module(self):
+        self.write_policy("L2")
+        self.put(self.crash_mix(1, 3))
+        outcome, result = self.grade()
+        self.assertExit(outcome, 0)
+        self.assertEqual([(f["rule"], f["severity"]) for f in result["findings"]], [("crash-kill-ratio", "info")])
+
+    def test_the_ratio_is_per_function_and_survivors_do_not_count_as_kills(self):
+        document = self.crash_mix(1, 3)
+        document["mutants"].append(mutant(9, runs={"t": PASS}))
+        self.fails_with(document, "crash-kill-ratio", "survived-mutant")
+
+    def test_a_duplicate_counts_with_the_verdict_of_its_original_for_the_ratio(self):
+        mutants = [mutant(1), mutant(2, runs={"t": CRASH}, o0=H[20]), mutant(3, runs={"t": CRASH}),
+                   mutant(4, digest=H[2], o0=H[20], runs={})]
+        self.fails_with(report(mutants), "crash-kill-ratio")
+
     def test_a_function_whose_mutants_are_all_equivalent_fails(self):
         self.fails_with(report([mutant(1, digest=BASE, o0=BASE0, runs={})]), "no-assert-kill-function")
 
