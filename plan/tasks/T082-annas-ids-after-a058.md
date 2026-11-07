@@ -1,6 +1,6 @@
 # T082: annas-c expected ids for A058 (3 http request tests)
 
-Repo: `Mivr/c-rigor-gate`. Branch `task/T082`. Read `AGENTS.md`, `plan/tasks/T075-annas-config-a044-a046.md` (the same job
+Repo: `Mivr/c-rigor-gate`. Branch `task/T082`. Read `AGENTS.md`, `plan/tasks/T075-annas-config-new-tests.md` (the same job
 with new targets) and `docs/grade.md` "Audit grade of annas-c (T059)".
 annas-c main `3d75ca3` adds three cases to the existing target `//http:request_test` (no new target, no BUCK change):
 - `http_request/arg_beats_overflow_each_slice`
