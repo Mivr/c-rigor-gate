@@ -105,12 +105,52 @@ def product_path(file):
     return file
 
 
-def skipped_findings(report, level):
+PRODUCT_CELL = "root"
+OTHER_TREES = ("third_party/", "external/")
+
+
+def label_package(label):
+    return label.split("//", 1)[1].split(":", 1)[0]
+
+
+def product_packages(labels):
+    """The packages of the labels of the product's own modules (the root cell)."""
+    return frozenset(label_package(label) for label in labels if label.startswith("//"))
+
+
+def in_packages(path, packages):
+    return any(path == package or path.startswith(package + "/") for package in packages)
+
+
+def outside_product(file, packages):
+    """True when a header is certainly not product code: of another cell (`gate//third_party/**`, the
+    toolchain's), of a Buck2 header tree whose product-relative path is under no package of the product
+    (`psa/crypto_struct.h`), under `third_party/` or `external/`, or an absolute path (the system's or
+    the toolchain's; Buck2 hands the compiler relative paths for the product). A path it cannot place
+    stays reported (fail closed)."""
+    if file.startswith("/"):
+        return True
+    parts = file.split("/")
+    if parts[0] == "buck-out":
+        if "gen" in parts[:-1] and parts.index("gen") + 1 < len(parts) - 1 \
+                and parts[parts.index("gen") + 1] != PRODUCT_CELL:
+            return True
+        if HEADERS_DIR in file:
+            return not in_packages(product_path(file), packages)
+        return False
+    return file.startswith(OTHER_TREES)
+
+
+def skipped_findings(report, level, packages=None):
     """A function the generator could not reach (made by a macro, or defined in a product header)
-    is code the tests are never judged on: not allowed in L3."""
+    is code the tests are never judged on: not allowed in L3. A header outside the product is not
+    product code and is not reported."""
+    packages = product_packages([report.label]) if packages is None else packages
     found = []
     for source in report.sources:
         for name, file, reason in source.skipped:
+            if reason == "header" and outside_product(file, packages):
+                continue
             found.append(finding("unmutated-function", module=report.label, source=source.file,
                                  function=name, file=product_path(file), reason=reason,
                                  severity="error" if level in STRICT_LEVELS else SEVERITY_INFO))
@@ -198,14 +238,14 @@ def module_summary(report, verdicts):
             "survivors": survivors, "tce": mutants_verdict.tce_counts(report, verdicts)}
 
 
-def module_findings(report, level, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
+def module_findings(report, level, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, packages=None):
     """(findings, summary) for one report."""
     found, baseline_ids = mutants_verdict.baseline_findings(report, level)
     verdicts, problems = mutants_verdict.derive(report, baseline_ids)
     found.extend(problems)
     found.extend(blindness_findings(report, verdicts))
     found.extend(unviable_findings(report, level, verdicts))
-    found.extend(skipped_findings(report, level))
+    found.extend(skipped_findings(report, level, packages))
     found.extend(hidden_findings(report, level))
     found.extend(survivor_findings(report, level, verdicts, approval_set, used, approval_kind))
     if level in STRICT_LEVELS:
@@ -221,11 +261,12 @@ def run(args, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
     used = set()
     found = list(approval_set.problems)
     summaries = {}
+    packages = product_packages(levels)
     for label in sorted(reports):
         if label not in levels:
             found.append(finding("module-not-in-policy", module=label))
             continue
-        module, summaries[label] = module_findings(reports[label], levels[label], approval_set, used, approval_kind)
+        module, summaries[label] = module_findings(reports[label], levels[label], approval_set, used, approval_kind, packages)
         found.extend(module)
     for label in sorted(set(levels) - set(reports)):
         found.append(finding("policy-module-without-report", module=label))
