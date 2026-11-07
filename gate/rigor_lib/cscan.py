@@ -63,6 +63,17 @@ MUTABLE_TYPES = ("D", "B", "G", "S", "C")
 # The linker makes that section read-only, so `read_relro` finds those names and they are not mutable.
 RELRO_PREFIXES = (".data.rel.ro", ".tdata.rel.ro")
 
+# Static data facts (T089): every defined object, local or external, with its size and section class.
+# The class comes from the section name that `llvm-nm --format=sysv` prints, never from the nm letter
+# (which cannot tell `.data.rel.ro` from `.data`, nor thread-local data from plain data).
+DATA_TYPES = ("OBJECT", "TLS")
+DATA_SECTIONS = (  # (prefix, class); the first match wins, so `.data.rel.ro` is tried before `.data`
+    (".tdata.rel.ro", "ro"), (".tdata", "tls"), (".tbss", "tls"),
+    (".data.rel.ro", "ro"), (".rodata", "ro"), (".lrodata", "ro"),
+    (".data", "data"), (".sdata", "data"), (".ldata", "data"),
+    (".bss", "bss"), (".sbss", "bss"), (".lbss", "bss"), ("*COM*", "bss"),
+)
+
 _MARKER = re.compile(r'^\s*#\s*(\d+)\s+"((?:[^"\\]|\\.)*)"((?:\s+\d+)*)\s*$')
 # The compile command keeps macro definitions in the output (-dD); their bodies only matter when
 # expanded, and the expansion is what the rest of the text shows.
@@ -445,6 +456,39 @@ def read_relro(nm, path):
     return relro
 
 
+def section_class(section, kind):
+    """`ro`, `data`, `bss` or `tls` for a section a data symbol lives in; None for anything else
+    (code, `.init_array`, `.eh_frame`, notes: not program data). A `TLS` symbol is always `tls`."""
+    for prefix, name in DATA_SECTIONS:
+        if section.startswith(prefix):
+            return "tls" if kind == "TLS" else name
+    return "tls" if kind == "TLS" else None
+
+
+def read_data(nm, path):
+    """Every defined data object of one object file, external and `static`: a list of
+    {"name", "size", "section", "local"} sorted by name (`--format=sysv`, whose Size column is hex)."""
+    done = subprocess.run([nm, "--defined-only", "--format=sysv", path], stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, universal_newlines=True)
+    if done.returncode != 0:
+        raise SystemExit("cscan: nm failed on %s: %s" % (path, done.stderr))
+    found = []
+    for line in done.stdout.splitlines():
+        cells = [cell.strip() for cell in line.split("|")]
+        if len(cells) != 7 or cells[3] not in DATA_TYPES:
+            continue
+        name, letter, kind, size, section = cells[0], cells[2], cells[3], cells[4], cells[6]
+        klass = section_class(section, kind)
+        if klass is None:
+            continue
+        try:
+            number = int(size, 16)
+        except ValueError:
+            raise SystemExit("cscan: unreadable nm size %r in %s" % (size, path))
+        found.append({"name": name, "size": number, "section": klass, "local": letter.islower()})
+    return sorted(found, key=lambda item: (item["name"], item["section"], item["size"], item["local"]))
+
+
 def read_symbols(nm, path):
     """(defined, weak_defined, undefined, mutable) external symbol names of one object file.
 
@@ -476,7 +520,8 @@ def build_unit(args, name, preprocessed, obj):
     collector = Collector(args.system_root)
     collector.scan(text)
     defined, weak, undefined, mutable = read_symbols(args.nm, obj)
-    unit = {"name": name, "defined": defined, "weak": weak, "undefined": undefined, "mutable": mutable}
+    unit = {"name": name, "defined": defined, "weak": weak, "undefined": undefined, "mutable": mutable,
+            "data": read_data(args.nm, obj)}
     unit.update(collector.result())
     return unit
 

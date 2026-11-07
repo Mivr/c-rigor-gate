@@ -91,6 +91,8 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 | `unexpected-export` | defines an external symbol that is not in the module's `exports` list (T033) |
 | `exports-missing` | the module is L3 or above and has no `exports` key (T033; info at L2) |
 | `mutable-global-export` | defines an external object in a writable data/bss section, listed or not (T033; error at L3 and above, info at L2) |
+| `mutable-data` | a module without `allow_mutable_data` defines any writable static data, `static` locals included (T089; below) |
+| `ram-over-budget` / `ram-unbudgeted` | a binary links more writable bytes than its `ram-budget.toml` entry, or has no entry (T089; below) |
 
 ### Exports policy (T033, R003 G7, backlog B32)
 `exports` is the gate-owned allowed set of **defined external symbols** of a module, all units together (a test or
@@ -126,6 +128,39 @@ binary lists `main`). Nothing in the product can change it: the policy file is g
   (make it `static`) or declare it. Test and binary modules only need `main` plus their own shared test-kit helpers.
   annas-c's lists were generated this way in T033 (its test-kit helpers `kit_*`, `ak_*`, `kf_*` are exported by the
   shared test sources and are listed per test; no library exports an undeclared symbol).
+
+### Static data facts, `allow_mutable_data` and the RAM budget (T089, P002 G26)
+Products with a static-memory rule (`Mivr/business-apps`) need to see state that has no external symbol: a
+`static int counter;` inside a function of a library is invisible to `exports` and `mutable` (external objects only).
+* **Facts.** Every unit of a product facts file carries `data` (required: a product facts file without it is exit 2;
+  gate-owned third-party facts may omit it, and then count as 0 bytes and are listed as `unmeasured` in the metadata):
+  `"data":[{"name":"f.counter","size":4,"section":"bss","local":true}]`, one entry per defined object, external and local,
+  sorted. `cscan.read_data` reads `llvm-nm --defined-only --format=sysv` (all symbols, no `-g`; the Size column is
+  hex) and keeps the symbols whose Type is `OBJECT` or `TLS`. `section` is the **class of the section name**, not the nm
+  letter (which cannot tell `.data.rel.ro` from `.data`, nor `.tbss` from `.bss`): `ro` for `.rodata*`, `.lrodata*`
+  and `.data.rel.ro*`; `data` for `.data*`, `.sdata*`, `.ldata*`; `bss` for `.bss*`, `.sbss*`, `.lbss*` and common;
+  `tls` for `.tdata*`, `.tbss*` (and any `TLS` symbol). Objects in other sections (`.init_array`, `.eh_frame`, notes,
+  code) are not data. `local` is true for a `static` (lowercase nm class). The existing `mutable` field is unchanged.
+* **Policy.** `allow_mutable_data = true` in a module table (default false; any other value is exit 2). A target that is
+  not allowed and defines any `data`, `bss` or `tls` object gets `mutable-data` (error) with `target`, `unit`, `symbol`,
+  `size`, `section` and `local`. `c_test` and `c_fuzz` targets are exempt (their state is the test's). A testkit
+  **library** is not exempt: nothing marks a library as test-only except the product's own words, so a product that wants
+  mutable test helpers writes `allow_mutable_data = true` for that module, a gate-owned line that is reviewed. Compiler-generated
+  symbols: none are excluded. The facts are built in the release mode, where the compiler adds no program-state symbols
+  of its own (coverage counters and sanitizer shadow only exist in the `san` and coverage modes, which these facts never
+  see); private `.L` labels are not in the symbol table. An exclusion list will be added by measurement, never by guess.
+  A module with an external writable object gets both `mutable-global-export` and `mutable-data`.
+* **RAM budget.** For every `c_binary` (never libraries, tests or fuzzers) the gate sums `size` of `data`, `bss` and
+  `tls` objects over every unit it links: the binary's own, and those of every library reachable through `deps`;
+  product code and trusted third-party code are reported separately in the `symbols` result,
+  `metadata.ram[<binary>] = {"product":N,"third_party":M,"total":N+M,"unmeasured":[...]}`. Read-only data is not RAM.
+  `products/<p>/ram-budget.toml` (gate-owned, next to `policy.toml`, read with it by `facts_policy.load_policy`) holds
+  `[binary."//x:y"]` with `max_bytes = N`; a total above N is `ram-over-budget` (bytes, max_bytes), a binary the file does
+  not list is `ram-unbudgeted`; no file means no check. Third-party libraries' own data is counted only when their facts carry
+  `data` (`third_party/tp_facts.py` does not write it yet; see the T089 report).
+  Canaries: `mutable-data-static-local` and `ram-over-budget`; `mutable-data-allowed` is not needed, because `control`
+  (library modules with no writable data, so green on the real toolchain) and `ram-over-budget` (its module has
+  `allow_mutable_data = true` and only the budget fails) cover both sides.
 
 ## Modes: `<name>_facts_san` and `rigor facts --modes` (T023)
 The semantic scan reads the **release** compile, but the `san` tests run the `san` compile. Code that exists in

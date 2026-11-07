@@ -1,0 +1,9 @@
+{
+  "bypass": "static local counter in a library",
+  "description": "A function-scope `static int counter;` in a library module (no external symbol): writable static data the exports policy cannot see.",
+  "fail": {
+    "symbols": [
+      "mutable-data"
+    ]
+  }
+}

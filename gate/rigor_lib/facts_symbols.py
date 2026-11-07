@@ -12,7 +12,8 @@ reserved prefixes (`mbedtls_`, `psa_`, `srv_`, `tls_peer_`), so no product can d
 A library that only tests may use (`ALLOWED_TEST_LABELS`) must not be reached by anything but a `c_test`.
 """
 
-from rigor_lib import facts_third_party
+from rigor_lib import facts_third_party, ram_budget
+from rigor_lib.facts_data import WRITABLE
 from rigor_lib.facts_policy import Module
 from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, finding
 
@@ -89,6 +90,27 @@ def export_findings(facts, module):
     return found
 
 
+TEST_KINDS = ("c_test", "c_fuzz")
+
+
+def mutable_data_findings(facts, module):
+    """`mutable-data` (T089): a module that may not hold writable static data defines some.
+
+    Every defined data object counts, `static` ones at file or function scope as well as external ones, in a
+    `data`, `bss` or `tls` section (read-only data, including `.data.rel.ro`, never does). Tests and fuzzers
+    are exempt; a testkit library is not, so a product that wants a mutable testkit says so in its policy.
+    """
+    if module.allow_mutable_data or facts.kind in TEST_KINDS:
+        return []
+    found = []
+    for unit in facts.units:
+        for name, size, section, local in sorted(unit.data):
+            if section in WRITABLE:
+                found.append(finding("mutable-data", target=facts.label, unit=unit.name, symbol=name,
+                                     size=size, section=section, local=local))
+    return found
+
+
 def run(facts_by_label, policy, libc, third=None):
     third = facts_third_party.load() if third is None else third
     facts_third_party.check_policy(policy, third)
@@ -113,4 +135,8 @@ def run(facts_by_label, policy, libc, third=None):
             units += 1
             found.extend(unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes))
         found.extend(export_findings(facts, module))
-    return GateResult(GATE_ID, found, {"targets": len(products), "libraries": len(libs), "units": units})
+        found.extend(mutable_data_findings(facts, module))
+    budget_found, ram = ram_budget.findings(products, libs, policy.ram_budget)
+    found.extend(budget_found)
+    return GateResult(GATE_ID, found, {"targets": len(products), "libraries": len(libs), "units": units,
+                                       "ram": ram})
