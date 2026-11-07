@@ -59,7 +59,7 @@ class FactsCase(TempDirTestCase):
     def rules(self, gate, targets, code, **kw):
         outcome, result = self.run_gate(gate, targets, expect_code=code, **kw)
         return sorted((f["rule"], f.get("symbol") or f.get("name") or f.get("dep") or f.get("target"))
-                      for f in result["findings"])
+                      for f in result["findings"] if f["rule"] != "unused-allow")   # T085: info, tested apart
 
     def sem(self, units, code, label="//p:lib", **kw):
         return self.rules("semantic-suppressions", [facts(label, units), CTEST], code, **kw)

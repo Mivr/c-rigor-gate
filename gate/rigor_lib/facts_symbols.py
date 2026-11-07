@@ -37,17 +37,21 @@ def exports_of(facts):
 
 
 def dep_exports(facts, facts_by_label, libs, module, found):
-    exports = set()
-    for dep in facts.deps:
+    exports = {}   # symbol -> the first dep (in label order) that defines it
+    for dep in sorted(facts.deps):
         if dep in libs:
             if facts_third_party.canonical(dep) in module.third_party:
-                exports |= exports_of(libs[dep])
+                owner = libs[dep]
             else:
                 found.append(finding("third-party-not-permitted", target=facts.label, dep=dep))
+                continue
         elif dep in facts_by_label:
-            exports |= exports_of(facts_by_label[dep])
+            owner = facts_by_label[dep]
         else:
             found.append(finding("missing-dep-facts", target=facts.label, dep=dep))
+            continue
+        for symbol in exports_of(owner):
+            exports.setdefault(symbol, dep)
     return exports
 
 
@@ -63,6 +67,27 @@ def unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes)
             found.append(finding("denied-symbol", symbol=symbol, **where))
         elif symbol not in allowed and symbol not in module.allow and symbol not in module.deny_exempt:
             found.append(finding("undeclared-symbol", symbol=symbol, **where))
+    return found
+
+
+def unused_allow_findings(facts, module, allowed, own):
+    """T085: policy entries that grant nothing, as info (never changes a PASS/FAIL).
+
+    An `allow` or `deny_exempt` entry no object of the module references is unused (a module with no objects
+    reports every entry); an `allow` entry a dependency's exports already cover grants nothing either.
+    """
+    used = frozenset().union(*(unit.undefined for unit in facts.units)) - own if facts.units else frozenset()
+    found = []
+    for kind, entries in (("allow", module.allow), ("deny_exempt", module.deny_exempt)):
+        for symbol in sorted(entries):
+            if symbol not in used:
+                reason = "not referenced"
+            elif kind == "allow" and symbol in allowed:
+                reason = "covered by " + allowed[symbol]
+            else:
+                continue
+            found.append(finding("unused-allow", severity=SEVERITY_INFO, target=facts.label, list=kind,
+                                 symbol=symbol, reason=reason))
     return found
 
 
@@ -134,6 +159,7 @@ def run(facts_by_label, policy, libc, third=None):
         for unit in facts.units:
             units += 1
             found.extend(unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes))
+        found.extend(unused_allow_findings(facts, module, allowed, own))
         found.extend(export_findings(facts, module))
         found.extend(mutable_data_findings(facts, module))
     budget_found, ram = ram_budget.findings(products, libs, policy.ram_budget)

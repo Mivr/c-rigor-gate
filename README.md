@@ -8,6 +8,8 @@ the thresholds or the checker. This repo is the part the agent does **not** cont
 source directories plus a sealed checkout of this repo at a pinned commit. Everything that decides pass/fail
 lives here.
 
+Registered products and the allocation deny list: [docs/products.md](docs/products.md).
+
 Status: phase 1 under construction. See [plan/phase1.md](plan/phase1.md).
 
 ## What it provides (phase 1 target)
@@ -20,7 +22,7 @@ Status: phase 1 under construction. See [plan/phase1.md](plan/phase1.md).
 | `gate/` | Python (stdlib-only) driver: task contracts, test-integrity ratchets, suppression scan, signed sign-offs, verdict. |
 | `mutate/` | Source-level C mutation testing, one Buck2 action per mutant. |
 | `canaries/` | Known-bad patches; each must turn the gate red or the gate is reported compromised. |
-| `tripwires/` | Impossible obligations; a green tripwire means a blind checker. |
+| `tripwires/` | Impossible obligations on honest code ([docs](docs/tripwires.md)); a green tripwire means a blind checker. |
 
 Background and evidence: [Mivr/ai-code-rigor](https://github.com/Mivr/ai-code-rigor) (rigor levels L0-L5),
 [Mivr/lang-bench](https://github.com/Mivr/lang-bench) (C for agentic dev loops).

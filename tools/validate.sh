@@ -35,6 +35,7 @@ command_of() {
   case "$1" in
     gate) echo "selftest/gate.sh" ;;
     canaries) echo "selftest/canaries.sh --jobs 8" ;;
+    tripwires) echo "selftest/tripwires.sh --jobs 5" ;;
     trajectory_real) echo "gate/tests/trajectory_real.sh" ;;
     grade|mutate|structure|product_checks|toolchain|ctest|fuzz|third_party|perf) echo "selftest/$1.sh" ;;
     *) echo "validate.sh: unknown selftest $1" >&2; return 1 ;;
@@ -43,13 +44,13 @@ command_of() {
 
 # Lanes run in parallel with each other. Selftests that build in THIS project root share one Buck2 daemon and read
 # `buck2 log what-ran` (the last command of the root), so they run one after another in lane "root". grade and
-# canaries work in their own clones; gate and trajectory_real do not use Buck2.
+# canaries and tripwires work in their own clones; gate and trajectory_real do not use Buck2.
 have() { printf '%s\n' "$selected" | grep -qx "$1"; }
 ROOT_ORDER=(product_checks ctest perf toolchain fuzz structure mutate third_party)
 root_lane=()
 for n in "${ROOT_ORDER[@]}"; do have "$n" && root_lane+=("$n"); done
 other_lanes=()
-for n in gate grade canaries trajectory_real; do have "$n" && other_lanes+=("$n"); done
+for n in gate grade canaries tripwires trajectory_real; do have "$n" && other_lanes+=("$n"); done
 
 if [ "$dry" = 1 ]; then
   echo "validate (dry run): branch $branch = ${head:0:12}, merge base with main ${base:0:12}"

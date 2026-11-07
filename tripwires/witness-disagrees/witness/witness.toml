@@ -1,0 +1,5 @@
+product = "canary"
+
+[module."//core:core"]
+origin = "tripwires/witness-disagrees"
+written_against = "0000000000000000000000000000000000000000"

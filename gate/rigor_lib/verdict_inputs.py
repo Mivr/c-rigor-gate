@@ -29,7 +29,7 @@ WITNESS_NAME = "witness"
 PERF_NAME = "perf"
 # Files beside product.toml that the grade reads; the name is kept so path arithmetic still works.
 PRODUCT_FILES = ("product.toml", "policy.toml", "expected-tests.json", "expected-tests.previous.json",
-                 "ram-budget.toml")
+                 "ram-budget.toml", "architecture.toml")
 
 SHA_KEYS = ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
             "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",

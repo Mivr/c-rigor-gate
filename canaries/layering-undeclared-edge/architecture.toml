@@ -1,0 +1,9 @@
+# util sits above core, but the contract allows no edge between them.
+[layers]
+order = ["low", "high"]
+
+[layer."low"]
+modules = ["//core:core"]
+
+[layer."high"]
+modules = ["//util:util"]

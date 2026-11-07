@@ -1,0 +1,12 @@
+{
+  "bypass": "none: honest implementation and tests, a witness that cannot meet them",
+  "description": "core_neg returns -v and its test says so, but the gate-held witness returns 1 - v, so the head's own expected test fails on the witness. Nothing the contributor writes can change the witness; green means witness-tests stopped running the tests against it.",
+  "fail": {
+    "witness-tests": [
+      "witness-test-not-pass"
+    ]
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
+}

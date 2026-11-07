@@ -90,6 +90,7 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 | `missing-dep-facts` | a declared dep has no facts file |
 | `unexpected-export` | defines an external symbol that is not in the module's `exports` list (T033) |
 | `exports-missing` | the module is L3 or above and has no `exports` key (T033; info at L2) |
+| `unused-allow` | info only (T085): an `allow` or `deny_exempt` entry that no object of the module references (a module with no objects reports every entry; fields `list`, `symbol`, `reason = "not referenced"`), or an `allow` entry that a direct dep's exports already cover (`reason = "covered by <dep>"`). Never changes PASS/FAIL; such an entry only widens what a later change may use without review, so remove it |
 | `mutable-global-export` | defines an external object in a writable data/bss section, listed or not (T033; error at L3 and above, info at L2) |
 | `mutable-data` | a module without `allow_mutable_data` defines any writable static data, `static` locals included (T089; below) |
 | `ram-over-budget` / `ram-unbudgeted` | a binary links more writable bytes than its `ram-budget.toml` entry, or has no entry (T089; below) |
@@ -325,5 +326,10 @@ step "the GNU line-marker form ... does not compile"), so a product cannot forge
   (`rules/facts.bzl`, `toolchains/`), outside T014's paths.
 * `__has_builtin`, `push_macro`/`pop_macro` and `#pragma clang poison` leave no trace in `-E -dD` text
   (see "Builtins"); none of them can call a builtin.
+
+## 4. Gate `layering` (T087)
+The module boundaries of a monorepo product are a gate-owned contract, `products/<p>/architecture.toml`, judged on the same facts
+as `symbols` (direct `deps`, undefined symbols, exports). Findings: `ungoverned-module`, `undeclared-edge`, `upward-edge`,
+`edge-kind-violation`, `contract-stale`. Format, edge kinds and limits: [layering.md](layering.md).
 
 Self-test: `selftest/product_checks.sh`.

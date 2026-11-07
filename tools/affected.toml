@@ -120,6 +120,9 @@ selftests = ["grade", "canaries"]
 glob = "products/annas-c/**"
 selftests = []
 [[rule]]
+glob = "products/business-apps/**"
+selftests = []
+[[rule]]
 glob = "canaries/**"
 selftests = ["canaries"]
 

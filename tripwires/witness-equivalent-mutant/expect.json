@@ -1,0 +1,9 @@
+{
+  "bypass": "none: honest implementation whose tests pin everything, a witness with an unkillable mutant",
+  "description": "core_inc is v + 1 and fully tested; the gate-held witness spells it v + 1 + 0, whose last + has an equivalent mutant (x + 0 == x - 0). No test and no approval of the contributor can kill or excuse it; green means mutants-witness stopped judging the witness.",
+  "fail": {
+    "mutants-witness": [
+      "witness-survived-mutant"
+    ]
+  }
+}

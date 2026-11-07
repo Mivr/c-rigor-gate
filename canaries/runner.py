@@ -26,6 +26,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANARIES = os.path.join(ROOT, "canaries")
+BASE = os.path.join(ROOT, "canaries", "_base")  # the shared tree and witness, for every pack root
 GATE_ORDER = os.path.join(ROOT, "gate", "order.txt")
 UNCACHED_DEFAULT = "weak-test"
 DEFAULT_JOBS = 8
@@ -41,6 +42,16 @@ GIT_ENV = {
     "GIT_AUTHOR_NAME": "canary", "GIT_AUTHOR_EMAIL": "canary@example.invalid",
     "GIT_COMMITTER_NAME": "canary", "GIT_COMMITTER_EMAIL": "canary@example.invalid",
 }
+
+
+def is_tripwire_root():
+    """True when the pack root is a tripwire pack (`--root tripwires`, T086): a green grade is then a blind gate."""
+    return os.path.basename(os.path.normpath(CANARIES)) == "tripwires"
+
+
+def green_message(canary_id, expect):
+    """The reason a tripwire that graded PASS is a failure: the gates it expected to fail did not look."""
+    return "tripwire %s is green: %s is blind" % (canary_id, ", ".join(sorted(expect.get("fail", {}))))
 
 
 def load_expect(canary_id):
@@ -81,7 +92,7 @@ def build_repo(canary_id, work):
     source = os.path.join(CANARIES, canary_id)
     tree = os.path.join(source, "product")
     if not os.path.isdir(tree):
-        tree = os.path.join(CANARIES, "_base", "product")
+        tree = os.path.join(BASE, "product")
     repo = os.path.join(work, "repo")
     shutil.copytree(tree, repo)
     git(repo, "init", "-q", "-b", "main")
@@ -145,7 +156,7 @@ def witness_dir(canary_id):
     own = os.path.join(CANARIES, canary_id, "witness")
     if os.path.isdir(own):
         return own
-    return os.path.join(CANARIES, "_base", "witness")
+    return os.path.join(BASE, "witness")
 
 
 def grade_one(canary_id, scratch, uncached, keep=True):
@@ -170,7 +181,7 @@ def grade_one(canary_id, scratch, uncached, keep=True):
         result = run(command, ROOT, {"TMPDIR": work}, check=False)
         with open(os.path.join(work, "grade.log"), "w", encoding="utf-8") as log:
             log.write(result.stdout + result.stderr)
-        outcome.update(judge(expect, result.returncode, os.path.join(work, "grade"), verdict, work))
+        outcome.update(judge(expect, result.returncode, os.path.join(work, "grade"), verdict, work, canary_id))
     except Exception as error:  # a canary that cannot run is a failed canary, never a skipped one
         outcome.update(got="ERROR %s" % str(error)[:300], ok=False, why=["harness error"])
     outcome["seconds"] = time.time() - started
@@ -197,7 +208,7 @@ def leak_reasons(leaked):
     return ["a process is still running in the grading tree: %s" % ", ".join("%d (%s)" % item for item in leaked)] if leaked else []
 
 
-def judge(expect, code, grade_work, verdict, work):
+def judge(expect, code, grade_work, verdict, work, canary_id=""):
     leaked = find_daemons(work)
     if not os.path.isfile(verdict):
         return {"got": "no verdict (exit %d)" % code, "ok": False,
@@ -219,6 +230,8 @@ def judge(expect, code, grade_work, verdict, work):
             why.append("exit %d, expected %d" % (code, expect.get("exit", 1)))
         if overall != "FAIL":
             why.append("overall %s" % overall)
+        if overall == "PASS" and is_tripwire_root():
+            why.insert(0, green_message(canary_id, expect))
     for gate, text in sorted(expect.get("contains", {}).items()):
         path = os.path.join(grade_work, "results", gate + ".json")
         if not os.path.isfile(path) or text not in open(path, encoding="utf-8").read():
@@ -270,6 +283,11 @@ def check_coverage(ids):
     with open(GATE_ORDER, encoding="utf-8") as handle:
         gates = [line.strip() for line in handle if line.strip()]
     return uncovered(gates, [load_expect(canary_id) for canary_id in ids])
+
+
+def uncached_for_day(ids, day):
+    """The tripwire graded --uncached on day number `day` (days since the epoch, UTC): rotates through the sorted ids."""
+    return sorted(ids)[day % len(ids)] if ids else None
 
 
 def cost(canary_id):
@@ -339,16 +357,25 @@ def main():
     parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                         help="canaries graded at once, the uncached one included (default %(default)s)")
     parser.add_argument("--only", action="append", default=[], help="run only this canary id")
-    parser.add_argument("--uncached", default=UNCACHED_DEFAULT, help="the canary graded with --uncached")
+    parser.add_argument("--uncached", default=None,
+                        help="the canary graded with --uncached (default %s; tripwires: rotated by day)" % UNCACHED_DEFAULT)
     parser.add_argument("--keep", action="store_true")
+    parser.add_argument("--root", default="canaries", help="the pack directory (default %(default)s; tripwires)")
     args = parser.parse_args()
+    global CANARIES
+    CANARIES = os.path.abspath(os.path.join(ROOT, args.root))
+    if not os.path.isdir(CANARIES):
+        print("no such pack directory: %s" % CANARIES, file=sys.stderr)
+        return 2
 
     ids = list_ids()
     unknown = [i for i in args.only if i not in ids]
     if unknown:
         print("unknown canaries: %s" % unknown, file=sys.stderr)
         return 2
-    missing = check_coverage(ids)
+    missing = [] if is_tripwire_root() else check_coverage(ids)
+    if args.uncached is None:
+        args.uncached = uncached_for_day(ids, int(time.time() // 86400)) if is_tripwire_root() else UNCACHED_DEFAULT
     selected = args.only or ids
     if not args.only and missing:
         print("FAIL: no live canary expects these gates to fail: %s" % missing, file=sys.stderr)

@@ -1,0 +1,50 @@
+# Symbol policy for business-apps (T007). Gate-owned; deny list as policy/hello.toml.
+[global]
+deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace", "_exit", "_Exit",
+        "exit", "quick_exit", "abort_handler_s", "signal", "sigaction", "raise", "dlopen", "dlsym",
+        "syscall", "getppid", "setjmp", "longjmp", "_setjmp", "sigsetjmp", "siglongjmp", "atexit",
+        "at_quick_exit", "system", "popen", "mprotect", "prctl", "unlink", "rename", "remove",
+        "rand", "srand", "random", "time", "clock_gettime", "gettimeofday", "getenv",
+        "fopen", "open", "openat", "creat", "socket", "connect", "dup2", "dup3", "pipe", "pipe2",
+        # Same powers by another name (T004 additions to the contract's list).
+        "environ", "__environ", "_environ", "secure_getenv", "putenv", "setenv", "unsetenv",
+        "clearenv", "execle", "execlp", "execvpe", "fexecve", "posix_spawn", "posix_spawnp",
+        "clone", "killpg", "pthread_kill", "tgkill", "tkill", "sigqueue", "_longjmp",
+        # Allocation (P002 G25): every byte comes from a caller-supplied arena or static storage.
+        "malloc", "calloc", "realloc", "free", "aligned_alloc", "posix_memalign", "memalign", "valloc",
+        "pvalloc", "reallocarray", "strdup", "strndup", "asprintf", "vasprintf", "getline", "getdelim",
+        "open_memstream", "mmap", "munmap", "mremap", "brk", "sbrk"]
+# The ctest runtime forks, kills and exits by design; it is the gate's own code.
+trusted = ["gate//ctest:ctest"]
+
+[module."//lib/base/core:arena_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/base/core:buf_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//lib/base/core:core"]
+level = "L3"
+impl = ["lib/base/core/src/**"]
+allow = ["bcmp", "memcpy", "strlen"]
+exports = ["core_arena_alloc", "core_arena_capacity", "core_arena_init", "core_arena_mark",
+    "core_arena_reset_to", "core_arena_used", "core_ascii_lower", "core_buf_cstr", "core_buf_init",
+    "core_buf_len", "core_buf_overflow", "core_buf_put", "core_buf_put_char", "core_buf_put_str",
+    "core_buf_put_u64", "core_buf_str", "core_buf_truncate", "core_parse_hex_nibble",
+    "core_parse_u64", "core_str_eq", "core_str_find", "core_str_from_cstr", "core_str_split_once",
+    "core_str_starts_with", "core_str_trim"]
+
+[module."//lib/base/core:parse_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/base/core:str_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/base/core:buf_truncate_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+

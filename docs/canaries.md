@@ -3,6 +3,7 @@
 Self-tests check each component as its author imagined it. The canary pack is the standing, adversarial proof
 that the **assembled** gate (`rigor grade`, real clone, Buck2 on RE) still says FAIL for every known cheat.
 Every bypass found by a review, by R001 or by the red team becomes a canary.
+The opposite pack, honest code with an impossible obligation, is [docs/tripwires.md](tripwires.md).
 
 ```sh
 selftest/canaries.sh                    # all canaries, 8 at a time, one of them --uncached
