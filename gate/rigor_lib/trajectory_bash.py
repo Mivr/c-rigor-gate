@@ -89,6 +89,10 @@ def excerpt_around(raw, token):
     return raw[start:start + rules.MAX_EXCERPT]
 
 
+_MKTEMP_FLAGS = re.compile(r"-[duqt]+\Z")
+_MKTEMP_X = re.compile(r"XXX")
+
+
 class Prepared:
     __slots__ = ("cmd", "argv", "extra", "words", "group", "cwd", "inner", "wrapped", "job_dir", "job_skip", "clean_env",
                  "prefix_values", "env_values")
@@ -218,6 +222,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             return posixpath.dirname(args[0].rstrip("/") or "/") or "."
         if any(w.subs for w in found[0].words):
             return None
+        if name == "mktemp":
+            return self._mktemp(args, env)
         if name == "pwd" and not args:
             return self.cwd
         if name == "git" and args == ["rev-parse", "--show-toplevel"]:
@@ -227,6 +233,39 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if name == "printf" and len(args) >= 2 and args[0] == "%s":
             return "".join(args[1:])
         return None
+
+    def _mktemp(self, args, env):
+        """The path `mktemp` prints (T074): a fresh unique name under `-p DIR`, else `$TMPDIR`, else the lane's scratch
+        (the lane rules set TMPDIR there; the unknown case is one `cmd-unresolved` review at the mktemp). A template
+        keeps its own directory. An option the audit does not model leaves the value unresolved. The result is judged
+        like any other path: `TMPDIR=/etc` or `-p /etc` makes the later uses of it block."""
+        tmpdir, template, relative, index = None, None, False, 0
+        while index < len(args):
+            arg = args[index]
+            index += 1
+            if arg in ("-p", "--tmpdir") and index < len(args):
+                tmpdir, index = args[index], index + 1
+            elif arg.startswith("--tmpdir="):
+                tmpdir = arg[len("--tmpdir="):]
+            elif _MKTEMP_FLAGS.match(arg):
+                relative = relative or "t" in arg
+            elif arg.startswith("-") or template is not None:
+                return None
+            else:
+                template = arg
+        if template is not None and not _MKTEMP_X.search(template):
+            return None  # no run of `XXX`: mktemp fails, prints nothing
+        if tmpdir is None and (relative or template is None):
+            tmpdir = env.get("TMPDIR")
+            if tmpdir is None and len(self.policy.own) > 1:
+                tmpdir = self.policy.own[1] + "/tmp"
+                self.add("cmd-unresolved", "mktemp: TMPDIR is not set in this call; assumed " + tmpdir)
+        if tmpdir is not None and (not tmpdir or UNRESOLVED in tmpdir):
+            return None
+        name = "tmp.XXXXXXXXXX" if template is None else template
+        if tmpdir is None:
+            return None if template is None or UNRESOLVED in self.cwd else posixpath.join(self.cwd, name)
+        return posixpath.join(tmpdir, name)
 
     # -- entry point -------------------------------------------------------------------------
     def bash(self, text, depth=0, env=None):
