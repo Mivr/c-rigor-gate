@@ -30,6 +30,11 @@ GATE_ORDER = os.path.join(ROOT, "gate", "order.txt")
 UNCACHED_DEFAULT = "weak-test"
 DEFAULT_JOBS = 8
 EXPECT_KEYS = {"description", "bypass", "fail", "not_run", "exit", "pending", "control", "absent", "contains"}
+# Gates no product can make fail: they judge the grader, not the product, so no canary can expect them to
+# fail. They are exempt from the coverage check only because a selftest proves each one fails:
+#   toolchain: the last step of selftest/grade.sh (a scratch gate clone with one manifest sha256 flipped,
+#              graded --uncached: toolchain FAIL toolchain-mismatch, every compiling gate NOT_RUN, exit 1).
+GRADER_INTEGRITY_GATES = frozenset({"toolchain"})
 
 GIT_ENV = {
     "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
@@ -249,16 +254,22 @@ def remove_tree(path):
     shutil.rmtree(path, onerror=writable)
 
 
-def check_coverage(ids):
-    """Every gate of gate/order.txt must be the expected failing gate of at least one live canary."""
-    with open(GATE_ORDER, encoding="utf-8") as handle:
-        gates = [line.strip() for line in handle if line.strip()]
+def uncovered(gates, expects):
+    """The gates of `gates` that no live (not pending, not control) expectation of `expects` fails, except
+    GRADER_INTEGRITY_GATES."""
     covered = set()
-    for canary_id in ids:
-        expect = load_expect(canary_id)
+    for expect in expects:
         if not expect.get("pending") and not expect.get("control"):
             covered |= set(expect["fail"])
-    return [gate for gate in gates if gate not in covered]
+    return [gate for gate in gates if gate not in covered and gate not in GRADER_INTEGRITY_GATES]
+
+
+def check_coverage(ids):
+    """Every gate of gate/order.txt must be the expected failing gate of at least one live canary
+    (grader-integrity gates excepted)."""
+    with open(GATE_ORDER, encoding="utf-8") as handle:
+        gates = [line.strip() for line in handle if line.strip()]
+    return uncovered(gates, [load_expect(canary_id) for canary_id in ids])
 
 
 def cost(canary_id):

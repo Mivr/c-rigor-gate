@@ -253,9 +253,13 @@ worker, against the gate-owned `toolchains/*.manifest`, never a silent re-fetch.
 - **Later daemons.** `build` and `structure`, `mode-divergence`, `mutants` and the witness tree each end by killing
   their daemon, so a later gate's uncached `buck2 build` starts a fresh one. `grade_build.run_buck` re-primes it with
   the same two commands (cached fetch, uncached verify) before the build: the verify action executes once per daemon,
-  as before T073, and the alternative (no priming) would re-unpack the archive per daemon. If that re-check fails
+  as before T073, and the alternative (no priming) would re-unpack the archive per daemon. "Once per grade" in
+  the T073 spec means this (orchestrator ruling): the gate verifies once, and a daemon verifies at most once. If that re-check fails
   after `toolchain` passed, the toolchain changed during the grade: an internal error (exit 2, the step's
   `internal-error` FAIL), never a product finding.
+- **Canaries.** No product can make `toolchain` fail, so no canary expects it to: `canaries/runner.py`
+  `GRADER_INTEGRITY_GATES` exempts it from the coverage pre-check. The proof that it fails is the last step of
+  `selftest/grade.sh` (a scratch gate copy with one `llvm.manifest` sha256 flipped, graded `--uncached`).
 - **Exit code: 1.** A `toolchain` FAIL is a failed gate like any other: overall FAIL, exit 1. It is a
   grader-integrity failure, not a product failure, and the verdict says so where it is hashed (`core` has gate
   `toolchain` FAIL, finding `toolchain-mismatch`, every compiling gate NOT_RUN). Exit 2 stays what it is: the grader
