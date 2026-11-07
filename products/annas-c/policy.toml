@@ -364,6 +364,10 @@ impl = ["fsname/src/**"]
 allow = ["memcpy"]
 exports = ["fsname_sanitize"]
 
+[module."//fsname:fsname_edge_test"]
+allow = []
+exports = ["main"]
+
 [module."//fsname:fsname_prop_test"]
 allow = ["memchr", "memcpy", "memset", "strstr"]
 exports = ["main"]
@@ -482,6 +486,18 @@ exports = ["main"]
 
 [module."//json:string_test"]
 allow = ["bcmp", "memcpy", "snprintf"]
+exports = ["main"]
+
+[module."//json:survivor_input_test"]
+allow = ["memcpy"]
+exports = ["main"]
+
+[module."//json:survivor_keys_test"]
+allow = ["snprintf"]
+exports = ["main"]
+
+[module."//json:survivor_text_test"]
+allow = ["memcpy"]
 exports = ["main"]
 
 [module."//json:syntax_test"]
@@ -856,6 +872,11 @@ exports = ["url_base_is_valid", "url_base_normalize", "url_build_fast_download",
     "url_doi_recognize", "url_md5_is_valid", "url_md5_normalize", "url_pct_decode",
     "url_pct_encode", "url_redact_key"]
 
+[module."//url:url_edge_test"]
+allow = ["mmap", "sysconf"]
+deny_exempt = ["mprotect"]
+exports = ["main"]
+
 [module."//url:url_ident_test"]
 allow = []
 exports = ["main"]
@@ -916,6 +937,10 @@ exports = ["ak_begin", "ak_check_cli", "ak_check_no_io", "ak_check_no_key", "ak_
 
 [module."//core:buf_truncate_test"]
 allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//http:survivor_chars_test"]
+allow = []
 exports = ["main"]
 
 [module."//http:survivor_edges_test"]
