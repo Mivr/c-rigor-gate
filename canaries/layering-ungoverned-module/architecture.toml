@@ -1,0 +1,6 @@
+# //util:util is in no layer.
+[layers]
+order = ["base"]
+
+[layer."base"]
+modules = ["//core:core"]

@@ -1,0 +1,14 @@
+# util may use core's header only (types and constants); util_sum calls core_add.
+[layers]
+order = ["low", "high"]
+
+[layer."low"]
+modules = ["//core:core"]
+
+[layer."high"]
+modules = ["//util:util"]
+
+[[edge]]
+from = "high"
+to = "low"
+kind = "data"

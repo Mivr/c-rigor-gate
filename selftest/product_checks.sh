@@ -298,6 +298,9 @@ def policy(dest, specs):
             if key == "level":
                 text += 'level = "%s"\n' % values
                 continue
+            if key == "mutable_data":    # T089: allow_mutable_data = true
+                text += "allow_mutable_data = %s\n" % values
+                continue
             key = {"exempt": "deny_exempt", "builtins": "allow_builtins"}.get(key, key)
             text += "%s = [%s]\n" % (key, ", ".join('"%s"' % v for v in values.split(",")))
         text += "\n"
@@ -553,18 +556,18 @@ gate_case x_ok $SYM 0 "$out/p_x_ok.toml" x_ok --
 tool policy "$out/p_x_func.toml" "x_func;level=L3;exports=x_f,x_g"
 gate_case x_func $SYM 1 "$out/p_x_func.toml" x_func -- unexpected-export:x_hook
 tool policy "$out/p_x_mut.toml" "x_mut;level=L3;exports=x_f,x_g"
-gate_case x_mut $SYM 1 "$out/p_x_mut.toml" x_mut -- unexpected-export:x_hook mutable-global-export:x_hook unexpected-export:x_state mutable-global-export:x_state
+gate_case x_mut $SYM 1 "$out/p_x_mut.toml" x_mut -- unexpected-export:x_hook mutable-global-export:x_hook mutable-data:x_hook unexpected-export:x_state mutable-global-export:x_state mutable-data:x_state
 tool policy "$out/p_x_mut_listed.toml" "x_mut;level=L3;exports=x_f,x_g,x_hook,x_state"
-gate_case x_mut_listed $SYM 1 "$out/p_x_mut_listed.toml" x_mut -- mutable-global-export:x_hook mutable-global-export:x_state
+gate_case x_mut_listed $SYM 1 "$out/p_x_mut_listed.toml" x_mut -- mutable-global-export:x_hook mutable-data:x_hook mutable-global-export:x_state mutable-data:x_state
 tool policy "$out/p_x_const.toml" "x_const;level=L3;exports=x_f,x_g"
 gate_case x_const $SYM 1 "$out/p_x_const.toml" x_const -- unexpected-export:x_table unexpected-export:x_names
 tool policy "$out/p_x_const_ok.toml" "x_const;level=L3;exports=x_f,x_g,x_table,x_names"
 gate_case x_const_ok $SYM 0 "$out/p_x_const_ok.toml" x_const --
 tool policy "$out/p_x_nokey.toml" "x_ok;level=L3"
 gate_case x_nokey $SYM 1 "$out/p_x_nokey.toml" x_ok -- exports-missing
-tool policy "$out/p_x_l2.toml" "x_mut;level=L2;exports=x_f,x_g,x_hook,x_state"
+tool policy "$out/p_x_l2.toml" "x_mut;level=L2;exports=x_f,x_g,x_hook,x_state;mutable_data=true"
 gate_case x_l2 $SYM 0 "$out/p_x_l2.toml" x_mut --
-tool policy "$out/p_x_l1.toml" "x_mut;level=L1"
+tool policy "$out/p_x_l1.toml" "x_mut;level=L1;mutable_data=true"
 gate_case x_l1 $SYM 0 "$out/p_x_l1.toml" x_mut --
 
 begin "builtins are default-deny: alloca (also pasted), frame_address, longjmp (also behind a macro), __sync"
@@ -576,7 +579,9 @@ gate_case b_longjmp $SEM 1 "$out/p_b.toml" b_longjmp -- forbidden-builtin:__buil
 gate_case b_hidden $SEM 1 "$out/p_b.toml" b_hidden -- forbidden-builtin:__builtin_longjmp
 gate_case b_sync $SEM 1 "$out/p_b.toml" b_sync -- forbidden-builtin:__sync_fetch_and_add
 for c in b_alloca b_paste b_frame b_longjmp b_hidden b_sync; do
-  tool policy "$out/p_$c.toml" "$c"
+  spec="$c"
+  case "$c" in b_longjmp|b_hidden) spec="$c;mutable_data=true" ;; esac   # T089: their jmp buffer is a static
+  tool policy "$out/p_$c.toml" "$spec"
   gate_case $c $SYM 0 "$out/p_$c.toml" $c --   # no symbol: why the symbols gate alone cannot see them
 done
 tool policy "$out/p_b_jmp.toml" "b_longjmp;exempt=longjmp"

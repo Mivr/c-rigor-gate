@@ -1,0 +1,12 @@
+{
+  "bypass": "data-only edge that calls the target's functions",
+  "description": "architecture.toml allows util -> core as a data edge (header only); util_sum calls core_add (T087).",
+  "fail": {
+    "layering": [
+      "edge-kind-violation"
+    ]
+  },
+  "contains": {
+    "layering": "core_add"
+  }
+}

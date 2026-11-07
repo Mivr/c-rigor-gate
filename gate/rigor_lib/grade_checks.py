@@ -13,9 +13,10 @@ import shutil
 import sys
 from dataclasses import dataclass
 
-from rigor_lib import buckfiles, facts_data, facts_policy, facts_semantic, facts_symbols
-from rigor_lib import grade_build, grade_context, grade_policy, facts_third_party, grade_tree, paths, product_layout
-from rigor_lib.findings import GateResult, finding
+from rigor_lib import buckfiles, facts_data, facts_policy, facts_semantic, facts_symbols, layering, layering_check
+from rigor_lib import grade_build, grade_context, grade_policy, facts_third_party, grade_toolchain, grade_tree
+from rigor_lib import paths, product_layout
+from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 
 FACTS_KIND = "c_facts"
 CTEST_FACTS = "gate//ctest:ctest_facts"
@@ -139,3 +140,22 @@ def semantic_gate(g):
 def symbols_gate(g):
     return _fact_gate(g, lambda facts, policy, built: facts_symbols.run(
         facts, policy, facts_data.load_symbol_list(built.libc)))
+
+
+ARCHITECTURE_FILE = "architecture.toml"
+NO_ARCHITECTURE = "no-architecture"
+
+
+def layering_gate(g):
+    """Gate `layering` (T087): the facts against `products/<p>/architecture.toml`, next to `product.toml`.
+
+    A product without the file has no contract: PASS with info `no-architecture` (a NOT_RUN would fail every
+    product that has none), before any facts are looked at."""
+    path = os.path.join(os.path.dirname(g.args.product), ARCHITECTURE_FILE)
+    if not os.path.isfile(path):
+        return GateResult(layering_check.GATE_ID, [finding(NO_ARCHITECTURE, severity=SEVERITY_INFO)], {})
+    arch = layering.load(path)
+
+    def judged(grading):
+        return _fact_gate(grading, lambda facts, policy, _built: layering_check.run(facts, arch, policy.trusted))
+    return grade_toolchain.needs_toolchain(layering_check.GATE_ID, judged)(g)
