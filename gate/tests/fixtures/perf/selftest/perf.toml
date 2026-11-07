@@ -1,0 +1,10 @@
+version = 1
+product = "selftest"
+
+[[target]]
+id = "core-add-linear"
+module = "//core:core"
+srcs = ["gen/core_add.c"]
+sizes = [1000, 4000]
+seed = 1
+class = "linear"

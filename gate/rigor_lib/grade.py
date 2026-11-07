@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-from rigor_lib import approvals, grade_context, grade_pipeline, jsonio, product_layout, runner, verdict
+from rigor_lib import approvals, grade_context, grade_pipeline, grade_policy, jsonio, product_layout, runner, verdict
 from rigor_lib import verdict_inputs
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
@@ -65,9 +65,9 @@ def discard(path):
 
 
 def absolute_arguments(args):
-    for name in ("product_repo", "task", "product", "approvals", "witness", "sign_key", "work",
+    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "sign_key", "work",
                  "verdict_out"):
-        value = getattr(args, name)
+        value = getattr(args, name, None)
         if value is not None:
             setattr(args, name, os.path.abspath(value))
 
@@ -88,11 +88,17 @@ def start_grading(args):
     witness, inputs["witness_sha256"] = verdict_inputs.snapshot_witness(
         args.witness, os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.WITNESS_NAME))
     product = product_layout.load_product(args.product)
+    perf_source = getattr(args, "perf", None)  # callers that build args by hand may omit it
+    levels = {}
+    if perf_source is not None:  # the snapshot of the policy, like every other reader
+        levels = grade_policy.load_levels(os.path.join(os.path.dirname(args.product), "policy.toml"))
+    perf, inputs["perf_sha256"] = verdict_inputs.snapshot_perf(
+        perf_source, os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.PERF_NAME), product.name, levels)
     return grade_context.Grading(
         args=args, product=product, gate_sha=gate_sha, work=work,
         src=os.path.join(work, "src"), tree=os.path.join(work, "tree"),
         results=os.path.join(work, "results"), test_results=os.path.join(work, "test-results"),
-        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean, witness=witness)
+        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean, witness=witness, perf=perf)
 
 
 def file_sha256(path):
@@ -161,6 +167,9 @@ def add_parser(subparsers):
     parser.add_argument("--witness", metavar="DIR",
                         help="witness bundle (docs/witness.md); snapshotted into <work>/inputs/witness "
                              "and bound as witness_sha256 (null without it)")
+    parser.add_argument("--perf", metavar="DIR",
+                        help="perf bundle (docs/perf.md); snapshotted into <work>/inputs/perf and bound as "
+                             "perf_sha256 (null without it); loaded and checked, no gate judges it yet")
     parser.add_argument("--sign-key")
     parser.add_argument("--work", required=True)
     parser.add_argument("--allow-dirty-gate", action="store_true",

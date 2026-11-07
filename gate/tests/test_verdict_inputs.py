@@ -21,7 +21,7 @@ LLVM, SYSROOT, BUCK2 = "1" * 64, "2" * 64, "3" * 64
 FILE_HASHES = {key: jsonio.sha256_hex(key.encode()) for key in
                ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
                 "expected_tests_previous_sha256", "approvals_sha256", "allowed_signers_sha256", "order_sha256",
-                "witness_sha256")}
+                "witness_sha256", "perf_sha256")}
 WITNESS_FIXTURE = GATE_DIR / "tests" / "fixtures" / "witness" / "good"
 
 
@@ -149,7 +149,7 @@ class EveryInputChangesTheHash(TempDirTestCase):
         inputs = self.fixture.inputs()
         for key, value in (("head", "abc"), ("llvm_sha256", "xyz"), ("gate_clean", "yes"),
                            ("product", ""), ("approvals_sha256", "short"), ("witness_sha256", "short"),
-                           ("witness_sha256", "A" * 64)):
+                           ("witness_sha256", "A" * 64), ("perf_sha256", "short"), ("perf_sha256", "A" * 64)):
             broken = dict(inputs, **{key: value})
             self.assertEqual(verdict_inputs.missing_inputs(broken), [key], key)
         for key in verdict_inputs.OPTIONAL_KEYS:
