@@ -143,26 +143,24 @@ class Judge(unittest.TestCase):
 
 
 class PolicyTable(TempDirTestCase):
-    def policy(self, extra, files=("perf/a.c",)):
-        for name in files:
-            path = self.tmp / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("/* %s */\n" % name, encoding="utf-8")
+    def policy(self, extra):
         path = self.tmp / "policy.toml"
         path.write_text('[global]\ndeny = []\n[module."//x:y"]\nlevel = "L3"\n' + extra, encoding="utf-8")
         return str(path)
 
-    LOOKUP = '[module."//x:y".perf.lookup]\nclass = "O(log n)"\nsrcs = ["perf/a.c"]\nsizes = [100, 400]\nseed = 3\n'
+    HEAD = '[module."//x:y".perf.lookup]\nclass = "O(log n)"\nsizes = [100, 400]\nseed = 3\n'
+    SRCS = '[module."//x:y".perf.lookup.srcs]\n"a.c" = \'\'\'\nint a;\n\'\'\'\n'
+    LOOKUP = HEAD + SRCS
 
     def test_a_module_declares_perf_targets_with_classes_sizes_seed_and_sources(self):
-        path = self.policy(self.LOOKUP + '[module."//x:y".perf.scan]\nclass = "O(1)"\nsrcs = ["perf/a.c", "perf/b.c"]\n'
-                           'sizes = [10, 20, 40]\nseed = 0\n', files=("perf/a.c", "perf/b.c"))
+        path = self.policy(self.LOOKUP + '[module."//x:y".perf.scan]\nclass = "O(1)"\nsizes = [10, 20, 40]\nseed = 0\n'
+                           '[module."//x:y".perf.scan.srcs]\n"b.c" = "int b;"\n"a.c" = "int a;"\n')
         lookup, scan = perf_policy.load(path)
         self.assertEqual((lookup.name, lookup.module, lookup.cost_class, lookup.sizes, lookup.seed, lookup.srcs),
-                         ("lookup", "//x:y", "O(log n)", (100, 400), 3, ("perf/a.c",)))
+                         ("lookup", "//x:y", "O(log n)", (100, 400), 3, ("a.c",)))
         self.assertEqual((lookup.label, lookup.binary), ("//gate-perf:lookup_perf", "//gate-perf:lookup"))
-        self.assertEqual(lookup.files, (("perf/a.c", b"/* perf/a.c */\n"),))
-        self.assertEqual((scan.sizes, [p for p, _ in scan.files]), ((10, 20, 40), ["perf/a.c", "perf/b.c"]))
+        self.assertEqual(lookup.files, (("a.c", b"int a;\n"),))
+        self.assertEqual((scan.sizes, scan.files), ((10, 20, 40), (("a.c", b"int a;"), ("b.c", b"int b;"))))
         self.assertEqual(perf_policy.by_module([lookup, scan]),
                          {"//x:y": {"//gate-perf:lookup_perf": "O(log n)", "//gate-perf:scan_perf": "O(1)"}})
         self.assertEqual(facts_policy.load_policy(path).modules["//x:y"].level, "L3")   # the symbol policy accepts it
@@ -171,34 +169,33 @@ class PolicyTable(TempDirTestCase):
         self.assertEqual(perf_policy.load(self.policy("")), [])
 
     def test_defects_are_exit_2(self):
-        body = 'class = "O(1)"\nsrcs = ["perf/a.c"]\nsizes = [1, 2]\nseed = 1\n'
-        for extra in ('[module."//x:y".perf.Bad]\n' + body,
-                      '[module."//x:y".perf.a]\n' + body.replace('"O(1)"', '"O(2^n)"'),
-                      '[module."//x:y".perf.a]\n' + body + 'extra = 1\n',
-                      '[module."//x:y".perf.a]\n' + body.replace('seed = 1\n', ''),
-                      '[module."//x:y".perf.a]\n' + body.replace('"perf/a.c"', '"../a.c"'),
-                      '[module."//x:y".perf.a]\n' + body.replace('"perf/a.c"', '"perf/a.h"'),
-                      '[module."//x:y".perf.a]\n' + body.replace('"perf/a.c"', '"/perf/a.c"'),
-                      '[module."//x:y".perf.a]\n' + body.replace('"perf/a.c"', ''),
-                      '[module."//x:y".perf.a]\n' + body.replace('[1, 2]', '[2, 2]'),
-                      '[module."//x:y".perf.a]\n' + body.replace('[1, 2]', '[1]'),
-                      '[module."//x:y".perf.a]\n' + body.replace('[1, 2]', '[0, 2]'),
-                      '[module."//x:y".perf.a]\n' + body.replace('seed = 1', 'seed = -1'),
-                      '[module."//x:y".perf.a]\n' + body.replace('seed = 1', 'seed = true'),
+        head = self.HEAD
+        for extra in (head.replace("lookup", "Bad") + self.SRCS.replace("lookup", "Bad"),
+                      head.replace('"O(log n)"', '"O(2^n)"') + self.SRCS,
+                      head + 'extra = 1\n' + self.SRCS,
+                      head.replace('seed = 3\n', '') + self.SRCS,
+                      head,                                                   # no sources
+                      head + '[module."//x:y".perf.lookup.srcs]\n',          # an empty source table
+                      head + 'srcs = ["a.c"]\n',                              # sources are a table of texts
+                      head + self.SRCS.replace('"a.c"', '"../a.c"'),
+                      head + self.SRCS.replace('"a.c"', '"a.h"'),
+                      head + self.SRCS.replace('"a.c"', '"/a.c"'),
+                      head + self.SRCS.replace('"a.c"', '"x:a.c"'),
+                      head + self.SRCS.replace("int a;", "   "),
+                      head + self.SRCS.replace("\'\'\'\nint a;\n\'\'\'", "3"),
+                      head.replace("[100, 400]", "[400, 400]") + self.SRCS,
+                      head.replace("[100, 400]", "[400]") + self.SRCS,
+                      head.replace("[100, 400]", "[0, 400]") + self.SRCS,
+                      head.replace("seed = 3", "seed = -1") + self.SRCS,
+                      head.replace("seed = 3", "seed = true") + self.SRCS,
                       '[module."//x:y"]\nperf = 3\n',
-                      '[module."//x:y".perf.gone]\n' + body.replace('perf/a.c', 'perf/gone.c'),
-                      '[module."//x:y".perf.a]\n' + body + '[module."//x:z".perf.a]\n' + body):
-            path = self.policy(extra)
+                      self.LOOKUP + '[module."//x:z"]\nlevel = "L1"\n' + self.LOOKUP.replace("//x:y", "//x:z")):
+            path = self.policy(extra) if "[module.\"//x:z\"]\nlevel" not in extra else None
+            if path is None:   # two modules, one name: a policy of its own
+                path = str(self.tmp / "policy.toml")
+                (self.tmp / "policy.toml").write_text('[global]\ndeny = []\n[module."//x:y"]\nlevel = "L3"\n' + extra, encoding="utf-8")
             with self.assertRaises(InternalError, msg=extra):
                 perf_policy.load(path)
-
-    def test_a_symlinked_source_is_refused(self):
-        path = self.policy(self.LOOKUP)
-        (self.tmp / "perf" / "a.c").unlink()
-        (self.tmp / "real.c").write_text("x", encoding="utf-8")
-        (self.tmp / "perf" / "a.c").symlink_to(self.tmp / "real.c")
-        with self.assertRaises(InternalError):
-            perf_policy.load(path)
 
     def test_bundle_targets_are_judged_like_policy_targets(self):
         bundle = perf_bundle.Bundle("p", (perf_bundle.Target("many-keys", "//json:json", ("gen/k.c",), (1000, 4000), 5, "nlogn"),),
@@ -207,8 +204,7 @@ class PolicyTable(TempDirTestCase):
         self.assertEqual((target.name, target.module, target.cost_class, target.sizes, target.seed, target.files),
                          ("bundle_many_keys", "//json:json", "O(n log n)", (1000, 4000), 5, (("gen/k.c", b"int x;"),)))
         with self.assertRaises(InternalError):
-            perf_policy.load(self.policy('[module."//x:y".perf.bundle_many_keys]\nclass = "O(1)"\nsrcs = ["perf/a.c"]\n'
-                                         'sizes = [1, 2]\nseed = 1\n'), bundle)
+            perf_policy.load(self.policy(self.LOOKUP.replace("lookup", "bundle_many_keys")), bundle)
 
 
 class Package(TempDirTestCase):
@@ -244,8 +240,6 @@ class Step(TempDirTestCase):
     def grading(self, policy_text, status=None, role="implementer"):
         product = self.sub("product") / "product.toml"
         (self.sub("product") / "policy.toml").write_text(policy_text, encoding="utf-8")
-        (self.sub("product") / "perf").mkdir(exist_ok=True)
-        (self.sub("product") / "perf" / "a.c").write_text("/* driver */\n", encoding="utf-8")
         task = self.tmp / "task.toml"
         task.write_text('id = "t"\nallowed = ["**"]\nrole = "%s"\n' % role, encoding="utf-8")
         args = SimpleNamespace(product=str(product), uncached=False, task=str(task))
@@ -254,7 +248,7 @@ class Step(TempDirTestCase):
         return SimpleNamespace(args=args, work=str(self.sub("work")), tree=str(self.sub("tree")), status=done, perf=None)
 
     POLICY = ('[global]\ndeny = []\n[module."//x:y"]\nlevel = "L3"\n[module."//x:y".perf.p]\nclass = "O(1)"\n'
-              'srcs = ["perf/a.c"]\nsizes = [1, 2]\nseed = 1\n')
+              'sizes = [1, 2]\nseed = 1\n[module."//x:y".perf.p.srcs]\n"a.c" = "int a;"\n')
 
     def test_it_is_registered_after_the_tests_and_before_mutants_and_is_in_the_order_file(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]

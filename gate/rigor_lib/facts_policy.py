@@ -11,8 +11,7 @@
     level = "L3"                    # L1 is exempt from the exports check; see `exports`
     exports = ["core_add"]          # every external symbol the module may define (T033, gate `symbols`)
     impl = ["core/core.c"]          # the witness gates' implementation paths (T039); validated there, ignored here
-    [module."//core:core".perf."//core:core_perf"]   # the perf gate's classes (T090); validated by perf_policy
-    class = "O(n)"
+    [module."//core:core".perf.lookup]   # a perf target and its class (T090); validated by perf_policy, used by the perf gate
 """
 
 import tomllib
