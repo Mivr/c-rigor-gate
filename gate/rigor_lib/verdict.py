@@ -10,7 +10,7 @@ import re
 
 from rigor_lib import jsonio, verdict_inputs
 from rigor_lib.errors import InternalError
-from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO
+from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, finding
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
 GATE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9_.-]*")
@@ -97,6 +97,24 @@ def load_results(results_dir, order):
         else:
             raise InternalError("%s is not a regular file" % path)
     return documents
+
+
+def unused_approval_findings(valid, documents):
+    """One info finding per valid approval that no gate used (`approvals_used` of every gate result).
+
+    An unused approval grants nothing; this is housekeeping. If any gate did not run, whether the
+    approval would have been used is unknown, so it is reported fail-closed with reason `gate_not_run`
+    instead of `not_used`. Sorted by approval stem, so the list is deterministic.
+    """
+    used = set()
+    for document in documents.values():
+        if document is not None:
+            listed = document["metadata"].get("approvals_used")
+            used.update(listed if isinstance(listed, list) else [])
+    reason = "gate_not_run" if any(doc is None for doc in documents.values()) else "not_used"
+    return [finding("unused-approval", SEVERITY_INFO, kind=approval.kind, stem=approval.stem,
+                    scope=approval.scope, reason=reason)
+            for approval in sorted(valid, key=lambda item: item.stem) if approval.stem not in used]
 
 
 def build_core(order, documents):

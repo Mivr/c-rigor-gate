@@ -177,6 +177,17 @@ the same `core_sha256`, whether the build was cold or fully cached; changing any
 | `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | `toolchains/BUCK`, the LLVM and sysroot archive pins in it, and the Buck2 binary pin (`tools/buck2.version`), all from the assembled tree and checked against the manifest |
 | `uncached` | the `--uncached` flag (also kept as `core.uncached`) |
 
+**Unused approvals (T068).** `core.unused_approvals` is a verdict-level list (hashed with the rest of `core`, so it cannot
+be dropped silently; always present, `[]` without `--approvals`). After all gates ran, every *valid* approval (signed,
+allowed signer, `repo_sha` an ancestor of the head) whose stem is in no gate's `approvals_used` becomes one finding
+`{"rule": "unused-approval", "severity": "info", "kind", "stem", "scope", "reason"}`, sorted by stem. Typical cause: a
+body edit changed a mutant id (T058), so an old `equivalent-mutant` approval names nothing. It grants nothing and does
+not affect `overall`; it is housekeeping. Approvals that failed validation are reported by their gates
+(`forged-approval`) and never appear here. `reason` is `not_used` when every gate in `order.txt` produced a result. If any
+gate did not run (NOT_RUN) it is unknown whether that gate would have used the approval, so the report fails closed:
+`reason = gate_not_run` for every unused approval (the grade is a FAIL then anyway). If the clone gate did not finish
+there is no graded head, validity cannot be judged, and the list is empty.
+
 "Read from what the grade used": the task, product, policy, expected-tests files and the approvals directory are
 copied once into `<work>/inputs/` at the start and `args` are repointed at the copies, so the hash is of the bytes the
 gates read and a later edit of the originals changes nothing. The commits, buckconfig and pins come from the gate
