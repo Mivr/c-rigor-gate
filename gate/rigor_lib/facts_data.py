@@ -117,7 +117,7 @@ UNIT_KEYS = ("name", "defined", "weak", "undefined", "pragmas", "attributes", "i
 
 def parse_unit(path, unit):
     # `mutable` (T033) is written by every product scan; only the gate's own third-party facts lack it.
-    # `data` (T089) is written next to it; the third-party facts (third_party/tp_facts.py) may omit both.
+    # `data` (T089) is written next to it; the gate-owned third-party facts may omit `mutable`.
     keys = UNIT_KEYS + tuple(k for k in ("mutable", "data") if isinstance(unit, dict) and k in unit)
     _exact(path, unit, keys, "unit")
     defined = _strings(path, unit["defined"], "defined")

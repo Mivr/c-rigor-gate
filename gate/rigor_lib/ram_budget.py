@@ -5,8 +5,8 @@ A binary's RAM is the sum of `size` over every data object in a `data`, `bss` or
 through `deps`, product code and trusted third-party code counted separately. Read-only data is not RAM.
 
 `products/<p>/ram-budget.toml` (gate-owned, next to `policy.toml`; no file means no check). The same
-`[binary."//x:y"]` tables are also accepted inside `policy.toml` (the grade snapshots only `policy.toml` today,
-see verdict_inputs.PRODUCT_FILES); having both is exit 2:
+file is snapshotted and hashed by the grade (`verdict_inputs.PRODUCT_FILES`); `rigor ratchet` flattens it
+(`flat`) to the keys `binary."//x:y".max_bytes`, direction `down`:
 
     [binary."//apps/x:x"]
     max_bytes = 16384
@@ -34,11 +34,7 @@ def parse(text, where="ram budget"):
         raise InternalError("%s is not valid TOML: %s" % (where, exc)) from exc
     if set(document) - {"binary"}:
         raise InternalError("%s: only a [binary.\"//x:y\"] table is allowed" % where)
-    return from_table(document.get("binary", {}), where)
-
-
-def from_table(table, where):
-    """label -> max_bytes from the parsed `binary` table (in `ram-budget.toml`, or in `policy.toml` itself)."""
+    table = document.get("binary", {})
     if not isinstance(table, dict):
         raise InternalError("%s: `binary` must be a table of tables" % where)
     budget = {}

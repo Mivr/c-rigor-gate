@@ -86,7 +86,7 @@ def load_policy(path):
         document = tomllib.loads(jsonio.read_bytes(path).decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as exc:
         raise InternalError("%s is not valid TOML: %s" % (path, exc)) from exc
-    _only("top level", document, ("global", "module", "binary"))
+    _only("top level", document, ("global", "module"))
     glob = document.get("global")
     _only("[global]", glob, ("deny", "trusted"))
     if "deny" not in glob:
@@ -104,9 +104,4 @@ def load_policy(path):
     if trusted & set(modules):
         raise InternalError("policy: a module cannot be both trusted and listed: %s"
                             % sorted(trusted & set(modules)))
-    budget = ram_budget.load_sibling(path)
-    if "binary" in document:
-        if budget is not None:
-            raise InternalError("policy: [binary] tables in policy.toml and a ram-budget.toml are both present")
-        budget = ram_budget.from_table(document["binary"], "policy")
-    return Policy(deny, trusted, modules, budget)
+    return Policy(deny, trusted, modules, ram_budget.load_sibling(path))

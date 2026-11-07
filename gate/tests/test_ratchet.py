@@ -268,3 +268,51 @@ class RatchetErrorTests(RatchetCase):
         outcome, result = self.grade(OLD, spec_text="")
         self.assertExit(outcome, 2)
         self.assertEqual((result["gate"], result["status"]), ("ratchet", "FAIL"))
+
+
+BUDGET_SPEC = '[binary."*".max_bytes]\ndirection = "down"\n'
+BUDGET = '[binary."//a:b"]\nmax_bytes = 100\n\n[binary."//a:c"]\nmax_bytes = 50\n'
+
+
+class NestedBudgetTests(RatchetCase):
+    """The RAM budget file (T089): `[binary."//x:y"] max_bytes`, one key `binary."//x:y".max_bytes` each."""
+
+    def budget(self, new_text, code, rules, **kw):
+        kw.setdefault("old_text", BUDGET)
+        kw.setdefault("spec_text", BUDGET_SPEC)
+        kw.setdefault("new_name", "ram-budget.toml")
+        return self.assertRules(new_text, rules, code, **kw)
+
+    def test_unchanged_and_lowered_are_green(self):
+        self.budget(BUDGET, 0, [])
+        self.budget(BUDGET.replace("100", "99"), 0, [])
+
+    def test_raising_a_budget_is_a_regression(self):
+        result = self.budget(BUDGET.replace("= 50", "= 51"), 1, [("ratchet-regressed", 'binary."//a:c".max_bytes')])
+        self.assertEqual((result["findings"][0]["old"], result["findings"][0]["new"]), (50, 51))
+
+    def test_a_removed_binary_is_a_missing_key_and_a_new_one_is_info(self):
+        self.budget('[binary."//a:b"]\nmax_bytes = 100\n', 1, [("missing-key", 'binary."//a:c".max_bytes')])
+        self.budget(BUDGET + '[binary."//a:d"]\nmax_bytes = 9\n', 0, [("new-key", 'binary."//a:d".max_bytes')])
+
+    def test_an_extra_field_is_unspecified_and_a_wrong_value_is_bad(self):
+        self.budget(BUDGET + '[binary."//a:d"]\nmax_bytes = 9\nother = 1\n', 1,
+                    [("new-key", 'binary."//a:d".max_bytes'), ("unspecified-key", 'binary."//a:d".other')])
+        self.budget(BUDGET.replace("= 50", '= "50"'), 1, [("bad-value", 'binary."//a:c".max_bytes')])
+
+
+class NestedBudgetApprovalTests(RatchetApprovalTests):
+    def run_raise(self, scope):
+        self.approve(scope)
+        return self.grade(BUDGET.replace("= 50", "= 51"), old_text=BUDGET, spec_text=BUDGET_SPEC,
+                          new_name="ram-budget.toml", extra=self.approval_args())
+
+    def test_the_raise_needs_a_ratchet_approval_for_that_exact_key(self):
+        outcome, _ = self.grade(BUDGET.replace("= 50", "= 51"), old_text=BUDGET, spec_text=BUDGET_SPEC,
+                                new_name="ram-budget.toml", extra=self.approval_args())
+        self.assertExit(outcome, 1)
+        outcome, _ = self.run_raise('ram-budget.toml:binary."//a:b".max_bytes')    # another binary's key
+        self.assertExit(outcome, 1)
+        outcome, result = self.run_raise('ram-budget.toml:binary."//a:c".max_bytes')
+        self.assertExit(outcome, 0)
+        self.assertEqual(result["findings"], [])

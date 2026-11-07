@@ -155,11 +155,12 @@ Products with a static-memory rule (`Mivr/business-apps`) need to see state that
   product code and trusted third-party code are reported separately in the `symbols` result,
   `metadata.ram[<binary>] = {"product":N,"third_party":M,"total":N+M,"unmeasured":[...]}`. Read-only data is not RAM.
   `products/<p>/ram-budget.toml` (gate-owned, next to `policy.toml`, read with it by `facts_policy.load_policy`) holds
-  `[binary."//x:y"]` with `max_bytes = N` (the same tables are accepted inside `policy.toml`, not both; `rigor grade`
-  snapshots only `policy.toml` today (`verdict_inputs.PRODUCT_FILES`), so under grade the budget must live there until that list
-  names `ram-budget.toml`); a total above N is `ram-over-budget` (bytes, max_bytes), a binary the file does
-  not list is `ram-unbudgeted`; no file means no check. Third-party libraries' own data is counted only when their facts carry
-  `data` (`third_party/tp_facts.py` does not write it yet; see the T089 report).
+  `[binary."//x:y"]` with `max_bytes = N`; a total above N is `ram-over-budget` (bytes, max_bytes), a binary the file does
+  not list is `ram-unbudgeted`; no file means no check. Third-party facts carry `data` too (`third_party/tp_facts.py` loads `cscan.read_data`), so trusted libraries'
+  writable data is in `third_party`; a library whose facts have no `data` is listed as `unmeasured`.
+  `rigor ratchet` governs the file: spec `[binary."*".max_bytes] direction = "down"` (a `*` path part matches any table name)
+  compares the flattened keys `binary."//x:y".max_bytes`; a raise needs a `ratchet` approval scoped
+  `ram-budget.toml:binary."//x:y".max_bytes`.
   Canaries: `mutable-data-static-local` and `ram-over-budget`; `mutable-data-allowed` is not needed, because `control`
   (library modules with no writable data, so green on the real toolchain) and `ram-over-budget` (its module has
   `allow_mutable_data = true` and only the budget fails) cover both sides.

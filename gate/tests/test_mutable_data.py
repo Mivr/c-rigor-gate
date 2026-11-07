@@ -257,10 +257,26 @@ class BudgetFileCase(TempDirTestCase):
         with self.assertRaises(InternalError):
             facts_policy.load_policy(str(policy))
 
-    def test_the_budget_may_sit_in_the_policy_file_but_not_in_both(self):
-        policy = self.tmp / "policy.toml"
-        policy.write_text(GLOBAL + '[binary."//a:b"]\nmax_bytes = 5\n', encoding="utf-8")
-        self.assertEqual(facts_policy.load_policy(str(policy)).ram_budget, {"//a:b": 5})
-        (self.tmp / "ram-budget.toml").write_text('[binary."//a:b"]\nmax_bytes = 3\n', encoding="utf-8")
-        with self.assertRaises(InternalError):
-            facts_policy.load_policy(str(policy))
+
+class ThirdPartyFactsCase(TempDirTestCase):
+    def test_third_party_facts_carry_the_same_data_as_product_facts(self):
+        import subprocess
+        from tests.helpers import GATE_DIR
+        posix = "mbedtls_f T 0 4\nmbedtls_state b 0 8\nputs U\n"
+        text = "#!%s\nimport sys\nsys.stdout.write(%r if '--format=sysv' in sys.argv else %r)\n" % (sys.executable, SYSV, posix)
+        nm = self.tmp / "nm"
+        nm.write_text(text, encoding="utf-8")
+        os.chmod(nm, os.stat(nm).st_mode | stat.S_IXUSR)
+        obj = self.tmp / "a.o"
+        obj.write_text("object", encoding="utf-8")
+        out = self.tmp / "tp.json"
+        argv = [sys.executable, "-I", "-B", str(GATE_DIR.parent / "third_party" / "tp_facts.py"),
+                "--label", "gate//third_party/mbedtls:mbedtls", "--nm", str(nm),
+                "--cscan", str(GATE_DIR / "rigor_lib" / "cscan.py"), "--out", str(out), "--unit", "a.c.o", str(obj)]
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, msg=done.stderr)
+        parsed = facts_data.parse_facts(str(out), out.read_bytes())
+        self.assertEqual(parsed.kind, "c_third_party")
+        self.assertEqual(ram_budget.writable_bytes(parsed.units[0]), 4 + 8 + 16 + 8 + 8)
+        self.assertEqual(parsed.units[0].data, tuple((d["name"], d["size"], d["section"], d["local"])
+                                                    for d in cscan.read_data(str(nm), "a.o")))

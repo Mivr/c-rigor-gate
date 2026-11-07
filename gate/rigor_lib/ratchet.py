@@ -9,6 +9,7 @@ An approval of kind `ratchet` with scope `<file name of --new>:<key>` allows one
 
 import math
 import os
+import re
 import tomllib
 
 from rigor_lib import approval_args, approvals, jsonio
@@ -30,19 +31,79 @@ def load_toml(path):
         raise InternalError("%s is not valid TOML: %s" % (path, exc)) from exc
 
 
+_PLAIN = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def format_key(path):
+    """`binary."//x:y".max_bytes` for ("binary", "//x:y", "max_bytes"); a one-part key is itself."""
+    if len(path) == 1:
+        return path[0]
+    return ".".join(part if _PLAIN.fullmatch(part) else '"%s"' % part for part in path)
+
+
+def _spec_leaves(path, entry, found):
+    """A spec entry is a table with exactly `direction`; a table of tables is nested (`[binary."*".max_bytes]`)."""
+    if not isinstance(entry, dict):
+        raise InternalError("spec entry %r must be a table with only 'direction'" % format_key(path))
+    if "direction" in entry or not entry or not all(isinstance(v, dict) for v in entry.values()):
+        if set(entry) != {"direction"}:
+            raise InternalError("spec entry %r must be a table with only 'direction'" % format_key(path))
+        if entry["direction"] not in DIRECTIONS:
+            raise InternalError("spec entry %r has an unknown direction" % format_key(path))
+        found[path] = entry["direction"]
+        return
+    for name, child in entry.items():
+        _spec_leaves(path + (name,), child, found)
+
+
 def load_spec(path):
-    """key -> direction. The spec is gate-owned, so any defect is an internal error."""
+    """(path tuple -> direction). The spec is gate-owned, so any defect is an internal error.
+
+    A path part `*` matches any table name: `[binary."*".max_bytes]` governs every `[binary."//x:y"] max_bytes`."""
     table = load_toml(path)
     if not table:
         raise InternalError("ratchet spec is empty")
     spec = {}
     for key, entry in table.items():
-        if not isinstance(entry, dict) or set(entry) != {"direction"}:
-            raise InternalError("spec entry %r must be a table with only 'direction'" % key)
-        if entry["direction"] not in DIRECTIONS:
-            raise InternalError("spec entry %r has an unknown direction" % key)
-        spec[key] = entry["direction"]
+        _spec_leaves((key,), entry, spec)
     return spec
+
+
+def flatten(table, roots):
+    """path tuple -> value. Only the top-level tables named in `roots` are flattened (a nested spec asks for
+    it); every other key stays as it is, so a table elsewhere is still a bad value or an unspecified key."""
+    flat = {}
+
+    def walk(path, value):
+        if isinstance(value, dict):
+            for name, child in value.items():
+                walk(path + (name,), child)
+        else:
+            flat[path] = value
+
+    for key, value in table.items():
+        if key in roots and isinstance(value, dict):
+            walk((key,), value)
+        else:
+            flat[(key,)] = value
+    return flat
+
+
+def _matches(pattern, path):
+    return len(pattern) == len(path) and all(a == "*" or a == b for a, b in zip(pattern, path))
+
+
+def expand_spec(spec, old, new):
+    """key text -> direction for the concrete keys: patterns expand over the keys of old and new."""
+    concrete = {}
+    for pattern, direction in spec.items():
+        if "*" not in pattern:
+            concrete[pattern] = direction
+            continue
+        for path in sorted(set(old) | set(new)):
+            if _matches(pattern, path):
+                concrete[path] = direction
+    return {format_key(path): direction for path, direction in concrete.items()}
 
 
 def _is_finite_number(value):
@@ -107,8 +168,12 @@ def key_findings(key, direction, old, new, scope_file, approval_set, used):
 
 def run(args):
     spec = load_spec(args.spec)
-    old = load_toml(args.old)
-    new = load_toml(args.new)
+    roots = {path[0] for path in spec if len(path) > 1}
+    old_flat = flatten(load_toml(args.old), roots)
+    new_flat = flatten(load_toml(args.new), roots)
+    spec = expand_spec(spec, old_flat, new_flat)
+    old = {format_key(path): value for path, value in old_flat.items()}
+    new = {format_key(path): value for path, value in new_flat.items()}
     approval_set = approval_args.load_from_args(args)
     scope_file = os.path.basename(args.new)
     used = set()
