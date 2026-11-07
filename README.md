@@ -8,6 +8,8 @@ the thresholds or the checker. This repo is the part the agent does **not** cont
 source directories plus a sealed checkout of this repo at a pinned commit. Everything that decides pass/fail
 lives here.
 
+Registered products and the allocation deny list: [docs/products.md](docs/products.md).
+
 Status: phase 1 under construction. See [plan/phase1.md](plan/phase1.md).
 
 ## What it provides (phase 1 target)

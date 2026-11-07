@@ -1,0 +1,12 @@
+{
+  "bypass": "allocation outside the arena (strdup)",
+  "description": "core calls strdup() (a less obvious allocator) while the policy carries the P002 G25 allocation deny list; it is reported (the new functions are untested, so their mutants survive).",
+  "fail": {
+    "symbols": [
+      "denied-symbol"
+    ],
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}

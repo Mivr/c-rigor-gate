@@ -1,0 +1,3 @@
+id = "whole-repo"
+# The whole product: every module, plus its docs, plans and fixtures.
+allowed = ["**"]
