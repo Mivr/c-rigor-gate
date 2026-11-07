@@ -173,6 +173,9 @@ class CodeMixin:
         if self.program_identity(path_text, alias, args, raw) and alias is not None:
             return  # a renamed known program, judged by its real identity, not as an unknown script
         content = self.files.get(normal) if normal else None
+        if normal is None and UNRESOLVED in self.cwd and UNRESOLVED not in path_text and not path_text.startswith(
+                ("/", "~")):  # a relative script while the directory is unknown (T072, B21): not audited as written
+            self.add("path-unresolved", raw, "$(cwd)/" + path_text)
         if normal and normal in self.unknown:
             if not self.worktree_tracked(normal):  # a tracked worktree file is reviewed in the diff (T052, ruling 7)
                 self.add("cmd-obfuscated-exec", raw, path_text)

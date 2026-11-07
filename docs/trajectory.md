@@ -272,6 +272,18 @@ stdout or stderr reaches the result (a pipe counts as the result; redirections a
   any command inside `$(...)` or `bash -c` that is not one of the above.
 Commands nested in `bash -c`, a script or a substitution are never a keep run or a job line source.
 
+### Piped here-documents and moved clones (T072, B21, B23)
+* `cat <<'EOF' | tee f` (and `tee -a f`) records the body as the text of `f`, as `cat <<'EOF' > f` does, so a later run
+  of `f` is audited as written. Only a plain `cat` of one known here-document that feeds `tee` directly counts; any
+  other feeder (`echo x | tee`, `sed`, a longer pipeline) leaves `f` unknown (`cmd-obfuscated-exec` when run).
+* A relative script run while the directory is unknown (after `cd "$X"`) is `path-unresolved`, not resolved against
+  the old directory.
+* A clone proven local (below) stays proven when its directory (or a directory holding it) is moved with `mv`, or
+  copied with `cp -r`, from one declared scratch directory to another, and when reached through a symlink the
+  transcript itself made inside a scratch directory. A copy inherits the taint of its source. A move or copy out of
+  the scratch directories, a link made elsewhere, `cp` without `-r`, and a write to `.git` (also through the link or
+  after the move) lose the proof, as before.
+
 ### Git against a local remote (T027, B23)
 `git clone <local path> <dest>` in the transcript, with `dest` in a declared `--allow-write` directory (never the task
 worktree) and no finding of its own, proves that `dest`'s `origin` is that local path. In such a clone (the command's
@@ -590,8 +602,12 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   while the older five are skipped when not staged); T011 and T024 have review caps of 38 and 49, their measured
   counts (unresolved `$var` paths in long scripts). T027 (B23) added T013 (0 blocks, 0 reviews; skipped when not staged;
 before the fix: 3 blocks, 0 reviews).
-* A `cd` to a target that cannot be resolved keeps the previous directory; `cat <<EOF | tee f` records `f` as
-  unknown text (running it blocks).
+* ~~A `cd` to a target that cannot be resolved keeps the previous directory; `cat <<EOF | tee f` records `f` as
+  unknown text (running it blocks).~~ **Done (T072, B21):** the unresolvable `cd` already made the directory unknown
+  (T052); T072 closes the remaining silent case: a relative script run in an unknown directory (`./run.sh`,
+  `sh run.sh`) is `path-unresolved`. Plain names (`cat x.log`, `ls build`) stay unreviewed there, as T052 decided
+  (fixture `fp_unknown_cwd_plain_names_and_absolute_cd_restores`). `cat <<EOF | tee [-a] f` remembers the body as the
+  text of `f`.
 * T049 (R008 #3) changed two real verdicts, both `sed '...' own_script > copy` and then running the copy: A017
   (three blocks, lines 420 and 522) and T028 (line 433) are now `cmd-obfuscated-exec` instead of a review; the
   orchestrator ruled them true positives (T049), and they are in `trajectory_real.sh`'s ground truth. T008, T013, T033, T042 and T043 gained one
