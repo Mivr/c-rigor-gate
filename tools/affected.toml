@@ -73,6 +73,9 @@ selftests = ["structure", "grade", "canaries"]
 glob = "gate/rigor_lib/mutants*"
 selftests = ["mutate", "grade", "canaries"]
 [[rule]]
+glob = "gate/rigor_lib/perf_*"
+selftests = ["perf", "mutate", "grade", "canaries"]
+[[rule]]
 glob = "gate/rigor_lib/results_parse.py"
 selftests = ["ctest", "mutate", "product_checks", "third_party", "fuzz", "grade", "canaries"]
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
