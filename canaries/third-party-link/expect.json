@@ -1,0 +1,7 @@
+{
+  "control": true,
+  "description": "Regression canary (T070): tpm (L2) is under-tested on purpose and its test links tpw, which depends on gate//third_party/mbedtls. The mutants of tpm and tpw must build and link against that library: real verdicts (info `survivor`), never `mutants-build-failed`, so the grade PASSes.",
+  "contains": {
+    "mutants": "core/tpm.c:5"
+  }
+}

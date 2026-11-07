@@ -1,0 +1,4 @@
+{
+  "control": true,
+  "description": "the crash-oracle module with real assertions on every result: every gate passes, so crash-kill-ratio does not fire on a well-tested function"
+}

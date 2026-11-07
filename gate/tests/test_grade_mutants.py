@@ -15,14 +15,15 @@ from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase
 
 
-def layout(libs=(), binaries=(), tests=None, deps=None):
+def layout(libs=(), binaries=(), tests=None, deps=None, external=()):
     """A product layout: `tests` maps a test label to its direct deps; `deps` maps a library to its deps."""
     tests = tests or {}
     graph = dict(deps or {})
     graph.update({t: tuple(d) for t, d in tests.items()})
-    for label in libs:
+    for label in tuple(libs) + tuple(external):
         graph.setdefault(label, ())
-    return grade_mutants.Layout(frozenset(libs), frozenset(binaries), frozenset(tests), graph)
+    own = {label: tuple(d for d in deps if d.startswith("//")) for label, deps in graph.items() if label.startswith("//")}
+    return grade_mutants.Layout(frozenset(libs), frozenset(binaries), frozenset(tests), own, frozenset(external), graph)
 
 
 def rules(found):
@@ -93,13 +94,57 @@ class Planning(unittest.TestCase):
     def test_link_deps_are_the_closure_without_the_module_dependents_first(self):
         lay = layout(
             libs=["//m:m", "//b:b", "//c:c", "//d:d", "//z:z"],
-            tests={"//m:t": ["//m:m", "//b:b"]},
+            tests={"//m:t": ["//m:m", "//b:b"]}, external=["gate//ctest:ctest"],
             deps={"//m:m": ("//d:d", "gate//ctest:ctest"), "//b:b": ("//c:c", "//m:m"), "//c:c": (),
                   "//d:d": (), "//z:z": ()})
         plan = grade_mutants.plan(lay, {"//m:m": "L3", "//b:b": "L1", "//c:c": "L1", "//d:d": "L1", "//z:z": "L1"})
         (module,) = plan.modules
-        self.assertEqual(set(module.deps), {"//b:b", "//c:c", "//d:d"})   # z is not linked
+        self.assertEqual(set(module.deps), {"//b:b", "//c:c", "//d:d", "gate//ctest:ctest"})   # z is not linked
         self.assertLess(module.deps.index("//b:b"), module.deps.index("//c:c"))   # b needs c
+
+    TLS = "gate//third_party/mbedtls:mbedtls"
+    HDR = "gate//third_party/mbedtls:mbedtls_headers"
+
+    def tls_layout(self, **more):
+        """`//a:a` is mutated; its test also links `//t:tls`, which depends on a third-party library (T070)."""
+        deps = {"//t:tls": (self.TLS,), self.TLS: (), self.HDR: ()}
+        deps.update(more.pop("deps", {}))
+        return layout(libs=["//a:a", "//t:tls"], tests={"//a:t": ["//a:a", "//t:tls"]},
+                      external=[self.TLS, self.HDR], deps=deps, **more)
+
+    def test_a_third_party_library_of_another_cell_is_linked_after_the_library_that_needs_it(self):
+        plan = grade_mutants.plan(self.tls_layout(), {"//a:a": "L3", "//t:tls": "L1"})
+        self.assertEqual(plan.findings, [])
+        (module,) = plan.modules
+        self.assertEqual(module.deps, ("//t:tls", self.TLS))   # dependents first: the archive after its user
+
+    def test_a_third_party_library_reached_through_the_module_or_exported_deps_is_linked(self):
+        lay = self.tls_layout(deps={"//a:a": (self.HDR,), self.HDR: (self.TLS,), self.TLS: ()})
+        (module,) = grade_mutants.plan(lay, {"//a:a": "L3", "//t:tls": "L1"}).modules
+        self.assertEqual(set(module.deps), {"//t:tls", self.HDR, self.TLS})
+        self.assertEqual(module.deps[-1], self.TLS)   # the archive everything needs comes last
+
+    def test_only_what_the_tests_link_is_linked(self):
+        lay = self.tls_layout(deps={"//a:a": ()})
+        links = dict(lay.links, **{"//a:t": ("//a:a",)})
+        lay = grade_mutants.Layout(lay.libs, lay.binaries, frozenset({"//a:t"}), lay.deps, lay.external, links)
+        (module,) = grade_mutants.plan(lay, {"//a:a": "L3", "//t:tls": "L1"}).modules
+        self.assertEqual(module.deps, ())   # neither //t:tls nor mbedtls: this test does not link them
+
+    def test_a_dep_that_is_no_library_of_the_layout_is_a_finding_and_nothing_is_dropped(self):
+        for odd in ("gate//other:thing", "//x:unknown", "prelude//a:b"):
+            lay = layout(libs=["//a:a"], tests={"//a:t": ["//a:a", odd]})
+            plan = grade_mutants.plan(lay, {"//a:a": "L3"})
+            self.assertEqual(plan.findings, [{"rule": "unresolved-link-dep", "severity": "error",
+                                              "module": "//a:a", "dep": odd}], odd)
+            self.assertEqual(plan.modules, [], odd)
+
+    def test_an_unresolved_dep_deeper_in_the_closure_is_found_too(self):
+        lay = layout(libs=["//a:a", "//b:b"], tests={"//a:t": ["//a:a", "//b:b"]},
+                     deps={"//b:b": ("gate//third_party/gone:gone",)})
+        plan = grade_mutants.plan(lay, {"//a:a": "L3", "//b:b": "L1"})
+        self.assertEqual([(f["rule"], f["dep"]) for f in plan.findings],
+                         [("unresolved-link-dep", "gate//third_party/gone:gone")])
 
     def test_the_plan_does_not_depend_on_the_order_of_the_input(self):
         tests = {"//a:t%d" % n: ["//a:a"] for n in range(5)}
@@ -136,21 +181,45 @@ class GeneratedPackage(unittest.TestCase):
 
 
 class QueryParsing(unittest.TestCase):
-    def test_labels_lose_the_root_cell_and_other_cells_are_dropped_from_deps(self):
+    def test_labels_lose_the_root_cell_and_other_cells_keep_theirs(self):
         tests = {"root//core:t_results": {"test": "root//core:t"}}
         attrs = {"root//core:core": {"deps": ["root//x:x", "gate//ctest:ctest", "prelude//a:b"]},
                  "root//core:t": {"deps": ["root//core:core", "gate//ctest:ctest"]},
-                 "root//core:core_mutsrc": {}, "root//app:app": {"deps": ["root//core:core"]}}
+                 "root//core:core_mutsrc": {}, "root//app:app": {"deps": ["root//core:core"]},
+                 "gate//ctest:ctest": {}, "gate//third_party/m:m": {"deps": ["gate//third_party/m:h"],
+                                                                      "exported_deps": ["gate//third_party/m:e"]}}
         lay = grade_mutants.parse_layout(tests, attrs, ["root//app:app"])
         self.assertEqual(lay.libs, frozenset({"//core:core"}))
+        self.assertEqual(lay.external, frozenset({"gate//ctest:ctest", "gate//third_party/m:m"}))
         self.assertEqual(lay.binaries, frozenset({"//app:app"}))
         self.assertEqual(lay.tests, frozenset({"//core:t"}))
-        self.assertEqual(lay.deps["//core:core"], ("//x:x",))
+        self.assertEqual(lay.deps["//core:core"], ("//x:x",))   # what the witness scope reads: this cell only
         self.assertEqual(lay.deps["//core:t"], ("//core:core",))
+        self.assertEqual(lay.links["//core:core"], ("//x:x", "gate//ctest:ctest", "prelude//a:b"))
+        self.assertEqual(lay.links["//core:t"], ("//core:core", "gate//ctest:ctest"))
+        self.assertEqual(lay.links["gate//third_party/m:m"], ("gate//third_party/m:h", "gate//third_party/m:e"))
+
+    def test_libraries_of_other_cells_are_queried_until_the_closure_is_complete(self):
+        known = {"gate//t:a": {"deps": ["gate//t:b"]}, "gate//t:b": {"exported_deps": ["gate//t:c", "root//x:x"]},
+                 "gate//t:c": {}}
+        asked = []
+
+        def query(labels):
+            asked.append(labels)
+            return {label: known[label] for label in labels if label in known}   # a non-library is not returned
+        attrs = {"root//x:x": {"deps": ["gate//t:a", "gate//t:notlib"]}, "root//x:t": {"deps": ["root//x:x"]}}
+        out = grade_mutants.add_external(attrs, query)
+        self.assertEqual(sorted(out), ["gate//t:a", "gate//t:b", "gate//t:c", "root//x:t", "root//x:x"])
+        self.assertEqual(asked, [["gate//t:a", "gate//t:notlib"], ["gate//t:b"], ["gate//t:c"]])
+
+    def test_a_query_that_returns_something_odd_is_an_internal_error(self):
+        with self.assertRaises(InternalError):
+            grade_mutants.add_external({"root//x:x": {"deps": ["gate//t:a"]}}, lambda labels: [])
 
     def test_odd_query_output_is_an_internal_error(self):
         for tests, attrs in (([], {}), ({"root//a:t_results": {}}, {}), ({"root//a:t_results": {"test": 3}}, {}),
-                             ({}, {"root//a:a": {"deps": "x"}, "root//a:a_mutsrc": {}}), ({}, {"bad label": {}})):
+                             ({}, {"root//a:a": {"deps": "x"}, "root//a:a_mutsrc": {}}), ({}, {"bad label": {}}),
+                             ({}, {"gate//a:a": {"exported_deps": "x"}}), ({}, {"gate//a:a": {"deps": [3]}})):
             with self.assertRaises(InternalError):
                 grade_mutants.parse_layout(tests, attrs, [])
 

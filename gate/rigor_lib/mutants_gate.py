@@ -16,7 +16,9 @@ unviable-ratio (more than a quarter of the generated mutants did not compile: L3
 macro-hidden-code (L3: a function body uses a macro defined by the product, whose expansion no mutant
 can reach; info in L2),
 crash-only-function / no-assert-kill-function (L3 function whose mutants no check failure ever
-killed), baseline-red, harness-mismatch, missing-run, bad-results, module-not-in-policy,
+killed), crash-kill-ratio (L3 and up, info in L2: a function with at least MIN_KILLS killed mutants more
+than CRASH_RATIO_NUM/CRASH_RATIO_DEN of which were killed by a crash and not by a failed check: the tests
+mostly check "does not crash"), baseline-red, harness-mismatch, missing-run, bad-results, module-not-in-policy,
 policy-module-without-report, no-reports. Survivors of L2 modules are info findings.
 """
 
@@ -33,6 +35,14 @@ LEVELS = ("L2", "L3", "L4", "L5")
 STRICT_LEVELS = ("L3", "L4", "L5")
 # B11: a module whose mutants mostly fail to compile has been shaped to escape mutation testing.
 MAX_UNVIABLE_PERCENT = 25
+# T078 / B31 (R003 G6): `crash-kill-ratio`. Calibrated on the 13 annas-c module reports (562 functions with a
+# kill, 7668 kills, 205 of them crashes): 503 functions are below 0.1, the honest maximum with 4+ kills is 0.42
+# (a heap allocator), and the next ones are 0.57 and up. A function is flagged when it has at least MIN_KILLS
+# kills and more than CRASH_RATIO_NUM/CRASH_RATIO_DEN of them are `killed-crash` (a majority of crashes).
+# Integer arithmetic. A function with no check kill at all (ratio 1) is `crash-only-function`, not this rule.
+MIN_KILLS = 4
+CRASH_RATIO_NUM = 1
+CRASH_RATIO_DEN = 2
 
 
 def load_policy(path):
@@ -126,6 +136,27 @@ def function_findings(report, verdicts):
     return found
 
 
+def crash_ratio_findings(report, level, verdicts):
+    """B31: a function whose kills are mostly crashes, not failed checks. Counts follow `function_findings`
+    (a duplicate counts with the verdict of its original). Only functions with a check kill are judged here."""
+    by_id = {v.mutant.id: v.verdict for v in verdicts}
+    counts = {}
+    for verdict in verdicts:
+        kind = by_id[verdict.of] if verdict.of else verdict.verdict
+        if kind in ("killed-assert", "killed-crash"):
+            pair = counts.setdefault((verdict.mutant.file, verdict.mutant.function), [0, 0])
+            pair[kind == "killed-crash"] += 1
+    found = []
+    for (file, function), (asserts, crashes) in sorted(counts.items()):
+        kills = asserts + crashes
+        if asserts and kills >= MIN_KILLS and crashes * CRASH_RATIO_DEN > kills * CRASH_RATIO_NUM:
+            found.append(finding("crash-kill-ratio", module=report.label, file=file, function=function,
+                                 asserts=asserts, crashes=crashes, ratio="%.3f" % (crashes / kills),
+                                 threshold="%d/%d" % (CRASH_RATIO_NUM, CRASH_RATIO_DEN), min_kills=MIN_KILLS,
+                                 severity="error" if level in STRICT_LEVELS else SEVERITY_INFO))
+    return found
+
+
 def survivor_findings(report, level, verdicts, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
     found = []
     for verdict in verdicts:
@@ -168,6 +199,7 @@ def module_findings(report, level, approval_set, used, approval_kind=approvals.K
     found.extend(survivor_findings(report, level, verdicts, approval_set, used, approval_kind))
     if level in STRICT_LEVELS:
         found.extend(function_findings(report, verdicts))
+    found.extend(crash_ratio_findings(report, level, verdicts))
     return found, module_summary(report, verdicts)
 
 
