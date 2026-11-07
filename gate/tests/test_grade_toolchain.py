@@ -16,15 +16,19 @@ from tests.helpers import GATE_DIR, TempDirTestCase
 COMPILING = ["semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "mutants",
              "witness-tests", "mutants-witness"]
 
-# What buck2 prints when the verify action of the llvm tree fails (shape of a real run, T073 demonstration).
+# What buck2 (exit 3) printed when the verify action of the llvm tree failed in the T073 demonstration
+# (one sha256 of a scratch copy of llvm.manifest flipped), shortened.
 VERIFY_STDERR = (
-    "Action failed: toolchains//:llvm_verified (verify_tree llvm_verified)\n"
-    "Remote command returned non-zero exit code 1\n"
-    "Stdout: <empty>\n"
-    "Stderr:\n"
+    "[2026-11-07T02:49:07.848+00:00] Action failed: toolchains//:llvm_verified "
+    "(toolchains//:linux_release#e2375fbe4e23c7fb) (verify_tree llvm_verified)\n"
+    "[2026-11-07T02:49:07.848+00:00] Remote command returned non-zero exit code 1\n"
+    "[2026-11-07T02:49:07.848+00:00] Remote action digest: 'd771:142'\n"
+    "[2026-11-07T02:49:07.848+00:00] Stdout: <empty>\n"
+    "[2026-11-07T02:49:07.848+00:00] Stderr:\n"
     "TOOLCHAIN TREE DIFFERS FROM MANIFEST (1 differences)\n"
-    "changed: bin/clang-19 (manifest ('f', 'x', 1, 'aa'), tree ('f', 'x', 1, 'bb'))\n"
-    "Build ID: 0000\n")
+    "changed: bin/clang-19 (manifest ('f', 'x', 223765784, 'c57c'), tree ('f', 'x', 223765784, 'c57b'))\n"
+    "\n"
+    "BUILD FAILED\n")
 
 
 class ToolchainPipeline(TempDirTestCase):
@@ -114,7 +118,7 @@ class ToolchainPipeline(TempDirTestCase):
         self.assertEqual(self.calls, [])
 
     def test_mismatch_fails_the_gate_and_no_compiling_gate_runs(self):
-        self.verify = (1, VERIFY_STDERR)
+        self.verify = (3, VERIFY_STDERR)
         statuses, overall, out = self.grade(uncached=True, real_steps=True)
         self.assertEqual((statuses["toolchain"], overall), ("FAIL", "FAIL"))
         self.assertEqual({g for g in COMPILING if statuses[g] == "NOT_RUN"}, set(COMPILING))
@@ -122,7 +126,7 @@ class ToolchainPipeline(TempDirTestCase):
         [item] = self.toolchain_findings()
         self.assertEqual(item, {"rule": "toolchain-mismatch", "severity": "error",
                                 "manifest": "toolchains/llvm.manifest", "first_difference": "bin/clang-19",
-                                "step": "verify", "exit_code": 1, "verifier_exit_code": 1})
+                                "step": "verify", "exit_code": 3, "verifier_exit_code": 1})
         metadata = json.loads((self.results / "toolchain.json").read_text())["metadata"]
         self.assertIn("TOOLCHAIN TREE DIFFERS FROM MANIFEST", metadata["stderr_tail"])
         for gate_id in COMPILING:
