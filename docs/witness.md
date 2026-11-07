@@ -1,8 +1,9 @@
 # Witness grading
 
-> **Wired for the roles implementer and audit** (T039): `rigor grade --witness DIR` binds the bundle (T037) and the
-> gates `witness-tests` and `mutants-witness` judge it (`docs/grade.md`, "The witness gates"). The role
-> `test-author` is exit 2 until `tests-stub` exists (T041). The design is `plan/P002-witness-grading.md`.
+> **Wired for every role** (T039, T041): `rigor grade --witness DIR` binds the bundle (T037), the gates `witness-tests`
+> and `mutants-witness` judge it (`docs/grade.md`, "The witness gates"), and in role `test-author` the gate
+> `tests-stub` judges the new tests on the stubs (`docs/grade.md`, "The stub check"). The design is
+> `plan/P002-witness-grading.md`.
 
 A **witness** is an implementation of a module that the gate holds and the implementer never sees. The
 test-author grade judges the tests against it: every new test fails on the stubs, every expected test
@@ -88,6 +89,15 @@ The bundle is bound like `policy.toml` (T021's rules: copy once, hash the copy),
 Any other value, or a value that is not a string, is exit 2. A contract without the key fails closed: a
 stubbed head graded as implementer fails `test-not-pass`.
 
+What role `test-author` changes in `rigor grade` (T041):
+- `expected-tests.previous.json` is required next to `product.toml` (exit 2 in the `contract` step otherwise);
+- `tests-release` and `tests-san` judge presence, duplicates and parse problems of every expected id, not
+  pass/fail or assertions;
+- `tests-stub` requires every new id to fail on the stubs in both modes;
+- head `mutants` is PASS with info `not-applicable`;
+- the witness gates are required: W = {} is `no-new-tests` (in `witness-tests`), and a module of W without a
+  bundle entry is `witness-missing` as an error at every level, so the grade can never pass unjudged.
+
 ## impl paths, test surface and W
 
 `gate/rigor_lib/witness_scope.py`:
@@ -106,8 +116,9 @@ stubbed head graded as implementer fails `test-not-pass`.
   - `test-author`: those, plus every L2+ module whose impl paths changed (the stubbed ones);
   - `audit`: every L2+ module that has tests.
 
-  W may be empty in every role (the witness gates are then not applicable). In role test-author an empty W must never pass; T041 turns it into
-  `no-new-tests` or `witness-missing`.
+  W may be empty in the roles implementer and audit (the witness gates are then not applicable). In role
+  test-author an empty W is the error `no-new-tests`, and a module of W without a bundle entry is the error
+  `witness-missing` at every level (T041).
 
 Example, `canaries/_base/product`: `util/util_core_test.c` is `//util:core_test`, which lists `//core:core`
 directly, so a change to it alone gives W = {`//core:core`, `//util:util`}.
@@ -128,6 +139,17 @@ are those of the head, release and san (`parse_directory` per mode).
 Any `status: fail` counts as failing on the stub. Its kind is read from the ctest `reason` and counted in
 metadata `fail_kinds` per mode: `check` (`N of M checks failed`), `crash` (a signal, an exit status, a
 sanitizer report, no or an invalid report), `timeout`, `no-checks`, and `other` (any other reason).
+
+**Wiring (T041).** The gate `tests-stub` (`grade_steps.tests_stub_gate`) runs right after `tests-san`. In role
+test-author it is NOT_RUN unless both modes built clean; in the other roles it is PASS with info
+`not-applicable`. There is no approval kind for a test that passes on the stubs.
+
+| canary | what | fails |
+|---|---|---|
+| `stub-passes-test` | role test-author; new `core_pos`, whose shipped stub is its correct body (the witness's, byte for byte); a strong new test | `tests-stub`: test-passes-on-stub |
+| `stub-green` (control) | role test-author; a sentinel stub (`-12345`), a strong new test, a correct witness | none: PASS |
+
+Both carry `expected-tests.previous.json` (the base list) and their own one-module bundle in `witness/`.
 
 ## `gate/tools/witness.py`
 
@@ -151,7 +173,9 @@ Exit 0 when done, 2 on any defect.
 ## Procedure (P002, Q1)
 
 **Test author.**
-1. Write the tests, the header, the BUCK file and failing stubs, and commit them (`role = "test-author"`).
+1. Write the tests, the header, the BUCK file and failing stubs, and commit them (`role = "test-author"`). Stub
+   every function the new tests exercise, with a sentinel (`-12345`) rather than a plausible value; a stub that
+   never returns works, but costs 10 s per mode (info `stub-timeout`).
 2. Write the witness as a bundle in your own `/var/tmp/cache/A<NNN>/witness/`. Never commit it.
 3. Acceptance is a cached `rigor grade --witness /var/tmp/cache/A<NNN>/witness` against a scratch copy of
    `products/<p>` with the new ids added by `expected.py add` and the old list as

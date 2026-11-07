@@ -10,6 +10,7 @@ Everything that decides what is mutated and against which tests is gate-owned:
     file (the product may not carry one, `buckfiles` flags it) makes the product's targets visible to it.
 The reports are built in release mode (cached like any build; `--uncached` applies) and judged by
 `mutants_gate` (`rigor mutants`) in process. NOT_RUN unless the tree built and every test passed.
+In role test-author it is PASS with info `not-applicable`: the head is the stub commit (P002 Q2).
 """
 
 import os
@@ -17,10 +18,10 @@ import re
 from argparse import Namespace
 from dataclasses import dataclass
 
-from rigor_lib import approval_args, approvals, grade_build, grade_context, grade_policy, jsonio
+from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, jsonio
 from rigor_lib import mutants_gate as rigor_mutants
 from rigor_lib.errors import InternalError
-from rigor_lib.findings import GateResult, finding
+from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 from rigor_lib.grade_tree import write_file
 
 PACKAGE_DIR = "gate-mutants"
@@ -257,6 +258,12 @@ def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT
 def mutants_gate(g):
     if any(g.status.get(gate) != "PASS" for gate in REQUIRED):
         return None  # no clean build and green tests: nothing to judge
+    role = contract.load_contract(g.args.task).role
+    if role == contract.ROLE_TEST_AUTHOR:
+        # The head is the stub commit: its mutants could only be `baseline-red`. The witness is mutated
+        # instead (`mutants-witness`), and modules outside W kept their code and tests (P002 Q2).
+        return GateResult(rigor_mutants.GATE_ID, [finding("not-applicable", SEVERITY_INFO, role=role)],
+                          {"role": role, "modules": {}})
     run = grade_build.TreeRun(g.tree, g.work, mutants_reports=os.path.join(g.work, "mutants-reports"))
     try:
         return _run(g, run)

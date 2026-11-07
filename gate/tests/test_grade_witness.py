@@ -120,11 +120,42 @@ class WitnessTests(Setup):
             for value in ("FAIL", None):
                 self.assertIsNone(grade_witness.witness_tests_gate(self.grading(status={gate: value})))
 
-    def test_the_test_author_role_is_exit_2_until_t041(self):
-        with self.assertRaises(InternalError):
-            self.run_gate(self.grading(role="test-author"))
-        with self.assertRaises(InternalError):
-            grade_steps.check_witness_inputs(self.grading(role="test-author"))
+    def test_role_test_author_needs_the_previous_expected_list_before_any_build(self):
+        g = self.grading(role="test-author")
+        with self.assertRaisesRegex(InternalError, "expected-tests.previous.json"):
+            grade_steps.check_witness_inputs(g)
+        (self.tmp / "p" / "expected-tests.previous.json").write_text('{"ids": []}', encoding="utf-8")
+        grade_steps.check_witness_inputs(g)   # the T039 refusal of the role is gone
+        for role in ("implementer", "audit"):
+            grade_steps.check_witness_inputs(self.grading(role=role))   # no previous list needed
+
+    def test_role_test_author_judges_the_stubbed_module_against_its_witness(self):
+        g = self.grading(witness=bundle({"core/core.c": b"x"}), role="test-author")
+        with mock.patch.object(grade_witness, "_build_and_judge", return_value="built") as build:
+            result, _ = self.run_gate(g, changed=("core/core.c",))   # a stub: impl only
+        self.assertEqual(result, "built")
+        self.assertEqual(build.call_args.args[2], ["//core:core"])
+        self.assertEqual(g.witness_state.judged, ["//core:core"])
+
+    def test_role_test_author_with_nothing_in_scope_is_no_new_tests(self):
+        g = self.grading(witness=bundle({"core/core.c": b"x"}), role="test-author")
+        with mock.patch.object(grade_steps, "assemble_tree") as tree:
+            result, _ = self.run_gate(g, changed=("README",))
+        tree.assert_not_called()
+        self.assertEqual(result.status, "FAIL")
+        self.assertEqual([(f["rule"], f["severity"]) for f in result.findings if f["severity"] == "error"],
+                         [("no-new-tests", "error")])
+        self.assertEqual(result.metadata["scope"], [])
+
+    def test_role_test_author_without_a_bundle_entry_is_witness_missing_even_at_l2(self):
+        for witness in (None, bundle({"core/core.c": b"x"})):
+            g = self.grading(witness=witness, role="test-author")
+            with mock.patch.object(grade_steps, "assemble_tree") as tree:
+                result, _ = self.run_gate(g, changed=("util/util.c",))   # the L2 module was stubbed
+            tree.assert_not_called()
+            self.assertEqual(result.status, "FAIL")
+            self.assertEqual([(f["rule"], f["severity"], f["module"]) for f in result.findings
+                              if f["rule"] == "witness-missing"], [("witness-missing", "error", "//util:util")])
 
     def test_nothing_in_scope_is_a_pass_that_builds_nothing(self):
         g = self.grading()

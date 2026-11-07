@@ -23,6 +23,7 @@ GATES = (
     ("mode-divergence", grade_structure.modes_gate),
     ("tests-release", grade_steps.tests_gate_for("release")),
     ("tests-san", grade_steps.tests_gate_for("san")),
+    ("tests-stub", grade_steps.tests_stub_gate),
     ("mutants", grade_mutants.mutants_gate),
     ("witness-tests", grade_witness.witness_tests_gate),
     ("mutants-witness", grade_witness.mutants_witness_gate),
