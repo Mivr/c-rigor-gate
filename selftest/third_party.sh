@@ -59,7 +59,7 @@ def collect(log, dest):
             shutil.copy(m.group(2), os.path.join(dest, m.group(1) + ".json"))
 
 def policy(dest, specs):
-    """policy DEST SPEC...  SPEC = [pkg/]name[;third=1][;peer=1][;libc=1]: the global block of hello.toml plus modules"""
+    """policy DEST SPEC...  SPEC = [pkg/]name[;third=1][;peer=1][;libc=1][;mutdata=1]: the global block of hello.toml plus modules"""
     head = open("policy/hello.toml").read().split("[module.")[0]
     text = head
     for spec in specs:
@@ -70,6 +70,8 @@ def policy(dest, specs):
                  (["gate//third_party/tls_peer:tls_peer"] if "peer=1" in opts else [])
         if labels:
             text += "third_party = [%s]\n" % ", ".join('"%s"' % l for l in labels)
+        if "mutdata=1" in opts:
+            text += "allow_mutable_data = true   # the TLS client fixture keeps its session in static buffers (g_entropy, g_ca, g_in_*, g_out_len)\n"
         if "libc=1" in opts:
             text += 'allow = ["memcpy", "memmove", "memset", "strlen", "memcmp"]\n'
         text += "\n"
@@ -391,7 +393,7 @@ gate_case ok $SEM 0 "$out/p_ok.toml" tp_ok mbedtls --
 # T012: the TLS test peer. Green first: a product client and its c_test pass both fact gates.
 PEERLIB="//third_party/tls_peer:tls_peer"
 begin "green: the throwaway client module and its c_test (which names the peer) pass both fact gates"
-tool policy "$out/p_tls.toml" "tls_client;third=1;libc=1" "tls_client_test;third=1;peer=1;libc=1"
+tool policy "$out/p_tls.toml" "tls_client;third=1;libc=1;mutdata=1" "tls_client_test;third=1;peer=1;libc=1"
 for g in $SYM $SEM; do
   gate_case tls $g 0 "$out/p_tls.toml" tls_client tls_client_test mbedtls tls_peer --
 done
