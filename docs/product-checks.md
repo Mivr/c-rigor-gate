@@ -289,4 +289,9 @@ step "the GNU line-marker form ... does not compile"), so a product cannot forge
 * `__has_builtin`, `push_macro`/`pop_macro` and `#pragma clang poison` leave no trace in `-E -dD` text
   (see "Builtins"); none of them can call a builtin.
 
+## 4. Gate `layering` (T087)
+The module boundaries of a monorepo product are a gate-owned contract, `products/<p>/architecture.toml`, judged on the same facts
+as `symbols` (direct `deps`, undefined symbols, exports). Findings: `ungoverned-module`, `undeclared-edge`, `upward-edge`,
+`edge-kind-violation`, `contract-stale`. Format, edge kinds and limits: [layering.md](layering.md).
+
 Self-test: `selftest/product_checks.sh`.

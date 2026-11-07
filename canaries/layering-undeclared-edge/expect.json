@@ -1,0 +1,9 @@
+{
+  "bypass": "module dependency the architecture contract does not allow",
+  "description": "//util:util depends on //core:core in its BUCK file; architecture.toml lists both modules in layers but declares no edge between them (T087).",
+  "fail": {
+    "layering": [
+      "undeclared-edge"
+    ]
+  }
+}
