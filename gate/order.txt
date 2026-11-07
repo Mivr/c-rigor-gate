@@ -12,6 +12,7 @@ mode-divergence
 tests-release
 tests-san
 tests-stub
+perf
 mutants
 witness-tests
 mutants-witness

@@ -1,0 +1,9 @@
+{
+  "bypass": "an implementation whose cost grows faster than the complexity class the policy declares for it",
+  "description": "The policy declares core_add's perf target add_pairs as O(n); the gate-held driver calls core_add once per pair of input bytes, so quadrupling n multiplies the instruction count by about 16, far above the 4.4 an O(n) class allows. Only the perf gate sees it: every test passes and the mutants die.",
+  "fail": {
+    "perf": [
+      "perf-class-exceeded"
+    ]
+  }
+}

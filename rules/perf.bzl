@@ -8,6 +8,18 @@ records, not action failures); it fails only when the harness could not run at a
 # The libc functions whose `len` is summed. Must match the __wrap_ definitions in ctest/perf.c.
 PERF_WRAPS = ["memcpy", "memmove", "memset", "memcmp", "strlen", "strnlen"]
 
+# What a mutation run (rules/mutate.bzl, `perf = [...]`) needs to rebuild this perf binary with a mutated module:
+# the objects of the driver sources, the harness arguments (name, seed, sizes). T090.
+PerfInfo = provider(fields = ["name", "seed", "sizes", "objects"])
+
+def _driver_objects(binary: Dependency) -> list[Artifact]:
+    """Plain (non-PIC) objects of the perf binary's own sources (the gate-held generator and driver)."""
+    subs = binary[DefaultInfo].sub_targets
+    if "objects" not in subs:
+        fail("{}: no [objects] sub-target".format(binary.label))
+    every = subs["objects"][DefaultInfo].sub_targets
+    return [every[name][DefaultInfo].default_outputs[0] for name in sorted(every.keys()) if not name.endswith(".pic.o")]
+
 def _perf_results_impl(ctx: AnalysisContext) -> list[Provider]:
     binary = ctx.attrs.binary[DefaultInfo].default_outputs[0]
     out = ctx.actions.declare_output("perf.jsonl")
@@ -35,7 +47,13 @@ def _perf_results_impl(ctx: AnalysisContext) -> list[Provider]:
         ]),
         category = "perf_run",
     )
-    return [DefaultInfo(default_output = out)]
+    info = PerfInfo(
+        name = ctx.attrs.perf_name,
+        seed = ctx.attrs.seed,
+        sizes = ctx.attrs.sizes,
+        objects = _driver_objects(ctx.attrs.binary),
+    )
+    return [DefaultInfo(default_output = out), info]
 
 perf_results = rule(
     impl = _perf_results_impl,

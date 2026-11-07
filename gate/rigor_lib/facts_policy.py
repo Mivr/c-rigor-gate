@@ -11,12 +11,14 @@
     level = "L3"                    # L1 is exempt from the exports check; see `exports`
     exports = ["core_add"]          # every external symbol the module may define (T033, gate `symbols`)
     impl = ["core/core.c"]          # the witness gates' implementation paths (T039); validated there, ignored here
+    [module."//core:core".perf."//core:core_perf"]   # the perf gate's classes (T090); validated by perf_policy
+    class = "O(n)"
 """
 
 import tomllib
 from dataclasses import dataclass
 
-from rigor_lib import jsonio, semantic_table
+from rigor_lib import jsonio, perf_policy, semantic_table
 from rigor_lib.errors import InternalError
 from rigor_lib.facts_data import LABEL, SYMBOL
 
@@ -56,7 +58,8 @@ def _only(where, table, allowed):
 
 def _module(label, table, deny):
     where = "module %s" % label
-    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl"))
+    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl", "perf"))
+    perf_policy.parse_module(label, table)
     level = table.get("level")
     if level is not None and level not in LEVELS:
         raise InternalError("policy: %s level must be one of %s" % (label, ", ".join(LEVELS)))

@@ -9,7 +9,7 @@ after the `toolchain` gate passed (grade_toolchain), otherwise it is NOT_RUN.
 """
 
 from rigor_lib import grade_build, grade_checks, grade_mutants, grade_steps, grade_structure
-from rigor_lib import grade_toolchain, grade_witness
+from rigor_lib import grade_toolchain, grade_witness, perf_gate
 
 
 def _compiling(gate_id, step):
@@ -32,6 +32,8 @@ GATES = (
     ("tests-release", grade_steps.tests_gate_for("release")),
     ("tests-san", grade_steps.tests_gate_for("san")),
     ("tests-stub", grade_steps.tests_stub_gate),
+    # `perf` builds, but only after `build` and both test gates passed (perf_gate.REQUIRED), which already need the toolchain.
+    ("perf", perf_gate.perf_gate),
     _compiling("mutants", grade_mutants.mutants_gate),
     _compiling("witness-tests", grade_witness.witness_tests_gate),
     _compiling("mutants-witness", grade_witness.mutants_witness_gate),
