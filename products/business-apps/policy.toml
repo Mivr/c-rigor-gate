@@ -17,12 +17,35 @@ deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace",
 # The ctest runtime forks, kills and exits by design; it is the gate's own code.
 trusted = ["gate//ctest:ctest"]
 
+[module."//lib/base/bits:bits"]
+level = "L3"
+impl = ["lib/base/bits/src/**"]
+allow = ["memset"]
+exports = ["bits_clear", "bits_count", "bits_init", "bits_next_clear", "bits_next_set",
+    "bits_reset", "bits_set", "bits_test"]
+
+[module."//lib/base/bits:bits_basic_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/base/bits:bits_model_test"]
+allow = ["fprintf", "memset", "stderr"]
+exports = ["main"]
+
+[module."//lib/base/bits:bits_scan_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/base/core:arena_test"]
 allow = []
 exports = ["main"]
 
 [module."//lib/base/core:buf_test"]
 allow = ["strlen"]
+exports = ["main"]
+
+[module."//lib/base/core:buf_truncate_test"]
+allow = ["memcpy", "strlen"]
 exports = ["main"]
 
 [module."//lib/base/core:core"]
@@ -44,7 +67,121 @@ exports = ["main"]
 allow = []
 exports = ["main"]
 
-[module."//lib/base/core:buf_truncate_test"]
-allow = ["memcpy", "strlen"]
+[module."//lib/ds/fmap:fmap"]
+level = "L3"
+impl = ["lib/ds/fmap/src/**"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["fmap_capacity", "fmap_clear", "fmap_del", "fmap_get", "fmap_has", "fmap_init",
+    "fmap_len", "fmap_max_probe", "fmap_put", "fmap_set"]
+
+[module."//lib/ds/fmap:fmap_api_test"]
+allow = ["bcmp", "memset"]
 exports = ["main"]
 
+[module."//lib/ds/fmap:fmap_model_test"]
+allow = ["bcmp", "fputs", "memset", "snprintf", "stderr"]
+exports = ["main"]
+
+[module."//lib/ds/fmap:fmap_probe_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/ds/pool:pool"]
+level = "L3"
+impl = ["lib/ds/pool/src/**"]
+allow = ["memset"]
+exports = ["pool_alloc", "pool_cap", "pool_free", "pool_get", "pool_init", "pool_used"]
+
+[module."//lib/ds/pool:pool_api_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/ds/pool:pool_gen_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ds/pool:pool_model_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/ds/ring:ring"]
+level = "L3"
+impl = ["lib/ds/ring/src/**"]
+allow = ["memcpy"]
+exports = ["ring_at", "ring_cap", "ring_clear", "ring_init", "ring_init_at", "ring_len", "ring_pop",
+    "ring_push", "ring_push_evict"]
+
+[module."//lib/ds/ring:ring_api_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/ds/ring:ring_model_test"]
+allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/ds/sidx:sidx"]
+level = "L3"
+impl = ["lib/ds/sidx/src/**"]
+allow = ["bcmp", "memcmp", "memcpy"]
+exports = ["sidx_append", "sidx_dup_key", "sidx_find", "sidx_init", "sidx_key_at", "sidx_len",
+    "sidx_reset", "sidx_seal", "sidx_val_at"]
+
+[module."//lib/ds/sidx:sidx_dup_test"]
+allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/ds/sidx:sidx_find_test"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/ds/sidx:sidx_init_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/ds/sidx:sidx_sort_test"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/fmt/lines:fields_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/fmt/lines:iter_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/lines:lines"]
+level = "L3"
+impl = ["lib/fmt/lines/src/**"]
+allow = []
+exports = ["field_hex", "field_u64", "fields_split", "lines_init", "lines_next"]
+
+[module."//lib/fmt/lines:policy_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/fmt/lines:scalar_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/rt/dtab:dtab"]
+level = "L3"
+impl = ["lib/rt/dtab/src/**"]
+allow = []
+exports = ["dtab_eval", "dtab_validate"]
+
+[module."//lib/rt/dtab:dtab_limit_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/rt/dtab:dtab_random_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/rt/dtab:dtab_red_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/rt/dtab:dtab_valid_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
