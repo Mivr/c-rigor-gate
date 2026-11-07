@@ -326,8 +326,33 @@ class MutantsTest(TempDirTestCase):
                    tree % ("root", "third_party/x/__x__", "mbedtls/ssl.h"),  # under no package of the product
                    tree % ("gate", "third_party/x/__x__", "m/ssl.h"),  # another cell, a package-like name
                    "third_party/mbedtls/include/mbedtls/ssl.h", "external/zlib/zlib.h",
+                   "buck-out/v2/art/gate/third_party/mbedtls/__mbedtls_headers__/65eb23d4c25a5c9c/buck-headers/mbedtls/cipher.h",
+                   "buck-out/v2/art/toolchains/__sysroot__/0123abcd/buck-headers/m/x.h",  # another cell, `m` by name
+                   "/work/tree/buck-out/v2/art/gate/third_party/x/__x__/0123abcd/buck-headers/m/y.h",
                    "/usr/include/x86_64-linux-gnu/bits/stdio.h"]
         self.assertEqual(self.reported_headers(outside + ["m/a.h"]), (1, ["m/a.h"]))
+
+    def test_an_art_header_of_the_product_is_reported_by_its_product_path(self):
+        header = "buck-out/v2/art/root/m/__m__/1cb38945d4577fdd/buck-headers/m/src/internal.h"
+        self.assertEqual(self.reported_headers([header]), (1, ["m/src/internal.h"]))
+
+    def test_the_real_annas_paths_verbatim(self):
+        self.policy.write_text('[module."//m:mod_mutants"]\nlevel = "L3"\n[module."//annas:annas"]\nlevel = "L3"\n',
+                               encoding="utf-8")
+        hidden = [{"name": "mbed", "reason": "header", "file":
+                   "buck-out/v2/art/gate/third_party/mbedtls/__mbedtls_headers__/65eb23d4c25a5c9c/buck-headers/mbedtls/cipher.h"},
+                  {"name": "ctx_key", "reason": "header", "file":
+                   "buck-out/v2/art/root/annas/__annas__/1cb38945d4577fdd/buck-headers/annas/src/internal.h"}]
+        self.put(report([mutant(1)]), "a.json")
+        self.put(report([mutant(1)], label="//annas:annas", skipped=hidden), "b.json")
+        outcome, result = self.grade()
+        self.assertEqual([(f["function"], f["file"]) for f in result["findings"] if f["rule"] == "unmutated-function"],
+                         [("ctx_key", "annas/src/internal.h")])
+
+    def test_an_absolute_path_outside_the_known_roots_is_still_reported(self):
+        odd = ["/home/x/proj/a.h", "/opt/toolchain/include/b.h", "/work/tree/buck-out/v2/art/root/m/__m__/0123abcd/buck-headers/m/c.h"]
+        self.assertEqual(self.reported_headers(odd + ["/usr/include/stdio.h"]),
+                         (1, sorted(odd[:2] + ["m/c.h"])))
 
     def test_a_product_header_is_reported_by_its_package_relative_path(self):
         own = "buck-out/v2/gen/root/0123abcd/m/sub/__sub__/buck-headers/m/sub/b.h"

@@ -100,13 +100,15 @@ HEADERS_DIR = "buck-headers/"
 def product_path(file):
     """The product-relative path of a source the compiler saw through Buck2's header tree
     (`buck-out/.../buck-headers/annas/src/internal.h` is `annas/src/internal.h`)."""
-    if file.startswith("buck-out/") and HEADERS_DIR in file:
+    if (file.startswith("buck-out/") or "/buck-out/" in file) and HEADERS_DIR in file:
         return file.rsplit(HEADERS_DIR, 1)[1]
     return file
 
 
 PRODUCT_CELL = "root"
 OTHER_TREES = ("third_party/", "external/")
+SYSTEM_ROOTS = ("/usr/",)  # the system's headers; the toolchain's own live in `toolchains//` of buck-out
+OUTPUT_KINDS = ("gen", "art")  # buck-out/v2/<kind>/<cell>/...
 
 
 def label_package(label):
@@ -122,18 +124,29 @@ def in_packages(path, packages):
     return any(path == package or path.startswith(package + "/") for package in packages)
 
 
+def buck_out_cell(parts):
+    """The cell of `buck-out/<version>/{gen,art}/<cell>/...`, or None for any other layout."""
+    for index, part in enumerate(parts[:-1]):
+        if part in OUTPUT_KINDS and 0 < index <= 2:
+            return parts[index + 1]
+    return None
+
+
 def outside_product(file, packages):
     """True when a header is certainly not product code: of another cell (`gate//third_party/**`, the
-    toolchain's), of a Buck2 header tree whose product-relative path is under no package of the product
-    (`psa/crypto_struct.h`), under `third_party/` or `external/`, or an absolute path (the system's or
-    the toolchain's; Buck2 hands the compiler relative paths for the product). A path it cannot place
-    stays reported (fail closed)."""
+    toolchain's: `buck-out/v2/{gen,art}/<cell>/...`), of a Buck2 header tree whose product-relative
+    path is under no package of the product (`psa/crypto_struct.h`), under `third_party/` or
+    `external/`, or an absolute path under the system's `/usr/`. An absolute path into `buck-out/`
+    is classified as the relative one. Any other path, absolute ones included, stays reported
+    (fail closed)."""
     if file.startswith("/"):
-        return True
+        if "/buck-out/" in file:
+            return outside_product(file.split("/buck-out/", 1)[1].join(["buck-out/", ""]), packages)
+        return file.startswith(SYSTEM_ROOTS)
     parts = file.split("/")
     if parts[0] == "buck-out":
-        if "gen" in parts[:-1] and parts.index("gen") + 1 < len(parts) - 1 \
-                and parts[parts.index("gen") + 1] != PRODUCT_CELL:
+        cell = buck_out_cell(parts)
+        if cell is not None and cell != PRODUCT_CELL:
             return True
         if HEADERS_DIR in file:
             return not in_packages(product_path(file), packages)
