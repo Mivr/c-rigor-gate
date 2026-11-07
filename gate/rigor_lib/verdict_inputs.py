@@ -12,7 +12,7 @@ import os
 import re
 import stat
 
-from rigor_lib import approvals, jsonio, witness_bundle
+from rigor_lib import approval_args, approvals, grade_context, jsonio, witness_bundle
 from rigor_lib.errors import InternalError
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
@@ -110,7 +110,23 @@ def snapshot_inputs(args, work):
     hashes["approvals_sha256"] = snapshot_approvals(args.approvals, approvals_copy)
     if args.approvals is not None:
         args.approvals = approvals_copy
+    _snapshot_trust_files(args, base, hashes)
     return hashes
+
+
+def _snapshot_trust_files(args, base, hashes):
+    """T071: copy the signers file and the gate order into `<base>`, hash the copies, and point
+    `args.allowed_signers` and `args.order_file` at them; every reader in a grade uses only those."""
+    sources = {"allowed_signers": getattr(args, "allowed_signers", None) or approval_args.DEFAULT_ALLOWED_SIGNERS,
+               "order.txt": grade_context.ORDER_FILE}
+    for name, source in sources.items():
+        copy = os.path.join(base, name)
+        digest = snapshot_file(source, copy)
+        if digest is None:
+            raise InternalError("cannot snapshot %s (%s)" % (name, source))
+        hashes[{"allowed_signers": "allowed_signers_sha256", "order.txt": "order_sha256"}[name]] = digest
+    args.allowed_signers = os.path.join(base, "allowed_signers")
+    args.order_file = os.path.join(base, "order.txt")
 
 
 def _copy_regular(source, destination):

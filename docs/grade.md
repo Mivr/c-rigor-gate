@@ -194,6 +194,14 @@ gates read and a later edit of the originals changes nothing. The commits, buckc
 results the grade itself wrote. A missing optional file hashes as `null`; a required input that is `null` in a PASS is
 an internal error (exit 2), and in a FAIL it is just `null`.
 
+**Signers and order from the snapshot (T071).** `gate/allowed_signers` and `gate/order.txt` are copied to
+`<work>/inputs/allowed_signers` and `<work>/inputs/order.txt` with the other inputs, before any gate runs, and hashed
+from the copies (`allowed_signers_sha256`, `order_sha256`; the keys and their meaning are unchanged). `args.allowed_signers`
+and `args.order_file` point at the copies: every step that loads approvals (suppressions, tests, mutants, witness),
+the unused-approval report and the verdict's gate order read only those. A file that cannot be copied is an internal
+error (exit 2) before `clone`. `verdict.metadata.order_file` is now the snapshot path. Standalone `rigor approvals`,
+`tests`, `mutants`, `suppressions` and `verify` still read `gate/allowed_signers` (or `--allowed-signers`) directly.
+
 **Dirty gate.** Tracked files of the gate checkout that differ from `HEAD` make `rigor grade` exit 2. With
 `--allow-dirty-gate` it grades, records `gate_clean = false`, never signs the verdict, and `rigor verify` rejects it.
 

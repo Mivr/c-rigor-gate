@@ -29,7 +29,7 @@ class Setup(TempDirTestCase):
         task = self.tmp / "task.toml"
         text = 'id = "t"\nallowed = ["**"]\n' + ('role = "%s"\n' % role if role is not None else "")
         task.write_text(text, encoding="utf-8")
-        args = SimpleNamespace(task=str(task), product=str(product / "product.toml"), approvals=None)
+        args = SimpleNamespace(task=str(task), product=str(product / "product.toml"), approvals=None, allowed_signers="signers")
         dirs = {mode: str(self.sub("results-" + mode)) for mode in stub_judge.MODES} if built else {}
         return SimpleNamespace(args=args, built=dirs, src="", head="h")
 
