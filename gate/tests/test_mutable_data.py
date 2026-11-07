@@ -256,3 +256,11 @@ class BudgetFileCase(TempDirTestCase):
         os.symlink(self.tmp / "real.toml", self.tmp / "ram-budget.toml")
         with self.assertRaises(InternalError):
             facts_policy.load_policy(str(policy))
+
+    def test_the_budget_may_sit_in_the_policy_file_but_not_in_both(self):
+        policy = self.tmp / "policy.toml"
+        policy.write_text(GLOBAL + '[binary."//a:b"]\nmax_bytes = 5\n', encoding="utf-8")
+        self.assertEqual(facts_policy.load_policy(str(policy)).ram_budget, {"//a:b": 5})
+        (self.tmp / "ram-budget.toml").write_text('[binary."//a:b"]\nmax_bytes = 3\n', encoding="utf-8")
+        with self.assertRaises(InternalError):
+            facts_policy.load_policy(str(policy))

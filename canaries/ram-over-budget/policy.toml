@@ -41,3 +41,6 @@ exports = ["main"]
 level = "L1"
 allow_mutable_data = true
 exports = ["main"]
+
+[binary."//app:app"]
+max_bytes = 63
