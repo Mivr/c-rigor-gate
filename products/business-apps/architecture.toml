@@ -1,0 +1,51 @@
+# Architecture contract for business-apps (T092; gate layering, docs/layering.md). Gate-owned.
+# Layers follow business-apps docs/design.md section 2/3: seven library layers, then the lockers app layers.
+# Layers with no module yet are empty; they are listed so the order is fixed before the first module lands.
+[layers]
+order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
+         "app-domain", "app-safety", "app-reactors", "app-adapters", "app-ui", "app-root"]
+
+[layer."lib-base"]
+modules = ["//lib/base/**"]
+
+[layer."lib-ds"]
+modules = ["//lib/ds/**"]
+
+[layer."lib-rt"]
+modules = ["//lib/rt/**"]
+
+[layer."lib-fmt"]
+modules = ["//lib/fmt/**"]
+
+[layer."lib-io"]
+modules = []
+
+[layer."lib-ui"]
+modules = []
+
+[layer."lib-sim"]
+modules = []
+
+[layer."app-domain"]
+modules = []
+
+[layer."app-safety"]
+modules = []
+
+[layer."app-reactors"]
+modules = []
+
+[layer."app-adapters"]
+modules = []
+
+[layer."app-ui"]
+modules = []
+
+[layer."app-root"]
+modules = []
+
+# lib-fmt/lines uses core's string slice type (core_str_t) only.
+[[edge]]
+from = "//lib/fmt/lines:lines"
+to = "lib-base"
+kind = "data"
