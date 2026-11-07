@@ -90,6 +90,7 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 | `missing-dep-facts` | a declared dep has no facts file |
 | `unexpected-export` | defines an external symbol that is not in the module's `exports` list (T033) |
 | `exports-missing` | the module is L3 or above and has no `exports` key (T033; info at L2) |
+| `unused-allow` | info only (T085): an `allow` or `deny_exempt` entry that no object of the module references (a module with no objects reports every entry; fields `list`, `symbol`, `reason = "not referenced"`), or an `allow` entry that a direct dep's exports already cover (`reason = "covered by <dep>"`). Never changes PASS/FAIL; such an entry only widens what a later change may use without review, so remove it |
 | `mutable-global-export` | defines an external object in a writable data/bss section, listed or not (T033; error at L3 and above, info at L2) |
 
 ### Exports policy (T033, R003 G7, backlog B32)
