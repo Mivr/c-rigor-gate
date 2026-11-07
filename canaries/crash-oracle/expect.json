@@ -1,8 +1,11 @@
 {
   "bypass": "oracle that only checks for crashes",
-  "description": "A new L3 module whose tests check one trivial value per function plus 'does not crash': most mutants are killed by a crash, not a failed check.",
+  "description": "A new L3 module whose tests check one trivial value per function plus 'does not crash': most mutants are killed by a crash, not a failed check (the witness run of the same tests says the same).",
   "fail": {
     "mutants": [
+      "crash-kill-ratio"
+    ],
+    "mutants-witness": [
       "crash-kill-ratio"
     ]
   }
