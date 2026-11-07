@@ -26,8 +26,9 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `build` | in the tree: `uquery 'kind(ctest_results, //...)'`, then `build --keep-going --build-report` of all of them in `release` and in `toolchains//:linux_san`. Findings: `build-failed` (target, mode), `missing-output`, `query-failed`, `no-results-targets`. Always ends with `buck2 kill` in the tree. Metadata: executed/cached action counts (from `buck2 log what-ran`, column 3 `cache` = hit), stderr tail. |
 | `structure` | recursion and size/complexity limits (T011, B1, B2; `docs/structure.md`) from clang AST facts. `gate/rigor_lib/grade_structure.py` reads the modules with `uquery` over the `c_facts` and `mutsrc` targets (never from the product's words) and appends one `c_structure` call per module that has sources to the BUCK file of the module's package in the tree (a source can only be named from its own package; the original bytes come back when the step ends, and `buckfiles` has already read the product's files). Header-only modules get no target and are no dependency edge. Tests and fuzz targets have facts and are not graded. The policy is written by the gate from the built modules: the `level` of `products/<p>/policy.toml` (L1, L2, L3; the mutation levels L4 and L5 are L3, the strictest structure level) or none (L3, with a note). A module that does not build is `structure-build-failed`, a policy level for a module the tree does not have is `policy-module-without-facts`, no module at all is `no-structure-modules`; a malformed facts file is exit 2. Needs `assemble` and `build` to have passed (a product that does not compile has no facts), otherwise NOT_RUN. Release build, `--no-remote-cache` with `--uncached`, executed/cached counts in the metadata. |
 | `mode-divergence` | `rigor facts --modes` (T023, B3; `docs/product-checks.md` "Modes") over the release facts of every `kind(c_facts, //...)` target and the `san` twins `kind(c_san_facts, //...)`, each with its `[calls]` output. A target without a twin (either way) is `missing-san-twin` / `missing-release-twin`, one that does not build is `modes-build-failed`; in both cases no comparison is made. Malformed or one-sided directories are exit 2. Same preconditions, caching and metadata as `structure`. Both gates sit right after `build` and before the tests: they only need a tree that compiles, they are cheap next to `mutants`, and a failing test does not hide them. |
-| `tests-release`, `tests-san` | the `tests` gate over the results artifacts of that mode, with `products/<p>/expected-tests.json` and, if present, `expected-tests.previous.json` (both next to `product.toml`, gate-owned). NOT_RUN if the build of that mode was not clean. |
-| `mutants` | mutation testing of every product module the policy puts at L2 or above (below). NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. |
+| `tests-release`, `tests-san` | the `tests` gate over the results artifacts of that mode, with `products/<p>/expected-tests.json` and, if present, `expected-tests.previous.json` (both next to `product.toml`, gate-owned). NOT_RUN if the build of that mode was not clean. In role `test-author` (T041) only presence is judged (`tests --presence-only`: `missing-test`, `duplicate-test`, parse problems, `test-removed`, empty lists), not pass/fail or assertions: the head is the stub commit; metadata `statuses_judged: false`. |
+| `tests-stub` | role `test-author` only (T041, P002 Q2; below): every new expected id fails on the stubs in both modes. Any other role: PASS with info `not-applicable`. |
+| `mutants` | mutation testing of every product module the policy puts at L2 or above (below). NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. In role `test-author`: PASS with info `not-applicable` (mutating stubs only gives `baseline-red`). |
 | `witness-tests`, `mutants-witness` | the witness gates (T039; `docs/witness.md`, P002), below. |
 | verdict | `rigor verdict` over `gate/order.txt`, plus `inputs`; with `--sign-key` (and a clean gate), `ssh-keygen -Y sign -n c-rigor-gate-verdict` writes `verdict.json.sig`. |
 
@@ -35,9 +36,10 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 `gate/rigor_lib/grade_witness.py`. They judge the tests against the gate-held witness (`--witness DIR`, bound as
 `witness_sha256`; format, roles and procedure in `docs/witness.md`) for the modules W, computed from the head's layout
 (`uquery`) and the paths changed in `merge_base..head` (`witness_scope.scope`, by the contract's `role`). They come
-after `mutants`, so the head's mutants result exists for the identical-tree reuse. The role `test-author` is exit 2
-("role test-author needs T041") until `tests-stub` exists; so is a bundle for another product or with a file outside
-the policy's `impl` globs (checked in the `contract` step, before any build).
+after `mutants`, so the head's mutants result exists for the identical-tree reuse. A bundle for another product or
+with a file outside the policy's `impl` globs is exit 2 (checked in the `contract` step, before any build). In role
+`test-author` the witness gates are required: W also holds the modules whose impl paths changed (the stubbed ones),
+W = {} is `no-new-tests`, and a module of W without a bundle entry is `witness-missing` at every level.
 - `impl = ["core/core.c"]` per module in `products/<p>/policy.toml` (globs; the paths an implementer may write and a
   witness replaces). An L2+ module without it is `impl-missing` (error at L3 and above, info at L2). The symbols and
   semantic-suppression readers accept the key and ignore it.
@@ -61,6 +63,25 @@ the policy's `impl` globs (checked in the `contract` step, before any build).
   head result used an approval, whose kind is the implementer's.
 - **No source text.** Mutant findings and survivor summaries lose `original` and `replacement`; full reports stay in
   `<work>/witness/mutants-reports/`.
+
+## The stub check (`tests-stub`, T041)
+`grade_steps.tests_stub_gate`, judged by `gate/rigor_lib/stub_judge.py` (`docs/witness.md`, "The stub judgement"). The
+role is the task contract's `role` (`TASK.toml`, bound through `task_sha256`). A test-author head *is* the stub commit,
+so the gate reads the head's results of both modes and builds nothing.
+- **Inputs.** The new ids are `expected-tests.json` minus `expected-tests.previous.json` (next to `product.toml`; `{"ids": []}`
+  for a new product). In role `test-author` the previous list is required: without it the grade is exit 2 in the
+  `contract` step, before any build.
+- **Findings.** `test-passes-on-stub` (id, mode, status: a new id that did not fail there; a pass in either mode is the
+  finding), `missing-test` (id, mode), `no-new-tests` (no new id); info `stub-timeout` (id, mode). Any `fail` counts as
+  failing on the stub (check failure, crash, sanitizer, timeout, no checks); metadata `fail_kinds` counts the kinds per
+  mode, plus `new_ids` and `role`.
+- **NOT_RUN** in role `test-author` unless both modes built clean. In the other roles it is PASS with info
+  `not-applicable` whatever the build did. There is no approval kind for a test that passes on the stubs (owner
+  decision 3): the stub is the test author's to change (return a sentinel such as `-12345`).
+- **The rest of the role.** `tests-release`/`tests-san` judge presence only, head `mutants` is not applicable, and every
+  status is judged on the witness tree instead (`witness-tests` runs every expected id), so a stubbed function's old
+  tests may fail on the head (the A018 shape). A contract without `role` is `implementer`: a stubbed head graded so
+  fails `test-not-pass`.
 
 ## Mutation testing in the pipeline (`mutants`, T008)
 `gate/rigor_lib/grade_mutants.py`. What is mutated, and against which tests, is decided by the gate alone:
@@ -215,7 +236,7 @@ grade` kills it again if anything escaped (and before reusing a work directory).
 - The product's `BUCK` files are still the product's. They can define arbitrary rules in the root
   cell; restricting them to `load("@gate//rules:...")` is the BUCK guard of T004.
 - `sign-key` must not need a passphrase.
-- Self-test: `selftest/grade.sh` (property steps only, see below; RE farm). Unit tests: `selftest/gate.sh`.
+- Self-test: `selftest/grade.sh` (property, witness and test-author steps, see below; RE farm). Unit tests: `selftest/gate.sh`.
 
 `gate/tools/expected.py add --product P --results DIR...` merges test ids from result files into `products/<P>/expected-tests.json` (sorted, add-only; removal needs a signed `test-removal` approval and a manual edit).
 
@@ -225,7 +246,28 @@ nonce, so every action executes), the warm run (nothing executes, same `core_sha
 verdict namespace only), the hostile inherited environment (same `core_sha256`), `--uncached` (nothing cached, flag in the
 verdict), the internal error (exit 2, FAIL verdict) and all action-count, daemon-leak and verdict-field assertions.
 After the cold run, warm, hostile, uncached and internal-error run in parallel, each in its own work subdir with its own
-Buck2 daemon, so the wall time is the cold run plus the slowest of them.
+Buck2 daemon, so the wall time is the cold run plus the slowest of them. The witness steps (T039) and the test-author
+steps (T041) run in the same parallel wave.
+
+**Test-author steps (T041).** Role `test-author`, a head that adds `core_pos` (1 if the value is positive, else 0) with a
+stub and a strong new test `core/pos`, graded against a bundle with the correct `core_pos`, with a scratch copy of
+`products/selftest` as the gate-owned inputs (new id added, the old list as `expected-tests.previous.json`, `core_pos`
+exported). The new test also checks `core_pos(strcmp("a", "c"))`: -2 from the C library in release, -1 from the ASan
+interceptor in san, so a stub that is wrong only at -1 (or -2) passes on the stub in release (or san) only, while the
+correct body passes in both.
+
+| Step | Head | Must give |
+|---|---|---|
+| `ta-green` | sentinel stub (`-12345`) | PASS; `mutants` not-applicable; witness judged, zero witness survivors |
+| `ta-release-pass` | stub wrong only at -1 | `tests-stub`: exactly `test-passes-on-stub` (core/pos, release) |
+| `ta-san-pass` | stub wrong only at -2 | `tests-stub`: exactly `test-passes-on-stub` (core/pos, san) |
+| `ta-timeout` | stub that never returns | PASS, info `stub-timeout` in both modes, `fail_kinds` timeout |
+| `ta-no-new` | the `ta-green` head, no new id in the expected list | `tests-stub`: `no-new-tests`; core/pos is info `unexpected-test` (status fail) in `tests-*` |
+| `ta-a018` | sentinel stub, and `core_sign` stubbed too | PASS: core/sign fails on the head in both modes (checked in the results), the witness passes it |
+| `ta-no-previous` | the `ta-green` head, no `expected-tests.previous.json` | exit 2, `contract` FAIL, `build` NOT_RUN |
+
+The canaries `stub-passes-test` (the stub is the correct body: `tests-stub: [test-passes-on-stub]` only) and
+`stub-green` (control) cover the same gate with exact expectations in the pack (`docs/witness.md`).
 
 Its 24 red cases were duplicated by canaries and ran cold every time. They are now only canaries, with exact expectations
 (`docs/canaries.md`); `selftest/grade.sh` prints this table when it starts.
