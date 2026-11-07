@@ -383,7 +383,7 @@ exports = ["mbrtu_build", "mbrtu_crc16", "mbrtu_rx_begin", "mbrtu_rx_feed", "mbr
 
 [module."//lib/fmt/mbrtu:mbrtu_build_test"]
 allow = ["bcmp", "memcpy", "memset"]
-exports = ["main"]
+exports = ["fx", "fx_n", "main"]
 
 [module."//lib/fmt/mbrtu:mbrtu_crc_test"]
 allow = []
@@ -391,11 +391,11 @@ exports = ["main"]
 
 [module."//lib/fmt/mbrtu:mbrtu_fixture_test"]
 allow = ["bcmp", "memcpy", "memset"]
-exports = ["main"]
+exports = ["fx", "fx_n", "main"]
 
 [module."//lib/fmt/mbrtu:mbrtu_rx_test"]
 allow = ["memcpy", "memset"]
-exports = ["main"]
+exports = ["fx", "fx_n", "main"]
 
 [module."//lib/fmt/url:survivor_url_test"]
 allow = ["memset", "snprintf", "strlen"]
