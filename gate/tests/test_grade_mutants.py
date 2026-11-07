@@ -220,11 +220,13 @@ class WorkDirectory(TempDirTestCase):
 
 
 class Gate(TempDirTestCase):
-    def grading(self, status=None):
+    def grading(self, status=None, role="implementer"):
         work = self.sub("work")
         tree = self.sub("work/tree")
         product = self.sub("product") / "product.toml"
-        args = SimpleNamespace(product=str(product), uncached=False, approvals=None)
+        task = self.tmp / "task.toml"
+        task.write_text('id = "t"\nallowed = ["**"]\nrole = "%s"\n' % role, encoding="utf-8")
+        args = SimpleNamespace(product=str(product), uncached=False, approvals=None, task=str(task))
         done = {k: "PASS" for k in ("assemble", "buckfiles", "build", "tests-release", "tests-san")}
         done.update(status or {})
         return SimpleNamespace(args=args, work=str(work), tree=str(tree), src=str(work / "src"), head="",
@@ -232,8 +234,8 @@ class Gate(TempDirTestCase):
 
     def test_it_is_registered_after_the_tests_and_before_the_witness_gates_and_is_in_the_order_file(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
-        self.assertEqual(ids[-4:], ["tests-san", "mutants", "witness-tests", "mutants-witness"])
-        self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-4:], ids[-4:])
+        self.assertEqual(ids[-5:], ["tests-san", "tests-stub", "mutants", "witness-tests", "mutants-witness"])
+        self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-5:], ids[-5:])
 
     def test_it_does_not_run_unless_the_tree_was_built_and_every_test_passed(self):
         for gate in ("assemble", "buckfiles", "build", "tests-release", "tests-san"):
@@ -243,6 +245,22 @@ class Gate(TempDirTestCase):
                         mock.patch("rigor_lib.grade_context.kill_daemon"):
                     self.assertIsNone(grade_mutants.mutants_gate(g), (gate, value))
                 layout_mock.assert_not_called()
+
+    def test_role_test_author_is_not_applicable_and_runs_nothing(self):
+        g = self.grading(role="test-author")
+        with mock.patch.object(grade_mutants, "read_layout") as layout_mock, \
+                mock.patch("rigor_lib.grade_build.run_buck") as buck:
+            result = grade_mutants.mutants_gate(g)
+        layout_mock.assert_not_called()
+        buck.assert_not_called()
+        self.assertEqual(result.status, "PASS")
+        self.assertEqual([(f["rule"], f["severity"], f["role"]) for f in result.findings],
+                         [("not-applicable", "info", "test-author")])
+        self.assertEqual(result.metadata["modules"], {})   # nothing a witness reuse could stand in for
+
+    def test_role_test_author_still_needs_a_clean_build_and_present_tests(self):
+        for gate in ("assemble", "buckfiles", "build", "tests-release", "tests-san"):
+            self.assertIsNone(grade_mutants.mutants_gate(self.grading({gate: "FAIL"}, role="test-author")), gate)
 
     def test_a_directory_of_the_product_that_collides_with_the_gate_package_is_an_error(self):
         g = self.grading()
