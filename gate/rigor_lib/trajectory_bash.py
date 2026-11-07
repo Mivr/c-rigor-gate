@@ -363,7 +363,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
                 if item.group in last:
                     producer[id(item)] = last[item.group]  # the same, for an interpreter (T049)
             last[item.group] = item
-        return {"obfuscated": flagged, "sink": sinks, "producer": producer, "feeder": feeder}
+        return {"obfuscated": flagged, "sink": sinks, "producer": producer, "feeder": feeder,
+                "prepared": prepared}
 
     @staticmethod
     def _executes_stdin(argv):

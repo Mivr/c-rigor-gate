@@ -56,7 +56,28 @@ class LocalSubmoduleTests(LocalCase):
         self.assertIn("cmd-git-network", self.in_clone(update([("other", SRC)])))
         self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC), ("other", SRC)])))
         self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC)], "submodule update --init gate other")))
-        self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC)], "submodule update --init")))
+        self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC), ("other", SRC)], "submodule update --init")))
+
+    def test_no_path_with_one_url_is_a_review_and_a_redirect_changes_nothing(self):
+        for tail in ("", " 2>&1", " 2>/dev/null", " >/dev/null 2>&1", " 2>&1 | tail -5", " &>/dev/null"):
+            self.assertEqual(self.in_clone(update([("gate", SRC)], "submodule update --init" + tail)),
+                             ["cmd-unresolved"], tail)
+        self.assertEqual(self.in_clone(update([("gate", SRC)], "submodule update --init gate 2>&1")), [])
+        self.assertIn("cmd-git-network", self.in_clone("git submodule update --init"))
+
+    def test_a_reference_form_is_network_and_does_not_spoil_the_local_form_after_it(self):
+        ref = "git %s submodule update --init --reference %s 2>&1 | tail -5" % (PROTO, SRC)
+        local = update([("gate", SRC)], "submodule update --init 2>&1 | tail -5")
+        got = self.in_clone(ref + "; " + local)
+        self.assertEqual(got, ["cmd-git-network", "cmd-unresolved", "git-config-override"])
+        self.assertEqual(self.in_clone(local + "; " + ref), got)
+
+    def test_other_taint_still_ends_the_proof_for_the_local_form(self):
+        local = update([("gate", SRC)], "submodule update --init")
+        for first in ("git config remote.origin.url https://example.com/x.git", "git -c core.sshCommand=ls status",
+                      "git -c remote.origin.url=https://example.com/x status"):
+            got = self.in_clone(first + "; " + local)
+            self.assertIn("cmd-git-network", got, first)
 
     def test_another_override_stays_network_and_reviewed(self):
         got = self.in_clone("git -c core.sshCommand=ls %s submodule update --init gate" % update([("gate", SRC)])[4:])
@@ -77,6 +98,34 @@ class LocalSubmoduleTests(LocalCase):
     def test_other_submodule_commands_stay_network(self):
         for sub in ("sync", "add %s gate" % SRC):
             self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC)], "submodule " + sub)), sub)
+
+
+class ExtractBesideScriptTests(LocalCase):
+    """T084: which extracts make a script the transcript wrote unknown (then running it is a block)."""
+    GEN = cases.GEN
+
+    def run_after(self, producer, extract="tar x -C s"):
+        return self.rules_of("mkdir -p %s/s" % SC, self.GEN, "cd %s && %s | %s && cd s && python3 -I gen.py" % (
+            SC, producer, extract))
+
+    def test_literal_members_that_do_not_cover_the_script_keep_its_text(self):
+        for producer in ("(cd %s/src && tar cf - a b)" % SC, "tar -C %s/src -cf - a b/c" % SC, "(cd %s/src && tar c a)" % SC,
+                         "(cd %s/src; tar c a)" % SC, "tar -cf - -C %s/src a" % SC):
+            self.assertEqual(self.run_after(producer), [], producer)
+
+    def test_every_other_archive_makes_it_unknown(self):
+        for producer in ("(cd %s/src && tar c gen.py)" % SC, "(cd %s/src && tar c g*)" % SC, "(cd %s/src && tar c .)" % SC,
+                         "(cd %s/src && tar c -T l)" % SC, "(cd %s/src && tar c --files-from=l)" % SC,
+                         "(cd %s/src && tar c a; tar c b)" % SC, "(cd %s/src && tar c ../gen.py)" % SC,
+                         "(echo x; tar c a)", "cat %s/a.tar" % SC, "(cd %s/src && tar cf %s/o.tar a)" % (SC, SC),
+                         "(cd %s/src && tar c a > %s/o.tar)" % (SC, SC), "(cd %s/src && tar c a -C .. b)" % SC):
+            self.assertEqual(self.run_after(producer), ["cmd-obfuscated-exec"], producer)
+
+    def test_archive_file_and_unzip_make_it_unknown(self):
+        for extract in ("tar xf %s/a.tar -C s", "unzip -q %s/a.zip -d s"):
+            got = self.rules_of("mkdir -p %s/s" % SC, self.GEN, "cd %s && %s && cd s && python3 -I gen.py" % (
+                SC, extract % SC))
+            self.assertEqual(got, ["cmd-obfuscated-exec"], extract)
 
 
 class PatchLeftoverGlobTests(LocalCase):
