@@ -37,21 +37,23 @@ def verdict(rc, text, timed_out=False):
 
 
 class ReasonTest(unittest.TestCase):
-    def test_garbage_values_of_a_failed_check_are_dropped(self):
+    def test_a_failed_check_is_one_constant_whatever_failed_first(self):
+        # two runs of a mutant that reads uninitialised memory: other counts, other values, another check first
         a = "2 of 5 checks failed; first: a/b.c:41: CHECK_EQ_I64(f(i), 20): 32770 != 20"
-        b = "3 of 5 checks failed; first: a/b.c:41: CHECK_EQ_I64(f(i), 20): -781801958 != 20"
+        b = "3 of 5 checks failed; first: a/b.c:42: CHECK_EQ_I64(f(j), 30): -781801958 != 30"
+        c = 'CHECK_EQ_STR(s, "ok"): "\\u0001" != "ok" at 0x7ffd1234'
         self.assertEqual(tool.normalise_reason(a), tool.normalise_reason(b))
-        self.assertEqual(tool.normalise_reason(a),
-                         "0 of 0 checks failed; first: a/b.c:41: CHECK_EQ_I64(f(i), 20)")
+        self.assertEqual(tool.normalise_reason(a), tool.normalise_reason("1 of 1 checks failed; first: x.c:9: " + c))
+        self.assertEqual(tool.normalise_reason(a), tool.NORMAL_CHECK_FAILURE)
+        self.assertIsNotNone(tool.CHECK_FAILURE.match(tool.normalise_reason(a)))
 
-    def test_a_check_without_values_and_the_place_are_kept(self):
-        self.assertEqual(tool.normalise_reason("1 of 1 checks failed; first: x.c:7: CHECK(p != 0)"),
-                         "0 of 0 checks failed; first: x.c:7: CHECK(p != 0)")
-
-    def test_strings_and_addresses_after_the_check_are_dropped(self):
-        a = 'CHECK_EQ_STR(s, "ok"): "\\u0001\\u00ff" != "ok" at 0x7ffd1234'
-        text = "1 of 1 checks failed; first: x.c:9: " + a
-        self.assertEqual(tool.normalise_reason(text), "0 of 0 checks failed; first: x.c:9: CHECK_EQ_STR(s, \"ok\")")
+    def test_two_raw_outputs_that_differ_only_in_the_garbage_give_one_record(self):
+        def raw(count, first, got):
+            return results(line("uninit/slots", "fail", count, "%d of %d checks failed; first: %s: %d != 0" % (1, count, first, got)))
+        a = raw(1, "u.c:6: CHECK_EQ_I64(uninit_slot(0), (0))", 32767)
+        b = raw(2, "u.c:7: CHECK_EQ_I64(uninit_slot(1), (10))", -9)
+        self.assertNotEqual(a, b)
+        self.assertEqual(tool.normalise_results(a), tool.normalise_results(b))
 
     def test_other_reasons_keep_their_words_and_lose_their_numbers(self):
         self.assertEqual(tool.normalise_reason("killed by signal 11"), "killed by signal #")
