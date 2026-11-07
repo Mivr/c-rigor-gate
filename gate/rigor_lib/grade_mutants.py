@@ -39,8 +39,9 @@ class Layout:
     libs: frozenset      # c_library labels ("//pkg:name")
     binaries: frozenset  # c_binary labels
     tests: frozenset     # c_test labels
-    deps: dict           # label -> tuple of direct dependency labels (deps and exported_deps, every cell)
+    deps: dict           # label -> tuple of direct dependency labels of the product's own cell
     external: frozenset = frozenset()  # libraries of other cells ("gate//third_party/..:x"), linkable like libs
+    links: dict = None   # label -> direct `deps` + `exported_deps` of every cell: what the tests link (T070)
 
 
 @dataclass(frozen=True)
@@ -64,9 +65,9 @@ def _short(label):
     return label[len("root"):] if label.startswith(_ROOT) else label
 
 
-def _direct_deps(label, entry):
+def _direct_deps(label, entry, keys=("deps",)):
     out = []
-    for key in ("deps", "exported_deps"):
+    for key in keys:
         deps = entry.get(key, [])
         if not isinstance(deps, list) or not all(isinstance(d, str) for d in deps):
             raise InternalError("%s: odd %s from buck2" % (label, key))
@@ -95,8 +96,10 @@ def parse_layout(result_targets, attributes, binaries):
     missing = (tests | binary_labels) - set(entries)
     if missing:
         raise InternalError("no attributes for %s" % sorted(missing))
-    deps = {label: _direct_deps(label, entries[label]) for label in sorted(libs | tests | binary_labels | external)}
-    return Layout(frozenset(libs), frozenset(binary_labels), frozenset(tests), deps, frozenset(external))
+    labels = sorted(libs | tests | binary_labels | external)
+    links = {label: _direct_deps(label, entries[label], _DEP_KEYS) for label in labels}
+    deps = {label: tuple(d for d in links[label] if d.startswith("//")) for label in labels if label.startswith("//")}
+    return Layout(frozenset(libs), frozenset(binary_labels), frozenset(tests), deps, frozenset(external), links)
 
 
 _EXTERNAL_KINDS = "^(cxx_library|prebuilt_cxx_library)$"
@@ -159,14 +162,15 @@ def _link_deps(layout, module, tests):
     linkable = layout.libs | layout.external
     wanted = set()
     unresolved = set()
-    stack = [d for t in tests for d in layout.deps[t]] + list(layout.deps[module])
+    links = layout.deps if layout.links is None else layout.links
+    stack = [d for t in tests for d in links[t]] + list(links[module])
     while stack:
         label = stack.pop()
         if label == module or label in wanted or label in unresolved:
             continue
         if label in linkable:
             wanted.add(label)
-            stack.extend(layout.deps[label])
+            stack.extend(links[label])
         else:
             unresolved.add(label)
     order = []
@@ -174,7 +178,7 @@ def _link_deps(layout, module, tests):
     def visit(label):  # post-order over the library graph: dependencies are emitted first
         if label in order:
             return
-        for dep in sorted(layout.deps[label]):
+        for dep in sorted(links[label]):
             if dep in wanted:
                 visit(dep)
         order.append(label)

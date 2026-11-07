@@ -22,7 +22,8 @@ def layout(libs=(), binaries=(), tests=None, deps=None, external=()):
     graph.update({t: tuple(d) for t, d in tests.items()})
     for label in tuple(libs) + tuple(external):
         graph.setdefault(label, ())
-    return grade_mutants.Layout(frozenset(libs), frozenset(binaries), frozenset(tests), graph, frozenset(external))
+    own = {label: tuple(d for d in deps if d.startswith("//")) for label, deps in graph.items() if label.startswith("//")}
+    return grade_mutants.Layout(frozenset(libs), frozenset(binaries), frozenset(tests), own, frozenset(external), graph)
 
 
 def rules(found):
@@ -125,8 +126,8 @@ class Planning(unittest.TestCase):
 
     def test_only_what_the_tests_link_is_linked(self):
         lay = self.tls_layout(deps={"//a:a": ()})
-        lay = grade_mutants.Layout(lay.libs, lay.binaries, frozenset({"//a:t"}), dict(lay.deps, **{"//a:t": ("//a:a",)}),
-                                   lay.external)
+        links = dict(lay.links, **{"//a:t": ("//a:a",)})
+        lay = grade_mutants.Layout(lay.libs, lay.binaries, frozenset({"//a:t"}), lay.deps, lay.external, links)
         (module,) = grade_mutants.plan(lay, {"//a:a": "L3", "//t:tls": "L1"}).modules
         self.assertEqual(module.deps, ())   # neither //t:tls nor mbedtls: this test does not link them
 
@@ -192,9 +193,11 @@ class QueryParsing(unittest.TestCase):
         self.assertEqual(lay.external, frozenset({"gate//ctest:ctest", "gate//third_party/m:m"}))
         self.assertEqual(lay.binaries, frozenset({"//app:app"}))
         self.assertEqual(lay.tests, frozenset({"//core:t"}))
-        self.assertEqual(lay.deps["//core:core"], ("//x:x", "gate//ctest:ctest", "prelude//a:b"))
-        self.assertEqual(lay.deps["//core:t"], ("//core:core", "gate//ctest:ctest"))
-        self.assertEqual(lay.deps["gate//third_party/m:m"], ("gate//third_party/m:h", "gate//third_party/m:e"))
+        self.assertEqual(lay.deps["//core:core"], ("//x:x",))   # what the witness scope reads: this cell only
+        self.assertEqual(lay.deps["//core:t"], ("//core:core",))
+        self.assertEqual(lay.links["//core:core"], ("//x:x", "gate//ctest:ctest", "prelude//a:b"))
+        self.assertEqual(lay.links["//core:t"], ("//core:core", "gate//ctest:ctest"))
+        self.assertEqual(lay.links["gate//third_party/m:m"], ("gate//third_party/m:h", "gate//third_party/m:e"))
 
     def test_libraries_of_other_cells_are_queried_until_the_closure_is_complete(self):
         known = {"gate//t:a": {"deps": ["gate//t:b"]}, "gate//t:b": {"exported_deps": ["gate//t:c", "root//x:x"]},
