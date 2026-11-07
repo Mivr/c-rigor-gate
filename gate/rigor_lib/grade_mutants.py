@@ -252,15 +252,12 @@ def build_file_text(modules):
     calls = []
     for i, m in enumerate(modules):
         if m.perf:  # T090: the module's perf targets run for the survivors
-            calls.append('c_mutants_with_perf(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    perf = %s,\n    deps = %s,\n)\n'
+            calls.append('c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    perf = %s,\n    deps = %s,\n)\n'
                          % (target_name(i, m), m.label, _list(m.tests), _list([t for t, _ in m.perf]), _list(m.deps)))
         else:
             calls.append('c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    deps = %s,\n)\n'
                          % (target_name(i, m), m.label, _list(m.tests), _list(m.deps)))
-    loads = 'load("@gate//rules:c.bzl", "c_mutants")\n'
-    if any(m.perf for m in modules):
-        loads += 'load("@gate//rules:mutate.bzl", "c_mutants_with_perf")\n'
-    return loads + "\n" + "\n".join(calls)
+    return 'load("@gate//rules:c.bzl", "c_mutants")\n\n' + "\n".join(calls)
 
 
 def policy_text(modules, indexes=None):

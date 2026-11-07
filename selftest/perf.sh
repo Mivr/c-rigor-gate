@@ -200,7 +200,7 @@ PY
 # ==== T090: judging against complexity classes, and perf-killed mutants ============================
 # One package of five modules, each with a c_perf at its honest class (flat O(1), bsearch O(log n), lin O(n), nlogn
 # O(n log n), quad O(n^2)), judged by perf_judge against every class: the matrix of who is inside which class is
-# exact. `flat` is a hash set whose lookups are O(1); its `c_mutants_with_perf` must turn the mutants that make the
+# exact. `flat` is a hash set whose lookups are O(1); its `c_mutants` must turn the mutants that make the
 # lookup O(n) (the hash replaced by `return 0`) into killed-perf, while the same mutants survive when the report is judged
 # without the perf evidence.
 judge="selftest/scratch_perf_judge"
@@ -434,13 +434,12 @@ for d in "$judge"/*_drv.c; do
 done
 rm -f "$judge/gen.inc"
 cat > "$judge/BUCK" <<'B'
-load("@gate//rules:c.bzl", "c_library", "c_perf", "c_test")
-load("@gate//rules:mutate.bzl", "c_mutants_with_perf")
+load("@gate//rules:c.bzl", "c_library", "c_mutants", "c_perf", "c_test")
 
 c_library(name = "flat", srcs = ["flat.c"], headers = ["flat.h"])
 c_test(name = "flat_test", srcs = ["flat_test.c"], deps = [":flat"])
 c_perf(name = "flat_p", module = ":flat", srcs = ["flat_drv.c"], sizes = [2000, 8000], seed = 3)
-c_mutants_with_perf(name = "flat_mutants", module = ":flat", tests = [":flat_test"], perf = [":flat_p_perf"])
+c_mutants(name = "flat_mutants", module = ":flat", tests = [":flat_test"], perf = [":flat_p_perf"])
 
 c_library(name = "bsearch", srcs = ["bsearch.c"], headers = ["bsearch.h"])
 c_perf(name = "bsearch_p", module = ":bsearch", srcs = ["bsearch_drv.c"], sizes = [2000, 8000], seed = 3)

@@ -599,27 +599,3 @@ c_mutants_rule = rule(
         "_tool": attrs.source(default = "gate//mutate:tool.py"),
     },
 )
-
-# `c_mutants` with `perf = [":x_perf", ...]` (T090): the module's `c_perf` targets, run for the mutants that survive
-# every test (perf kills, docs/mutate.md). rules/c.bzl's `c_mutants` is the same call without `perf`; the link flags
-# below are its `_link_flags()`.
-_LINK_BY_MODE = {
-    "toolchains//:release": [],
-    "toolchains//:san": ["-fsanitize=address,undefined,leak"],
-    "toolchains//:cov": ["-fprofile-instr-generate"],
-    "toolchains//:fuzz": ["-fsanitize=fuzzer,address,undefined"],
-}
-
-def c_mutants_with_perf(name, module, tests, perf, deps = []):
-    if type(module) != "string" or not module.startswith(":") and ":" not in module:
-        fail("c_mutants_with_perf: `module` must be a target label string, got {!r}".format(module))
-    c_mutants_rule(
-        name = name,
-        module = module,
-        module_src = module + "_mutsrc",
-        test_targets = tests,
-        perf = perf,
-        deps = deps,
-        link_flags = select(_LINK_BY_MODE),
-        target_compatible_with = ["toolchains//:release"],
-    )

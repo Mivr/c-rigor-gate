@@ -237,10 +237,11 @@ def c_fuzz(name, srcs = [], deps = []):
     )
     _facts(name, "c_fuzz", srcs, deps, unit = ":" + name + "__facts_unit")
 
-def c_mutants(name, module, tests, deps = []):
+def c_mutants(name, module, tests, deps = [], perf = []):
     """Mutation testing of a `c_library` through the given `c_test` targets (release mode only).
 
-    `deps` lists the other libraries the tests link besides the module and ctest.
+    `deps` lists the other libraries the tests link besides the module and ctest. `perf` lists the module's
+    `c_perf` targets (`:x_perf`), run for the mutants that survive every test (docs/mutate.md, "Perf kills").
     """
     if type(module) != "string" or not module.startswith(":") and ":" not in module:
         fail("c_mutants: `module` must be a target label string, got {!r}".format(module))
@@ -249,6 +250,7 @@ def c_mutants(name, module, tests, deps = []):
         module = module,
         module_src = module + "_mutsrc",
         test_targets = tests,
+        perf = perf,
         deps = deps,
         link_flags = _link_flags(),
         target_compatible_with = _RELEASE_ONLY,

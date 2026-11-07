@@ -251,9 +251,8 @@ Some mutants are not equivalent although no test can see them: in a hash map, `h
 leaves the map correct and makes every operation O(n). The module's complexity is a promise (`docs/perf.md`,
 "Judging"); a mutant that breaks it is killed by that promise.
 
-- **The attribute.** `c_mutants_with_perf(name, module, tests, perf = [":x_perf", ...], deps)` (`rules/mutate.bzl`; the same
-  call as `c_mutants` plus `perf`, the `c_perf` targets that exercise the module; `c_mutants` itself has no
-  such attribute, because `rules/c.bzl` is not part of T090). `rigor grade` writes it into `gate-mutants/BUCK` for a module
+- **The attribute.** `c_mutants(name, module, tests, deps, perf = [":x_perf", ...])` (`rules/c.bzl`): `perf` lists the
+  `c_perf` targets that exercise the module. `rigor grade` writes it into `gate-mutants/BUCK` for a module
   whose policy declares perf targets, and links the libraries of the perf binaries into the module's mutant links. The
   `[perf]` sub-target of the `c_mutants` target is `perf.json` (evidence, below).
 - **Which mutants.** A functional killer costs nothing extra. The perf stage is a `dynamic_output` over the test runs: a

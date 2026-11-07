@@ -105,7 +105,7 @@ so the gate reads the head's results of both modes and builds nothing.
 - **Nothing mutated is a failure.** No module at L2 or above is `no-mutated-modules`; a module whose sources
   produce no mutant at all is `no-mutants` (also inside `rigor mutants`); a module without tests is
   `module-without-tests`; a build that does not produce a report is `mutants-build-failed`.
-  Perf kills (T090): a module with perf targets in the policy gets `c_mutants_with_perf(..., perf = [...])` (the targets' binaries'
+  Perf kills (T090): a module with perf targets in the policy gets `c_mutants(..., perf = [...])` (the targets' binaries'
   libraries are linked in too, `gate//ctest:perf` never), its `[perf]` output is copied to `<work>/mutants-perf/` and judged with
   the reports; `killed-perf` is a separate verdict that counts as killed (`docs/mutate.md`, "Perf kills"). A perf target the
   layout does not know is `perf-target-unknown`; `perf-build-failed` if the evidence did not build.

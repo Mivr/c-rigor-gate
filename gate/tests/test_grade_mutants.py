@@ -212,8 +212,8 @@ class PerfModules(unittest.TestCase):
         modules = grade_mutants.plan(lay, {"//core:core": "L3", "//url:url": "L2", "//core:p": "L1"},
                                      {"//core:core": {"//core:p_perf": "O(log n)"}}).modules
         text = grade_mutants.build_file_text(modules)
-        self.assertIn('load("@gate//rules:mutate.bzl", "c_mutants_with_perf")', text)
-        self.assertIn('c_mutants_with_perf(\n    name = "m000_core_core",\n    module = "//core:core",\n'
+        self.assertNotIn("mutate.bzl", text)
+        self.assertIn('c_mutants(\n    name = "m000_core_core",\n    module = "//core:core",\n'
                       '    tests = [\n        "//core:t",\n    ],\n    perf = [\n        "//core:p_perf",\n    ],\n', text)
         self.assertIn('c_mutants(\n    name = "m001_url_url",', text)
         self.assertEqual(grade_mutants.policy_text(modules),
