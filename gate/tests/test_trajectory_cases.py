@@ -1384,3 +1384,18 @@ case("fp_inline_own_processes", [], bash(
 # -- T062 (R008 O4): unprefixed secret names: a bare TOKEN/SECRET/PASSWORD, PGPASSWORD-style, *_PAT --------------------
 case("secret_unprefixed_names", ["secret-env-access"], bash("echo $PGPASSWORD $TOKEN $GITHUB_PAT"))
 case("fp_secret_unprefixed_lookalikes", [], bash("echo $PATH $PATTERN $TOKENS $MY_PATH $OLDPWD"))
+
+# -- T084: a scratch script the transcript wrote, an archive extracted beside it; a local submodule url after a
+# failed `--reference` form, without a path and with a redirect ---------------------------------------------------
+GEN = "cd %s/s && cat > gen.py <<'EOF'\nimport os\nos.makedirs('out', exist_ok=True)\nEOF" % SC
+TAR_BESIDE = "cd %s && (cd %s && tar c .) | tar x -C s && cd s && python3 -I gen.py" % (SC, WT)
+case("fp_script_survives_archive_extracted_beside_it", ["cmd-unresolved"], bash("mkdir -p %s/s" % SC), bash(GEN),
+     bash(TAR_BESIDE))
+case("script_name_shared_with_another_written_file_is_unknown_after_extract", ["cmd-obfuscated-exec"],
+     write(SC + "/a/gen.py", "print(1)\n"), write(SC + "/s/gen.py", "print(2)\n"), bash(TAR_BESIDE))
+SUB_URL = "git -c protocol.file.allow=always -c submodule.gate.url=/var/tmp/src/c-rigor-gate submodule update --init"
+SUB_REF = "git -c protocol.file.allow=always submodule update --init --reference /var/tmp/src/c-rigor-gate"
+case("fp_submodule_local_url_without_path_and_with_redirect", [], bash(LOCAL_CLONE),
+     bash("cd %s && %s 2>&1 | tail -5; git submodule status" % (CLONE, SUB_URL)))
+case("submodule_reference_form_blocked_local_form_after_it_clean", [N, "git-config-override"], bash(LOCAL_CLONE),
+     bash("cd %s && %s 2>&1 | tail -5; %s 2>&1 | tail -5" % (CLONE, SUB_REF, SUB_URL)))

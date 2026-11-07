@@ -420,7 +420,7 @@ class WritersMixin:
         for index, text in tree_targets(argv):
             if index is not None:
                 skip.add(index)
-            self.write_tree(text, raw)
+            self.write_tree(text, raw, archive=name in ("tar", "bsdtar", "gtar", "unzip"))
         skip |= self.note_links(argv, name, raw)
         self.move_clones(argv, name)
         if name == "patch":
@@ -430,11 +430,14 @@ class WritersMixin:
         self._xargs_writes(item, argv, raw, flags)
         return skip
 
-    def write_tree(self, text, raw):
+    def write_tree(self, text, raw, archive=False):
         """Files written below the directory `text` whose names the audit cannot know (an extracted archive, a patch
         of unknown text, `git clean`, `xargs rm`). Outside the worktree and the scratch dirs that is `write-outside`;
         in a scratch dir nothing there is protected; in the worktree a protected directory is `tamper-protected`, any
-        other is `write-unresolved` (review: a protected or test file could be among them)."""
+        other is `write-unresolved` (review: a protected or test file could be among them). An extracted `archive`
+        replaces a file the transcript wrote only if it holds a member of that name (T084): a file whose text the
+        transcript showed and whose name no other file the agent wrote shares stays audited as written (`dirty`,
+        reviewed); a shared name leaves its text unknown."""
         if UNRESOLVED in text:
             self._unresolved_write(text.rstrip("/") + "/" + UNRESOLVED, raw)
             return
@@ -444,7 +447,10 @@ class WritersMixin:
             return
         self.dirs.add(normal)
         for known in [f for f in self.files if self.policy.is_inside(normal, f)]:
-            self._content_changed(known, "rewrite")  # whatever was known of the files below is gone
+            if archive and not self._name_shared(known):
+                self.dirty.add(known)
+            else:
+                self._content_changed(known, "rewrite")  # whatever was known of the files below is gone
         normal = self.policy.through_links(normal)
         if normal is None:
             self.add("write-unresolved", raw, text)
@@ -460,6 +466,12 @@ class WritersMixin:
             self.add("tamper-protected", raw, text)
         else:
             self.add("write-unresolved", raw, text)
+
+    def _name_shared(self, known):
+        """True when another file the agent wrote has the basename of `known`: an archive built
+        from it could carry its text into `known`."""
+        base = posixpath.basename(known)
+        return any(posixpath.basename(other) == base and other != known for other in set(self.files) | self.unknown)
 
     def note_links(self, argv, name, raw):
         """`ln [-s] SOURCE... DEST` and `cp -s/-l`: record each link in the policy's virtual table (T061, R008 #18), so

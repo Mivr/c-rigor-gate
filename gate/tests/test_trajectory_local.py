@@ -56,7 +56,26 @@ class LocalSubmoduleTests(LocalCase):
         self.assertIn("cmd-git-network", self.in_clone(update([("other", SRC)])))
         self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC), ("other", SRC)])))
         self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC)], "submodule update --init gate other")))
-        self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC)], "submodule update --init")))
+        self.assertIn("cmd-git-network", self.in_clone(update([("gate", SRC), ("other", SRC)], "submodule update --init")))
+
+    def test_no_path_means_the_one_submodule_given_a_url_and_a_redirect_changes_nothing(self):
+        for tail in ("", " 2>&1", " 2>/dev/null", " >/dev/null 2>&1", " 2>&1 | tail -5", " &>/dev/null"):
+            self.assertEqual(self.in_clone(update([("gate", SRC)], "submodule update --init" + tail)), [], tail)
+        self.assertEqual(self.in_clone(update([("gate", SRC)], "submodule update --init gate 2>&1")), [])
+
+    def test_a_reference_form_is_network_and_does_not_spoil_the_local_form_after_it(self):
+        ref = "git %s submodule update --init --reference %s 2>&1 | tail -5" % (PROTO, SRC)
+        local = update([("gate", SRC)], "submodule update --init 2>&1 | tail -5")
+        got = self.in_clone(ref + "; " + local)
+        self.assertEqual(got, ["cmd-git-network", "git-config-override"])
+        self.assertEqual(self.in_clone(local + "; " + ref), ["cmd-git-network", "git-config-override"])
+
+    def test_other_taint_still_ends_the_proof_for_the_local_form(self):
+        local = update([("gate", SRC)], "submodule update --init")
+        for first in ("git config remote.origin.url https://example.com/x.git", "git -c core.sshCommand=ls status",
+                      "git -c remote.origin.url=https://example.com/x status"):
+            got = self.in_clone(first + "; " + local)
+            self.assertIn("cmd-git-network", got, first)
 
     def test_another_override_stays_network_and_reviewed(self):
         got = self.in_clone("git -c core.sshCommand=ls %s submodule update --init gate" % update([("gate", SRC)])[4:])
