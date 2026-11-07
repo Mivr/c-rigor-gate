@@ -307,12 +307,78 @@ class MutantsTest(TempDirTestCase):
         self.assertEqual({f["severity"] for f in result["findings"]}, {"info"})
 
     def test_a_header_found_through_buck_out_is_reported_by_its_product_path(self):
-        header = "buck-out/v2/gen/root/0123abcd/annas/__annas__/buck-headers/annas/src/internal.h"
+        header = "buck-out/v2/gen/root/0123abcd/m/__m__/buck-headers/m/src/internal.h"
         hidden = [{"name": "ctx_key", "file": header, "reason": "header"},
                   {"name": "plain", "file": "m/a.h", "reason": "header"}]
         result = self.fails_with(report([mutant(1)], skipped=hidden), "unmutated-function", "unmutated-function")
         self.assertEqual({f["function"]: f["file"] for f in result["findings"]},
-                         {"ctx_key": "annas/src/internal.h", "plain": "m/a.h"})
+                         {"ctx_key": "m/src/internal.h", "plain": "m/a.h"})
+
+    def reported_headers(self, files, reason="header"):
+        hidden = [{"name": "f%d" % n, "file": file, "reason": reason} for n, file in enumerate(files)]
+        self.put(report([mutant(1)], skipped=hidden))
+        outcome, result = self.grade()
+        return outcome.code, sorted(f["file"] for f in result["findings"] if f["rule"] == "unmutated-function")
+
+    def test_a_third_party_toolchain_or_system_header_is_not_reported(self):
+        tree = "buck-out/v2/gen/%s/0123abcd/%s/buck-headers/%s"
+        outside = [tree % ("gate", "third_party/mbedtls/__mbedtls__", "psa/crypto_struct.h"),  # another cell
+                   tree % ("root", "third_party/x/__x__", "mbedtls/ssl.h"),  # under no package of the product
+                   tree % ("gate", "third_party/x/__x__", "m/ssl.h"),  # another cell, a package-like name
+                   "third_party/mbedtls/include/mbedtls/ssl.h", "external/zlib/zlib.h",
+                   "buck-out/v2/art/gate/third_party/mbedtls/__mbedtls_headers__/65eb23d4c25a5c9c/buck-headers/mbedtls/cipher.h",
+                   "buck-out/v2/art/toolchains/__sysroot__/0123abcd/buck-headers/m/x.h",  # another cell, `m` by name
+                   "/work/tree/buck-out/v2/art/gate/third_party/x/__x__/0123abcd/buck-headers/m/y.h",
+                   "/usr/include/x86_64-linux-gnu/bits/stdio.h"]
+        self.assertEqual(self.reported_headers(outside + ["m/a.h"]), (1, ["m/a.h"]))
+
+    def test_an_art_header_of_the_product_is_reported_by_its_product_path(self):
+        header = "buck-out/v2/art/root/m/__m__/1cb38945d4577fdd/buck-headers/m/src/internal.h"
+        self.assertEqual(self.reported_headers([header]), (1, ["m/src/internal.h"]))
+
+    def test_the_real_annas_paths_verbatim(self):
+        self.policy.write_text('[module."//m:mod_mutants"]\nlevel = "L3"\n[module."//annas:annas"]\nlevel = "L3"\n',
+                               encoding="utf-8")
+        hidden = [{"name": "mbed", "reason": "header", "file":
+                   "buck-out/v2/art/gate/third_party/mbedtls/__mbedtls_headers__/65eb23d4c25a5c9c/buck-headers/mbedtls/cipher.h"},
+                  {"name": "ctx_key", "reason": "header", "file":
+                   "buck-out/v2/art/root/annas/__annas__/1cb38945d4577fdd/buck-headers/annas/src/internal.h"}]
+        self.put(report([mutant(1)]), "a.json")
+        self.put(report([mutant(1)], label="//annas:annas", skipped=hidden), "b.json")
+        outcome, result = self.grade()
+        self.assertEqual([(f["function"], f["file"]) for f in result["findings"] if f["rule"] == "unmutated-function"],
+                         [("ctx_key", "annas/src/internal.h")])
+
+    def test_an_absolute_path_outside_the_known_roots_is_still_reported(self):
+        odd = ["/home/x/proj/a.h", "/opt/toolchain/include/b.h", "/work/tree/buck-out/v2/art/root/m/__m__/0123abcd/buck-headers/m/c.h"]
+        self.assertEqual(self.reported_headers(odd + ["/usr/include/stdio.h"]),
+                         (1, sorted(odd[:2] + ["m/c.h"])))
+
+    def test_a_product_header_is_reported_by_its_package_relative_path(self):
+        own = "buck-out/v2/gen/root/0123abcd/m/sub/__sub__/buck-headers/m/sub/b.h"
+        self.assertEqual(self.reported_headers(["m/a.h", own, "m"]), (1, ["m", "m/a.h", "m/sub/b.h"]))
+
+    def test_a_header_the_gate_cannot_place_is_still_reported(self):
+        odd = ["unknown/place.h", "buck-out/v2/gen/root/0123abcd/odd/file.h"]
+        self.assertEqual(self.reported_headers(odd), (1, sorted(odd)))
+
+    def test_a_package_name_is_matched_whole(self):
+        mm = "buck-out/v2/gen/root/0123abcd/mm/__mm__/buck-headers/mm/a.h"  # `mm` is not package `m`
+        self.assertEqual(self.reported_headers([mm]), (0, []))
+
+    def test_only_a_header_can_be_outside_the_product(self):
+        self.assertEqual(self.reported_headers(["third_party/x/y.c"], reason="macro"), (1, ["third_party/x/y.c"]))
+
+    def test_the_packages_of_every_module_of_the_policy_are_the_products(self):
+        self.policy.write_text('[module."//m:mod_mutants"]\nlevel = "L3"\n[module."//n/p:other"]\nlevel = "L3"\n',
+                               encoding="utf-8")
+        header = [{"name": "g", "file": "n/p/b.h", "reason": "header"}]
+        self.put(report([mutant(1)]), "a.json")
+        self.put(report([mutant(1)], label="//n/p:other", skipped=header), "b.json")
+        outcome, result = self.grade()
+        self.assertExit(outcome, 1)
+        self.assertEqual([(f["module"], f["file"]) for f in result["findings"] if f["rule"] == "unmutated-function"],
+                         [("//n/p:other", "n/p/b.h")])
 
     # -- verdicts ----------------------------------------------------------------------------
     def test_equal_object_to_the_baseline_is_equivalent_and_needs_no_run(self):
