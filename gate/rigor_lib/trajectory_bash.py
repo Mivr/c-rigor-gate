@@ -118,6 +118,8 @@ class Prepared:
 
 
 class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin):
+    delete_recursive = True  # whether the delete being judged can remove a tree; `_write_targets` sets it (T077)
+
     def __init__(self, policy, task):
         self.policy = policy
         self.task = task
@@ -963,6 +965,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         carried = self._carried_texts(argv, layout)
         if layout is not None and not (layout["dir"] or self.is_dir(layout["text"], layout.get("follow", True))):
             layout = None
+        self.delete_recursive = writers.recursive_delete(argv)
         for index, op, text in writers.write_targets(argv):
             if index < len(argv):
                 indexes.add(index)
@@ -976,6 +979,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
                     self._carry(next(iter(carried.values())) if len(carried) == 1 else None, text)
         if layout is not None and layout["target"] is None:  # `ln -s TARGET` links ./basename(TARGET)
             self.write(writers.into_dir(".", argv[layout["sources"][0]]), "rewrite", raw)
+        self.delete_recursive = True  # any other writer of a delete is judged as able to remove a tree
         if cmds.name_of(argv[0]) == "mkdir":
             self.dirs.update(n for n in (self.policy.normalize(argv[i], self.cwd) for i in indexes) if n)
         return indexes
@@ -1114,7 +1118,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if task.implementer and any(task.is_test(p) for p in probes):
             made = normal in self.created
             if op == "delete" and not made:
-                if not writers.patch_leftover_glob(rel):  # `rm dir/*.orig` removes patch leftovers (T077, B26)
+                # `rm dir/*.orig` removes patch leftovers, unless it can remove a directory with tests (T077, B26)
+                if self.delete_recursive or not writers.patch_leftover_glob(rel):
                     self.add("tamper-test-delete", raw, token)
             elif op == "rewrite" and normal in self.read_set and not made:
                 self.add("tamper-test-rewrite", raw, token)

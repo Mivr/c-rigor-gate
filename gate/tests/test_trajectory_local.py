@@ -101,6 +101,24 @@ class PatchLeftoverGlobTests(LocalCase):
             self.assertNotEqual(got, [], command)
             self.assertTrue(set(got) & {"tamper-test-delete", "path-unresolved", "write-unresolved"}, command)
 
+    def test_recursive_deletes_of_leftover_globs_still_block(self):
+        for command in ("rm -rf tests/*.orig", "rm -r -f tests/*.orig", "rm --recursive tests/*.orig",
+                        "git rm -r 'tests/*.orig'", "rm -fR tests/*.rej", "rm -f --recurs tests/*.orig",
+                        "find tests -name '*.orig' -delete", "rm -Rf -- tests/*.orig", "git rm -rf tests/*.orig"):
+            self.assertEqual(self.rules_of("cd %s && %s" % (WT, command)), ["tamper-test-delete"], command)
+
+    def test_non_recursive_deletes_of_leftover_globs_are_clean(self):
+        for command in ("rm tests/*.orig", "rm -f -v tests/*.rej", "git rm -f 'tests/*.orig'", "rm -- tests/*.orig"):
+            self.assertEqual(self.rules_of("cd %s && %s" % (WT, command)), [], command)
+
+    def test_recursive_flag_reading(self):
+        for argv, want in ((["rm", "-rf", "x"], True), (["rm", "-f", "x"], False), (["rm", "--", "-r"], False),
+                           (["rm", "--rec", "x"], True), (["rm", "--re", "x"], False), (["rm", "--recursive=1"], True),
+                           (["rmdir", "-r"], False), (["find", ".", "-delete"], True), (["mv", "a", "b"], True),
+                           (["git", "rm", "-r", "x"], True), (["git", "-c", "a.b=c", "rm", "x"], False),
+                           (["git", "clean", "-f"], True)):
+            self.assertEqual(writers.recursive_delete(argv), want, argv)
+
     def test_a_protected_leftover_glob_is_still_protected(self):
         self.assertEqual(self.rules_of("cd %s && rm -f policy/*.orig" % WT), ["tamper-protected"])
 

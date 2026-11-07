@@ -400,7 +400,7 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   `scp` and `sftp` (a loopback ssh is a shell as the same uid). A URL elsewhere (test data, commit trailers, echo) is
   never a finding. `git fetch/pull/ls-remote/clone` need a local path or an allowlisted URL.
 * **Patch leftovers (T077, B26):** a delete whose last path component is a glob ending in a literal `.orig` or `.rej`
-  (`rm -f tests/*.orig`) is not `tamper-test-delete`: such a name is a `patch` leftover, never a test. The suffix set is
+  (`rm -f tests/*.orig`) is not `tamper-test-delete` when the delete cannot remove a directory (`rm` or `git rm` with no `-r`/`-R`/`--recursive`, nor a cluster holding one; `rm -rf tests/*.orig`, `git rm -r`, `find -delete` and `mv` still block, since a directory `x.orig` can hold tests): such a name is a `patch` leftover, never a test. The suffix set is
   `PATCH_LEFTOVER_SUFFIXES` in `trajectory_writers.py`; the test-file rule knows `tests/` and `test/` directories and the
   names `test_*`, `*_test.*`, `*_tests.*`, and a task's `test_globs`, none of which a name ending in those suffixes is by
   itself. Still blocked: `*.c`, `*`, `*.or*`, `test_*`, a glob in a directory component, an unknown directory variable,
