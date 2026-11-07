@@ -61,4 +61,4 @@ without `core/Add` in the list.
 
 ## Measured wall time
 `selftest/tripwires.sh` (five tripwires, `--jobs 8`, one uncached, shared farm and two CPUs):
-TIME_PLACEHOLDER
+283 s wall (final run, `witness-equivalent-mutant` uncached; 193 s and 203 s at `--jobs 3` on earlier runs). The uncached tripwire is the longest lane; the cached ones take 20 to 210 s each while other lanes share the farm.
