@@ -20,8 +20,8 @@ allow = ["memcpy"]
 exports = ["annas_code_name", "annas_config_load", "annas_ctx_init", "annas_download",
     "annas_error_line", "annas_exit_code", "annas_fast_download_url", "annas_format_download_url",
     "annas_format_downloaded", "api_fetch", "arg_invalid", "cat_at", "cat_len", "check_config",
-    "exch_close", "exch_event", "exch_fail", "exch_init", "exch_open", "head_note", "key_in",
-    "key_match", "msg_fail", "msg_ok", "msg_text", "msg_u64", "name_build", "name_format_ok",
+    "ctx_key", "exch_close", "exch_event", "exch_fail", "exch_init", "exch_open", "head_note",
+    "key_in", "key_match", "msg_fail", "msg_ok", "msg_text", "msg_u64", "name_build", "name_format_ok",
     "op_begin", "op_check", "redact_into", "req_check", "ws_split"]
 
 [module."//annas:config_test"]
@@ -164,7 +164,6 @@ exports = []
 [module."//app:app"]
 level = "L2"
 impl = ["app/src/**"]
-allow = ["bcmp"]
 exports = ["app_cli_parse", "app_cli_run", "app_dotenv_parse", "app_echo_cut", "app_emit",
     "app_env_layer_init", "app_env_layer_port", "app_finalise", "app_key", "app_mcp_handle",
     "app_mcp_init", "app_op_run", "app_op_text", "app_put_escaped", "app_scratch",
