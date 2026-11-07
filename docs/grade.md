@@ -279,7 +279,7 @@ correct body passes in both.
 
 **Export narrowing (T069).** `products/selftest/policy.toml` lists exactly what the clean module exports (`core_add`,
 `core_sign`, `util_make_ramp`, `util_sum`); the red-case symbols live in the canaries' own policies. The step
-`extra-export` (clean module plus an exported `core_extra` that the policy does not list) must fail `symbols` with
+`extra-export` (the clean module plus an exported `test_extra` in `core_test.c` that its `exports = ["main"]` does not list, graded with `bundle-base`; a function in `core.c` would also fail `mutants`) must fail `symbols` with
 exactly `unexpected-export`, which pins that the list stays narrow. A step that needs an extra symbol grades against a
 scratch copy of the product inputs (`ta_inputs`), never against a widened shared policy.
 

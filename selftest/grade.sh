@@ -300,15 +300,15 @@ ta_head a018 "$sentinel" sign-stub
 
 # Red property step (T069): the clean module plus an exported function the policy does not list. The policy is the
 # product's own (clean exports only; steps that add a symbol grade against a scratch policy, as ta_inputs does),
-# so `symbols` must report unexpected-export. Committed here with the other heads; graded in the parallel wave.
+# so `symbols` must report unexpected-export. The function goes into core_test.c (its module lists `main` only):
+# an untested function in core.c would also fail `mutants`, and one in core.h is a test-surface change either way,
+# so the grading carries bundle-base (the witness passes: the function is independent of core.c).
 git -C "$repo" checkout -q -f -B case-extra-export "$base"
 git -C "$repo" clean -q -fdx
 (
   cd "$repo" || exit 1
-  # Only core.c changes (a header edit is a test-surface change and would need a witness), and the body has
-  # nothing to mutate, so only `symbols` can object.
-  printf '\nvoid core_extra(void);\nvoid core_extra(void) {\n}\n' >> core/core.c
-  grep -q 'void core_extra(void) {' core/core.c || exit 1
+  printf '\nvoid test_extra(void);\nvoid test_extra(void) {\n}\n' >> core/core_test.c
+  grep -q 'void test_extra(void) {' core/core_test.c || exit 1
 ) || fail "extra-export: the edit did not apply"
 git -C "$repo" add -A
 git -C "$repo" commit -q -m extra-export
@@ -568,6 +568,7 @@ step_extra_export() {  # the clean policy lists exactly the clean exports: an un
   local code
   "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$extra_export_head" --task "$work/task.toml" \
       --product "$product" --work "$work/extra-export" --out "$work/extra-export.verdict.json" \
+      --witness "$work/bundle-base" \
       > "$work/extra-export.log" 2>&1
   code=$?
   check_verdict "$work/extra-export.verdict.json" "symbols:unexpected-export" "$code" "$work/extra-export" \
