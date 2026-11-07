@@ -86,7 +86,7 @@ or past an array must give the same stored text every time. `tool.py linkrun` th
 
 | Stored | Becomes |
 |---|---|
-| a failed-check reason `N of M checks failed; first: f.c:L: CHECK_X(a, b): got != want` | `0 of 0 checks failed; first: f.c:L: CHECK_X(a, b)` (place and text of the check kept; counts and observed values, numbers, strings, addresses dropped; the prefix still matches the verdict code) |
+| a failed-check reason `N of M checks failed; first: f.c:L: CHECK_X(a, b): got != want` | the constant `0 of 0 checks failed; first: (not stored)` (the verdict code only asks for the prefix; counts, observed values, and which check failed first are dropped, T067: for a mutant that reads uninitialised memory the first failing check depends on the garbage, and its place and text reached the report) |
 | any other reason (`killed by signal 11`, `timeout after 10 s`, ...) | the same words with every number (decimal or `0x...`) turned into `#` |
 | `asserts` of a test line | 0 or 1 (the verdicts only ask for at least one) |
 | `rc` of the test binary | 0 or 1 as is, -9 for the timeout kill, -1 for any other way of dying |
@@ -94,7 +94,7 @@ or past an array must give the same stored text every time. `tool.py linkrun` th
 
 Normalising never turns a crash into a check failure or back, and keeps `status` and test ids, so no verdict changes
 (`gate/tests/test_mutate_tool.py` runs `outcome_of_run` before and after). `selftest/mutate.sh` builds the `uninit`
-module twice with different nonces in the test source (every mutant is run again) and requires byte-identical reports.
+module twice with different nonces in the test source (every mutant is run again) and requires byte-identical reports; T064's batch-size comparison is byte for byte for `uninit` as well.
 
 An action is keyed on its inputs: the mutant spec and source for step 3, the objects for step 4. An
 unchanged tree executes **zero** actions; a changed test re-links and re-runs the live mutants of that
