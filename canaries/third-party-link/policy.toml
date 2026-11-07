@@ -41,6 +41,7 @@ exports = ["main"]
 level = "L2"
 impl = ["core/tpw.c"]
 allow = []
+third_party = ["gate//third_party/mbedtls:mbedtls"]
 
 [module."//core:tpw_test"]
 allow = []
