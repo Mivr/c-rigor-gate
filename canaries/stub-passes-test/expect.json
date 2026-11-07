@@ -1,0 +1,9 @@
+{
+  "bypass": "a test-author test that passes on the stub (P002 Q2, test-passes-on-stub)",
+  "description": "Role test-author: the shipped stub of the new core_pos is its correct body (the witness's, byte for byte), so the strong new test passes on the stub in release and san. Everything else is green: the test passes on the witness and kills its mutants.",
+  "fail": {
+    "tests-stub": [
+      "test-passes-on-stub"
+    ]
+  }
+}
