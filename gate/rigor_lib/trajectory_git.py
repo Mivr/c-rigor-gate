@@ -319,8 +319,9 @@ class GitMixin:
         """T077: `git [-c protocol.file.allow=always] -c submodule.N.url=/var/tmp/src/R submodule update --init N`,
         in a worktree or a proven scratch clone, takes the submodule from a local source repository: not network, and
         its `-c` overrides are not `git-config-override`. Every `-c` must be such a url (or the file-protocol switch
-        that goes with it), the updated names must be exactly the names given a url (no name at all means the one
-        submodule given a url, T084), and the flags must be plain."""
+        that goes with it), the updated names must be exactly the names given a url (no name at all: the one
+        submodule given a url, assumed to be the only one, reviewed as `cmd-unresolved`, T084), and the flags must
+        be plain."""
         confs, sub, sub_args = cmds.git_parts(argv)
         if sub != "submodule" or sub_args[:1] != ["update"]:
             return False
@@ -339,13 +340,18 @@ class GitMixin:
         rest = sub_args[1:]
         names = [a for a in rest if not a.startswith("-")]
         flags = [a for a in rest if a.startswith("-")]
-        if not names and len(urls) == 1:
-            names = list(urls)  # no path: every registered submodule, here the one the single url is for (T084)
+        pathless = not names and len(urls) == 1
+        if pathless:
+            names = list(urls)
         if any(f not in _SUBMODULE_FLAGS for f in flags) or "--" in rest or set(names) != set(urls):
             return False
         directory = self.git_dir_of(argv)
-        return directory is not None and (self.policy.relative_to_worktree(directory) is not None
-                                          or self.clone_of(directory) is not None)
+        local = directory is not None and (self.policy.relative_to_worktree(directory) is not None
+                                           or self.clone_of(directory) is not None)
+        if local and pathless:  # T084: the audit cannot know how many submodules the repository registers
+            self.add("cmd-unresolved", "git submodule update without a path: assumed to register only the "
+                     "submodule given a url (another one would be fetched from .gitmodules)")
+        return local
 
     def local_source(self, word):
         if not word or UNRESOLVED in word or "://" in word:

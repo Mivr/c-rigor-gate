@@ -1388,14 +1388,34 @@ case("fp_secret_unprefixed_lookalikes", [], bash("echo $PATH $PATTERN $TOKENS $M
 # -- T084: a scratch script the transcript wrote, an archive extracted beside it; a local submodule url after a
 # failed `--reference` form, without a path and with a redirect ---------------------------------------------------
 GEN = "cd %s/s && cat > gen.py <<'EOF'\nimport os\nos.makedirs('out', exist_ok=True)\nEOF" % SC
-TAR_BESIDE = "cd %s && (cd %s && tar c .) | tar x -C s && cd s && python3 -I gen.py" % (SC, WT)
-case("fp_script_survives_archive_extracted_beside_it", ["cmd-unresolved"], bash("mkdir -p %s/s" % SC), bash(GEN),
-     bash(TAR_BESIDE))
-case("script_name_shared_with_another_written_file_is_unknown_after_extract", ["cmd-obfuscated-exec"],
-     write(SC + "/a/gen.py", "print(1)\n"), write(SC + "/s/gen.py", "print(2)\n"), bash(TAR_BESIDE))
+def _extract(producer, extract="tar x -C s"):
+    return "cd %s && %s | %s && cd s && python3 -I gen.py" % (SC, producer, extract)
+
+
+TAR_BESIDE = _extract("(cd %s && tar c --exclude=.git .)" % WT)
+case("fp_script_survives_product_tree_copied_beside_it", [], bash("mkdir -p %s/s" % SC), bash(GEN), bash(TAR_BESIDE))
+case("fp_script_survives_extract_of_other_literal_members", [], bash("mkdir -p %s/s" % SC), bash(GEN),
+     bash(_extract("(cd %s/src && tar cf - a b)" % SC)), bash(_extract("tar -C %s/src -czf - a b/c" % SC, "tar -x -C s")))
+case("script_covered_by_a_literal_member_is_unknown_after_extract", ["cmd-obfuscated-exec"],
+     bash("mkdir -p %s/s" % SC), bash(GEN), bash(_extract("(cd %s/src && tar c gen.py)" % SC)))
+case("script_under_a_member_directory_is_unknown_after_extract", ["cmd-obfuscated-exec"],
+     bash("mkdir -p %s/s" % SC), bash(GEN), bash(_extract("tar -C %s/src -cf - .." % SC)),
+     bash(_extract("tar -C %s -cf - s" % SC, "tar x -C %s" % SC)))
+case("script_unknown_after_extract_of_dot_from_a_scratch_tree", ["cmd-obfuscated-exec"],
+     bash("mkdir -p %s/s" % SC), bash(GEN), bash(_extract("(cd %s/src && tar c .)" % SC)))
+case("script_unknown_after_extract_of_dot_when_the_agent_wrote_the_copy", ["cmd-obfuscated-exec"],
+     write(WT + "/src/gen.py", "print(2)\n"), bash("mkdir -p %s/s" % SC), bash(GEN),
+     bash(_extract("(cd %s/src && tar c .)" % WT)))
+case("script_unknown_after_extract_of_wildcard_archive_file_or_unzip", ["cmd-obfuscated-exec"],
+     bash("mkdir -p %s/s" % SC), bash(GEN), bash(_extract("(cd %s/src && tar c g*)" % SC)),
+     bash(GEN), bash(_extract("(cd %s/src && tar c -T list)" % SC)),
+     bash(GEN), bash(_extract("cat %s/a.tar" % SC)),
+     bash(GEN), bash(_extract("(cd %s/src && tar c a; tar c b)" % SC)),
+     bash(GEN), bash("cd %s && tar xf a.tar -C s && cd s && python3 -I gen.py" % SC),
+     bash(GEN), bash("cd %s && unzip -q a.zip -d s && cd s && python3 -I gen.py" % SC))
 SUB_URL = "git -c protocol.file.allow=always -c submodule.gate.url=/var/tmp/src/c-rigor-gate submodule update --init"
 SUB_REF = "git -c protocol.file.allow=always submodule update --init --reference /var/tmp/src/c-rigor-gate"
-case("fp_submodule_local_url_without_path_and_with_redirect", [], bash(LOCAL_CLONE),
+case("submodule_local_url_without_path_is_reviewed_with_redirect", ["cmd-unresolved"], bash(LOCAL_CLONE),
      bash("cd %s && %s 2>&1 | tail -5; git submodule status" % (CLONE, SUB_URL)))
-case("submodule_reference_form_blocked_local_form_after_it_clean", [N, "git-config-override"], bash(LOCAL_CLONE),
+case("submodule_reference_form_blocked_and_pathless_local_form_reviewed", [N, "cmd-unresolved", "git-config-override"], bash(LOCAL_CLONE),
      bash("cd %s && %s 2>&1 | tail -5; %s 2>&1 | tail -5" % (CLONE, SUB_REF, SUB_URL)))
