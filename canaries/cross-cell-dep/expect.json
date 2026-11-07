@@ -10,6 +10,8 @@
     ]
   },
   "not_run": [
-    "mutants"
+    "mutants",
+    "witness-tests",
+    "mutants-witness"
   ]
 }

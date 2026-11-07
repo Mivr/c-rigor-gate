@@ -8,6 +8,7 @@ remaining steps do not run.
 """
 
 from rigor_lib import grade_build, grade_checks, grade_mutants, grade_steps, grade_structure
+from rigor_lib import grade_witness
 
 GATES = (
     ("clone", grade_steps.clone_gate),
@@ -23,4 +24,6 @@ GATES = (
     ("tests-release", grade_steps.tests_gate_for("release")),
     ("tests-san", grade_steps.tests_gate_for("san")),
     ("mutants", grade_mutants.mutants_gate),
+    ("witness-tests", grade_witness.witness_tests_gate),
+    ("mutants-witness", grade_witness.mutants_witness_gate),
 )

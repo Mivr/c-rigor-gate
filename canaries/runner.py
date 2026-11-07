@@ -135,6 +135,14 @@ def expected_text(expect):
     return render(fail, sorted(expect.get("not_run", [])))
 
 
+def witness_dir(canary_id):
+    """The witness bundle a canary is graded with: its own `witness/`, else the shared `_base/witness/` (T040)."""
+    own = os.path.join(CANARIES, canary_id, "witness")
+    if os.path.isdir(own):
+        return own
+    return os.path.join(CANARIES, "_base", "witness")
+
+
 def grade_one(canary_id, scratch, uncached, keep=True):
     expect = load_expect(canary_id)
     work = os.path.join(scratch, canary_id)
@@ -151,6 +159,7 @@ def grade_one(canary_id, scratch, uncached, keep=True):
                    "--task", os.path.join(source, "task.toml"),
                    "--product", os.path.join(source, "product.toml"),
                    "--work", os.path.join(work, "grade"), "--out", verdict]
+        command += ["--witness", witness_dir(canary_id)]
         if uncached:
             command.append("--uncached")
         result = run(command, ROOT, {"TMPDIR": work}, check=False)

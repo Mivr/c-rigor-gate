@@ -1,9 +1,8 @@
 # Witness grading
 
-> **Partly wired.** The library is P002 step 1 (T036). `rigor grade --witness DIR` snapshots the bundle
-> and binds it into the verdict (T037, "Binding" below), but no gate reads the bundle, a role or an
-> `impl` key yet: the `witness-tests` and `mutants-witness` gates are T039, and `tests-stub` with the
-> test-author role is T041. The design is `plan/P002-witness-grading.md`.
+> **Wired for the roles implementer and audit** (T039): `rigor grade --witness DIR` binds the bundle (T037) and the
+> gates `witness-tests` and `mutants-witness` judge it (`docs/grade.md`, "The witness gates"). The role
+> `test-author` is exit 2 until `tests-stub` exists (T041). The design is `plan/P002-witness-grading.md`.
 
 A **witness** is an implementation of a module that the gate holds and the implementer never sees. The
 test-author grade judges the tests against it: every new test fails on the stubs, every expected test
@@ -67,12 +66,12 @@ The bundle is bound like `policy.toml` (T021's rules: copy once, hash the copy),
   one graded without a witness (`null`). Without the option any well-formed value, or `null`, is
   accepted. The merge bot passes it for every decisive grade of a product with L3 modules.
 - `rigor grade` clears `<work>/tree-witness/` and `<work>/witness/` before a run (stopping the witness
-  tree's Buck2 daemon first), and stops that daemon again on exit, as it does for `<work>/tree/`. T039
-  fills them.
+  tree's Buck2 daemon first), and stops that daemon again on exit, as it does for `<work>/tree/`. The witness
+  gates (T039) fill them.
 - **Approvals** (owner decision 4, not yet confirmed): an equivalent mutant of the witness is approved
   with the separate kind `witness-equivalent-mutant` (`rigor approve --kind witness-equivalent-mutant
   --scope <mutant id> ...`), never with `equivalent-mutant`, so a witness approval cannot cover a same-id
-  mutant of the implementer's code. Nothing uses it before `mutants-witness` (T039). Prefer rewriting the
+  mutant of the implementer's code. `mutants-witness` (T039) judges its survivors with it. Prefer rewriting the
   witness; approve only spec-required defensive code.
 
 ## Roles
@@ -107,7 +106,7 @@ stubbed head graded as implementer fails `test-not-pass`.
   - `test-author`: those, plus every L2+ module whose impl paths changed (the stubbed ones);
   - `audit`: every L2+ module that has tests.
 
-  W may be empty in every role. In role test-author an empty W must never pass; T041 turns it into
+  W may be empty in every role (the witness gates are then not applicable). In role test-author an empty W must never pass; T041 turns it into
   `no-new-tests` or `witness-missing`.
 
 Example, `canaries/_base/product`: `util/util_core_test.c` is `//util:core_test`, which lists `//core:core`

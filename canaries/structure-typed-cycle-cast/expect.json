@@ -4,6 +4,12 @@
   "fail": {
     "structure": [
       "indirect-cycle-possible"
+    ],
+    "witness-tests": [
+      "witness-build-failed"
     ]
-  }
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
 }

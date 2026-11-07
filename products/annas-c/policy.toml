@@ -15,6 +15,7 @@ trusted = ["gate//ctest:ctest"]
 
 [module."//annas:annas"]
 level = "L3"
+impl = ["annas/src/**"]
 allow = ["memcpy"]
 exports = ["annas_code_name", "annas_config_load", "annas_ctx_init", "annas_download",
     "annas_error_line", "annas_exit_code", "annas_fast_download_url", "annas_format_download_url",
@@ -162,6 +163,7 @@ exports = []
 
 [module."//app:app"]
 level = "L2"
+impl = ["app/src/**"]
 allow = ["bcmp"]
 exports = ["app_cli_parse", "app_cli_run", "app_dotenv_parse", "app_echo_cut", "app_emit",
     "app_env_layer_init", "app_env_layer_port", "app_finalise", "app_key", "app_mcp_handle",
@@ -339,6 +341,7 @@ exports = ["main"]
 
 [module."//core:core"]
 level = "L3"
+impl = ["core/src/**"]
 allow = ["bcmp", "memcpy", "strlen"]
 exports = ["core_arena_alloc", "core_arena_capacity", "core_arena_init", "core_arena_mark",
     "core_arena_reset_to", "core_arena_used", "core_ascii_lower", "core_buf_cstr", "core_buf_init",
@@ -357,6 +360,7 @@ exports = ["main"]
 
 [module."//fsname:fsname"]
 level = "L3"
+impl = ["fsname/src/**"]
 allow = ["memcpy"]
 exports = ["fsname_sanitize"]
 
@@ -382,6 +386,7 @@ exports = ["main"]
 
 [module."//http:http"]
 level = "L3"
+impl = ["http/src/**"]
 allow = ["memchr", "memset"]
 exports = ["http_authority_parse", "http_chunk_size_line", "http_detect_challenge",
     "http_header_line", "http_headers_end", "http_host_valid", "http_is_redirect_status",
@@ -454,6 +459,7 @@ exports = ["main"]
 
 [module."//json:json"]
 level = "L3"
+impl = ["json/src/**"]
 allow = ["memcmp", "memcpy"]
 exports = ["json_at", "json_get_bool", "json_get_i64", "json_get_str", "json_get_u64",
     "json_key_at", "json_len", "json_limits_default", "json_num_scan", "json_number_text",
@@ -512,6 +518,7 @@ exports = ["main"]
 
 [module."//ports:ports"]
 level = "L2"
+impl = ["ports/src/**"]
 allow = ["bcmp", "memchr", "memcpy"]
 exports = ["ports_fake_clock_advance", "ports_fake_clock_init", "ports_fake_clock_port",
     "ports_fake_clock_set", "ports_fake_env_init", "ports_fake_env_port", "ports_fake_fs_commits",
@@ -543,6 +550,7 @@ exports = ["main"]
 
 [module."//posix_clock:posix_clock"]
 level = "L2"
+impl = ["posix_clock/src/**"]
 allow = ["__errno_location"]
 deny_exempt = ["clock_gettime"]
 exports = ["posix_clock_faults", "posix_clock_init", "posix_clock_init_real", "posix_clock_port",
@@ -555,6 +563,7 @@ exports = ["main"]
 
 [module."//posix_env:posix_env"]
 level = "L2"
+impl = ["posix_env/src/**"]
 allow = ["memchr"]
 exports = ["posix_env_init", "posix_env_port"]
 
@@ -615,6 +624,7 @@ exports = ["kf_entry", "kf_entry_count", "kf_entry_is", "kf_fail", "kf_fail2", "
 
 [module."//posix_fs:posix_fs"]
 level = "L2"
+impl = ["posix_fs/src/**"]
 allow = ["__errno_location", "close", "fsync", "ftruncate", "linkat", "memcpy", "pwrite", "snprintf"]
 deny_exempt = ["open", "openat"]
 exports = ["pfs_find", "pfs_fsync", "pfs_ftruncate", "pfs_link_tmp", "pfs_map_err",
@@ -807,6 +817,7 @@ exports = []
 
 [module."//tls_stream:tls_stream"]
 level = "L2"
+impl = ["tls_stream/src/**"]
 allow = ["__errno_location", "close", "freeaddrinfo", "getaddrinfo", "getsockopt", "memchr", "memcpy",
     "memset", "poll", "recv", "send", "snprintf"]
 deny_exempt = ["connect", "socket"]
@@ -838,6 +849,7 @@ exports = ["main"]
 
 [module."//url:url"]
 level = "L3"
+impl = ["url/src/**"]
 allow = []
 exports = ["url_base_is_valid", "url_base_normalize", "url_build_fast_download",
     "url_build_md5_page", "url_build_scidb_download", "url_build_scidb_path", "url_build_search",
@@ -1083,6 +1095,7 @@ exports = ["kw", "kw_ca", "kw_check", "kw_check_no_empty_writes", "kw_check_no_k
 
 [module."//wire:wire"]
 level = "L2"
+impl = ["wire/src/**"]
 allow = ["__errno_location", "close", "read", "write"]
 deny_exempt = ["clock_gettime", "open"]
 exports = ["wire_ca_load", "wire_deps_build", "wire_env_get", "wire_env_setup", "wire_io_libc",

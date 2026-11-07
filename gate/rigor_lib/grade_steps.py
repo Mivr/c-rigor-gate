@@ -5,7 +5,7 @@ import os
 from argparse import Namespace
 
 from rigor_lib import approval_args, contract, gitrun, grade_context, grade_tree, jsonio, paths
-from rigor_lib import product_layout, suppressions, tests_gate
+from rigor_lib import grade_policy, product_layout, suppressions, tests_gate, witness_bundle, witness_scope
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 
@@ -22,7 +22,23 @@ def clone_gate(g):
 
 
 def contract_gate(g):
-    return contract.run(Namespace(repo=g.src, base=g.base, head=g.head, contract=g.args.task))
+    result = contract.run(Namespace(repo=g.src, base=g.base, head=g.head, contract=g.args.task))
+    check_witness_inputs(g)
+    return result
+
+
+def check_witness_inputs(g):
+    """Exit 2 before any build for what the witness gates could never judge (P002 T039 requirement 1, Q1).
+
+    * role test-author needs T041 (`tests-stub`): until then it must not be gradable, so it can never pass early;
+    * a witness bundle is checked against the policy's impl paths and the product name.
+    """
+    if contract.load_contract(g.args.task).role == contract.ROLE_TEST_AUTHOR:
+        raise InternalError("role test-author needs T041")
+    if g.witness is not None:
+        document = grade_policy.load_document(grade_policy.policy_path(g))
+        mapping, _ = witness_scope.impl_map(document, grade_policy.load_levels(grade_policy.policy_path(g)))
+        witness_bundle.check(g.witness, g.product.name, mapping)
 
 
 def _graded_entries(g):
@@ -48,7 +64,7 @@ def suppressions_gate(g):
         allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS), _graded_entries(g))
 
 
-def _product_entry_findings(g, entry, manifest):
+def _product_entry_findings(g, tree, entry, manifest):
     """Copy one product file into the tree if the layout allows it; return its findings."""
     try:
         text = entry.path.decode("utf-8")
@@ -65,25 +81,53 @@ def _product_entry_findings(g, entry, manifest):
     if entry.mode not in _PLAIN_FILE_MODES:
         return [finding("unsupported-entry", path=text, mode=entry.mode)]
     mode = 0o755 if entry.mode == "100755" else 0o644
-    manifest[text] = grade_tree.write_file(g.tree, text, grade_tree.read_blob(g.src, entry), mode)
+    manifest[text] = grade_tree.write_file(tree, text, grade_tree.read_blob(g.src, entry), mode)
     return []
 
 
-def assemble_gate(g):
-    os.makedirs(g.tree)
-    gate_files, gate_buckconfig = grade_tree.copy_gate(grade_context.GATE_ROOT, g.gate_sha, g.tree)
+def _witness_files(g, bundle, modules):
+    """(head paths the witness replaces, the witness files that take their place) for the modules in
+    `modules` ({label: impl globs}) that the bundle lists. A witness file the layout would not copy is a
+    defect of the bundle (exit 2), not something to leave out silently."""
+    head_paths = [entry.path.decode("utf-8") for entry in _graded_entries(g)]
+    kept, files = witness_bundle.overlay(head_paths, bundle, modules)
+    for item in files:
+        if product_layout.classify(g.product, item.path) != product_layout.COPY:
+            raise InternalError("witness file %s is not a file the layout copies" % item.path)
+    return set(head_paths) - set(kept), files
+
+
+def assemble_tree(g, tree, overlay=None):
+    """Assemble a grading tree at `tree`: the gate files, the generated `.buckconfig` and every product file
+    of the clone at `g.head` that the layout allows. Returns (findings, product manifest, full manifest).
+
+    `overlay` is None for the head tree. For the witness tree it is (bundle, modules): the head files that
+    match the impl globs of those modules are left out and the bundle's files are written instead (P002).
+    """
+    os.makedirs(tree)
+    gate_files, gate_buckconfig = grade_tree.copy_gate(grade_context.GATE_ROOT, g.gate_sha, tree)
+    skipped, witness_files = _witness_files(g, *overlay) if overlay is not None else (set(), ())
     manifest = {}
     found = []
     for entry in grade_tree.list_tree(g.src, g.head):
-        found.extend(_product_entry_findings(g, entry, manifest))
+        if entry.path.decode("utf-8", "replace") in skipped:
+            continue
+        found.extend(_product_entry_findings(g, tree, entry, manifest))
+    for item in witness_files:
+        manifest[item.path] = grade_tree.write_file(tree, item.path, item.data, 0o644)
     product_sha = jsonio.sha256_hex(jsonio.canonical_dumps(manifest))
     # The verdict commits to exactly which product files were built.
     found.append(finding("product-manifest", severity=SEVERITY_INFO, sha256=product_sha))
     generated = {".buckconfig": grade_tree.generated_buckconfig(gate_buckconfig), ".buckroot": b""}
     full = dict(gate_files)
     for name, data in generated.items():
-        full[name] = grade_tree.write_file(g.tree, name, data, 0o644)
+        full[name] = grade_tree.write_file(tree, name, data, 0o644)
     full.update(manifest)
+    return found, manifest, full
+
+
+def assemble_gate(g):
+    found, manifest, full = assemble_tree(g, g.tree)
     g.product_paths = sorted(manifest)
     metadata = {"gate_sha": g.gate_sha, "product_files": len(manifest),
                 "manifest": [[path, full[path]] for path in sorted(full)]}

@@ -1,0 +1,9 @@
+{
+  "bypass": "tests that pin only the implementer's own behaviour (R003 G1)",
+  "description": "The head drops the positive core_sign checks and the `> 0` branch: its own mutants all die (G1 is open). The witness, the base core.c, keeps the branch and nothing pins it.",
+  "fail": {
+    "mutants-witness": [
+      "witness-survived-mutant"
+    ]
+  }
+}

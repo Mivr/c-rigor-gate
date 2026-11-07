@@ -9,9 +9,14 @@
     "tests-san": [
       "no-assertions",
       "test-not-pass"
+    ],
+    "witness-tests": [
+      "no-assertions",
+      "witness-test-not-pass"
     ]
   },
   "not_run": [
-    "mutants"
+    "mutants",
+    "mutants-witness"
   ]
 }

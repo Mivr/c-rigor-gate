@@ -4,6 +4,12 @@
   "fail": {
     "symbols": [
       "exports-missing"
+    ],
+    "witness-tests": [
+      "witness-missing"
     ]
-  }
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
 }
