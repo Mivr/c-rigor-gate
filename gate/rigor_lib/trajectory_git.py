@@ -24,7 +24,18 @@ _FETCH_VALUE_OPTS = ("--depth", "-j", "--jobs", "--upload-pack", "--refmap", "--
 # clone options that can change where the clone's origin points, or that bring in other repositories
 _CLONE_REFUSED = ("--origin", "--separate-git-dir", "--template", "--config", "--recurse-submodules",
                   "--recursive", "--reference", "--reference-if-able")
+# `git submodule update` flags that cannot widen what it fetches (T077); anything else (`--remote`, `--recursive`,
+# `--depth N`, `--reference`, ...) keeps the command networked
+_SUBMODULE_FLAGS = ("--init", "--checkout", "-f", "--force", "-q", "--quiet", "--no-fetch")
+LOCAL_SOURCE_ROOT = "/var/tmp/src/"
 _TAINTING = ("cmd-git-config-write", "git-config-override", "cmd-no-verify")
+
+
+def _local_source_url(value):
+    """An absolute path that stays under /var/tmp/src/ (no `..`, no unknown part, no URL scheme)."""
+    if not value or UNRESOLVED in value or "://" in value or ".." in value.split("/") or not value.startswith("/"):
+        return False
+    return posixpath.normpath(value).startswith(LOCAL_SOURCE_ROOT)
 
 
 def _refused_clone_option(args):
@@ -285,6 +296,8 @@ class GitMixin:
     def git_local_remote(self, argv):
         """True when a networked git command only talks to a local path the transcript proves."""
         confs, sub, sub_args = cmds.git_parts(argv)
+        if sub == "submodule" and self.local_submodule(argv):
+            return True
         if any(c.split("=", 1)[0].lower() not in rules.GIT_ALLOWED_C_KEYS for c in confs):
             return False
         if sub == "clone":
@@ -294,6 +307,35 @@ class GitMixin:
             return False
         plain = [sub_args[i] for i in cmds.positionals(sub_args, _FETCH_VALUE_OPTS)]
         return not plain or plain[0] == "origin"
+
+    def local_submodule(self, argv):
+        """T077: `git [-c protocol.file.allow=always] -c submodule.N.url=/var/tmp/src/R submodule update --init N`,
+        in a worktree or a proven scratch clone, takes the submodule from a local source repository: not network, and
+        its `-c` overrides are not `git-config-override`. Every `-c` must be such a url (or the file-protocol switch
+        that goes with it), the updated names must be exactly the names given a url, and the flags must be plain."""
+        confs, sub, sub_args = cmds.git_parts(argv)
+        if sub != "submodule" or sub_args[:1] != ["update"]:
+            return False
+        urls, others = {}, []
+        for conf in confs:
+            key, _, value = conf.partition("=")
+            parts = key.split(".")
+            if len(parts) >= 3 and parts[0].lower() == "submodule" and parts[-1].lower() == "url":
+                if not _local_source_url(value):
+                    return False
+                urls[".".join(parts[1:-1])] = value
+            else:
+                others.append(conf)
+        if not urls or any(c not in ("protocol.file.allow=always",) for c in others):
+            return False
+        rest = sub_args[1:]
+        names = [a for a in rest if not a.startswith("-")]
+        flags = [a for a in rest if a.startswith("-")]
+        if any(f not in _SUBMODULE_FLAGS for f in flags) or "--" in rest or set(names) != set(urls):
+            return False
+        directory = self.git_dir_of(argv)
+        return directory is not None and (self.policy.relative_to_worktree(directory) is not None
+                                          or self.clone_of(directory) is not None)
 
     def local_source(self, word):
         if not word or UNRESOLVED in word or "://" in word:
