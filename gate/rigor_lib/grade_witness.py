@@ -11,7 +11,8 @@ judge the modules W (`witness_scope.scope`, from the head's layout and the paths
   head's `mutants`) and requires zero survivors at L3 and above. Approvals use their own kind.
 
 Both are applicable only when W holds a module with a bundle entry; otherwise they pass with info
-`witness-scope`. A witness byte-identical to the head is the head: its test results and mutants are reused
+`witness-scope`, except in role test-author, where they are required: W = {} is `no-new-tests` and a module
+of W without a bundle entry is `witness-missing` (an error at every level), so such a grade never passes. A witness byte-identical to the head is the head: its test results and mutants are reused
 (info `witness-equals-head`, zero actions). No finding carries source text of the witness (Q1, point 4):
 mutant findings lose `original`/`replacement`, and compiler output of a failed witness build stays out of
 the metadata.
@@ -127,8 +128,6 @@ def witness_tests_gate(g):
     if g.status.get("assemble") != "PASS" or g.status.get("buckfiles") != "PASS":
         return None  # no trustworthy layout
     role = contract.load_contract(g.args.task).role
-    if role == contract.ROLE_TEST_AUTHOR:
-        raise InternalError("role test-author needs T041")
     path = grade_policy.policy_path(g)
     levels = grade_policy.load_levels(path)
     mapping, found = witness_scope.impl_map(grade_policy.load_document(path), levels)
@@ -137,10 +136,16 @@ def witness_tests_gate(g):
     listed = g.witness.modules if g.witness is not None else {}
     judged = [label for label in scope if label in listed]
     found.append(finding("witness-scope", severity=SEVERITY_INFO, role=role, modules=scope, judged=judged))
+    test_author = role == contract.ROLE_TEST_AUTHOR
+    if test_author and not scope:
+        # A test-author grade must judge its tests against a witness: nothing in scope is never a PASS.
+        found.append(finding("no-new-tests", role=role, modules=scope))
     for label in scope:
         if label not in listed:
-            found.append(finding("witness-missing", severity=_severity(levels[label]), module=label,
-                                 level=levels[label]))
+            # A stubbed module's tests are only ever shown to pass on a witness: in role test-author a
+            # missing entry is an error at every level (P002 T041 requirement 2).
+            severity = SEVERITY_ERROR if test_author else _severity(levels[label])
+            found.append(finding("witness-missing", severity=severity, module=label, level=levels[label]))
     metadata = {"role": role, "scope": scope, "judged": judged}
     setattr(g, STATE_ATTR, State(judged, layout, levels, None, False))
     if not judged or any(item["severity"] == SEVERITY_ERROR for item in found):

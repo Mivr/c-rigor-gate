@@ -5,11 +5,15 @@ import os
 from argparse import Namespace
 
 from rigor_lib import approval_args, contract, gitrun, grade_context, grade_tree, jsonio, paths
-from rigor_lib import grade_policy, product_layout, suppressions, tests_gate, witness_bundle, witness_scope
+from rigor_lib import grade_policy, product_layout, stub_judge, suppressions, tests_gate, witness_bundle
+from rigor_lib import witness_scope
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 
 _PLAIN_FILE_MODES = ("100644", "100755")
+EXPECTED_NAME = "expected-tests.json"
+PREVIOUS_NAME = "expected-tests.previous.json"
+NOT_APPLICABLE = "not-applicable"
 
 
 def clone_gate(g):
@@ -27,14 +31,24 @@ def contract_gate(g):
     return result
 
 
-def check_witness_inputs(g):
-    """Exit 2 before any build for what the witness gates could never judge (P002 T039 requirement 1, Q1).
+def role(g):
+    """The role of the task contract (P002 Terms), read from the snapshot every gate reads."""
+    return contract.load_contract(g.args.task).role
 
-    * role test-author needs T041 (`tests-stub`): until then it must not be gradable, so it can never pass early;
+
+def _product_input(g, name):
+    return os.path.join(os.path.dirname(g.args.product), name)
+
+
+def check_witness_inputs(g):
+    """Exit 2 before any build for what the witness gates could never judge (P002 Q1, Q2).
+
+    * role test-author needs `expected-tests.previous.json` (its new ids are `expected` minus that list;
+      `{"ids": []}` for a new product): without it nothing says which tests must fail on the stubs;
     * a witness bundle is checked against the policy's impl paths and the product name.
     """
-    if contract.load_contract(g.args.task).role == contract.ROLE_TEST_AUTHOR:
-        raise InternalError("role test-author needs T041")
+    if role(g) == contract.ROLE_TEST_AUTHOR and not os.path.isfile(_product_input(g, PREVIOUS_NAME)):
+        raise InternalError("role test-author needs %s next to product.toml" % PREVIOUS_NAME)
     if g.witness is not None:
         document = grade_policy.load_document(grade_policy.policy_path(g))
         mapping, _ = witness_scope.impl_map(document, grade_policy.load_levels(grade_policy.policy_path(g)))
@@ -134,21 +148,52 @@ def assemble_gate(g):
     return GateResult("assemble", found, metadata)
 
 
+def _expected_input(g):
+    expected = _product_input(g, EXPECTED_NAME)
+    if not os.path.isfile(expected):
+        raise InternalError("missing %s" % expected)
+    return expected
+
+
 def tests_gate_for(mode):
-    """The `tests` gate over one mode's results, registered as `tests-<mode>`."""
+    """The `tests` gate over one mode's results, registered as `tests-<mode>`.
+
+    In role test-author the head is the stub commit, whose tests fail by design (old ones too, when a
+    function they use was stubbed): presence, duplicates and parse problems of every expected id are
+    judged, pass/fail is not (`tests_gate` `presence_only`); `witness-tests` judges every status on the
+    witness tree and `tests-stub` the new ids on the stubs (P002 Q2)."""
     def gate(g):
         directory = g.built.get(mode)
         if directory is None:
             return None  # the build did not produce clean results for this mode
-        product_dir = os.path.dirname(g.args.product)
-        expected = os.path.join(product_dir, "expected-tests.json")
-        previous = os.path.join(product_dir, "expected-tests.previous.json")
-        if not os.path.isfile(expected):
-            raise InternalError("missing %s" % expected)
+        expected = _expected_input(g)
+        previous = _product_input(g, PREVIOUS_NAME)
         result = tests_gate.run(Namespace(
             results=directory, expected=expected,
             previous=previous if os.path.isfile(previous) else None,
             approvals=g.args.approvals, repo=g.src, head=g.head,
-            allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS))
+            allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS,
+            presence_only=role(g) == contract.ROLE_TEST_AUTHOR))
         return GateResult("tests-" + mode, result.findings, result.metadata)
     return gate
+
+
+def tests_stub_gate(g):
+    """`tests-stub` (P002 Q2): in role test-author every new expected id fails on the stubs, in release
+    and in san (`stub_judge`). It reads the head's results of both modes and builds nothing.
+
+    Any other role: PASS with info `not-applicable`, whatever the build did (that role's head is not a
+    stub commit). Role test-author: NOT_RUN unless both modes built clean."""
+    current = role(g)
+    if current != contract.ROLE_TEST_AUTHOR:
+        return GateResult(stub_judge.GATE_ID, [finding(NOT_APPLICABLE, severity=SEVERITY_INFO, role=current)],
+                          {"role": current})
+    if any(g.built.get(mode) is None for mode in stub_judge.MODES):
+        return None  # no clean results of both modes: nothing to judge
+    previous = _product_input(g, PREVIOUS_NAME)
+    if not os.path.isfile(previous):
+        raise InternalError("role test-author needs %s next to product.toml" % PREVIOUS_NAME)
+    parsed = {mode: stub_judge.parse_directory(g.built[mode]) for mode in stub_judge.MODES}
+    result = stub_judge.judge(tests_gate.load_id_list(_expected_input(g)), tests_gate.load_id_list(previous),
+                              parsed)
+    return GateResult(stub_judge.GATE_ID, result.findings, dict(result.metadata, role=current))
