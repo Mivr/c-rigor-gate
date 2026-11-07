@@ -94,6 +94,17 @@ def unviable_findings(report, level, verdicts):
                     severity="error" if level in STRICT_LEVELS else SEVERITY_INFO)]
 
 
+HEADERS_DIR = "buck-headers/"
+
+
+def product_path(file):
+    """The product-relative path of a source the compiler saw through Buck2's header tree
+    (`buck-out/.../buck-headers/annas/src/internal.h` is `annas/src/internal.h`)."""
+    if file.startswith("buck-out/") and HEADERS_DIR in file:
+        return file.rsplit(HEADERS_DIR, 1)[1]
+    return file
+
+
 def skipped_findings(report, level):
     """A function the generator could not reach (made by a macro, or defined in a product header)
     is code the tests are never judged on: not allowed in L3."""
@@ -101,7 +112,7 @@ def skipped_findings(report, level):
     for source in report.sources:
         for name, file, reason in source.skipped:
             found.append(finding("unmutated-function", module=report.label, source=source.file,
-                                 function=name, file=file, reason=reason,
+                                 function=name, file=product_path(file), reason=reason,
                                  severity="error" if level in STRICT_LEVELS else SEVERITY_INFO))
     return found
 
