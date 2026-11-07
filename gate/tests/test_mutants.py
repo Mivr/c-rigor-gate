@@ -306,6 +306,14 @@ class MutantsTest(TempDirTestCase):
         self.assertExit(outcome, 0)
         self.assertEqual({f["severity"] for f in result["findings"]}, {"info"})
 
+    def test_a_header_found_through_buck_out_is_reported_by_its_product_path(self):
+        header = "buck-out/v2/gen/root/0123abcd/annas/__annas__/buck-headers/annas/src/internal.h"
+        hidden = [{"name": "ctx_key", "file": header, "reason": "header"},
+                  {"name": "plain", "file": "m/a.h", "reason": "header"}]
+        result = self.fails_with(report([mutant(1)], skipped=hidden), "unmutated-function", "unmutated-function")
+        self.assertEqual({f["function"]: f["file"] for f in result["findings"]},
+                         {"ctx_key": "annas/src/internal.h", "plain": "m/a.h"})
+
     # -- verdicts ----------------------------------------------------------------------------
     def test_equal_object_to_the_baseline_is_equivalent_and_needs_no_run(self):
         self.put(report([mutant(1), mutant(2, digest=BASE, o0=BASE0, runs={})]))
