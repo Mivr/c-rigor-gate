@@ -5,12 +5,22 @@
         Write SRC with the spec's replacement applied to F, compile it (`-c F -o OBJ` appended) and
         write INFO = {"status": "ok", "hash": sha256 of the object} or {"status": "unviable", ...}
         when the compiler rejects it. A compiler crash or a spec that does not match SRC is an error.
+    tool.py compile-batch --specs SPECS [--item SRC ID OBJ INFO]... --strict|--lenient -- <compiler command>
+        The same for a batch of mutants (T064; of one or more sources): SPECS = {"mutants": [{"id", "begin", "end",
+        "original", "replacement"}, ...]}; each `--item` names the source and a mutant of it and where its object
+        and INFO go.
+        Every mutant is compiled on its own, in its own scratch directory, and a mutant the compiler rejects is
+        `unviable` without touching the others. A compiler crash, or a spec that does not match SRC, fails the batch.
     tool.py hash --obj OBJ --out F
         INFO for an object compiled elsewhere.
     tool.py linkrun --out F -- <link command>
         Link (`-o BIN` appended), run `BIN --seed 1 --out RESULTS`, write
         {"rc": N, "timed_out": B, "results": the normalised JSON Lines text or null}. A failed link is an
         error (never a verdict). What is stored is a deterministic function of the verdict: see `normalise_*`.
+    tool.py linkrun-batch [--item N OUT OBJ1..OBJN]... -- <link command containing the argument @MUTANT_OBJECTS@>
+        The same for a batch of mutants (T064): for each item the command is run with `@MUTANT_OBJECTS@` replaced by
+        the N objects OBJ1..OBJN (the objects of the mutant's link, in link order), and OUT gets that mutant's record. One fresh process and one scratch directory per mutant, one after
+        another; a crash or timeout of one run is only its own record. A failed link fails the batch.
     tool.py collect --manifest M --out F
         Merge the per-mutant files named by the manifest into one report. A mutant whose -O2 object equals
         the baseline's or an earlier mutant's also carries `compile.o0`, the result of compiling it again
@@ -36,6 +46,7 @@ CHECK_FAILURE = re.compile(r"[0-9]+ of [0-9]+ checks failed; first: ")
 NORMAL_CHECK_FAILURE = "0 of 0 checks failed; first: "
 NUMBER = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)")
 UNPARSABLE_LINE = "!"
+OBJECT_SLOT = "@MUTANT_OBJECTS@"  # where `linkrun-batch` puts the objects of the mutant it runs
 
 
 def canonical(obj):
@@ -64,6 +75,28 @@ def split_command(argv):
     return argv[:index], argv[index + 1:]
 
 
+def compile_mutant(spec, data, command, src_out, obj, info, strict):
+    """Write the mutated copy of the source to SRC_OUT, compile it to OBJ and write INFO."""
+    begin, end = spec["begin"], spec["end"]
+    if data[begin:end] != spec["original"].encode("latin-1"):
+        sys.exit("tool.py: the source no longer matches the mutant list at [%d, %d)" % (begin, end))
+    mutated = data[:begin] + spec["replacement"].encode("latin-1") + data[end:]
+    with open(src_out, "wb") as handle:
+        handle.write(mutated)
+    done = subprocess.run(command + ["-c", src_out, "-o", obj], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if done.returncode == 0:
+        write_json(info, {"status": "ok", "hash": sha256_file(obj)})
+        return
+    if done.returncode < 0 or done.returncode > 1 or strict:
+        sys.stderr.buffer.write(done.stderr)
+        sys.exit("tool.py: the compiler failed with status %d" % done.returncode)
+    with open(obj, "wb"):
+        pass  # a declared output must exist
+    detail = ANSI.sub("", done.stderr.decode("utf-8", "replace"))
+    detail = detail.replace(os.path.dirname(src_out) + os.sep, "")[:DETAIL_CHARACTERS]  # no scratch path in a record
+    write_json(info, {"status": "unviable", "hash": "", "detail": detail})
+
+
 def cmd_compile(argv):
     argv, command = split_command(argv)
     parser = argparse.ArgumentParser(allow_abbrev=False)
@@ -72,27 +105,28 @@ def cmd_compile(argv):
     parser.add_argument("--strict", dest="strict", action="store_true")
     parser.add_argument("--lenient", dest="strict", action="store_false")
     args = parser.parse_args(argv)
-    spec = read_json(args.spec)
     with open(args.src, "rb") as handle:
         data = handle.read()
-    begin, end = spec["begin"], spec["end"]
-    if data[begin:end] != spec["original"].encode("latin-1"):
-        sys.exit("tool.py: the source no longer matches the mutant list at [%d, %d)" % (begin, end))
-    mutated = data[:begin] + spec["replacement"].encode("latin-1") + data[end:]
-    with open(args.src_out, "wb") as handle:
-        handle.write(mutated)
-    done = subprocess.run(command + ["-c", args.src_out, "-o", args.obj],
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if done.returncode == 0:
-        write_json(args.info, {"status": "ok", "hash": sha256_file(args.obj)})
-        return
-    if done.returncode < 0 or done.returncode > 1 or args.strict:
-        sys.stderr.buffer.write(done.stderr)
-        sys.exit("tool.py: the compiler failed with status %d" % done.returncode)
-    with open(args.obj, "wb"):
-        pass  # a declared output must exist
-    detail = ANSI.sub("", done.stderr.decode("utf-8", "replace"))[:DETAIL_CHARACTERS]
-    write_json(args.info, {"status": "unviable", "hash": "", "detail": detail})
+    compile_mutant(read_json(args.spec), data, command, args.src_out, args.obj, args.info, args.strict)
+
+
+def cmd_compile_batch(argv):
+    argv, command = split_command(argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--specs", required=True)
+    parser.add_argument("--item", nargs=4, action="append", default=[], metavar=("SRC", "ID", "OBJ", "INFO"))
+    parser.add_argument("--strict", dest="strict", action="store_true")
+    parser.add_argument("--lenient", dest="strict", action="store_false")
+    args = parser.parse_args(argv)
+    specs = {spec["id"]: spec for spec in read_json(args.specs)["mutants"]}
+    for src, mid, obj, info in args.item:
+        if mid not in specs:
+            sys.exit("tool.py: mutant %s is not in the batch specs" % mid)
+        with open(src, "rb") as handle:
+            data = handle.read()
+        with tempfile.TemporaryDirectory(prefix="mutant-") as scratch:
+            compile_mutant(specs[mid], data, command, os.path.join(scratch, os.path.basename(src)), obj, info,
+                           args.strict)
 
 
 def cmd_hash(argv):
@@ -163,11 +197,8 @@ def run_binary(binary, results):
         return -signal.SIGKILL, True
 
 
-def cmd_linkrun(argv):
-    argv, command = split_command(argv)
-    parser = argparse.ArgumentParser(allow_abbrev=False)
-    parser.add_argument("--out", required=True)
-    args = parser.parse_args(argv)
+def link_and_run(command, out):
+    """Link COMMAND (`-o BIN` appended) in a fresh scratch directory, run it, write the record to OUT."""
     with tempfile.TemporaryDirectory(prefix="mutant-") as scratch:
         binary = os.path.join(scratch, "bin")
         done = subprocess.run(command + ["-o", binary], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -180,8 +211,52 @@ def cmd_linkrun(argv):
         if os.path.isfile(results):
             with open(results, "rb") as handle:
                 text = handle.read().decode("utf-8", "replace")
-        write_json(args.out, {"rc": normalise_rc(rc, timed_out), "timed_out": timed_out,
-                              "results": None if text is None else normalise_results(text)})
+        write_json(out, {"rc": normalise_rc(rc, timed_out), "timed_out": timed_out,
+                         "results": None if text is None else normalise_results(text)})
+
+
+def cmd_linkrun(argv):
+    argv, command = split_command(argv)
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--out", required=True)
+    args = parser.parse_args(argv)
+    link_and_run(command, args.out)
+
+
+def split_items(argv):
+    """(arguments before the first `--item`, [N, OUT, OBJ1..OBJN] ... for every item)."""
+    items = []
+    head = []
+    index = 0
+    while index < len(argv):
+        if argv[index] != "--item":
+            if items:
+                sys.exit("tool.py: unexpected argument %r after the items" % argv[index])
+            head.append(argv[index])
+            index += 1
+            continue
+        try:
+            count = int(argv[index + 1])
+        except (IndexError, ValueError):
+            sys.exit("tool.py: --item needs a count")
+        item = argv[index + 2:index + 3 + count]
+        if count < 1 or len(item) != count + 1:
+            sys.exit("tool.py: --item %d needs OUT and %d objects" % (count, count))
+        items.append(item)
+        index += 3 + count
+    return head, items
+
+
+def cmd_linkrun_batch(argv):
+    argv, command = split_command(argv)
+    head, items = split_items(argv)
+    if head:
+        sys.exit("tool.py: unexpected arguments %r" % head)
+    if command.count(OBJECT_SLOT) != 1:
+        sys.exit("tool.py: the link command must contain %s exactly once" % OBJECT_SLOT)
+    slot = command.index(OBJECT_SLOT)
+    for out, *objects in items:
+        link_and_run(command[:slot] + objects + command[slot + 1:], out)
 
 
 def cmd_collect(argv):
@@ -213,7 +288,8 @@ def cmd_collect(argv):
                           "sources": sources, "baseline_runs": baseline, "mutants": mutants})
 
 
-COMMANDS = {"compile": cmd_compile, "hash": cmd_hash, "linkrun": cmd_linkrun, "collect": cmd_collect}
+COMMANDS = {"compile": cmd_compile, "compile-batch": cmd_compile_batch, "hash": cmd_hash, "linkrun": cmd_linkrun,
+            "linkrun-batch": cmd_linkrun_batch, "collect": cmd_collect}
 
 
 if __name__ == "__main__":

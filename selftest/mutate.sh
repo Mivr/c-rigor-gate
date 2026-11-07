@@ -65,6 +65,24 @@ c_library(name = "uninit_kit", headers = ["uninit_kit.h"], deps = [":uninit"])
 c_test(name = "uninit_test", srcs = ["uninit_test.c"], deps = [":uninit", ":uninit_kit"])
 c_mutants(name = "uninit_mutants", module = ":uninit", tests = [":uninit_test"], deps = [":uninit_kit"])
 
+# T064: the same modules with batches of 1 (the old shape: one mutant per action) and of 3; the reports must be
+# byte-identical to the default build's (checked below)
+load("@gate//rules:mutate.bzl", "c_mutants_rule")
+[
+    c_mutants_rule(
+        name = "{}_b{}".format(m, n),
+        module = ":" + m,
+        module_src = ":{}_mutsrc".format(m),
+        test_targets = [":{}_test".format(m)],
+        deps = [":uninit_kit"] if m == "uninit" else [],
+        link_flags = [],
+        batch = n,
+        target_compatible_with = ["toolchains//:release"],
+    )
+    for m in ["pinned", "weak", "multi", "uninit"]
+    for n in [1, 3]
+]
+
 # a dependency that provides neither a library nor a header is an error
 c_library(name = "bare_kit")
 c_mutants(name = "bare_mutants", module = ":uninit", tests = [":uninit_test"], deps = [":bare_kit", ":uninit_kit"])
@@ -557,6 +575,8 @@ begin "build the throwaway module's mutants on RE (cold if MUTATE_COLD=1)"
 t0=$SECONDS
 build_all "$out/build1.log" || fail "$CUR: buck2 build failed" "$out/build1.log"
 echo "    built in $((SECONDS - t0)) s, executed $(executed "$out/build1.log") actions"
+# MUTATE_SAVE_RES=<dir>: keep the raw reports, to compare two versions of the rules byte for byte (T064)
+if [ -n "${MUTATE_SAVE_RES:-}" ]; then mkdir -p "$MUTATE_SAVE_RES"; cp "$RES"/*.json "$MUTATE_SAVE_RES/"; fi
 "${PY[@]}" - "$RES" <<'PY'
 import glob, json, os, sys
 operators, verdicts = {}, {}
@@ -577,6 +597,40 @@ for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.json"))):
 print("    all      %3d mutants  %s" % (sum(operators.values()), dict(sorted(verdicts.items()))))
 print("    per operator:", dict(sorted(operators.items())))
 PY
+
+begin "batches change nothing: batch sizes 1 and 3 give byte-identical reports to the default 16 (T064)"
+run "$out/build_b.log" build "$pkg:pinned_b1" "$pkg:pinned_b3" "$pkg:weak_b1" "$pkg:weak_b3" "$pkg:multi_b1" "$pkg:multi_b3" "$pkg:uninit_b1" "$pkg:uninit_b3" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_b.log"
+echo "    executed $(executed "$out/build_b.log") actions"
+# `uninit` reads uninitialised memory on purpose: which of its checks fails first depends on the stack layout, which
+# depends on the environment of the action (it carries the target name), so its reports are compared by verdict
+verdicts() { "${PY[@]}" - "$1" "$root/gate" <<'PY'
+import shutil, sys, tempfile
+sys.path.insert(0, sys.argv[2])
+from rigor_lib import mutants_report, mutants_verdict
+with tempfile.TemporaryDirectory() as d:
+    shutil.copy(sys.argv[1], d)
+    ((label, report),) = mutants_report.load_reports_dir(d).items()
+    base, ids = mutants_verdict.baseline_findings(report, "L3")
+    verdicts, found = mutants_verdict.derive(report, ids)
+    for v in verdicts:
+        print(v.mutant.id, v.verdict)
+    print(sorted(map(str, base + found)))
+PY
+}
+for name in pinned weak multi uninit; do
+  for n in 1 3; do
+    p="$(awk -v t="$pkg:${name}_b${n}" 'index($1, t) {print $2}' "$out/build_b.log" | tail -1)"
+    [ -f "$p" ] || fail "$CUR: no report for ${name}_b${n}"
+    if [ "$name" = uninit ]; then
+      cmp -s <(verdicts "$p") <(verdicts "$RES/$name.json") || fail "$CUR: ${name} with batch $n has other verdicts than the default build"
+      echo "    ${name}_b${n}: $(verdicts "$p" | wc -l) verdict lines, identical to the default"
+    else
+      # the report names its target; everything else must be the same
+      cmp -s <(sed 's/_mutants//g; s/_b'"$n"'//g' "$p") <(sed 's/_mutants//g' "$RES/$name.json") || fail "$CUR: ${name} with batch $n differs from the default build" <(diff <("${PY[@]}" -m json.tool "$p") <("${PY[@]}" -m json.tool "$RES/$name.json") | head -40)
+      echo "    ${name}_b${n}: $(wc -c < "$p") bytes, identical to the default"
+    fi
+  done
+done
 
 begin "RED: the known survivors of the weak tests are reported as survivors, precisely"
 mkdir -p "$out/only_weak"; cp "$RES/weak.json" "$out/only_weak/"
@@ -1072,9 +1126,10 @@ sed -i "s|    CHECK_EQ_I64(t, double_it(0), 0);|    CHECK_EQ_I64(t, double_it(0)
 grep -q "double_it($k)" "$scratch/m/weak_test.c" || fail "$CUR: the test edit did not apply"
 build_all "$out/build3.log" || fail "$CUR: buck2 build failed" "$out/build3.log"
 n="$(executed "$out/build3.log")"
-echo "    executed $n actions; the weak module has $live live mutants (a cold build of all five modules is about 200 actions)"
-# the live mutants of the weak module (one test each), plus the test's compile, the baseline run and the report
-[ "$n" -ge "$live" ] && [ "$n" -le $((live + 6)) ] || fail "$CUR: expected about $live actions" "$out/build3.log"
+echo "    executed $n actions; the weak module has $live live mutants"
+# T064: the live mutants of the weak module run in batches of at most 16 (one action per batch and test), plus the
+# test's compile, the baseline run and the report; before batching this was one action per live mutant
+[ "$n" -ge 3 ] && [ "$n" -le 8 ] || fail "$CUR: expected 3 to 8 actions for $live live mutants (batched), got $n" "$out/build3.log"
 printf '[module."%s:weak_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 mkdir -p "$out/weak_after"; cp "$RES/weak.json" "$out/weak_after/"
 gate "$out/weak_after"
@@ -1187,6 +1242,7 @@ p="$(awk -v t="$pkg:fold_mutants" 'index($1, t) {print $2}' "$out/build_fold.log
 [ -f "$p" ] || fail "$CUR: no report for fold"
 echo "    built, executed $(executed "$out/build_fold.log") actions"
 mkdir -p "$out/only_fold"; cp "$p" "$out/only_fold/fold.json"
+if [ -n "${MUTATE_SAVE_RES:-}" ]; then cp "$p" "$MUTATE_SAVE_RES/fold.json"; cp "$out/det_a.json" "$MUTATE_SAVE_RES/det_a.json"; fi
 "${PY[@]}" - "$out/only_fold/fold.json" <<'PY' || fail "$CUR: bad fold report"
 import json, sys
 d = json.load(open(sys.argv[1]))

@@ -6,11 +6,13 @@ Pipeline (all on RE, release mode):
   2. baseline: every source is recompiled unmodified through the same path, every test is relinked
      from those objects and run (it must pass), and the objects are compared with the ones Buck2's
      own compile produced (the harness must reproduce the real build);
-  3. `dynamic_output` over the mutant lists: one compile action per mutant (same command, the
-     mutated copy of the source), keyed on the spec and the source;
+  3. `dynamic_output` over the mutant lists: one compile action per batch of at most `batch` mutants of
+     one source (T064; same command, the mutated copy of the source, one object and one record per
+     mutant), keyed on the specs of the batch and the source. The batches are formed by `_batches`;
   4. `dynamic_output` over the compile results: an object whose hash equals the baseline object or an
      earlier mutant's is a candidate for equivalent (TCE) or duplicate, a compile error is unviable;
-     every other mutant is relinked into each test and run (one action per test). The optimiser can
+     every other mutant is relinked into each test and run (one action per batch and test, each mutant in
+     its own process and scratch directory, one record per mutant). The optimiser can
      fold a behaviour-changing mutation to the baseline object (R001 R2, B15), so every candidate is
      compiled again at -O0 (the same command with `-O0` appended) and so is the baseline;
   4b. `dynamic_output` over those -O0 compiles: a candidate stays equivalent (or duplicate) only if
@@ -90,6 +92,40 @@ def _compile_prefix(ctx, headers, toolchain):
         hidden = info.other_outputs + headers.srcs + headers.headers,
     )
 
+_DEFAULT_BATCH = 16
+
+def _batch_order(items, function_of):
+    """The order in which mutants are packed into batches: by source, function, id. (`ordered`, the order of the
+    mutant lists, stays the order of every decision: which of two mutants with one object is the duplicate.)"""
+    return sorted(items, key = lambda i: (i[0], function_of[i], i[1]))
+
+def _batches(items, function_of, size):
+    """Deterministic batches of at most SIZE items. ITEMS are (rel, id) pairs of one module in `_batch_order`.
+    A batch holds whole functions where it can: a function that fits is never split, so editing one function
+    changes the mutants of few batches. A batch may span sources (one action compiles or runs mutants of several).
+    Every item is in exactly one batch."""
+    out = []
+    current = []
+    groups = []
+    for item in items:  # runs of the same (rel, function)
+        key = (item[0], function_of[item])
+        if groups and groups[-1][0] == key:
+            groups[-1][1].append(item)
+        else:
+            groups.append((key, [item]))
+    for _, group in groups:
+        if current and len(current) + len(group) > size:
+            out.append(current)
+            current = []
+        for item in group:
+            if len(current) == size:
+                out.append(current)
+                current = []
+            current.append(item)
+    if current:
+        out.append(current)
+    return out
+
 def _python(script):
     return cmd_args("/usr/bin/env", "python3", "-I", "-B", script)
 
@@ -124,6 +160,33 @@ def _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, strict, extra 
         identifier = ident,
     )
 
+def _compile_batch(cfg, actions, batch, specs, ident, extra = None):
+    """One action compiles every mutant of BATCH (of any sources); returns {(rel, id): (obj, info)}."""
+    spec = actions.write_json("spec/{}.json".format(ident), {"mutants": [dict(specs[item], id = item[1]) for item in batch]})
+    outputs = {}
+    items = []
+    for item in batch:
+        obj = actions.declare_output("obj/{}/{}.o".format(ident, item[1]))
+        info = actions.declare_output("obj/{}/{}.json".format(ident, item[1]))
+        outputs[item] = (obj, info)
+        items.append(cmd_args("--item", cfg.src_by_rel[item[0]], item[1], obj.as_output(), info.as_output()))
+    actions.run(
+        cmd_args(
+            _python(cfg.tool),
+            "compile-batch",
+            "--specs",
+            spec,
+            items,
+            "--lenient",
+            "--",
+            cfg.prefix,
+            extra if extra else [],
+        ),
+        category = "mutant_compile_o0" if extra else "mutant_compile",
+        identifier = ident,
+    )
+    return outputs
+
 def _link_run(cfg, actions, objects, test, ident):
     out = actions.declare_output("run/{}.json".format(ident))
     actions.run(
@@ -144,7 +207,33 @@ def _link_run(cfg, actions, objects, test, ident):
     )
     return out
 
-def _stage2(dctx, artifacts, outputs, cfg, compiled, ordered, specs):
+def _link_run_batch(cfg, actions, batch, run_objs, test, ident):
+    """One action links and runs every mutant of BATCH against TEST, each in its own process; returns
+    {(rel, id): record}."""
+    outs = {}
+    items = []
+    for item in batch:
+        out = actions.declare_output("run/{}/{}.json".format(ident, item[1]))
+        outs[item] = out
+        items.append(cmd_args("--item", str(len(cfg.rels)), out.as_output(), [run_objs[item] if r == item[0] else cfg.base_obj[r] for r in cfg.rels]))
+    actions.run(
+        cmd_args(
+            _python(cfg.tool),
+            "linkrun-batch",
+            items,
+            "--",
+            cfg.linker,
+            cfg.link_flags,
+            [o for _, o in cfg.test_objects[test]],
+            "@MUTANT_OBJECTS@",
+            cfg.libs,
+        ),
+        category = "mutant_run",
+        identifier = ident,
+    )
+    return outs
+
+def _stage2(dctx, artifacts, outputs, cfg, compiled, ordered, specs, function_of):
     """Decide from the -O2 objects; every mutant that would be equivalent or a duplicate is compiled
     again at -O0 (and only those), then `_stage3` decides with both."""
     actions = dctx.actions
@@ -157,24 +246,22 @@ def _stage2(dctx, artifacts, outputs, cfg, compiled, ordered, specs):
         if result["status"] == "ok":
             count[(rel, result["hash"])] = count.get((rel, result["hash"]), 0) + 1
     o0 = {}
-    for rel, mid in ordered:
-        result = results[(rel, mid)]
-        if result["status"] == "ok" and (result["hash"] == baseline_hash[rel] or count[(rel, result["hash"])] > 1):
-            ident = "o0/mutant/{}/{}".format(rel, mid)
-            src = cfg.src_by_rel[rel]
-            spec_value = specs[(rel, mid)]
-            spec, msrc, obj, info = _compile_variant(actions, spec_value, src, ident)
-            _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, False, ["-O0"])
-            o0[(rel, mid)] = (obj, info)
+    candidates = [
+        (rel, mid)
+        for rel, mid in ordered
+        if results[(rel, mid)]["status"] == "ok" and (results[(rel, mid)]["hash"] == baseline_hash[rel] or count[(rel, results[(rel, mid)]["hash"])] > 1)
+    ]
+    for batch in _batches(_batch_order(candidates, function_of), function_of, cfg.batch):
+        o0.update(_compile_batch(cfg, actions, batch, specs, "o0/mutant/{}/{}".format(batch[0][0], batch[0][1]), ["-O0"]))
     watched = [info for _, info in o0.values()] + [cfg.base_info_o0[r] for r in sorted(cfg.base_info_o0.keys())]
     actions.dynamic_output(
         dynamic = watched,
         inputs = [],
         outputs = [outputs[cfg.report].as_output()],
-        f = lambda d, a, o: _stage3(d, a, o, cfg, compiled, ordered, results, baseline_hash, o0),
+        f = lambda d, a, o: _stage3(d, a, o, cfg, compiled, ordered, results, baseline_hash, o0, function_of),
     )
 
-def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_hash, o0):
+def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_hash, o0, function_of):
     """The verdict-relevant runs. A candidate (same -O2 object as the baseline or as an earlier mutant)
     is equivalent / a duplicate only if its -O0 object matches too (the baseline's, or that of the
     earlier mutant with the same -O2 object); otherwise it is live and its -O0 object is run.
@@ -184,10 +271,10 @@ def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_
     seen = {}
     pairs = {(rel, baseline_hash[rel], base_o0[rel]): "baseline" for rel in cfg.base_info}
     manifest_mutants = {}
+    run_objs = {}
     for rel, mid in ordered:
         obj, info = compiled[rel][mid]
         result = results[(rel, mid)]
-        runs = {}
         extra = None
         live = False
         run_obj = obj
@@ -206,13 +293,16 @@ def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_
             seen[(rel, result["hash"])] = mid
             live = live or not folded
         if live:
-            objects = [run_obj if r == rel else cfg.base_obj[r] for r in cfg.rels]
-            for t in cfg.test_names:
-                runs[t] = _link_run(cfg, actions, objects, t, "mutant/{}/{}/{}".format(rel, mid, t))
-        entry = {"info": info, "runs": runs}
+            run_objs[(rel, mid)] = run_obj
+        entry = {"info": info, "runs": {}}
         if extra != None:
             entry["o0"] = extra
         manifest_mutants.setdefault(rel, {})[mid] = entry
+    for batch in _batches(_batch_order([i for i in ordered if i in run_objs], function_of), function_of, cfg.batch):
+        for t in cfg.test_names:
+            outs = _link_run_batch(cfg, actions, batch, run_objs, t, "mutant/{}/{}/{}".format(batch[0][0], batch[0][1], t))
+            for item in batch:
+                manifest_mutants[item[0]][item[1]]["runs"][t] = outs[item]
     manifest = actions.write_json("manifest.json", {
         "label": cfg.label,
         "tests": cfg.test_names,
@@ -234,6 +324,7 @@ def _stage1(dctx, artifacts, outputs, cfg):
     compiled = {}
     ordered = []
     specs = {}
+    function_of = {}
     for rel in sorted(cfg.gens.keys()):
         data = artifacts[cfg.gens[rel]].read_json()
         compiled[rel] = {}
@@ -241,25 +332,24 @@ def _stage1(dctx, artifacts, outputs, cfg):
             mid = mutant["id"]
             if mid in compiled[rel]:
                 fail("duplicate mutant id {} in {}".format(mid, rel))
-            ident = "mutant/{}/{}".format(rel, mid)
-            spec_value = {
+            compiled[rel][mid] = None
+            specs[(rel, mid)] = {
                 "begin": mutant["begin_offset"],
                 "end": mutant["end_offset"],
                 "original": mutant["original"],
                 "replacement": mutant["replacement"],
             }
-            src = cfg.src_by_rel[rel]
-            spec, msrc, obj, info = _compile_variant(actions, spec_value, src, ident)
-            _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, False)
-            compiled[rel][mid] = (obj, info)
-            specs[(rel, mid)] = spec_value
+            function_of[(rel, mid)] = mutant["function"]
             ordered.append((rel, mid))
+    for batch in _batches(_batch_order(ordered, function_of), function_of, cfg.batch):
+        for item, pair in _compile_batch(cfg, actions, batch, specs, "mutant/{}/{}".format(batch[0][0], batch[0][1])).items():
+            compiled[item[0]][item[1]] = pair
     infos = [compiled[rel][mid][1] for rel, mid in ordered] + [cfg.base_info[r] for r in sorted(cfg.base_info.keys())]
     actions.dynamic_output(
         dynamic = infos,
         inputs = [],
         outputs = [outputs[cfg.report].as_output()],
-        f = lambda d, a, o: _stage2(d, a, o, cfg, compiled, ordered, specs),
+        f = lambda d, a, o: _stage2(d, a, o, cfg, compiled, ordered, specs, function_of),
     )
 
 def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -276,11 +366,14 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
     test_names = sorted(tests.keys())
     if len(real_objects) != len(srcs):
         fail("{}: the module compiled {} objects for {} sources".format(ctx.label, len(real_objects), len(srcs)))
+    if ctx.attrs.batch < 1:
+        fail("{}: batch must be at least 1".format(ctx.label))
     report = ctx.actions.declare_output("report.json")
     cfg_pieces = {
         "base_info": {},
         "base_info_o0": {},
         "base_obj": {},
+        "batch": ctx.attrs.batch,
         "gens": {},
         "label": _label_text(ctx.label),
         "libs": _link_inputs(ctx.label, ctx.attrs.deps + [ctx.attrs._ctest]),
@@ -366,6 +459,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
 c_mutants_rule = rule(
     impl = _mutants_impl,
     attrs = {
+        "batch": attrs.int(default = _DEFAULT_BATCH),
         "deps": attrs.list(attrs.dep(), default = []),
         "link_flags": attrs.list(attrs.string(), default = []),
         "module": attrs.dep(),
