@@ -1,0 +1,12 @@
+{
+  "bypass": "allocation outside the arena",
+  "description": "core calls malloc() and free() while the policy carries the P002 G25 allocation deny list; both are reported (the new functions are untested, so their mutants survive).",
+  "fail": {
+    "symbols": [
+      "denied-symbol"
+    ],
+    "mutants": [
+      "survived-mutant"
+    ]
+  }
+}
