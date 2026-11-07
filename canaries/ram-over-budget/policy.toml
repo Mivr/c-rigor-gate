@@ -38,5 +38,6 @@ allow = ["free"]
 exports = ["main"]
 
 [module."//app:app"]
+level = "L1"
 allow_mutable_data = true
 exports = ["main"]
