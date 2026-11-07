@@ -601,13 +601,34 @@ PY
 begin "batches change nothing: batch sizes 1 and 3 give byte-identical reports to the default 16 (T064)"
 run "$out/build_b.log" build "$pkg:pinned_b1" "$pkg:pinned_b3" "$pkg:weak_b1" "$pkg:weak_b3" "$pkg:multi_b1" "$pkg:multi_b3" "$pkg:uninit_b1" "$pkg:uninit_b3" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_b.log"
 echo "    executed $(executed "$out/build_b.log") actions"
+# `uninit` reads uninitialised memory on purpose: which of its checks fails first depends on the stack layout, which
+# depends on the environment of the action (it carries the target name), so its reports are compared by verdict
+verdicts() { "${PY[@]}" - "$1" "$root/gate" <<'PY'
+import shutil, sys, tempfile
+sys.path.insert(0, sys.argv[2])
+from rigor_lib import mutants_report, mutants_verdict
+with tempfile.TemporaryDirectory() as d:
+    shutil.copy(sys.argv[1], d)
+    ((label, report),) = mutants_report.load_reports_dir(d).items()
+    base, ids = mutants_verdict.baseline_findings(report, "L3")
+    verdicts, found = mutants_verdict.derive(report, ids)
+    for v in verdicts:
+        print(v.mutant.id, v.verdict)
+    print(sorted(map(str, base + found)))
+PY
+}
 for name in pinned weak multi uninit; do
   for n in 1 3; do
     p="$(awk -v t="$pkg:${name}_b${n}" 'index($1, t) {print $2}' "$out/build_b.log" | tail -1)"
     [ -f "$p" ] || fail "$CUR: no report for ${name}_b${n}"
-    # the report names its target; everything else must be the same
-    cmp -s <(sed 's/_mutants//g; s/_b'"$n"'//g' "$p") <(sed 's/_mutants//g' "$RES/$name.json") || fail "$CUR: ${name} with batch $n differs from the default build" <(diff <("${PY[@]}" -m json.tool "$p") <("${PY[@]}" -m json.tool "$RES/$name.json") | head -40)
-    echo "    ${name}_b${n}: $(wc -c < "$p") bytes, identical to the default"
+    if [ "$name" = uninit ]; then
+      cmp -s <(verdicts "$p") <(verdicts "$RES/$name.json") || fail "$CUR: ${name} with batch $n has other verdicts than the default build"
+      echo "    ${name}_b${n}: $(verdicts "$p" | wc -l) verdict lines, identical to the default"
+    else
+      # the report names its target; everything else must be the same
+      cmp -s <(sed 's/_mutants//g; s/_b'"$n"'//g' "$p") <(sed 's/_mutants//g' "$RES/$name.json") || fail "$CUR: ${name} with batch $n differs from the default build" <(diff <("${PY[@]}" -m json.tool "$p") <("${PY[@]}" -m json.tool "$RES/$name.json") | head -40)
+      echo "    ${name}_b${n}: $(wc -c < "$p") bytes, identical to the default"
+    fi
   done
 done
 
