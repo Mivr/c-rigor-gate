@@ -34,6 +34,14 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `witness-tests`, `mutants-witness` | the witness gates (T039; `docs/witness.md`, P002), below. |
 | verdict | `rigor verdict` over `gate/order.txt`, plus `inputs`; with `--sign-key` (and a clean gate), `ssh-keygen -Y sign -n c-rigor-gate-verdict` writes `verdict.json.sig`. |
 
+## The perf bundle (`--perf DIR`, B13)
+`rigor grade --perf DIR` snapshots a hidden perf bundle (`docs/perf.md`, "The perf bundle") into `<work>/inputs/perf`
+before any gate runs, loads and checks it once (format, the product name, every target's module in the policy at
+level L3 or above; any defect or a bundle for another product is exit 2 before `clone`) and binds its digest as
+`core.inputs.perf_sha256` (`null` without `--perf`). Only the snapshot is read. No gate judges it yet: the grade runs
+exactly the gates it runs without the flag. `rigor verify --expect-perf-sha SHA` accepts only that bundle; `none`
+accepts only a grade without `--perf`.
+
 ## The witness gates (`witness-tests`, `mutants-witness`, T039)
 `gate/rigor_lib/grade_witness.py`. They judge the tests against the gate-held witness (`--witness DIR`, bound as
 `witness_sha256`; format, roles and procedure in `docs/witness.md`) for the modules W, computed from the head's layout

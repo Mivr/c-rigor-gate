@@ -86,3 +86,48 @@ loop (instruction ratio at k=4 in [3.5, 5]), an O(n^2) loop (ratio at least 12),
 (byte ratio at least 12, instruction ratio below 6), plus the failure statuses `gen-overflow`, `run-error` and
 `crash`, and the cold-run identity check. If the worker has no counter the selftest checks the `unavailable`
 record instead of the ratios.
+
+## The perf bundle (`--perf DIR`, T080)
+
+The hidden input of the later `perf` gate: the generators and drivers an implementation is judged against.
+`gate/rigor_lib/perf_bundle.py` loads and validates it; `rigor grade --perf DIR` binds it; nothing judges it yet.
+
+```
+<dir>/perf.toml
+<dir>/<path named in srcs>        # e.g. gen/json_keys.c
+```
+```toml
+version = 1
+product = "annas-c"              # must equal product.toml's name
+[[target]]
+id = "json-many-keys"            # unique, [a-z0-9-]
+module = "//json:json"           # in the product policy, level L3 or above
+srcs = ["gen/json_keys.c"]       # generator + driver (ctest/perf.h API), paths inside the bundle
+sizes = [1000, 4000]             # exactly two, second = k * first, k >= 2
+seed = 1                         # 0 <= seed < 2^64
+class = "linear"                 # linear | nlogn
+```
+
+Every defect is exit 2 (`InternalError`), like a bad witness bundle: unknown or missing keys, a wrong type, a bad
+`version` (only 1), a bad or duplicate `id`, a `module` that is not `//pkg:name`, in the policy or at L3 or above,
+bad `sizes` or `class` or `seed`, a `srcs` entry that is absolute, has `.`/`..`/empty segments or is `perf.toml`,
+a named file that is missing, a file the manifest does not name, a symlink (also the bundle directory itself), a
+special file, an empty directory, a non-UTF-8 name. Targets may share sources. Files are read once, without
+following symlinks, and kept in memory.
+
+**Digest.** `perf_sha256` is the witness bundle's scheme (`witness_bundle.entries_digest`): the sha256 of
+`canonical_dumps(entries)`, `entries = [["perf.toml", sha256 of perf.toml], ["<path>", sha256 of the file], ...]`:
+the manifest first, then every named file by its bundle path, sorted. It does not depend on where the bundle is stored.
+
+**Binding.** Like the witness bundle: `--perf DIR` is copied once into `<work>/inputs/perf` (symlinks and special
+files refused), loaded once from the copy and checked against the product (`perf_bundle.check`); that one load is
+what the grade holds (`Grading.perf`) and what is hashed. `core.inputs.perf_sha256` is the digest or `null`.
+`rigor verify --expect-perf-sha SHA` rejects any other value and a grade without a bundle (`null`); `none` rejects a
+grade that has one. Without the option any well-formed value, or `null`, is accepted.
+
+**`gate/tools/perf.py`**
+```sh
+gate/tools/perf.py check DIR --product products/<p>/product.toml    # prints: ok <perf_sha256>
+gate/tools/perf.py digest DIR                                       # format checks only
+```
+A tiny valid bundle for the selftest product is `gate/tests/fixtures/perf/selftest`.

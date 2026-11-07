@@ -187,9 +187,14 @@ def digest_entries(bundle):
     return [[MANIFEST, bundle.manifest_sha256]] + [[FILES_DIR + "/" + f.path, f.sha256] for f in bundle.files]
 
 
+def entries_digest(entries):
+    """sha256 of the canonical JSON of a `[[path, sha256], ...]` list (shared with the perf bundle)."""
+    return jsonio.sha256_hex(jsonio.canonical_dumps(entries))
+
+
 def digest(bundle):
     """`witness_sha256`: independent of where the bundle was stored."""
-    return jsonio.sha256_hex(jsonio.canonical_dumps(digest_entries(bundle)))
+    return entries_digest(digest_entries(bundle))
 
 
 def compile_impl_map(impl_map):
