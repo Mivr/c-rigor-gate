@@ -220,3 +220,177 @@ class EnvironmentCopyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     sys.exit(unittest.main())
+
+
+class UnknownCwdAndPipedTextTests(TrajectoryCase):
+    """T072 (B21, B23): an unresolvable `cd`, `cat <<EOF | tee f`, and clones that were moved, copied or linked."""
+
+    def rules_of(self, *commands):
+        _, result = self.audit_steps([cases.bash(c) for c in commands], fast=True)
+        return sorted(f["rule"] for f in result["findings"])
+
+    # -- B21: the working directory after a `cd` the audit cannot resolve ---------------------------------
+    def test_a_relative_read_after_an_unresolvable_cd_is_unresolved(self):
+        self.assertEqual(self.rules_of('cd "$DIR" && cat sub/notes.txt'), ["path-unresolved"])
+        self.assertEqual(self.rules_of('cd "$(pick)"; head -3 ./notes.txt'), ["path-unresolved"])
+
+    def test_a_relative_script_after_an_unresolvable_cd_is_unresolved(self):
+        self.assertEqual(self.rules_of('cd "$DIR" && ./run.sh'), ["path-unresolved"])
+        self.assertEqual(self.rules_of('cd "$DIR" && sh run.sh'), ["path-unresolved"])
+
+    def test_the_unknown_directory_lasts_into_the_next_call(self):
+        self.assertEqual(self.rules_of('cd "$DIR"', "cat sub/notes.txt"), ["path-unresolved"])
+
+    def test_a_resolvable_cd_makes_it_known_again(self):
+        self.assertEqual(self.rules_of('cd "$DIR"; cd %s; cat sub/notes.txt' % cases.SC), [])
+
+    def test_a_subshell_keeps_the_directory_known_outside(self):
+        self.assertEqual(self.rules_of('cd %s && (cd "$DIR"; true); cat sub/notes.txt' % cases.SC), [])
+        self.assertEqual(self.rules_of('cd "$DIR" && (cd %s; cat sub/notes.txt); true' % cases.SC), [])
+
+    def test_a_relative_forbidden_read_after_an_unresolvable_cd_still_blocks(self):
+        self.assertEqual(self.rules_of('cd "$DIR" && cat .config/club/token'), ["read-secret-dir"])
+        self.assertEqual(self.rules_of('cd "$DIR" && cat .config'), ["read-secret-dir"])
+
+    # -- B21: `cat <<EOF | tee f` ------------------------------------------------------------------------
+    def piped(self, flag, body, *more):
+        return "cd %s && cat <<'EOF' | tee %sr.sh\n%s\nEOF\n" % (cases.SC, flag, body) + "\n".join(more)
+
+    def test_a_piped_here_document_is_the_text_of_the_file(self):
+        self.assertEqual(self.rules_of(self.piped("", "ls", "sh r.sh")), [])
+
+    def test_the_text_a_piped_here_document_wrote_is_audited_when_run(self):
+        self.assertEqual(self.rules_of(self.piped("", "gh pr list", "sh r.sh")), ["cmd-gh"])
+
+    def test_tee_append_extends_the_known_text(self):
+        first = self.piped("", "ls")
+        self.assertEqual(self.rules_of(first + "cat <<'EOF' | tee -a r.sh\ngh pr list\nEOF\nsh r.sh"), ["cmd-gh"])
+
+    def test_another_feeder_leaves_the_file_unknown(self):
+        self.assertEqual(self.rules_of(self.piped("", "ls", "echo x | tee -a r.sh", "sh r.sh")), ["cmd-unresolved"])
+        self.assertEqual(self.rules_of("cd %s && cat <<'EOF' | sed s/a/b/ | tee r.sh\nls\nEOF\nsh r.sh" % cases.SC),
+                         ["cmd-obfuscated-exec"])
+        self.assertEqual(self.rules_of("cd %s && cat <<'EOF' | tee r.sh\nls\nEOF\ncat x.txt | tee -a r.sh\nsh r.sh"
+                                       % cases.SC), ["cmd-unresolved"])
+
+    def test_an_append_to_an_unknown_file_stays_unknown(self):
+        self.assertEqual(self.rules_of(self.piped("-a", "ls", "sh r.sh")), ["cmd-obfuscated-exec"])
+
+    # -- B23: moved, copied and linked clones --------------------------------------------------------------
+    def clone_then(self, *commands):
+        make = "mkdir -p %s && cd %s && %s" % (cases.SC, cases.SC, cases.LOCAL_CLONE)
+        return self.rules_of(make, *commands)
+
+    def test_a_clone_moved_within_scratch_stays_proven(self):
+        sc, clone = cases.SC, cases.CLONE
+        self.assertEqual(self.clone_then("mv %s %s/moved && cd %s/moved && git fetch -q origin" % (clone, sc, sc)), [])
+        self.assertEqual(self.clone_then("mkdir -p %s/sub && mv %s %s/sub/ && cd %s/sub/annas-c && git pull -q origin"
+                                         % (sc, clone, sc, sc)), [])
+
+    def test_a_clone_copied_within_scratch_stays_proven_and_the_original_too(self):
+        sc, clone = cases.SC, cases.CLONE
+        self.assertEqual(self.clone_then("cp -r %s %s/copy && cd %s/copy && git fetch -q origin" % (clone, sc, sc)), [])
+        self.assertEqual(self.clone_then("cp -r %s %s/copy && cd %s && git fetch -q origin" % (clone, sc, clone)), [])
+
+    def test_a_link_made_in_scratch_to_a_clone_keeps_the_proof(self):
+        sc, clone = cases.SC, cases.CLONE
+        self.assertEqual(self.clone_then("ln -s %s %s/lnk && cd %s/lnk && git fetch -q origin" % (clone, sc, sc)), [])
+
+    def test_moving_or_linking_out_of_scratch_loses_the_proof(self):
+        sc, clone = cases.SC, cases.CLONE
+        net = ["cmd-git-network", "write-outside"]
+        self.assertEqual(self.clone_then("mv %s /var/tmp/away && cd /var/tmp/away && git fetch -q origin" % clone), net)
+        self.assertEqual(self.clone_then("ln -s %s /var/tmp/lnk && cd /var/tmp/lnk && git fetch -q origin" % clone), net)
+        self.assertEqual(self.clone_then("cp %s %s/copy && cd %s/copy && git fetch -q origin" % (clone, sc, sc)),
+                         ["cmd-git-network"])  # no -r: nothing was copied
+
+    def test_a_config_edit_loses_the_proof_of_a_moved_clone_and_of_a_link(self):
+        sc, clone = cases.SC, cases.CLONE
+        net = ["cmd-git-network"]
+        self.assertEqual(self.clone_then("echo x >> %s/.git/config; mv %s %s/moved && cd %s/moved && git fetch origin"
+                                         % (clone, clone, sc, sc)), net)
+        self.assertEqual(self.clone_then("mv %s %s/moved; echo x >> %s/moved/.git/config; cd %s/moved && "
+                                         "git fetch origin" % (clone, sc, sc, sc)), net)
+        self.assertEqual(self.clone_then("ln -s %s %s/lnk; echo x >> %s/lnk/.git/config; cd %s && git fetch origin"
+                                         % (clone, sc, sc, clone)), net)
+
+
+class ShellValueTests(TrajectoryCase):
+    """T074 (B22): `NAME=$(mktemp ...)` and `NAME=(a b)` are modelled, each only where every value is known."""
+
+    def rules_of(self, *commands):
+        _, result = self.audit_steps([cases.bash(c) for c in commands], fast=True)
+        return sorted(f["rule"] for f in result["findings"])
+
+    SC = cases.SC
+
+    def test_lexer_reads_an_array_assignment_as_one_assignment_not_a_subshell(self):
+        found = shell.parse("B=(tools/buck2 -x 'a b')")
+        self.assertEqual(len(found), 1)
+        name, word = found[0].assigns[0]
+        self.assertEqual((name, [w.text for w in word.array]), ("B", ["tools/buck2", "-x", "a b"]))
+        self.assertEqual(shell.parse("B=()")[0].assigns[0][1].array, ())
+
+    def test_lexer_keeps_the_substitutions_of_array_elements_and_leaves_odd_arrays_alone(self):
+        self.assertEqual(shell.parse("B=(a $(date) b)")[0].assigns[0][1].subs, ["date"])
+        for odd in ("B=(a; b)", "B=(*.c)", "B=(a >f)", "B=(x=1)"):
+            self.assertEqual([c.depth for c in shell.parse(odd)][-1], 1, odd)  # read as before: a subshell command
+
+    # -- mktemp ----------------------------------------------------------------------------------
+    def test_mktemp_under_a_known_tmpdir_is_a_known_fresh_path(self):
+        sc = self.SC
+        self.assertEqual(self.rules_of("export TMPDIR=%s/tmp; out=$(mktemp -d); echo hi > $out/x; rm -rf $out" % sc), [])
+        self.assertEqual(self.rules_of("out=$(mktemp -d -p %s); echo hi > $out/x" % sc), [])
+        self.assertEqual(self.rules_of("out=$(mktemp %s/x.XXXXXX); echo hi > $out" % sc), [])
+        self.assertEqual(self.rules_of("cd %s; out=$(mktemp -d tmp.XXXX); echo hi > $out/x" % sc), [])
+
+    def test_mktemp_without_a_known_tmpdir_stays_unresolved(self):
+        sc = self.SC
+        for command in ('d=$(mktemp -d); echo hi > "$d/x"', 'd=$(mktemp -d); rm -rf "$d/.."',
+                        'd=$(mktemp -d); cat "$d/../claude-1000/x"'):
+            self.assertIn("path-unresolved" if "cat" in command else "write-unresolved", self.rules_of(command), command)
+        self.assertEqual(self.rules_of('d=$(mktemp -d); rm -rf "$d/.."; echo hi > %s/x' % sc).count("write-outside"), 0)
+
+    def test_dot_dot_out_of_a_known_mktemp_dir_is_judged_against_the_real_layout(self):
+        sc = self.SC
+        export = "export TMPDIR=%s/tmp; d=$(mktemp -d); " % sc
+        self.assertEqual(self.rules_of(export + 'echo hi > "$d/../x"'), [])  # still the scratch
+        self.assertEqual(self.rules_of(export + 'rm -rf "$d/../../.."'), ["write-outside"])
+        self.assertEqual(self.rules_of(export + 'echo hi > "$d/../../../T098/x"'), ["write-outside"])
+        self.assertIn("read-other-cache", self.rules_of(export + 'cat "$d/../../../T098/x"'))
+        self.assertEqual(self.rules_of("export TMPDIR=/tmp; d=$(mktemp -d); rm -rf \"$d/..\""), ["write-outside"])
+
+    def test_mktemp_in_a_forbidden_place_still_blocks(self):
+        self.assertEqual(self.rules_of("export TMPDIR=/etc; out=$(mktemp -d); echo hi > $out/x"), ["write-outside"])
+        self.assertEqual(self.rules_of("out=$(mktemp -d -p /var/tmp/other); echo hi > $out/x"), ["write-outside"])
+        self.assertEqual(self.rules_of("out=$(mktemp /var/tmp/x.XXXXXX); rm -f $out"), ["write-outside"])
+        self.assertEqual(self.rules_of("cd /var/tmp; out=$(mktemp x.XXXXXX); echo hi > $out"), ["write-outside"])
+        self.assertIn("read-secret-dir", self.rules_of("out=$(mktemp -d -p /var/tmp/.config); cat $out/x"))
+
+    def test_mktemp_that_cannot_be_known_stays_unresolved(self):
+        for command in ('out=$(mktemp -d -p "$WHERE"); echo hi > $out/x', "out=$(mktemp --foo); echo hi > $out",
+                        'export TMPDIR="$WHERE"; out=$(mktemp -d); echo hi > $out/x',
+                        "out=$(mktemp -d nox); echo hi > $out", "out=$(mktemp a.XXX b.XXX); echo hi > $out",
+                        "echo hi > $(mktemp)", "cd $(mktemp -d); echo hi > x"):
+            self.assertIn("write-unresolved", self.rules_of(command), command)
+
+    # -- arrays ----------------------------------------------------------------------------------
+    def test_a_known_array_starts_the_command(self):
+        sc = self.SC
+        self.assertEqual(self.rules_of('B=(ls -l); "${B[@]}" %s' % sc), [])
+        self.assertEqual(self.rules_of("B=(ls -l); B=(ls); echo hi > %s/x; \"${B[@]}\" %s" % (sc, sc)), [])
+        self.assertEqual(self.rules_of("B=(rm -rf /); echo hi"), [])  # an array assignment runs nothing
+
+    def test_a_known_array_is_judged_as_the_command_it_spells(self):
+        self.assertEqual(self.rules_of('B=(cat); "${B[@]}" /var/tmp/.config/x'), ["read-secret-dir"])
+        self.assertEqual(self.rules_of('B=(cat /var/tmp/.config/x); "${B[@]}"'), ["read-secret-dir"])
+        self.assertEqual(self.rules_of('B=(gh pr); "${B[@]}" list'), ["cmd-gh"])
+        self.assertEqual(self.rules_of('B=(bash -c "gh pr list"); "${B[@]}"'), ["cmd-gh"])
+        self.assertEqual(self.rules_of("B=($(gh pr list)); echo hi"), ["cmd-gh"])
+
+    def test_an_array_that_is_not_fully_known_stays_unresolved(self):
+        for command in ('B=(ls $X); "${B[@]}"', 'B=(ls); B=($X); "${B[@]}"', 'B=(ls *.c); "${B[@]}"',
+                        'B=(ls); "${B[1]}"', 'B=(ls); B+=(x); "${B[@]}"', 'B=(ls); B=cat; "${B[@]}"',
+                        'B=(ls); unset B; "${B[@]}"', 'B=(ls); read -a B; "${B[@]}"',
+                        'B=(ls); declare -a B=(cat /var/tmp/.config/x); "${B[@]}"', 'B=(ls); printf -v B x; "${B[@]}"'):
+            self.assertIn("cmd-unresolved", self.rules_of(command), command)

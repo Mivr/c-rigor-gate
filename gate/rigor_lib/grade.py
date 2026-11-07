@@ -11,7 +11,7 @@ import sys
 import time
 
 from rigor_lib import approvals, grade_context, grade_pipeline, jsonio, product_layout, runner, verdict
-from rigor_lib import approval_args, verdict_inputs
+from rigor_lib import verdict_inputs
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
 
@@ -83,9 +83,7 @@ def start_grading(args):
     work = args.work
     # Read every input file once. The grade uses the copies; the verdict hashes the same bytes.
     inputs = verdict_inputs.snapshot_inputs(args, work)
-    inputs["allowed_signers_sha256"] = file_sha256(approval_args.DEFAULT_ALLOWED_SIGNERS)
-    order_bytes = jsonio.read_bytes(grade_context.ORDER_FILE)
-    inputs["order_sha256"] = jsonio.sha256_hex(order_bytes)
+    order_bytes = jsonio.read_bytes(args.order_file)  # the snapshot; its hash is in `inputs`
     # P002 Q1: a bad bundle is exit 2 here, before `clone`.
     witness, inputs["witness_sha256"] = verdict_inputs.snapshot_witness(
         args.witness, os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.WITNESS_NAME))
@@ -107,8 +105,7 @@ def unused_approvals(g, documents):
     did not finish) validity cannot be judged and the list is empty; that grade is a FAIL anyway."""
     if g.args.approvals is None or not g.head:
         return []
-    loaded = approvals.load_approvals(g.args.approvals, g.src, g.head,
-                                      approval_args.DEFAULT_ALLOWED_SIGNERS)
+    loaded = approvals.load_approvals(g.args.approvals, g.src, g.head, g.args.allowed_signers)
     return verdict.unused_approval_findings(loaded.valid, documents)
 
 
@@ -123,7 +120,7 @@ def write_verdict(g):
     if core["overall"] == verdict.STATUS_PASS and verdict_inputs.missing_inputs(core["inputs"]):
         raise InternalError("a PASS without every input bound: %s"
                             % verdict_inputs.missing_inputs(core["inputs"]))
-    document = verdict.build_verdict(core, grade_context.ORDER_FILE, g.results, order, documents)
+    document = verdict.build_verdict(core, g.args.order_file, g.results, order, documents)
     jsonio.write_atomic(g.args.verdict_out, jsonio.canonical_dumps(document))
     for entry in core["gates"]:
         print("  %-14s %s" % (entry["id"], entry["status"]))

@@ -843,7 +843,8 @@ case("written_script_on_stdin", ["cmd-gh", S], write(WT + "/src/a.sh", "gh api u
      bash("bash < src/a.sh"))
 case("written_script_cat_into_sh", ["cmd-git-push"], write(WT + "/src/a.sh", "git push origin HEAD\n"),
      bash("cat src/a.sh | sh"))
-case("tee_in_pipe_script_run", [X], bash("cat <<'EOF' | tee src/a.sh >/dev/null\ngh api user\nEOF\nbash src/a.sh"))
+# T072 (B21): the piped here-document is the text of src/a.sh, so running it is audited as written (cmd-gh, not obfuscated)
+case("tee_in_pipe_script_run", ["cmd-gh"], bash("cat <<'EOF' | tee src/a.sh >/dev/null\ngh api user\nEOF\nbash src/a.sh"))
 case("dev_stdin_python_secret", [S], bash("python3 /dev/stdin <<'EOF'\nprint(open('%s').read())\nEOF" % TOKEN))
 case("dev_stdin_bash_gh", ["cmd-gh"], bash("bash /dev/stdin <<'EOF'\ngh api user\nEOF"))
 case("dev_fd_0_and_proc_fd_0_gh", ["cmd-gh"], bash(

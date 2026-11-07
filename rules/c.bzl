@@ -10,6 +10,7 @@ load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
 load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
+load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
 
 _SEALED = [
     "-std=c17",
@@ -169,6 +170,39 @@ def c_test(name, srcs = [], deps = []):
         name = name + "_coverage",
         test = ":" + name,
         target_compatible_with = ["toolchains//:cov"],
+    )
+
+def c_perf(name, module, srcs = [], deps = [], sizes = [1000, 4000], seed = 1):
+    """Cost counts of `module` at the given input sizes (release mode only): `<name>_perf` -> perf.jsonl.
+
+    `srcs` are the gate-held generator and driver (perf_gen, perf_run; see ctest/perf.h). The sizes
+    and the seed are attributes, never read from the environment.
+    """
+    _check("c_perf", srcs, [])
+    if type(module) != "string" or ":" not in module:
+        fail("c_perf: `module` must be a target label string, got {!r}".format(module))
+    if type(sizes) != "list" or len(sizes) < 2 or len(sizes) > 8:
+        fail("c_perf: `sizes` must be a list of 2 to 8 positive ints, got {!r}".format(sizes))
+    for n in sizes:
+        if type(n) != "int" or n < 1:
+            fail("c_perf: `sizes` entries must be positive ints, got {!r}".format(n))
+    if type(seed) != "int" or seed < 0:
+        fail("c_perf: `seed` must be a non-negative int, got {!r}".format(seed))
+    native.cxx_binary(
+        name = name,
+        srcs = srcs,
+        deps = [module] + deps + ["gate//ctest:perf"],
+        compiler_flags = _compile_flags(),
+        linker_flags = _link_flags() + ["-Wl,--wrap=" + f for f in PERF_WRAPS],
+        target_compatible_with = _RELEASE_ONLY,
+    )
+    perf_results(
+        name = name + "_perf",
+        binary = ":" + name,
+        perf_name = name,
+        seed = seed,
+        sizes = sizes,
+        target_compatible_with = _RELEASE_ONLY,
     )
 
 def c_fuzz(name, srcs = [], deps = []):

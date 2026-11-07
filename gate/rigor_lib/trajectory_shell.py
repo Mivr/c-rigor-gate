@@ -11,6 +11,7 @@ import re
 DOLLAR = "\x01"      # a `$` that is literal (single quotes, backslash)
 UNRESOLVED = "\x02"  # a command substitution or other value the lexer cannot know
 
+_ARRAY_GLOB = re.compile(r"[*?\[]")
 _REDIR_RE = re.compile(r"<<<|<<-|<<|<&|<>|<|&>>|&>|>>|>&|>\||>")
 _OPERATORS = ";&|()\n"
 _WORD_END = " \t" + _OPERATORS + "<>"
@@ -20,12 +21,13 @@ _ANSI = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "e": "\x1b", "E"
 
 
 class Word:
-    __slots__ = ("text", "subs", "quoted")
+    __slots__ = ("text", "subs", "quoted", "array")
 
-    def __init__(self, text, subs, quoted):
+    def __init__(self, text, subs, quoted, array=None):
         self.text = text      # quotes removed; live expansions still written as $NAME / ${NAME}
         self.subs = subs      # texts of $(...), `...`, <(...) found inside
         self.quoted = quoted  # any quoting was used
+        self.array = array    # the element Words of `NAME=(a b c)` (T074); text is then the elements joined by spaces
 
 
 class Redirect:
@@ -395,8 +397,41 @@ class Lexer:
                 word = self.read_word()
                 self.last_end = self.pos
                 self._add_word(word, text[start:self.pos])
+                if text.startswith("(", self.pos) and not word.quoted:
+                    self._array(word, text[start:self.pos])
         self.end_command()
         return self.commands
+
+    def _array(self, word, raw):
+        """`NAME=(a b c)` (T074): the assignment of an array. Its elements are words, not a command that runs; the
+        assignment keeps them (`Word.array`) and their substitutions (`Word.subs`) so they are still audited. An
+        element list the lexer does not model (a redirect, a here-document, an assignment, a glob, a `;`) is read as
+        before, the elements as a subshell command. `NAME+=(a b)` is an assignment whose value is unknown."""
+        plain = re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=", raw) is not None
+        appended = re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\+=", raw) is not None
+        cur = self.cur
+        if plain and cur.assigns and not cur.words and cur.assigns[-1][1].text == "":
+            pass
+        elif appended and cur.words and cur.words[-1] is word and len(cur.words) == 1:
+            pass
+        else:
+            return
+        end = _balanced(self.text, self.pos + 1, "(", ")")
+        inner = self.text[self.pos + 1:end - 1]
+        found = Lexer(inner).run()
+        words = [w for c in found for w in c.words]
+        if any(c.assigns or c.redirects or c.heredocs or c.depth for c in found) or any(
+                ch in inner for ch in ";&|<>`") or any(_ARRAY_GLOB.search(w.text) and not w.quoted for w in words):
+            return
+        cur.raw += " " + self.text[self.pos:end]
+        self.pos = end
+        subs = [sub for w in words for sub in w.subs]
+        if appended:
+            cur.words.pop()
+            cur.assigns.append((raw[:-2], Word(UNRESOLVED, subs, False)))
+        else:
+            cur.assigns[-1] = (raw[:-1], Word(" ".join(w.text for w in words), subs, any(w.quoted for w in words),
+                                              tuple(words)))
 
     def _add_word(self, word, raw):
         cur = self.cur

@@ -18,6 +18,49 @@ _COMPILER_RE = re.compile(r"\A(?:[\w.+]+-)*(?:cc|c\+\+|gcc|g\+\+|clang|clang\+\+
                           r"rustc)(?:-[0-9][0-9.]*)?\Z")
 
 
+# File-name endings of patch leftovers (T077, B26): a glob that ends in one of these literal suffixes names only such
+# leftovers. The test-file rule knows names like `test_*`, `*_test.*` and `*_tests.*` and the directories `tests/` and
+# `test/`; a name ending in `.orig` or `.rej` is a leftover of `patch`, never a test or a fixture.
+PATCH_LEFTOVER_SUFFIXES = (".orig", ".rej")  # only for a delete that cannot remove a directory: `recursive_delete`
+_GLOB_CHARS = "*?["
+
+
+def patch_leftover_glob(path):
+    """True when the last component of `path` is a glob whose literal tail (after its last glob character) is a patch
+    leftover suffix, and no earlier component is a glob: `dir/*.orig`, `dir/x*.rej`. Not `*`, `*.or*`, `*.c`,
+    `test_*`, `d*/x.orig` or a plain `x.orig`."""
+    head, _, last = path.rpartition("/")
+    if any(ch in head for ch in _GLOB_CHARS) or not any(ch in last for ch in _GLOB_CHARS):
+        return False
+    tail = last[max(last.rfind(ch) for ch in _GLOB_CHARS) + 1:]
+    return tail.endswith(PATCH_LEFTOVER_SUFFIXES)
+
+
+def recursive_delete(argv):
+    """True unless the command is one that cannot remove a directory tree (T077): `rm` and `git rm` without a
+    recursive flag (`-r`, `-R`, any cluster holding one, `--recursive` or a prefix of it), `rmdir` and `unlink`.
+    Everything else that deletes (`find -delete`, `mv` of a directory, `git clean`) counts as recursive."""
+    name = cmds.name_of(argv[0])
+    args = argv[1:]
+    if name in ("rmdir", "unlink"):
+        return False
+    if name == "git":
+        _, sub, args = cmds.git_parts(argv)
+        if sub != "rm":
+            return True
+    elif name != "rm":
+        return True
+    for arg in args:
+        if arg == "--":
+            break
+        if arg.startswith("--"):
+            if len(arg) >= 5 and "--recursive".startswith(arg.split("=", 1)[0]):
+                return True
+        elif arg.startswith("-") and set(arg[1:]) & {"r", "R"}:
+            return True
+    return False
+
+
 def is_compiler(name):
     return _COMPILER_RE.match(name) is not None
 
@@ -379,6 +422,7 @@ class WritersMixin:
                 skip.add(index)
             self.write_tree(text, raw)
         skip |= self.note_links(argv, name, raw)
+        self.move_clones(argv, name)
         if name == "patch":
             skip |= self._patch(item, argv, raw)
         elif name == "git":
@@ -453,6 +497,40 @@ class WritersMixin:
             elif UNRESOLVED in source:
                 self.add("path-unresolved", raw, source.replace(UNRESOLVED, "$("))
         return set(layout["sources"])
+
+    def move_clones(self, argv, name):
+        """`mv` and `cp -r` of a proven local clone (or a directory holding one) from one declared scratch directory to
+        another (T072, B23): the proof moves with `mv` and is copied by `cp -r`, with its taint. A move or copy out of
+        the scratch directories ends the proof of what moved; a destination that replaces a clone ends its proof."""
+        flags = [a for a in argv[1:] if a.startswith("-") and not a.startswith("--")]
+        args = argv[1:]
+        if name == "mv":
+            copy = False
+        elif name == "cp" and ("--recursive" in args or any(set(a[1:]) & set("rRa") for a in flags)) and not (
+                "--symbolic-link" in args or "--link" in args or any(set(a[1:]) & set("sl") for a in flags)):
+            copy = True
+        else:
+            return
+        layout = transfer(argv)
+        if layout is None or not self.clones:
+            return
+        into = layout["dir"] or self.is_dir(layout["text"], layout.get("follow", True))
+        scratch = self.policy.own[1:]
+        for index in layout["sources"]:
+            source = self.policy.normalize(argv[index], self.cwd)
+            dest = self.policy.normalize(into_dir(layout["text"], argv[index]) if into else layout["text"], self.cwd)
+            if source is None or dest is None:
+                continue
+            moved = {c: t for c, t in self.clones.items() if self.policy.is_inside(source, c)}
+            for old in [c for c in self.clones if self.policy.is_inside(dest, c)]:
+                self.clones.pop(old)  # replaced by what lands there
+            for old, tainted in moved.items():
+                new = dest + old[len(source):]
+                if not copy:
+                    self.clones.pop(old, None)
+                if any(self.policy.is_inside(b, source) for b in scratch) and any(
+                        self.policy.is_inside(b, new) for b in scratch):
+                    self.clones[new] = tainted
 
     def known_text(self, path_text):
         """The text of a file as this transcript wrote it, or None when the audit does not know it."""
