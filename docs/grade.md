@@ -97,7 +97,7 @@ so the gate reads the head's results of both modes and builds nothing.
 - **Tests.** For a module, every product `c_test` that lists it directly in `deps`, found with `buck2 uquery` in
   the tree (the `test` attribute of the `ctest_results` targets, and the `deps` of libraries and tests). The
   product declares no `c_mutants`. The other libraries the tests link (the closure of their `deps` and the
-  module's, without the module, dependents first) are passed as `deps`.
+  module's, without the module, dependents first) are passed as `deps`. See "Link dependencies of the mutants (T070)".
 - **The generated package.** After the product was copied, the step writes `gate-mutants/BUCK` (one `c_mutants` call
   per module, target `m<NNN>_<module>`) and a root `PACKAGE` (`package(visibility = ["PUBLIC"], inherit = True)`;
   without it the product's test targets, which are package-private, are invisible to another package). Both are
@@ -337,3 +337,21 @@ must also cover earlier changes use the product's root commit and expect the sin
 gate/rigor grade --product-repo annas-c-clone --base $(git -C annas-c-clone log -1 --format=%h -- gate) --head HEAD \
     --task products/annas-c/tasks/whole-repo.toml --product products/annas-c/product.toml --work WORK --out verdict.json
 ```
+
+## Link dependencies of the mutants (T070)
+The generated `c_mutants(deps = ...)` of a module lists every library its tests link in a normal build, in a static
+link order (a library before the ones it depends on), without the module itself (its mutant objects replace it):
+- **Every cell.** The closure follows `deps` and `exported_deps` through the product's libraries and through the
+  libraries of other cells (`gate//third_party/mbedtls:mbedtls`, `gate//ctest:ctest`, ...). The other-cell libraries
+  are found by `uquery` of the labels the product's targets name, round by round, until nothing new appears
+  (`deps(//...)` is no use: it also follows the toolchain's hidden deps). Nothing is named by hand, and nothing is
+  linked that the tests do not reach. A library named twice (`ctest` is a dep of every `c_test` and of `c_mutants`
+  itself) is linked once.
+- **Fail closed.** A label the closure reaches that is no library (`cxx_library`, `prebuilt_cxx_library`) of the layout
+  is the error `unresolved-link-dep` (fields `module`, `dep`); the module is not mutated and the step fails. Before T070
+  such deps were dropped, the baseline link failed on undefined symbols, and the whole module was `mutants-build-failed`.
+- `Layout.deps` still holds the product's own cell only (the witness scope reads it); `Layout.links` holds the
+  complete link graph.
+- Canary `third-party-link` (control, must PASS): `//core:tpm`'s test links `//core:tpw`, which depends on mbedtls.
+  Its mutants must have real verdicts (`core/tpm.c:5` survives on purpose); on the pre-T070 gate it is
+  `mutants-build-failed`.
