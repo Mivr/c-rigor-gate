@@ -45,13 +45,17 @@ def head_run(g):
 def run_buck(tree, args):
     """Run the pinned Buck2 in `tree`; returns (exit code, stdout text, stderr text).
 
-    An uncached `build` first verifies the cached toolchain trees against their manifest
-    (toolchain_verify); if that fails the build is not started and exit code 1 is returned.
+    The `toolchain` gate (grade_toolchain) verifies the cached toolchain trees once, before any gate
+    that compiles, and reports a mismatch; nothing here reports one. An uncached `build` re-primes
+    its daemon the same way first (toolchain_verify: in the daemon the gate primed that executes
+    nothing; a gate that killed its daemon gets a fresh one that must take the verified tree again,
+    or it would re-unpack the archive). That re-priming failing after the gate passed means the
+    grader's toolchain changed during the grade: an internal error (exit 2), never a product finding.
     """
     if toolchain_verify.needs_verification(args):
-        problem = toolchain_verify.prepare(_run_buck, tree)
-        if problem is not None:
-            return 1, "", problem
+        failure = toolchain_verify.prepare(_run_buck, tree)
+        if failure is not None:
+            raise InternalError("toolchain re-check failed after the toolchain gate: " + failure.message())
     return _run_buck(tree, args)
 
 

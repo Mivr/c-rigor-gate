@@ -59,6 +59,24 @@ class MissCase(unittest.TestCase):
         self.assertEqual(runner.misses([outcome("a"), outcome("b")], ["a", "b"]), [])
 
 
+class CoverageCase(unittest.TestCase):
+    """T073: grader-integrity gates are exempt from the coverage pre-check; every other gate is not."""
+
+    def test_a_gate_outside_the_set_still_fails_the_pre_check(self):
+        self.assertEqual(runner.uncovered(["build", "toolchain"], []), ["build"])
+        self.assertEqual(runner.uncovered(["build"], [{"fail": {"build": ["build-failed"]}}]), [])
+        pending = {"fail": {"build": ["build-failed"]}, "pending": "T999"}
+        self.assertEqual(runner.uncovered(["build"], [pending, {"control": True}]), ["build"])
+
+    def test_the_exempt_set_is_exactly_toolchain_and_names_real_gates(self):
+        self.assertEqual(runner.GRADER_INTEGRITY_GATES, frozenset({"toolchain"}))
+        order = (ROOT / "gate" / "order.txt").read_text().split()
+        self.assertTrue(runner.GRADER_INTEGRITY_GATES <= set(order))
+
+    def test_the_pack_covers_every_other_gate(self):
+        self.assertEqual(runner.check_coverage(runner.list_ids()), [])
+
+
 class LeakCase(unittest.TestCase):
     def test_process_in_tree_is_found_and_outside_is_not(self):
         with tempfile.TemporaryDirectory() as tree, tempfile.TemporaryDirectory() as other:

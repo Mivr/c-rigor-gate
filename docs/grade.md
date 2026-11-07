@@ -14,13 +14,15 @@ and `gate/order.txt` (fixed order for the verdict) must list the same ids in the
 test checks). A step is `function(grading) -> GateResult | None`; `None` = did not run (NOT_RUN,
 which fails the verdict). An exception inside a step is recorded as that gate's `internal-error`
 FAIL, later gates do not run, the verdict is still written, and the exit code is 2.
-A gate that fails by findings does not stop the others (except as noted for `build`/`tests-*`).
+A gate that fails by findings does not stop the others (except as noted for `build`/`tests-*`, and for
+`toolchain`: every gate that compiles needs it).
 
 | Gate | What it does |
 |---|---|
 | `clone` | `git clone --no-local --no-hardlinks` of R into `<work>/src` with the hardened git environment of `gitrun` (no replace objects, grafts, fsmonitor, hooks, global config); resolves B and H **in the clone** (commit ids or refs the clone has, e.g. `origin/x`); detached checkout of H. Every later git gate reads the clone, never R. |
 | `contract`, `suppressions` | the existing gates, in process, against the clone, `--task` and `--approvals`. `suppressions` also scans **every file the layout grades at H** (the same file set `assemble` copies; T054, R001 R5) with the same patterns, line by line, so a suppression committed before B (an ungraded ancestor, e.g. under a sanitizer macro) is found. A hit that is in the diff is reported once, as `forbidden-pattern`; any other hit is `forbidden-pattern-in-tree` (error, with path, line, pattern). Approvals use the same scope text and cover both. |
 | `assemble` | builds `<work>/tree` from scratch (below). Findings: `bad-path`, `unsupported-entry` (symlink or gitlink that the layout would copy); info `ignored-by-gate` (a product path that matched `include` but is always excluded), info `product-manifest` (sha256 of the copied product files, so the verdict hash commits to them). An error here means no tree: `build` and `tests-*` are NOT_RUN. |
+| `toolchain` | grader integrity (T073, B33 a; below): is the toolchain the one `toolchains/*.manifest` pins? In an `--uncached` grade it verifies the cached LLVM and sysroot trees once, before anything compiles: PASS with info `toolchain-verified` (`manifests`: path and sha256 of each manifest), or FAIL with error `toolchain-mismatch`. A cached grade: PASS with info `toolchain-not-verified` (`reason: cached grade`). NOT_RUN in an uncached grade without a tree (`assemble` failed). Unless it passed, the gates that compile (`semantic-suppressions`, `symbols`, `build`, `structure`, `mode-divergence`, `mutants`, `witness-tests`, `mutants-witness`) are NOT_RUN (the log names the reason: `<gate> not run: gate toolchain is FAIL`). |
 | `buckfiles` | `rigor buckfiles` over a copy of the product files of the tree only (never the gate's own `BUCK` files). |
 | `semantic-suppressions`, `symbols` | one Buck2 build (release, `--no-remote-cache` with `--uncached`) of every `kind(c_facts, //...)` target, `gate//ctest:ctest_facts` and `toolchains//:libc_symbols`; then `rigor facts` logic with `products/<p>/policy.toml` (gate-owned, next to `product.toml`; trusted module is `gate//ctest:ctest`, and test targets need their own `[module]` entries). If the facts cannot be built (e.g. the product does not compile) both are NOT_RUN and `build` says why. Metadata has executed/cached action counts. |
 | `build` | in the tree: `uquery 'kind(ctest_results, //...)'`, then `build --keep-going --build-report` of all of them in `release` and in `toolchains//:linux_san`. Findings: `build-failed` (target, mode), `missing-output`, `query-failed`, `no-results-targets`. Always ends with `buck2 kill` in the tree. Metadata: executed/cached action counts (from `buck2 log what-ran`, column 3 `cache` = hit), stderr tail. |
@@ -238,10 +240,33 @@ every build, so no cache is read or written and every action runs on a worker. T
 service may still deduplicate identical in-flight actions; the selftest checks that an uncached grade
 reports 0 cache hits.)
 
-**Toolchain trees (T030).** `--no-remote-cache` would also re-unpack the 1.6 GB LLVM archive (about two minutes per
-daemon). An uncached build instead first takes the tree from the action cache and verifies every byte of it,
-uncached on a worker, against the gate-owned `toolchains/*.manifest`; a mismatch fails the build (a `build-failed`
-finding with a `TOOLCHAIN VERIFICATION FAILED` stderr tail), never a silent re-fetch. See `docs/toolchain.md`.
+**Toolchain trees (T030, T073).** `--no-remote-cache` would also re-unpack the 1.6 GB LLVM archive (about two minutes per
+daemon). An uncached grade instead takes the tree from the action cache and verifies every byte of it, uncached on a
+worker, against the gate-owned `toolchains/*.manifest`, never a silent re-fetch. See `docs/toolchain.md`.
+- **The `toolchain` gate** does that once, right after `assemble`, in the head tree's daemon (which the facts gates and
+  `build` then reuse without re-executing anything). A mismatch is the gate's FAIL `toolchain-mismatch`:
+  `manifest` (`toolchains/llvm.manifest` or `toolchains/sysroot.manifest`, `null` if the failing step is not the
+  verify action), `first_difference` (the first `missing`/`extra`/`changed` path the verifier printed, or `null`),
+  `step` (`fetch`, `verify`, `what-ran`, `verify-served-from-cache`), `exit_code` (of that buck2 command) and
+  `verifier_exit_code` (of the verify action, as buck2 reports it, or `null`); metadata `stderr_tail`. The gates
+  that compile are then NOT_RUN, so a grader-integrity failure is never reported as the product's `build-failed`.
+- **Later daemons.** `build` and `structure`, `mode-divergence`, `mutants` and the witness tree each end by killing
+  their daemon, so a later gate's uncached `buck2 build` starts a fresh one. `grade_build.run_buck` re-primes it with
+  the same two commands (cached fetch, uncached verify) before the build: the verify action executes once per daemon,
+  as before T073, and the alternative (no priming) would re-unpack the archive per daemon. "Once per grade" in
+  the T073 spec means this (orchestrator ruling): the gate verifies once, and a daemon verifies at most once. If that re-check fails
+  after `toolchain` passed, the toolchain changed during the grade: an internal error (exit 2, the step's
+  `internal-error` FAIL), never a product finding.
+- **Canaries.** No product can make `toolchain` fail, so no canary expects it to: `canaries/runner.py`
+  `GRADER_INTEGRITY_GATES` exempts it from the coverage pre-check. The proof that it fails is the last step of
+  `selftest/grade.sh` (a scratch gate copy with one `llvm.manifest` sha256 flipped, graded `--uncached`).
+- **Exit code: 1.** A `toolchain` FAIL is a failed gate like any other: overall FAIL, exit 1. It is a
+  grader-integrity failure, not a product failure, and the verdict says so where it is hashed (`core` has gate
+  `toolchain` FAIL, finding `toolchain-mismatch`, every compiling gate NOT_RUN). Exit 2 stays what it is: the grader
+  stopped (an exception) and later gates have no result. Here the grade ran to the end fail-closed with a
+  well-defined result, so a consumer tells the two failures apart by the verdict, not by the exit code. (On the
+  client-writable action cache of B4 the planted tree may come from the graded party itself; it is a recorded FAIL
+  of that grade either way.)
 
 ## Daemons
 Every grading tree starts its own Buck2 daemon; the build gate kills it in a `finally`, and `rigor
