@@ -26,24 +26,31 @@ cannot just be trusted from it. Design:
 - `toolchains/llvm.manifest` and `toolchains/sysroot.manifest` list every member of the extracted trees (directory,
   file with exec bit, size and sha256, symlink with target). They are gate files (`toolchains/**`), covered by the
   gate-clean check, and a change to one is a review item of its own.
-- Before every uncached `buck2 build` (`grade_build.run_buck`, `gate/rigor_lib/toolchain_verify.py`) the grader runs,
-  in the same daemon: (1) `build toolchains//:{llvm,sysroot}_ref`, cache allowed, nothing materialised, so the tree
-  comes from the action cache (the unpack runs only when the cache truly lacks it); (2) `build --no-remote-cache
+- The `toolchain` gate of `rigor grade` (`gate/rigor_lib/grade_toolchain.py`, T073; `docs/grade.md`) runs right after
+  `assemble`, before any gate that compiles, and does this in the head tree's daemon (`toolchain_verify.prepare`):
+  (1) `build toolchains//:{llvm,sysroot}_ref`, cache allowed, nothing materialised, so the tree comes from the action
+  cache (the unpack runs only when the cache truly lacks it); (2) `build --no-remote-cache
   toolchains//:{llvm,sysroot}_verified`: the `verified_tree` rule (`toolchains/fetch.bzl`) runs
   `toolchains/verify_tree.py` on a worker, uncached, over the very tree of step 1 and compares every name, type,
   exec bit, size, link target and sha256 with the manifest. Buck2 keeps that tree in the daemon, so the compile and
-  link actions of the build that follows consume the digest that was verified. Warm cost: about 8 s.
+  link actions of the builds that follow consume the digest that was verified. Warm cost: about 8 s.
 - Any difference (flipped byte, mode, extra or missing file or directory, retargeted link, special file) fails the
-  verify action: the grader returns exit 1 for that build with a `TOOLCHAIN VERIFICATION FAILED ... Not re-fetching`
-  stderr tail, which surfaces as a `build-failed` finding (metadata `stderr_tail`) in `build` (facts and mutants
-  builds fail the same way). It never falls back to a re-fetch. The verify action being answered from a cache is
-  also refused (`log what-ran`).
+  verify action, and the grade reports it as the `toolchain` gate's FAIL `toolchain-mismatch` (manifest, first
+  differing path, step, buck2 and verifier exit codes), never as the product's `build-failed`: every gate that
+  compiles is NOT_RUN, the verdict is FAIL, exit 1. It never falls back to a re-fetch. The verify action being
+  answered from a cache is also refused (`log what-ran`). A cached grade verifies nothing (`toolchain` PASS with
+  info `toolchain-not-verified`).
+- Later daemons: gates that kill their daemon (`build`, `structure`, `mode-divergence`, `mutants`, the witness tree)
+  make the next uncached `buck2 build` start a fresh one, which `grade_build.run_buck` re-primes with the same two
+  steps first. So the verify action runs once per daemon, as before T073; in the daemon the gate primed nothing
+  re-executes. A re-check that fails after `toolchain` passed is an internal error (exit 2).
 - Not covered: cached builds (`--uncached` absent) still trust the cache, as before; the worker's `python3` runs the
   verifier; the fetched archive itself is sha256-pinned by `download_file`.
 - Regenerating the manifests: `toolchains/gen_manifests.sh` (a real, uncached unpack; deterministic, so a second
   run leaves `git diff` empty). Bootstrapping a new pin needs empty `*.manifest` placeholder files first (the BUCK
   file names them as sources).
-- Tests: `gate/tests/test_toolchain_verify.py`.
+- Tests: `gate/tests/test_toolchain_verify.py`, `gate/tests/test_grade_toolchain.py`; the last step of
+  `selftest/grade.sh` grades with a scratch gate copy whose `llvm.manifest` has one sha256 flipped (`toolchain` FAIL).
 
 ## Modes
 

@@ -625,6 +625,10 @@ assert mu["executed_actions"] > 0 and mu["cached_actions"] == 0, mu
 f = u["metadata"]["gate_metadata"]["symbols"]
 print("  uncached facts: executed %d, cached %d" % (f["executed_actions"], f["cached_actions"]))
 assert f["executed_actions"] > 0 and f["cached_actions"] == 0, f
+# T073: the toolchain gate verified the cached trees in the uncached grade, and only there.
+assert u["metadata"]["gate_metadata"]["toolchain"]["verified"] is True, u["metadata"]["gate_metadata"]["toolchain"]
+assert w["metadata"]["gate_metadata"]["toolchain"]["verified"] is False
+print("  toolchain: verified in the uncached grade, not verified (cached grade) in the warm one")
 assert u["core_sha256"] != w["core_sha256"]
 EOF4
 
@@ -637,6 +641,66 @@ for gate in ("build", "symbols", "mutants", "structure", "mode-divergence"):
     print("  %-16s executed/cached without --witness %s, with %s" % (gate, ca, cb))
     assert ca == cb, gate
 EOF8
+
+# ---------------------------------------------------------------------------------------
+# T073: the `toolchain` gate fails. No product can make it fail (canaries/runner.py
+# GRADER_INTEGRITY_GATES exempts it from canary coverage because of this step). A scratch clone of
+# the gate commit gets one sha256 of llvm.manifest flipped and grades the clean head --uncached: the
+# cached tree no longer matches the manifest. Nothing shared is written: the clone lives in $work, the
+# fetch step only reads the action cache and the verify step is --no-remote-cache.
+# ---------------------------------------------------------------------------------------
+step=$((step + 1))
+echo "[$step] toolchain mismatch: a scratch gate clone with one llvm.manifest sha256 flipped, --uncached"
+mismatch_gate="$work/gate-mismatch"
+root_status_before="$(git -C "$root" status --porcelain=v1 --untracked-files=no)"
+# The exact commit this script runs from (also on a detached HEAD), copied (no hardlinks) into $work.
+{ git init -q -b mismatch "$mismatch_gate" && git -C "$mismatch_gate" fetch -q --no-tags "$root" HEAD &&
+  git -C "$mismatch_gate" reset -q --hard FETCH_HEAD; } || fail "toolchain mismatch: copy of the gate commit"
+[ "$(git -C "$mismatch_gate" rev-parse HEAD)" = "$(git -C "$root" rev-parse HEAD)" ] || fail "toolchain mismatch: wrong commit"
+flipped="$(python3 -I - "$mismatch_gate/toolchains/llvm.manifest" <<'EOF9'
+import sys
+path = sys.argv[1]
+lines = open(path, encoding="utf-8").read().split("\n")
+for i, line in enumerate(lines):
+    fields = line.split("\t")
+    if len(fields) == 5 and fields[0] == "f":
+        digest = fields[3]
+        fields[3] = digest[:-1] + ("1" if digest[-1] != "1" else "2")
+        lines[i] = "\t".join(fields)
+        break
+open(path, "w", encoding="utf-8").write("\n".join(lines))
+print(fields[4])
+EOF9
+)" || fail "toolchain mismatch: flip"
+git -C "$mismatch_gate" commit -q -am "selftest: one llvm.manifest sha256 flipped" || fail "toolchain mismatch: commit"
+started="$(now)"
+python3 -I -B "$mismatch_gate/gate/rigor" grade --product-repo "$repo" --base "$base" --head "$last_head" \
+    --task "$work/task.toml" --product "$mismatch_gate/$product" --work "$work/toolchain-mismatch" \
+    --out "$work/toolchain-mismatch.verdict.json" --uncached > "$work/toolchain-mismatch.log" 2>&1
+code=$?
+echo "  exit $code, $(elapsed "$started")s, flipped: $flipped"
+python3 -I - "$work/toolchain-mismatch.verdict.json" "$work/toolchain-mismatch/results/toolchain.json" "$code" "$flipped" <<'EOF10' || { tail -n 30 "$work/toolchain-mismatch.log" >&2; fail "toolchain mismatch: wrong verdict"; }
+import json, sys
+core = json.load(open(sys.argv[1]))["core"]
+result = json.load(open(sys.argv[2]))
+code, flipped = int(sys.argv[3]), sys.argv[4]
+got = {g["id"]: g["status"] for g in core["gates"]}
+print("  " + " ".join("%s=%s" % kv for kv in got.items()) + "  overall=" + core["overall"])
+compiling = {"semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "mutants",
+             "witness-tests", "mutants-witness"}
+assert code == 1 and core["overall"] == "FAIL" and core["uncached"] is True, (code, core["overall"])
+assert {g for g, s in got.items() if s == "FAIL"} == {"toolchain"}, got
+assert {g for g, s in got.items() if s == "NOT_RUN"} == compiling | {"tests-release", "tests-san"}, got
+[item] = [f for f in result["findings"] if f["severity"] == "error"]
+assert item["rule"] == "toolchain-mismatch" and item["step"] == "verify", item
+assert item["manifest"] == "toolchains/llvm.manifest" and item["first_difference"] == flipped, item
+assert item["verifier_exit_code"] == 1, item
+print("  toolchain-mismatch: manifest %s, first difference %s, buck2 exit %d" % (item["manifest"], flipped, item["exit_code"]))
+EOF10
+grep -Eq "^build +not run: gate toolchain is FAIL$" "$work/toolchain-mismatch.log" || fail "toolchain mismatch: no not-run reason in the log"
+[ -z "$(find_daemons "$work/toolchain-mismatch")" ] || fail "toolchain mismatch: a process is still running"
+[ "$(git -C "$root" status --porcelain=v1 --untracked-files=no)" = "$root_status_before" ] || fail "toolchain mismatch: the gate checkout changed"
+echo "  the gate checkout is unchanged and no daemon is left"
 
 echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, 7 test-author) ${parallel_secs}s"
 echo "selftest/grade.sh: all $step steps passed"

@@ -2,6 +2,7 @@ clone
 contract
 suppressions
 assemble
+toolchain
 buckfiles
 semantic-suppressions
 symbols

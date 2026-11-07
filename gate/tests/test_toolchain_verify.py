@@ -12,6 +12,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from rigor_lib import grade_build, toolchain_verify
+from rigor_lib.errors import InternalError
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 spec = importlib.util.spec_from_file_location("verify_tree", ROOT / "toolchains" / "verify_tree.py")
@@ -189,25 +190,32 @@ class PrepareTest(unittest.TestCase):
 
     def test_verify_failure_is_reported_and_never_refetches(self):
         run, calls = self.fake([(0, "", ""), (1, "", "TOOLCHAIN TREE DIFFERS FROM MANIFEST\nextra: x")])
-        problem = toolchain_verify.prepare(run, "t")
-        self.assertIn("VERIFICATION FAILED", problem)
-        self.assertIn("extra: x", problem)
-        self.assertIn("Not re-fetching", problem)
+        failure = toolchain_verify.prepare(run, "t")
+        self.assertEqual((failure.step, failure.code), (toolchain_verify.STEP_VERIFY, 1))
+        self.assertIn("VERIFICATION FAILED (verify, exit 1)", failure.message())
+        self.assertIn("extra: x", failure.message())
+        self.assertIn("Not re-fetching", failure.message())
         self.assertEqual(len(calls), 2)
 
     def test_fetch_failure_stops_before_verify(self):
         run, calls = self.fake([(1, "", "no cache and no network")])
-        self.assertIn("(fetch, exit 1)", toolchain_verify.prepare(run, "t"))
+        failure = toolchain_verify.prepare(run, "t")
+        self.assertIn("(fetch, exit 1)", failure.message())
+        self.assertEqual((failure.manifest(), failure.first_difference(), failure.verifier_exit_code()),
+                         (None, None, None))
         self.assertEqual(len(calls), 1)
 
     def test_verify_served_from_cache_is_refused(self):
         line = "build\tx (verify_tree llvm_verified)\tcache\tdigest\n"
         run, _ = self.fake([(0, "", ""), (0, "", ""), (0, line, "")])
-        self.assertIn("served from a cache", toolchain_verify.prepare(run, "t"))
+        failure = toolchain_verify.prepare(run, "t")
+        self.assertEqual((failure.step, failure.code), (toolchain_verify.STEP_CACHED, 0))
+        self.assertIn("served-from-cache", failure.message())
+        self.assertIn(line.strip(), failure.message())
 
     def test_what_ran_failure_is_refused(self):
         run, _ = self.fake([(0, "", ""), (0, "", ""), (2, "", "boom")])
-        self.assertIn("(what-ran, exit 2)", toolchain_verify.prepare(run, "t"))
+        self.assertIn("(what-ran, exit 2)", toolchain_verify.prepare(run, "t").message())
 
 
 class RunBuckTest(unittest.TestCase):
@@ -224,11 +232,12 @@ class RunBuckTest(unittest.TestCase):
             return self.verify_code, "", "differs"
         return 0, "", ""
 
-    def test_forged_tree_fails_the_build_without_starting_it(self):
+    def test_forged_tree_stops_the_grade_without_starting_the_build(self):
+        # T073: the `toolchain` gate reports a mismatch; a later daemon's re-check that fails is an
+        # internal error (exit 2), never a build result a product gate could report as build-failed.
         self.verify_code = 1
-        code, _, err = grade_build.run_buck("t", ["build", "--no-remote-cache", "//p:results"])
-        self.assertEqual(code, 1)
-        self.assertIn("VERIFICATION FAILED", err)
+        with self.assertRaisesRegex(InternalError, "after the toolchain gate: TOOLCHAIN VERIFICATION FAILED"):
+            grade_build.run_buck("t", ["build", "--no-remote-cache", "//p:results"])
         self.assertNotIn(["build", "--no-remote-cache", "//p:results"], self.calls)
 
     def test_verified_uncached_build_runs_after_the_checks(self):
