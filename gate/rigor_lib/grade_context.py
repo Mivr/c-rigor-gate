@@ -46,6 +46,8 @@ class Grading:
     # T037: the witness bundle loaded from its snapshot in <work>/inputs/witness (witness_bundle.Bundle),
     # or None without --witness.
     witness: object = None
+    # B13: the perf bundle loaded from its snapshot in <work>/inputs/perf (perf_bundle.Bundle), or None.
+    perf: object = None
 
 
 def gate_checkout_sha():
