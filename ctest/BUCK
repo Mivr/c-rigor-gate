@@ -6,3 +6,10 @@ c_library(
     headers = ["ctest.h", "sanlog.h"],
     visibility = ["PUBLIC"],
 )
+
+c_library(
+    name = "perf",
+    srcs = ["perf.c"],
+    headers = ["perf.h"],
+    visibility = ["PUBLIC"],
+)
