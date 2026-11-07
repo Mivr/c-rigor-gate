@@ -155,8 +155,8 @@ The sources are inside the policy on purpose: the verdict binds the policy snaps
 driver is bound with the class, and the product cannot change either. (The spec for this task wrote
 `perf."//x:y_perf"`; target names are generated, hence the name here and the label `//gate-perf:<name>_perf`.) The
 perf bundle (`--perf DIR`) adds its targets under the name `bundle_<id>` (ids use `-`, names `_`) with `linear` read
-as O(n) and `nlogn` as O(n log n); a name used twice is exit 2. The driver includes its module's public header
-as the tests of the module would not: through the dependency (`#include "core/core.h"` for `core/core.h`).
+as O(n) and `nlogn` as O(n log n); a name used twice is exit 2. The driver includes its module's public header by
+its package path (`#include "core/core.h"`).
 
 **The thresholds** (`gate/rigor_lib/perf_judge.py`). `c1` and `c2` are the counts at the first and the last size
 (`n1`, `n2`, `k = n2 / n1`, normally 4), for `instructions` and for `libc_bytes`; either counter above its limit fails:
