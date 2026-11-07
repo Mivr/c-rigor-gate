@@ -257,11 +257,21 @@ class GitMixin:
                 i += 1
         return directory
 
+    def _clone_paths(self, path):
+        """`path`, and where it lands through a link the transcript made inside a scratch directory (T072, B23)."""
+        paths = [path]
+        if any(self.policy.is_inside(base, path) for base in self.policy.own[1:]):
+            linked = self.policy.through_links(path)
+            if linked is not None and linked != path:
+                paths.append(linked)
+        return paths
+
     def clone_of(self, path):
-        """The proven, untouched local clone that contains `path`, or None."""
+        """The proven, untouched local clone that contains `path` (also through a link the transcript made in a
+        scratch directory), or None."""
         found = None
         for directory, tainted in self.clones.items():
-            if self.policy.is_inside(directory, path):
+            if any(self.policy.is_inside(directory, p) for p in self._clone_paths(path)):
                 if tainted:
                     return None
                 found = directory
@@ -301,15 +311,16 @@ class GitMixin:
         if not any(rule in _TAINTING for rule in found):
             return
         directory = self.git_dir_of(argv)
+        near = [] if directory is None else self._clone_paths(directory)
         for clone in self.clones:
-            if directory is None or self.policy.is_inside(clone, directory) or self.policy.is_inside(
-                    directory, clone):
+            if directory is None or any(self.policy.is_inside(clone, d) or self.policy.is_inside(d, clone)
+                                        for d in near):
                 self.clones[clone] = True
 
     def git_touch(self, path):
         """A write into a clone's `.git` may change its origin."""
         for clone in self.clones:
-            if self.policy.is_inside(posixpath.join(clone, ".git"), path):
+            if any(self.policy.is_inside(posixpath.join(clone, ".git"), p) for p in self._clone_paths(path)):
                 self.clones[clone] = True
 
     def note_clone(self, argv, clean):
