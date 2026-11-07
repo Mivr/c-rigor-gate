@@ -298,6 +298,21 @@ ta_head timeout '    (void)value;
     }'
 ta_head a018 "$sentinel" sign-stub
 
+# Red property step (T069): the clean module plus an exported function the policy does not list. The policy is the
+# product's own (clean exports only; steps that add a symbol grade against a scratch policy, as ta_inputs does),
+# so `symbols` must report unexpected-export. Committed here with the other heads; graded in the parallel wave.
+git -C "$repo" checkout -q -f -B case-extra-export "$base"
+git -C "$repo" clean -q -fdx
+(
+  cd "$repo" || exit 1
+  sed -i 's|^int core_sign(int value);$|&\nint core_extra(int value);|' core/core.h
+  printf '\nint core_extra(int value) {\n    return value;\n}\n' >> core/core.c
+  grep -q 'int core_extra(int value);' core/core.h || exit 1
+) || fail "extra-export: the edit did not apply"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m extra-export
+extra_export_head="$(git -C "$repo" rev-parse HEAD)"
+
 # grade_ta <name> <head> <inputs dir> <expected "gate:rule" list>: a test-author grading against bundle-ta
 grade_ta() {
   local name="$1" head="$2" inputs="$3" expected="$4"
@@ -548,10 +563,28 @@ EOF9
   [ -z "$(find_daemons "$work/ta-no-previous")" ] || fail "ta-no-previous: a process is still running"
 }
 
-names=(warm hostile uncached internal witness_na witness_strong witness_equal
+step_extra_export() {  # the clean policy lists exactly the clean exports: an unlisted one is unexpected-export
+  local code
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$extra_export_head" --task "$work/task.toml" \
+      --product "$product" --work "$work/extra-export" --out "$work/extra-export.verdict.json" \
+      > "$work/extra-export.log" 2>&1
+  code=$?
+  check_verdict "$work/extra-export.verdict.json" "symbols:unexpected-export" "$code" "$work/extra-export" \
+    || { tail -n 30 "$work/extra-export.log" >&2; fail "extra-export"; }
+  python3 -I - "$work/extra-export/results/symbols.json" <<'EOF10' || fail "extra-export: wrong findings"
+import json, sys
+errs = sorted((f["rule"], f.get("message", "")[:80]) for f in json.load(open(sys.argv[1]))["findings"] if f["severity"] == "error")
+print("  symbols errors:", errs)
+assert [e[0] for e in errs] == ["unexpected-export"], errs
+EOF10
+  [ -z "$(find_daemons "$work/extra-export")" ] || fail "extra-export: a process is still running"
+}
+
+names=(warm hostile uncached internal witness_na witness_strong witness_equal extra_export
        ta_green ta_release_pass ta_san_pass ta_timeout ta_no_new ta_a018 ta_no_previous)
 labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error"
         "pure impl change with a witness bundle (witness gates not applicable)" "test-surface change with a strong witness" "test-surface change with a witness identical to the head (cold, warm)"
+        "clean module plus an unlisted exported function (unexpected-export)"
         "test-author: a stub head with a correct witness" "test-author: a new test passes on the stub in release" "test-author: a new test passes on the stub in san only"
         "test-author: a stub that times out (info stub-timeout)" "test-author: no new ids" "test-author: old tests fail on a stubbed function, the witness passes them (A018)"
         "test-author without expected-tests.previous.json (exit 2)")
@@ -603,5 +636,5 @@ for gate in ("build", "symbols", "mutants", "structure", "mode-divergence"):
     assert ca == cb, gate
 EOF8
 
-echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, 7 test-author) ${parallel_secs}s"
+echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, 7 test-author) ${parallel_secs}s"
 echo "selftest/grade.sh: all $step steps passed"
