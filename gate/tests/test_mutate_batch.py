@@ -84,9 +84,9 @@ class CompileBatchTest(Base):
     def batch(self, specs, strict=False):
         src = self.write("src/f.c", self.SOURCE)
         listing = self.write("specs.json", json.dumps({"mutants": specs}))
-        argv = ["--specs", listing, "--src", src, "--strict" if strict else "--lenient"]
+        argv = ["--specs", listing, "--strict" if strict else "--lenient"]
         for spec in specs:
-            argv += ["--item", spec["id"], self.path("b_%s.o" % spec["id"]), self.path("b_%s.json" % spec["id"])]
+            argv += ["--item", src, spec["id"], self.path("b_%s.o" % spec["id"]), self.path("b_%s.json" % spec["id"])]
         return quiet(tool.cmd_compile_batch, argv + ["--", self.path("cc")])
 
     def test_every_record_is_the_one_mutant_record(self):
@@ -125,7 +125,7 @@ class CompileBatchTest(Base):
         specs = self.specs()
         src = self.write("src/f.c", self.SOURCE)
         listing = self.write("specs.json", json.dumps({"mutants": specs}))
-        argv = ["--specs", listing, "--src", src, "--lenient", "--item", "zz", self.path("x.o"), self.path("x.json"),
+        argv = ["--specs", listing, "--lenient", "--item", src, "zz", self.path("x.o"), self.path("x.json"),
                 "--", self.path("cc")]
         self.assertIsNotNone(quiet(tool.cmd_compile_batch, argv)[0])
 
@@ -140,7 +140,7 @@ class LinkRunBatchTest(Base):
     def batch(self, objs, command=None):
         argv = []
         for name in objs:
-            argv += ["--item", self.write("o_%s" % name, objs[name]), self.path("b_%s.json" % name)]
+            argv += ["--item", "1", self.path("b_%s.json" % name), self.write("o_%s" % name, objs[name])]
         command = command or [self.path("ld"), tool.OBJECT_SLOT]
         return quiet(tool.cmd_linkrun_batch, argv + ["--"] + command)
 
@@ -173,6 +173,23 @@ class LinkRunBatchTest(Base):
         os.chmod(broken, 0o755)
         code, _ = self.batch(self.objects(), [broken, tool.OBJECT_SLOT])
         self.assertIsNotNone(code)
+
+    def test_an_item_may_link_several_objects_in_order(self):
+        first = self.write("o_first", "#!/bin/sh\n" + RESULT % ("pass", 1, "first"))
+        second = self.write("o_second", "#!/bin/sh\n" + RESULT % ("pass", 1, "second"))
+        ld = self.write("cat_ld", "#!/bin/sh\nfor a in \"$@\"; do last=$a; done\ncat \"$1\" > \"$last\"; chmod +x \"$last\"\n")
+        os.chmod(ld, 0o755)
+        argv = ["--item", "2", self.path("two.json"), first, second, "--", ld, tool.OBJECT_SLOT]
+        self.assertIsNone(quiet(tool.cmd_linkrun_batch, argv)[0])
+        self.assertIn('"reason":"first"', json.loads(self.read("two.json"))["results"])
+
+    def test_a_malformed_item_fails_the_batch(self):
+        for argv in (["--item", "2", "out", "o1", "--", self.path("ld"), tool.OBJECT_SLOT],
+                     ["--item", "x", "out", "--", self.path("ld"), tool.OBJECT_SLOT],
+                     ["--item", "0", "out", "--", self.path("ld"), tool.OBJECT_SLOT],
+                     ["stray", "--", self.path("ld"), tool.OBJECT_SLOT]):
+            with self.subTest(argv=argv):
+                self.assertIsNotNone(quiet(tool.cmd_linkrun_batch, argv)[0])
 
     def test_the_command_needs_exactly_one_object_slot(self):
         self.assertIsNotNone(self.batch(self.objects(), [self.path("ld")])[0])

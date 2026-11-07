@@ -65,6 +65,24 @@ c_library(name = "uninit_kit", headers = ["uninit_kit.h"], deps = [":uninit"])
 c_test(name = "uninit_test", srcs = ["uninit_test.c"], deps = [":uninit", ":uninit_kit"])
 c_mutants(name = "uninit_mutants", module = ":uninit", tests = [":uninit_test"], deps = [":uninit_kit"])
 
+# T064: the same modules with batches of 1 (the old shape: one mutant per action) and of 3; the reports must be
+# byte-identical to the default build's (checked below)
+load("@gate//rules:mutate.bzl", "c_mutants_rule")
+[
+    c_mutants_rule(
+        name = "{}_b{}".format(m, n),
+        module = ":" + m,
+        module_src = ":{}_mutsrc".format(m),
+        test_targets = [":{}_test".format(m)],
+        deps = [":uninit_kit"] if m == "uninit" else [],
+        link_flags = [],
+        batch = n,
+        target_compatible_with = ["toolchains//:release"],
+    )
+    for m in ["pinned", "weak", "multi", "uninit"]
+    for n in [1, 3]
+]
+
 # a dependency that provides neither a library nor a header is an error
 c_library(name = "bare_kit")
 c_mutants(name = "bare_mutants", module = ":uninit", tests = [":uninit_test"], deps = [":bare_kit", ":uninit_kit"])
@@ -579,6 +597,19 @@ for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.json"))):
 print("    all      %3d mutants  %s" % (sum(operators.values()), dict(sorted(verdicts.items()))))
 print("    per operator:", dict(sorted(operators.items())))
 PY
+
+begin "batches change nothing: batch sizes 1 and 3 give byte-identical reports to the default 16 (T064)"
+run "$out/build_b.log" build "$pkg:pinned_b1" "$pkg:pinned_b3" "$pkg:weak_b1" "$pkg:weak_b3" "$pkg:multi_b1" "$pkg:multi_b3" "$pkg:uninit_b1" "$pkg:uninit_b3" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_b.log"
+echo "    executed $(executed "$out/build_b.log") actions"
+for name in pinned weak multi uninit; do
+  for n in 1 3; do
+    p="$(awk -v t="$pkg:${name}_b${n}" 'index($1, t) {print $2}' "$out/build_b.log" | tail -1)"
+    [ -f "$p" ] || fail "$CUR: no report for ${name}_b${n}"
+    # the report names its target; everything else must be the same
+    cmp -s <(sed 's/_mutants//g; s/_b'"$n"'//g' "$p") <(sed 's/_mutants//g' "$RES/$name.json") || fail "$CUR: ${name} with batch $n differs from the default build" <(diff <("${PY[@]}" -m json.tool "$p") <("${PY[@]}" -m json.tool "$RES/$name.json") | head -40)
+    echo "    ${name}_b${n}: $(wc -c < "$p") bytes, identical to the default"
+  done
+done
 
 begin "RED: the known survivors of the weak tests are reported as survivors, precisely"
 mkdir -p "$out/only_weak"; cp "$RES/weak.json" "$out/only_weak/"

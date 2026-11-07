@@ -100,9 +100,10 @@ def _batch_order(items, function_of):
     return sorted(items, key = lambda i: (i[0], function_of[i], i[1]))
 
 def _batches(items, function_of, size):
-    """Deterministic batches of at most SIZE items. ITEMS are (rel, id) pairs of one module in `_batch_order`. A batch holds mutants of one source only (one compile action compiles one source) and,
-    where it can, whole functions: a function that fits is never split, so editing one function changes the
-    mutants of few batches. Every item is in exactly one batch."""
+    """Deterministic batches of at most SIZE items. ITEMS are (rel, id) pairs of one module in `_batch_order`.
+    A batch holds whole functions where it can: a function that fits is never split, so editing one function
+    changes the mutants of few batches. A batch may span sources (one action compiles or runs mutants of several).
+    Every item is in exactly one batch."""
     out = []
     current = []
     groups = []
@@ -112,8 +113,8 @@ def _batches(items, function_of, size):
             groups[-1][1].append(item)
         else:
             groups.append((key, [item]))
-    for key, group in groups:
-        if current and (current[0][0] != key[0] or len(current) + len(group) > size):
+    for _, group in groups:
+        if current and len(current) + len(group) > size:
             out.append(current)
             current = []
         for item in group:
@@ -159,9 +160,8 @@ def _run_compile(cfg, actions, spec, src, msrc, obj, info, ident, strict, extra 
         identifier = ident,
     )
 
-def _compile_batch(cfg, actions, rel, batch, specs, ident, extra = None):
-    """One action compiles every mutant of BATCH (all of source REL); returns {(rel, id): (obj, info)}."""
-    src = cfg.src_by_rel[rel]
+def _compile_batch(cfg, actions, batch, specs, ident, extra = None):
+    """One action compiles every mutant of BATCH (of any sources); returns {(rel, id): (obj, info)}."""
     spec = actions.write_json("spec/{}.json".format(ident), {"mutants": [dict(specs[item], id = item[1]) for item in batch]})
     outputs = {}
     items = []
@@ -169,15 +169,13 @@ def _compile_batch(cfg, actions, rel, batch, specs, ident, extra = None):
         obj = actions.declare_output("obj/{}/{}.o".format(ident, item[1]))
         info = actions.declare_output("obj/{}/{}.json".format(ident, item[1]))
         outputs[item] = (obj, info)
-        items.append(cmd_args("--item", item[1], obj.as_output(), info.as_output()))
+        items.append(cmd_args("--item", cfg.src_by_rel[item[0]], item[1], obj.as_output(), info.as_output()))
     actions.run(
         cmd_args(
             _python(cfg.tool),
             "compile-batch",
             "--specs",
             spec,
-            "--src",
-            src,
             items,
             "--lenient",
             "--",
@@ -209,7 +207,7 @@ def _link_run(cfg, actions, objects, test, ident):
     )
     return out
 
-def _link_run_batch(cfg, actions, rel, batch, run_objs, test, ident):
+def _link_run_batch(cfg, actions, batch, run_objs, test, ident):
     """One action links and runs every mutant of BATCH against TEST, each in its own process; returns
     {(rel, id): record}."""
     outs = {}
@@ -217,8 +215,7 @@ def _link_run_batch(cfg, actions, rel, batch, run_objs, test, ident):
     for item in batch:
         out = actions.declare_output("run/{}/{}.json".format(ident, item[1]))
         outs[item] = out
-        items.append(cmd_args("--item", run_objs[item], out.as_output()))
-    objects = ["@MUTANT_OBJECT@" if r == rel else cfg.base_obj[r] for r in cfg.rels]
+        items.append(cmd_args("--item", str(len(cfg.rels)), out.as_output(), [run_objs[item] if r == item[0] else cfg.base_obj[r] for r in cfg.rels]))
     actions.run(
         cmd_args(
             _python(cfg.tool),
@@ -228,7 +225,7 @@ def _link_run_batch(cfg, actions, rel, batch, run_objs, test, ident):
             cfg.linker,
             cfg.link_flags,
             [o for _, o in cfg.test_objects[test]],
-            objects,
+            "@MUTANT_OBJECTS@",
             cfg.libs,
         ),
         category = "mutant_run",
@@ -255,7 +252,7 @@ def _stage2(dctx, artifacts, outputs, cfg, compiled, ordered, specs, function_of
         if results[(rel, mid)]["status"] == "ok" and (results[(rel, mid)]["hash"] == baseline_hash[rel] or count[(rel, results[(rel, mid)]["hash"])] > 1)
     ]
     for batch in _batches(_batch_order(candidates, function_of), function_of, cfg.batch):
-        o0.update(_compile_batch(cfg, actions, batch[0][0], batch, specs, "o0/mutant/{}/{}".format(batch[0][0], batch[0][1]), ["-O0"]))
+        o0.update(_compile_batch(cfg, actions, batch, specs, "o0/mutant/{}/{}".format(batch[0][0], batch[0][1]), ["-O0"]))
     watched = [info for _, info in o0.values()] + [cfg.base_info_o0[r] for r in sorted(cfg.base_info_o0.keys())]
     actions.dynamic_output(
         dynamic = watched,
@@ -302,11 +299,10 @@ def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_
             entry["o0"] = extra
         manifest_mutants.setdefault(rel, {})[mid] = entry
     for batch in _batches(_batch_order([i for i in ordered if i in run_objs], function_of), function_of, cfg.batch):
-        rel = batch[0][0]
         for t in cfg.test_names:
-            outs = _link_run_batch(cfg, actions, rel, batch, run_objs, t, "mutant/{}/{}/{}".format(rel, batch[0][1], t))
+            outs = _link_run_batch(cfg, actions, batch, run_objs, t, "mutant/{}/{}/{}".format(batch[0][0], batch[0][1], t))
             for item in batch:
-                manifest_mutants[rel][item[1]]["runs"][t] = outs[item]
+                manifest_mutants[item[0]][item[1]]["runs"][t] = outs[item]
     manifest = actions.write_json("manifest.json", {
         "label": cfg.label,
         "tests": cfg.test_names,
@@ -346,8 +342,7 @@ def _stage1(dctx, artifacts, outputs, cfg):
             function_of[(rel, mid)] = mutant["function"]
             ordered.append((rel, mid))
     for batch in _batches(_batch_order(ordered, function_of), function_of, cfg.batch):
-        rel = batch[0][0]
-        for item, pair in _compile_batch(cfg, actions, rel, batch, specs, "mutant/{}/{}".format(rel, batch[0][1])).items():
+        for item, pair in _compile_batch(cfg, actions, batch, specs, "mutant/{}/{}".format(batch[0][0], batch[0][1])).items():
             compiled[rel][item[1]] = pair
     infos = [compiled[rel][mid][1] for rel, mid in ordered] + [cfg.base_info[r] for r in sorted(cfg.base_info.keys())]
     actions.dynamic_output(

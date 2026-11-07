@@ -5,9 +5,10 @@
         Write SRC with the spec's replacement applied to F, compile it (`-c F -o OBJ` appended) and
         write INFO = {"status": "ok", "hash": sha256 of the object} or {"status": "unviable", ...}
         when the compiler rejects it. A compiler crash or a spec that does not match SRC is an error.
-    tool.py compile-batch --specs SPECS --src SRC [--item ID OBJ INFO]... --strict|--lenient -- <compiler command>
-        The same for a batch of mutants of one source (T064): SPECS = {"mutants": [{"id", "begin", "end",
-        "original", "replacement"}, ...]}; each `--item` names a mutant of it and where its object and INFO go.
+    tool.py compile-batch --specs SPECS [--item SRC ID OBJ INFO]... --strict|--lenient -- <compiler command>
+        The same for a batch of mutants (T064; of one or more sources): SPECS = {"mutants": [{"id", "begin", "end",
+        "original", "replacement"}, ...]}; each `--item` names the source and a mutant of it and where its object
+        and INFO go.
         Every mutant is compiled on its own, in its own scratch directory, and a mutant the compiler rejects is
         `unviable` without touching the others. A compiler crash, or a spec that does not match SRC, fails the batch.
     tool.py hash --obj OBJ --out F
@@ -16,9 +17,9 @@
         Link (`-o BIN` appended), run `BIN --seed 1 --out RESULTS`, write
         {"rc": N, "timed_out": B, "results": the normalised JSON Lines text or null}. A failed link is an
         error (never a verdict). What is stored is a deterministic function of the verdict: see `normalise_*`.
-    tool.py linkrun-batch [--item OBJ OUT]... -- <link command containing the argument @MUTANT_OBJECT@>
-        The same for a batch of mutants (T064): for each item the command is run with `@MUTANT_OBJECT@` replaced by
-        OBJ, and OUT gets that mutant's record. One fresh process and one scratch directory per mutant, one after
+    tool.py linkrun-batch [--item N OUT OBJ1..OBJN]... -- <link command containing the argument @MUTANT_OBJECTS@>
+        The same for a batch of mutants (T064): for each item the command is run with `@MUTANT_OBJECTS@` replaced by
+        the N objects OBJ1..OBJN (the objects of the mutant's link, in link order), and OUT gets that mutant's record. One fresh process and one scratch directory per mutant, one after
         another; a crash or timeout of one run is only its own record. A failed link fails the batch.
     tool.py collect --manifest M --out F
         Merge the per-mutant files named by the manifest into one report. A mutant whose -O2 object equals
@@ -45,7 +46,7 @@ CHECK_FAILURE = re.compile(r"[0-9]+ of [0-9]+ checks failed; first: ")
 NORMAL_CHECK_FAILURE = "0 of 0 checks failed; first: "
 NUMBER = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)")
 UNPARSABLE_LINE = "!"
-OBJECT_SLOT = "@MUTANT_OBJECT@"  # where `linkrun-batch` puts the object of the mutant it runs
+OBJECT_SLOT = "@MUTANT_OBJECTS@"  # where `linkrun-batch` puts the objects of the mutant it runs
 
 
 def canonical(obj):
@@ -113,20 +114,19 @@ def cmd_compile_batch(argv):
     argv, command = split_command(argv)
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--specs", required=True)
-    parser.add_argument("--src", required=True)
-    parser.add_argument("--item", nargs=3, action="append", default=[], metavar=("ID", "OBJ", "INFO"))
+    parser.add_argument("--item", nargs=4, action="append", default=[], metavar=("SRC", "ID", "OBJ", "INFO"))
     parser.add_argument("--strict", dest="strict", action="store_true")
     parser.add_argument("--lenient", dest="strict", action="store_false")
     args = parser.parse_args(argv)
     specs = {spec["id"]: spec for spec in read_json(args.specs)["mutants"]}
-    with open(args.src, "rb") as handle:
-        data = handle.read()
-    name = os.path.basename(args.src)
-    for mid, obj, info in args.item:
+    for src, mid, obj, info in args.item:
         if mid not in specs:
             sys.exit("tool.py: mutant %s is not in the batch specs" % mid)
+        with open(src, "rb") as handle:
+            data = handle.read()
         with tempfile.TemporaryDirectory(prefix="mutant-") as scratch:
-            compile_mutant(specs[mid], data, command, os.path.join(scratch, name), obj, info, args.strict)
+            compile_mutant(specs[mid], data, command, os.path.join(scratch, os.path.basename(src)), obj, info,
+                           args.strict)
 
 
 def cmd_hash(argv):
@@ -223,16 +223,40 @@ def cmd_linkrun(argv):
     link_and_run(command, args.out)
 
 
+def split_items(argv):
+    """(arguments before the first `--item`, [N, OUT, OBJ1..OBJN] ... for every item)."""
+    items = []
+    head = []
+    index = 0
+    while index < len(argv):
+        if argv[index] != "--item":
+            if items:
+                sys.exit("tool.py: unexpected argument %r after the items" % argv[index])
+            head.append(argv[index])
+            index += 1
+            continue
+        try:
+            count = int(argv[index + 1])
+        except (IndexError, ValueError):
+            sys.exit("tool.py: --item needs a count")
+        item = argv[index + 2:index + 3 + count]
+        if count < 1 or len(item) != count + 1:
+            sys.exit("tool.py: --item %d needs OUT and %d objects" % (count, count))
+        items.append(item)
+        index += 3 + count
+    return head, items
+
+
 def cmd_linkrun_batch(argv):
     argv, command = split_command(argv)
-    parser = argparse.ArgumentParser(allow_abbrev=False)
-    parser.add_argument("--item", nargs=2, action="append", default=[], metavar=("OBJ", "OUT"))
-    args = parser.parse_args(argv)
+    head, items = split_items(argv)
+    if head:
+        sys.exit("tool.py: unexpected arguments %r" % head)
     if command.count(OBJECT_SLOT) != 1:
         sys.exit("tool.py: the link command must contain %s exactly once" % OBJECT_SLOT)
     slot = command.index(OBJECT_SLOT)
-    for obj, out in args.item:
-        link_and_run(command[:slot] + [obj] + command[slot + 1:], out)
+    for out, *objects in items:
+        link_and_run(command[:slot] + objects + command[slot + 1:], out)
 
 
 def cmd_collect(argv):

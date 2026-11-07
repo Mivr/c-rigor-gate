@@ -26,7 +26,7 @@ headers of its own is an analysis error (`provides neither a library nor headers
 |---|---|---|
 | 1 `mutant_list` | per source: the pinned clang with the module's **exact compile command** (the argsfile Buck2 itself uses) runs `-Xclang -ast-dump=json -fsyntax-only`; `mutate/gen.py` reads the JSON and writes the sorted mutant list | RE, cached |
 | 2 baseline | each source is recompiled *unmodified* through the mutant path, each test is relinked from those objects and run; the harness objects are compared with Buck2's own objects | RE, cached |
-| 3 `mutant_compile` | `dynamic_output` over the lists: one action per **batch** of at most 16 mutants of one source (T064) writes the mutated copy of the source and compiles it with the same command, once per mutant; result = sha256 of the object, or `unviable` | RE, cached |
+| 3 `mutant_compile` | `dynamic_output` over the lists: one action per **batch** of at most 16 mutants (T064) writes the mutated copy of the source and compiles it with the same command, once per mutant; result = sha256 of the object, or `unviable` | RE, cached |
 | 3b `mutant_compile_o0` | the same, in batches, for every mutant whose `-O2` object equals the baseline's or an earlier mutant's (the candidates for `equivalent` and `duplicate`), and for each source's unmodified baseline: the same command with `-O0` appended (T051, B15) | RE, cached |
 | 4 `mutant_run` | `dynamic_output` over the compile results: for every mutant that is live (see below) and every test, one action per batch and test relinks, for each mutant of the batch in its own process, the test with the mutated object (the `-O0` one for a mutant the optimiser folded) and runs it with ctest (`--seed 1`) | RE, cached |
 | 5 `mutant_report` | one `report.json` with the raw facts of all of the above | RE |
@@ -36,21 +36,21 @@ One Buck2 action per mutant meant about 110,000 actions for annas-c: the daemon 
 Now `c_mutants` has an attribute `batch` (default 16):
 | What | One action per |
 |---|---|
-| `mutant_compile` (`-O2`) and `mutant_compile_o0` | batch of at most `batch` mutants of **one source**; `tool.py compile-batch` compiles each mutant on its own, in its own scratch directory, and writes its object and its record. A mutant the compiler rejects is `unviable`, the others still compile. A compiler crash or a stale spec fails the batch (as it failed the single action) |
+| `mutant_compile` (`-O2`) and `mutant_compile_o0` | batch of at most `batch` mutants (of one or more sources); `tool.py compile-batch` compiles each mutant on its own, in its own scratch directory, and writes its object and its record. A mutant the compiler rejects is `unviable`, the others still compile. A compiler crash or a stale spec fails the batch (as it failed the single action) |
 | `mutant_run` | batch and test; `tool.py linkrun-batch` links and runs each mutant in a fresh process and scratch directory, one after another, with the timeouts of before (10 s per test inside ctest, 180 s per binary). A crash or timeout is that mutant's record only; a failed link fails the batch |
 
 The records are the same files as before (`obj/.../<id>.json`, `run/.../<id>.json`), one per mutant (and test), so
 `collect` and `rigor mutants` are unchanged; a missing record fails the build (exit 2, never a pass). A batch that fails
 as a whole fails the module's build, which the grading driver reports as `mutants-build-failed`.
 Batches are formed by `_batches` in `rules/mutate.bzl`, deterministically: mutants sorted by (source, function, id), packed
-in that order, a batch never mixes sources, and a function that fits in a batch is never split. (Sorting by id alone, as the
+in that order, a batch may span sources, and a function that fits in a batch is never split. (Sorting by id alone, as the
 T064 contract first said, scatters the mutants of one function over every batch, so an edit to one function would
 invalidate nearly all of them.) Which mutant is the "duplicate" of which is still decided in the order of the mutant list.
 An action's key is the specs and source (compile) or the objects (run) of its batch: an edit to one function re-compiles the
 batches of that source (the source is an input, as before) and re-runs only the batches whose objects changed.
 Not changed by batching: the `-O2` identity check, the `-O0` cross-check, `unviable`, and every verdict. `selftest/mutate.sh`
-builds each of several modules a second time with `batch = 1` (one mutant per action, the old shape) and requires the report to
-be byte-identical to the default build; `gate/tests/test_mutate_batch.py` checks the two tool commands against the one-mutant
+builds four modules a second and third time with `batch = 1` (one mutant per action, the old shape) and `batch = 3` and requires
+the report to be byte-identical to the default build; `gate/tests/test_mutate_batch.py` checks the two tool commands against the one-mutant
 ones. The `detail` of an `unviable` record no longer names the scratch directory (it was a `buck-out` path before; no verdict reads it).
 
 ### Equivalence is checked at -O0 too (T051, B15; R001 R2)
