@@ -671,6 +671,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             self._note_git_add(argv)
             argv = self.effective_git_argv(argv, self.cmd_env)  # GIT_CONFIG_*, --config-env are `-c` (T057)
             found = cmds.git_hits(argv)
+            if "git-config-override" in found and self.local_submodule(argv):
+                found = [rule for rule in found if rule != "git-config-override"]  # T077
             self.git_taint(argv, found)
             for rule in found:
                 if rule != "cmd-git-main" or not self.git_in_own_clone(argv):
@@ -1112,7 +1114,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if task.implementer and any(task.is_test(p) for p in probes):
             made = normal in self.created
             if op == "delete" and not made:
-                self.add("tamper-test-delete", raw, token)
+                if not writers.patch_leftover_glob(rel):  # `rm dir/*.orig` removes patch leftovers (T077, B26)
+                    self.add("tamper-test-delete", raw, token)
             elif op == "rewrite" and normal in self.read_set and not made:
                 self.add("tamper-test-rewrite", raw, token)
             elif op == "edit" and not made:

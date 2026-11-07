@@ -18,6 +18,24 @@ _COMPILER_RE = re.compile(r"\A(?:[\w.+]+-)*(?:cc|c\+\+|gcc|g\+\+|clang|clang\+\+
                           r"rustc)(?:-[0-9][0-9.]*)?\Z")
 
 
+# File-name endings of patch leftovers (T077, B26): a glob that ends in one of these literal suffixes names only such
+# leftovers. The test-file rule knows names like `test_*`, `*_test.*` and `*_tests.*` and the directories `tests/` and
+# `test/`; a name ending in `.orig` or `.rej` is a leftover of `patch`, never a test or a fixture.
+PATCH_LEFTOVER_SUFFIXES = (".orig", ".rej")
+_GLOB_CHARS = "*?["
+
+
+def patch_leftover_glob(path):
+    """True when the last component of `path` is a glob whose literal tail (after its last glob character) is a patch
+    leftover suffix, and no earlier component is a glob: `dir/*.orig`, `dir/x*.rej`. Not `*`, `*.or*`, `*.c`,
+    `test_*`, `d*/x.orig` or a plain `x.orig`."""
+    head, _, last = path.rpartition("/")
+    if any(ch in head for ch in _GLOB_CHARS) or not any(ch in last for ch in _GLOB_CHARS):
+        return False
+    tail = last[max(last.rfind(ch) for ch in _GLOB_CHARS) + 1:]
+    return tail.endswith(PATCH_LEFTOVER_SUFFIXES)
+
+
 def is_compiler(name):
     return _COMPILER_RE.match(name) is not None
 
