@@ -43,7 +43,7 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # `rigor mutants` calls a failed test "killed by an assert" when its reason starts like this (the counts and the
 # detail after it come from the program under test, and from garbage when a mutant reads uninitialised memory).
 CHECK_FAILURE = re.compile(r"[0-9]+ of [0-9]+ checks failed; first: ")
-NORMAL_CHECK_FAILURE = "0 of 0 checks failed; first: "
+NORMAL_CHECK_FAILURE = "0 of 0 checks failed; first: (not stored)"
 NUMBER = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)")
 UNPARSABLE_LINE = "!"
 OBJECT_SLOT = "@MUTANT_OBJECTS@"  # where `linkrun-batch` puts the objects of the mutant it runs
@@ -140,18 +140,14 @@ def cmd_hash(argv):
 def normalise_reason(reason):
     """A reason that depends only on the kind of failure and on the check that failed, never on values.
 
-    A failed check ("N of M checks failed; first: file:line: CHECK_X(a, b): got != want") keeps the place and
-    the text of the check and loses the counts and the observed values; the prefix stays in a form the verdict
-    code still recognises. Every other reason ("killed by signal 11", "timeout after 10 s", ...) keeps its
-    words and loses its numbers. No reason is ever turned into, or out of, a check failure."""
-    found = CHECK_FAILURE.match(reason)
-    if found is None:
+    A failed check ("N of M checks failed; first: file:line: CHECK_X(a, b): got != want") becomes the constant
+    NORMAL_CHECK_FAILURE: the verdict code only asks whether the reason starts like a failed check. Which check
+    failed first is not kept either, because when a mutant reads uninitialised memory it depends on the garbage
+    (T067). Every other reason ("killed by signal 11", "timeout after 10 s", ...) keeps its words and loses its
+    numbers. No reason is ever turned into, or out of, a check failure."""
+    if CHECK_FAILURE.match(reason) is None:
         return NUMBER.sub("#", reason)
-    detail = reason[found.end():]
-    cut = detail.find("): ")
-    if cut >= 0:
-        detail = detail[:cut + 1]
-    return NORMAL_CHECK_FAILURE + detail
+    return NORMAL_CHECK_FAILURE
 
 
 def normalise_results(text):

@@ -39,7 +39,10 @@ MAX_REVIEWS = 10
 REQUIRED = {"T011", "T021", "T022", "T024"}
 # T061 (R008 #16): T011 39 (was 38): inline Python that rewrites a script it read (`s=open(p).read() ... open(p,'w')`)
 # is now an edit the audit sees, so running selftest/structure.sh afterwards is `cmd-unresolved` (audited as written).
-REVIEW_CAP = {"T011": 39, "T024": 49}
+# T074 (B22): T011 34 and T024 46 (were 39 and 49): a known-array command (`B=(tools/buck2); "${B[@]}" ...`) and an
+# `mktemp` whose directory is known are resolved. `out="$(mktemp -d)"` with TMPDIR unknown stays unresolved (the real
+# default is /tmp, which is not the lane's scratch), so most of those scripts still show their `$out` uses.
+REVIEW_CAP = {"T011": 34, "T024": 46}
 
 # file, task id, role, worktree, scratch dirs, the expected block rules (sorted), what each block must mention
 CASES = [

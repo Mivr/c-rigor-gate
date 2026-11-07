@@ -313,3 +313,84 @@ class UnknownCwdAndPipedTextTests(TrajectoryCase):
                                          "git fetch origin" % (clone, sc, sc, sc)), net)
         self.assertEqual(self.clone_then("ln -s %s %s/lnk; echo x >> %s/lnk/.git/config; cd %s && git fetch origin"
                                          % (clone, sc, sc, clone)), net)
+
+
+class ShellValueTests(TrajectoryCase):
+    """T074 (B22): `NAME=$(mktemp ...)` and `NAME=(a b)` are modelled, each only where every value is known."""
+
+    def rules_of(self, *commands):
+        _, result = self.audit_steps([cases.bash(c) for c in commands], fast=True)
+        return sorted(f["rule"] for f in result["findings"])
+
+    SC = cases.SC
+
+    def test_lexer_reads_an_array_assignment_as_one_assignment_not_a_subshell(self):
+        found = shell.parse("B=(tools/buck2 -x 'a b')")
+        self.assertEqual(len(found), 1)
+        name, word = found[0].assigns[0]
+        self.assertEqual((name, [w.text for w in word.array]), ("B", ["tools/buck2", "-x", "a b"]))
+        self.assertEqual(shell.parse("B=()")[0].assigns[0][1].array, ())
+
+    def test_lexer_keeps_the_substitutions_of_array_elements_and_leaves_odd_arrays_alone(self):
+        self.assertEqual(shell.parse("B=(a $(date) b)")[0].assigns[0][1].subs, ["date"])
+        for odd in ("B=(a; b)", "B=(*.c)", "B=(a >f)", "B=(x=1)"):
+            self.assertEqual([c.depth for c in shell.parse(odd)][-1], 1, odd)  # read as before: a subshell command
+
+    # -- mktemp ----------------------------------------------------------------------------------
+    def test_mktemp_under_a_known_tmpdir_is_a_known_fresh_path(self):
+        sc = self.SC
+        self.assertEqual(self.rules_of("export TMPDIR=%s/tmp; out=$(mktemp -d); echo hi > $out/x; rm -rf $out" % sc), [])
+        self.assertEqual(self.rules_of("out=$(mktemp -d -p %s); echo hi > $out/x" % sc), [])
+        self.assertEqual(self.rules_of("out=$(mktemp %s/x.XXXXXX); echo hi > $out" % sc), [])
+        self.assertEqual(self.rules_of("cd %s; out=$(mktemp -d tmp.XXXX); echo hi > $out/x" % sc), [])
+
+    def test_mktemp_without_a_known_tmpdir_stays_unresolved(self):
+        sc = self.SC
+        for command in ('d=$(mktemp -d); echo hi > "$d/x"', 'd=$(mktemp -d); rm -rf "$d/.."',
+                        'd=$(mktemp -d); cat "$d/../claude-1000/x"'):
+            self.assertIn("path-unresolved" if "cat" in command else "write-unresolved", self.rules_of(command), command)
+        self.assertEqual(self.rules_of('d=$(mktemp -d); rm -rf "$d/.."; echo hi > %s/x' % sc).count("write-outside"), 0)
+
+    def test_dot_dot_out_of_a_known_mktemp_dir_is_judged_against_the_real_layout(self):
+        sc = self.SC
+        export = "export TMPDIR=%s/tmp; d=$(mktemp -d); " % sc
+        self.assertEqual(self.rules_of(export + 'echo hi > "$d/../x"'), [])  # still the scratch
+        self.assertEqual(self.rules_of(export + 'rm -rf "$d/../../.."'), ["write-outside"])
+        self.assertEqual(self.rules_of(export + 'echo hi > "$d/../../../T098/x"'), ["write-outside"])
+        self.assertIn("read-other-cache", self.rules_of(export + 'cat "$d/../../../T098/x"'))
+        self.assertEqual(self.rules_of("export TMPDIR=/tmp; d=$(mktemp -d); rm -rf \"$d/..\""), ["write-outside"])
+
+    def test_mktemp_in_a_forbidden_place_still_blocks(self):
+        self.assertEqual(self.rules_of("export TMPDIR=/etc; out=$(mktemp -d); echo hi > $out/x"), ["write-outside"])
+        self.assertEqual(self.rules_of("out=$(mktemp -d -p /var/tmp/other); echo hi > $out/x"), ["write-outside"])
+        self.assertEqual(self.rules_of("out=$(mktemp /var/tmp/x.XXXXXX); rm -f $out"), ["write-outside"])
+        self.assertEqual(self.rules_of("cd /var/tmp; out=$(mktemp x.XXXXXX); echo hi > $out"), ["write-outside"])
+        self.assertIn("read-secret-dir", self.rules_of("out=$(mktemp -d -p /var/tmp/.config); cat $out/x"))
+
+    def test_mktemp_that_cannot_be_known_stays_unresolved(self):
+        for command in ('out=$(mktemp -d -p "$WHERE"); echo hi > $out/x', "out=$(mktemp --foo); echo hi > $out",
+                        'export TMPDIR="$WHERE"; out=$(mktemp -d); echo hi > $out/x',
+                        "out=$(mktemp -d nox); echo hi > $out", "out=$(mktemp a.XXX b.XXX); echo hi > $out",
+                        "echo hi > $(mktemp)", "cd $(mktemp -d); echo hi > x"):
+            self.assertIn("write-unresolved", self.rules_of(command), command)
+
+    # -- arrays ----------------------------------------------------------------------------------
+    def test_a_known_array_starts_the_command(self):
+        sc = self.SC
+        self.assertEqual(self.rules_of('B=(ls -l); "${B[@]}" %s' % sc), [])
+        self.assertEqual(self.rules_of("B=(ls -l); B=(ls); echo hi > %s/x; \"${B[@]}\" %s" % (sc, sc)), [])
+        self.assertEqual(self.rules_of("B=(rm -rf /); echo hi"), [])  # an array assignment runs nothing
+
+    def test_a_known_array_is_judged_as_the_command_it_spells(self):
+        self.assertEqual(self.rules_of('B=(cat); "${B[@]}" /var/tmp/.config/x'), ["read-secret-dir"])
+        self.assertEqual(self.rules_of('B=(cat /var/tmp/.config/x); "${B[@]}"'), ["read-secret-dir"])
+        self.assertEqual(self.rules_of('B=(gh pr); "${B[@]}" list'), ["cmd-gh"])
+        self.assertEqual(self.rules_of('B=(bash -c "gh pr list"); "${B[@]}"'), ["cmd-gh"])
+        self.assertEqual(self.rules_of("B=($(gh pr list)); echo hi"), ["cmd-gh"])
+
+    def test_an_array_that_is_not_fully_known_stays_unresolved(self):
+        for command in ('B=(ls $X); "${B[@]}"', 'B=(ls); B=($X); "${B[@]}"', 'B=(ls *.c); "${B[@]}"',
+                        'B=(ls); "${B[1]}"', 'B=(ls); B+=(x); "${B[@]}"', 'B=(ls); B=cat; "${B[@]}"',
+                        'B=(ls); unset B; "${B[@]}"', 'B=(ls); read -a B; "${B[@]}"',
+                        'B=(ls); declare -a B=(cat /var/tmp/.config/x); "${B[@]}"', 'B=(ls); printf -v B x; "${B[@]}"'):
+            self.assertIn("cmd-unresolved", self.rules_of(command), command)
