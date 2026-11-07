@@ -134,7 +134,7 @@ class LinkRunBatchTest(Base):
     def objects(self):
         pass_ = "#!/bin/sh\n" + RESULT % ("pass", 3, "")
         fail = "#!/bin/sh\n" + RESULT % ("fail", 2, "1 of 2 checks failed; first: a.c:3: CHECK(x): 5") + "exit 1\n"
-        crash = "#!/bin/sh\nkill -SEGV $$\n"
+        crash = "#!/bin/sh\nulimit -c 0\nkill -SEGV $$\n"
         return {"pass": pass_, "fail": fail, "crash": crash}
 
     def batch(self, objs, command=None):
