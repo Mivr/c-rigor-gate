@@ -277,6 +277,12 @@ correct body passes in both.
 | `ta-a018` | sentinel stub, and `core_sign` stubbed too | PASS: core/sign fails on the head in both modes (checked in the results), the witness passes it |
 | `ta-no-previous` | the `ta-green` head, no `expected-tests.previous.json` | exit 2, `contract` FAIL, `build` NOT_RUN |
 
+**Export narrowing (T069).** `products/selftest/policy.toml` lists exactly what the clean module exports (`core_add`,
+`core_sign`, `util_make_ramp`, `util_sum`); the red-case symbols live in the canaries' own policies. The step
+`extra-export` (the clean module plus an exported `test_extra` in `core_test.c` that its `exports = ["main"]` does not list, graded with `bundle-base`; a function in `core.c` would also fail `mutants`) must fail `symbols` with
+exactly `unexpected-export`, which pins that the list stays narrow. A step that needs an extra symbol grades against a
+scratch copy of the product inputs (`ta_inputs`), never against a widened shared policy.
+
 The canaries `stub-passes-test` (the stub is the correct body: `tests-stub: [test-passes-on-stub]` only) and
 `stub-green` (control) cover the same gate with exact expectations in the pack (`docs/witness.md`).
 
