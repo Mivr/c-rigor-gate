@@ -54,8 +54,8 @@ Every tool input, not only Bash.
   is arithmetic (not a command; substitutions inside it are still audited), and a script the agent wrote and runs
   with arguments (`./run.sh san`) sees them as `$1`, `$2`, `$#`, `$@`.
 * **Values the audit now knows (T074, B22).** `NAME=$(mktemp ...)` as a plain assignment is a fresh unique name: under
-  `-p DIR` / `--tmpdir=DIR`, else `$TMPDIR` when this call set it, else (one `cmd-unresolved` note at the `mktemp`) the
-  lane's scratch dir, where the lane rules point TMPDIR; a template keeps its own directory (`-t` and a bare name are
+  `-p DIR` / `--tmpdir=DIR`, else `$TMPDIR` when this call set it, else unresolved (the real default is `/tmp`, which is not the
+  lane's scratch, and the lane's own TMPDIR is not visible to the audit; it is not guessed); a template keeps its own directory (`-t` and a bare name are
   relative to the temp dir and to the cwd). The value is judged like any path: `TMPDIR=/etc` or `-p /var/tmp/other`
   makes the later uses `write-outside`, an unknown dir or an unmodelled option leaves it `write-unresolved`, and
   `echo > $(mktemp)`, `cd $(mktemp -d)` stay unresolved. `NAME=(a b c)` is an array assignment (its elements are words,
@@ -610,7 +610,7 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   `TRAJECTORY_REAL_DIR=<dir> gate/tests/trajectory_real.sh`. It checks the `block` rules against the
   orchestrator's ground truth and at most 10 `review` findings per transcript. T020 (B21) added a gate-task
   transcript (T018, no violation: 0 blocks). T026 (B22) added T011, T021, T022 and T024 (all 0 blocks; required,
-  while the older five are skipped when not staged); T011 and T024 have review caps of 13 and 29 since T074 (38 and 49 before: see
+  while the older five are skipped when not staged); T011 and T024 have review caps of 34 and 46 since T074 (38 and 49 before: see
   the values the audit now knows above), their measured
   counts (unresolved `$var` paths in long scripts). T027 (B23) added T013 (0 blocks, 0 reviews; skipped when not staged;
 before the fix: 3 blocks, 0 reviews).

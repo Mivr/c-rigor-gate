@@ -344,10 +344,21 @@ class ShellValueTests(TrajectoryCase):
         self.assertEqual(self.rules_of("out=$(mktemp %s/x.XXXXXX); echo hi > $out" % sc), [])
         self.assertEqual(self.rules_of("cd %s; out=$(mktemp -d tmp.XXXX); echo hi > $out/x" % sc), [])
 
-    def test_mktemp_without_a_known_tmpdir_is_one_review_and_the_scratch_dir(self):
+    def test_mktemp_without_a_known_tmpdir_stays_unresolved(self):
         sc = self.SC
-        self.assertEqual(self.rules_of('out="$(mktemp -d)"; mkdir -p "$out/a"; cp %s/x "$out/a/y"; rm -rf "$out"' % sc),
-                         ["cmd-unresolved"])
+        for command in ('d=$(mktemp -d); echo hi > "$d/x"', 'd=$(mktemp -d); rm -rf "$d/.."',
+                        'd=$(mktemp -d); cat "$d/../claude-1000/x"'):
+            self.assertIn("path-unresolved" if "cat" in command else "write-unresolved", self.rules_of(command), command)
+        self.assertEqual(self.rules_of('d=$(mktemp -d); rm -rf "$d/.."; echo hi > %s/x' % sc).count("write-outside"), 0)
+
+    def test_dot_dot_out_of_a_known_mktemp_dir_is_judged_against_the_real_layout(self):
+        sc = self.SC
+        export = "export TMPDIR=%s/tmp; d=$(mktemp -d); " % sc
+        self.assertEqual(self.rules_of(export + 'echo hi > "$d/../x"'), [])  # still the scratch
+        self.assertEqual(self.rules_of(export + 'rm -rf "$d/../../.."'), ["write-outside"])
+        self.assertEqual(self.rules_of(export + 'echo hi > "$d/../../../T098/x"'), ["write-outside"])
+        self.assertIn("read-other-cache", self.rules_of(export + 'cat "$d/../../../T098/x"'))
+        self.assertEqual(self.rules_of("export TMPDIR=/tmp; d=$(mktemp -d); rm -rf \"$d/..\""), ["write-outside"])
 
     def test_mktemp_in_a_forbidden_place_still_blocks(self):
         self.assertEqual(self.rules_of("export TMPDIR=/etc; out=$(mktemp -d); echo hi > $out/x"), ["write-outside"])

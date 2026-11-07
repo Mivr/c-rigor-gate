@@ -240,8 +240,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         return None
 
     def _mktemp(self, args, env):
-        """The path `mktemp` prints, for a plain assignment `NAME=$(mktemp ...)` (T074): a fresh unique name under `-p DIR`, else `$TMPDIR`, else the lane's scratch
-        (the lane rules set TMPDIR there; the unknown case is one `cmd-unresolved` review at the mktemp). A template
+        """The path `mktemp` prints, for a plain assignment `NAME=$(mktemp ...)` (T074): a fresh unique name under `-p DIR`, else `$TMPDIR`, else unresolved (not guessed:
+        the real default `/tmp` is outside every lane's scratch, and the lane's own TMPDIR is not visible to the audit). A template
         keeps its own directory. An option the audit does not model leaves the value unresolved. The result is judged
         like any other path: `TMPDIR=/etc` or `-p /etc` makes the later uses of it block."""
         tmpdir, template, relative, index = None, None, False, 0
@@ -262,9 +262,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             return None  # no run of `XXX`: mktemp fails, prints nothing
         if tmpdir is None and (relative or template is None):
             tmpdir = env.get("TMPDIR")
-            if tmpdir is None and len(self.policy.own) > 1:
-                tmpdir = self.policy.own[1] + "/tmp"
-                self.add("cmd-unresolved", "mktemp: TMPDIR is not set in this call; assumed " + tmpdir)
+            if tmpdir is None:
+                return None  # the default is /tmp, but the lane's TMPDIR is not known here: not guessed (T074)
         if tmpdir is not None and (not tmpdir or UNRESOLVED in tmpdir):
             return None
         name = "tmp.XXXXXXXXXX" if template is None else template
