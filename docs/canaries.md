@@ -146,6 +146,72 @@ carries `impl` for its L2+ modules (T039's `impl-missing`). The red witness case
 | `witness-missing` | a core test change; the canary's bundle lists only `//util:util` | `witness-tests`: witness-missing | mutants-witness |
 | `witness-green` (control) | a strong new core test and the base witness | none: PASS | none |
 
+## Canaries not in the tables above (T079)
+Added by their own tasks and never listed here. `bypass` is the `expect.json` field; each fail list is the exact set of
+FAIL gates with their error rules, and `N later gates` means a gate the bypass stops before (see the canary's `expect.json`).
+`crash-oracle` and `crash-oracle-green` came with T078 (`crash-kill-ratio`), `third-party-link` with T070.
+
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `ancestor-suppression` | suppression committed before the graded base (R001 R5) | `suppressions`: forbidden-pattern-in-tree | none |
+| `approval-in-repo` | approval planted in the repo | `contract`: approval-in-repo; `suppressions`: approval-in-repo | none |
+| `attr-noinline-backdoor` | attribute hides a function from the mutator | `mutants`: survived-mutant | none |
+| `attribute-paste` | attribute behind a macro | `mutants`: survived-mutant; `semantic-suppressions`: forbidden-attribute | none |
+| `bad-ref` | unresolvable head | `clone`: internal-error | 15 later gates |
+| `binary-artifact` | binary artifact | `suppressions`: binary-artifact | none |
+| `bool-function` (control) | R002 F3: a tested `bool` function is mutated, not skipped as macro-made | none: PASS | none |
+| `buck-assign` | BUCK assignment | `buckfiles`: bad-statement | mutants, witness-tests, mutants-witness |
+| `buck-concat` | BUCK concatenation | `buckfiles`: bad-argument | mutants, witness-tests, mutants-witness |
+| `buck-v2` | hidden build file | `buckfiles`: forbidden-file; `build`: build-failed | 9 later gates |
+| `buckconfig-nested` | hidden .buckconfig | `build`: build-failed | 7 later gates |
+| `buckconfig-plain` | hidden .buckconfig | `build`: build-failed; `suppressions`: forbidden-pattern | 7 later gates |
+| `builtin-alloca` | compiler builtin aliasing a denied capability | `build`: build-failed | 7 later gates |
+| `bzl-load` | hidden build file | `buckfiles`: bad-load, extra-load; `build`: query-failed | 9 later gates |
+| `crash-oracle` | oracle that only checks for crashes | `mutants`: crash-kill-ratio; `mutants-witness`: crash-kill-ratio | none |
+| `crash-oracle-green` (control) | T078: the `crash-oracle` module with real assertions; `crash-kill-ratio` stays quiet | none: PASS | none |
+| `cross-cell-dep` | cross-cell dep | `buckfiles`: bad-argument; `symbols`: missing-dep-facts | mutants, witness-tests, mutants-witness |
+| `denied-fnptr` | function pointer to a denied symbol | `symbols`: denied-symbol | none |
+| `denied-libc` | denied libc symbol | `symbols`: denied-symbol | none |
+| `extra-hook` | extra exported writable hook | `symbols`: mutable-global-export, unexpected-export | none |
+| `failing-test` | failing test | `tests-release`: test-not-pass; `tests-san`: test-not-pass | mutants |
+| `generator-attribute` | function lost by the mutant generator | `mutants`: survived-mutant | none |
+| `git-replace` | git replace | `contract`: outside-allowed | none |
+| `header-only-kit` (control) | a module whose tests use a header-only test kit is mutation graded at L3 | none: PASS | none |
+| `heap-overflow` | heap overflow seen only in san | `tests-san`: no-assertions, test-not-pass | mutants |
+| `hollow-module` | logic hidden from the mutator | `mutants`: no-mutants, unmutated-function; `witness-tests`: witness-build-failed | mutants-witness |
+| `line-plain` | #line spoofing | `semantic-suppressions`: line-directive; `suppressions`: forbidden-pattern | none |
+| `line-splice` | #line spoofing (spliced) | `semantic-suppressions`: line-directive | none |
+| `macro-backdoor` | logic hidden from the mutator in a macro | `mutants`: macro-hidden-code | none |
+| `mode-divergent` | sanitizer-only code | `mode-divergence`: mode-divergent-code | none |
+| `new-module` | module missing from the policy | `mutants`: level-missing; `symbols`: module-not-in-policy | none |
+| `nolint` | NOLINT suppression | `suppressions`: forbidden-pattern | none |
+| `null-guard` | weak test on a NULL-tolerant accessor | `mutants`: survived-mutant; `witness-tests`: witness-build-failed | mutants-witness |
+| `o2-folded-mutant` | equivalent mutant hidden by the optimiser | `mutants`: survived-mutant; `witness-tests`: witness-build-failed | mutants-witness |
+| `outside-contract` | files outside the contract | `contract`: outside-allowed | none |
+| `per-file-flags` | per-file flags in srcs | `buckfiles`: bad-argument; `build`: query-failed | 9 later gates |
+| `pragma-plain` | pragma suppression | `semantic-suppressions`: pragma; `suppressions`: forbidden-pattern | none |
+| `pragma-splice` | pragma behind a line splice | `semantic-suppressions`: pragma | none |
+| `raw-rule` | raw rule in BUCK | `buckfiles`: bad-call | mutants, witness-tests, mutants-witness |
+| `removed-test` | removed expected test | `tests-release`: missing-test; `tests-san`: missing-test; `witness-tests`: missing-test | mutants, mutants-witness |
+| `reserved-mbedtls` | reserved mbedtls_ definition | `symbols`: symbol-collision | none |
+| `results-fd` | test inherits the results fd | `tests-release`: test-not-pass; `tests-san`: test-not-pass; `witness-tests`: witness-test-not-pass | mutants, mutants-witness |
+| `sanitize-guard` | sanitizer-only code | `suppressions`: forbidden-pattern | none |
+| `skipped-test` | skipped test | `tests-release`: no-assertions, test-not-pass; `tests-san`: no-assertions, test-not-pass; `witness-tests`: no-assertions, witness-test-not-pass | mutants, mutants-witness |
+| `struct-return-untested` | a struct-returning function that is only called, never checked | `mutants`: survived-mutant; `witness-tests`: witness-build-failed | mutants-witness |
+| `structure-length` | function too long | `structure`: function-length, statement-count | none |
+| `structure-recursion` | recursion | `structure`: recursion | none |
+| `structure-typed-cycle-cast` | recursion through a function pointer, hidden by a function-pointer cast | `structure`: indirect-cycle-possible; `witness-tests`: witness-build-failed | mutants-witness |
+| `stub-green` (control) | T041: role `test-author`, sentinel stub, strong new test, correct witness | none: PASS | none |
+| `stub-passes-test` | a test-author test that passes on the stub (P002 Q2, test-passes-on-stub) | `tests-stub`: test-passes-on-stub | none |
+| `symlink` | symlink | `assemble`: unsupported-entry; `contract`: symlink | 11 later gates |
+| `test-peer-in-library` | test peer in a library | `buckfiles`: bad-argument; `build`: build-failed | 9 later gates |
+| `test-removal` | removed expected test (list edited) | `tests-release`: test-removed; `tests-san`: test-removed | mutants |
+| `third-party-link` (control) | T070: an under-tested L2 module whose test links a library that depends on `gate//third_party/mbedtls`; its mutants are still graded (`contains` `core/tpm.c:5`) | none: PASS | none |
+| `unviable-shape` | unviable-ratio | `mutants`: unviable-ratio; `witness-tests`: witness-build-failed | mutants-witness |
+| `weak-error-code` | tests check failure, not which failure | `mutants`: survived-mutant; `witness-tests`: witness-build-failed | mutants-witness |
+| `weak-string` | tests check non-NULL, not the text | `mutants`: survived-mutant; `witness-tests`: witness-build-failed | mutants-witness |
+| `weak-symbol` | weak symbol | `semantic-suppressions`: forbidden-attribute; `symbols`: weak-symbol | none |
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
