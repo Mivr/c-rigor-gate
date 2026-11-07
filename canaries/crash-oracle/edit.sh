@@ -26,6 +26,7 @@ typedef struct chain_node {
 
 const chain_node *chain_nth(const chain_node *head, unsigned n);
 const chain_node *chain_last(const chain_node *head);
+const chain_node *chain_skip(const chain_node *head, unsigned n);
 
 #endif
 EOF
@@ -36,6 +37,15 @@ const chain_node *chain_nth(const chain_node *head, unsigned n) {
     while (n > 0 && head != 0) {
         head = head->next;
         n--;
+    }
+    return head;
+}
+
+const chain_node *chain_skip(const chain_node *head, unsigned n) {
+    unsigned left = n;
+    while (left != 0 && head != 0) {
+        head = head->next;
+        left = left - 1;
     }
     return head;
 }
@@ -64,11 +74,20 @@ static void touch(const chain_node *node) {
 }
 
 static void t_nth_trivial(ctest_t *t) {
-    CHECK(t, chain_nth(&g_a, 0) == &g_a);
+    CHECK(t, chain_nth(&g_c, 1) == 0);
 }
 
 static void t_nth_no_crash(ctest_t *t) {
     touch(chain_nth(&g_a, 2));
+    CHECK(t, 1);
+}
+
+static void t_skip_trivial(ctest_t *t) {
+    CHECK(t, chain_skip(&g_c, 1) == 0);
+}
+
+static void t_skip_no_crash(ctest_t *t) {
+    touch(chain_skip(&g_a, 2));
     CHECK(t, 1);
 }
 
@@ -81,6 +100,6 @@ static void t_last_no_crash(ctest_t *t) {
     CHECK(t, 1);
 }
 
-CTEST_SUITE("chain", { "nth", t_nth_trivial }, { "nth_no_crash", t_nth_no_crash }, { "last", t_last_trivial },
-            { "last_no_crash", t_last_no_crash })
+CTEST_SUITE("chain", { "nth", t_nth_trivial }, { "nth_no_crash", t_nth_no_crash }, { "skip", t_skip_trivial },
+            { "skip_no_crash", t_skip_no_crash }, { "last", t_last_trivial }, { "last_no_crash", t_last_no_crash })
 EOF

@@ -27,7 +27,7 @@ exports = ["main"]
 level = "L3"
 impl = ["chain/chain.c"]
 allow = []
-exports = ["chain_nth", "chain_last"]
+exports = ["chain_nth", "chain_skip", "chain_last"]
 
 [module."//chain:chain_test"]
 allow = []

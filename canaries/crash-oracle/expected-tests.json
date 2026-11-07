@@ -1,1 +1,1 @@
-{"ids": ["core/add", "core/sign", "util/ramp", "util/sum", "utilcore/pair", "chain/nth", "chain/nth_no_crash", "chain/last", "chain/last_no_crash"]}
+{"ids": ["core/add", "core/sign", "util/ramp", "util/sum", "utilcore/pair", "chain/nth", "chain/nth_no_crash", "chain/skip", "chain/skip_no_crash", "chain/last", "chain/last_no_crash"]}
