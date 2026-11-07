@@ -4,27 +4,35 @@ Rows run in this order. A step is `function(grading) -> GateResult | None`; its 
 `<id>.json`, and `None` means "did not run" (the verdict shows NOT_RUN, which fails). The ids
 here must equal, in the same order, the lines of `gate/order.txt` (a test checks that).
 Any exception inside a step is an internal error: the step is recorded as FAIL and the
-remaining steps do not run.
+remaining steps do not run. Every gate that compiles is wrapped in `needs_toolchain`: it runs only
+after the `toolchain` gate passed (grade_toolchain), otherwise it is NOT_RUN.
 """
 
 from rigor_lib import grade_build, grade_checks, grade_mutants, grade_steps, grade_structure
-from rigor_lib import grade_witness
+from rigor_lib import grade_toolchain, grade_witness
+
+
+def _compiling(gate_id, step):
+    """The row of a gate that compiles: it runs only once `toolchain` passed (grade_toolchain)."""
+    return gate_id, grade_toolchain.needs_toolchain(gate_id, step)
+
 
 GATES = (
     ("clone", grade_steps.clone_gate),
     ("contract", grade_steps.contract_gate),
     ("suppressions", grade_steps.suppressions_gate),
     ("assemble", grade_steps.assemble_gate),
+    ("toolchain", grade_toolchain.toolchain_gate),
     ("buckfiles", grade_checks.buckfiles_gate),
-    ("semantic-suppressions", grade_checks.semantic_gate),
-    ("symbols", grade_checks.symbols_gate),
-    ("build", grade_build.build_gate),
-    ("structure", grade_structure.structure_gate),
-    ("mode-divergence", grade_structure.modes_gate),
+    _compiling("semantic-suppressions", grade_checks.semantic_gate),
+    _compiling("symbols", grade_checks.symbols_gate),
+    _compiling("build", grade_build.build_gate),
+    _compiling("structure", grade_structure.structure_gate),
+    _compiling("mode-divergence", grade_structure.modes_gate),
     ("tests-release", grade_steps.tests_gate_for("release")),
     ("tests-san", grade_steps.tests_gate_for("san")),
     ("tests-stub", grade_steps.tests_stub_gate),
-    ("mutants", grade_mutants.mutants_gate),
-    ("witness-tests", grade_witness.witness_tests_gate),
-    ("mutants-witness", grade_witness.mutants_witness_gate),
+    _compiling("mutants", grade_mutants.mutants_gate),
+    _compiling("witness-tests", grade_witness.witness_tests_gate),
+    _compiling("mutants-witness", grade_witness.mutants_witness_gate),
 )
