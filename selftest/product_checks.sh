@@ -66,6 +66,7 @@ c_library(name = "x_ok", srcs = ["x_ok.c"])
 c_library(name = "x_func", srcs = ["x_func.c"])
 c_library(name = "x_mut", srcs = ["x_mut.c"])
 c_library(name = "x_const", srcs = ["x_const.c"])
+c_library(name = "sl_ok", srcs = ["sl_ok.c"], system_libs = ["pthread"])
 EOF
 
 # --- green ---
@@ -273,6 +274,11 @@ int x_g(void) { return 2; }
 const int x_table[4] = {1, 2, 3, 4};
 const char *const x_names[2] = {"a", "b"};
 EOF
+cat > sl_ok.c <<'EOF'
+#include <pthread.h>
+static void *sl_body(void *arg) { return arg; }
+int sl_run(void) { pthread_t th; void *out = 0; if (pthread_create(&th, 0, sl_body, 0) != 0) { return 1; } return pthread_join(th, &out); }
+EOF
 cat > b_direct.c <<'EOF'
 int b_direct_f(unsigned n) { char *p = __builtin_alloca(n); p[0] = 1; return p[0]; }
 EOF
@@ -324,7 +330,7 @@ def check(result, expected):
     """check RESULT EXPECTED...: the findings are exactly the expected `rule` / `rule:symbol|name` entries"""
     doc = json.load(open(result))
     def render(f):
-        detail = "" if f["rule"] == "line-directive" else (f.get("symbol") or f.get("name") or f.get("item"))
+        detail = "" if f["rule"] == "line-directive" else (f.get("symbol") or f.get("name") or f.get("item") or f.get("lib"))
         return f["rule"] + (":" + detail if detail else "")
     got = sorted(render(f) for f in doc["findings"] if f["severity"] == "error")
     want = sorted(expected)
@@ -454,7 +460,7 @@ done
 echo "  16 sources: line scan exit 0 on all"
 
 begin "facts actions build on RE for every target (release) and the libc export list exists"
-targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const)
+targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const sl_ok)
 args=(); for t in "${targets[@]}"; do args+=("$pkg:${t}_facts"); done
 run "$out/facts.log" build "${args[@]}" //ctest:ctest_facts //examples/hello:lib_facts //examples/hello:hello_facts //examples/hello:hello_test_facts toolchains//:libc_symbols --show-output || fail "$CUR" "$out/facts.log"
 tool collect "$out/facts.log" "$out/facts" || fail "$CUR: collect"
@@ -598,6 +604,39 @@ gate_case b_ovf $SEM 0 "$out/p_b.toml" b_ovf --
 tool policy "$out/p_b_ovf.toml" b_ovf
 gate_case b_ovf $SYM 0 "$out/p_b_ovf.toml" b_ovf --
 gate_case b_hdrs $SEM 0 "$out/p_b.toml" b_hdrs --
+
+begin "system_libs (T095): declared and allowed is green; declared only, allowed only and an unknown name are red; the facts record the list"
+tool policy "$out/p_sl_ok.toml" "sl_ok;allow=pthread_create,pthread_join;system_libs=pthread"
+gate_case sl_ok $SYM 0 "$out/p_sl_ok.toml" sl_ok --
+tool policy "$out/p_sl_nopolicy.toml" "sl_ok;allow=pthread_create,pthread_join"
+gate_case sl_nopolicy $SYM 1 "$out/p_sl_nopolicy.toml" sl_ok -- system-lib-not-allowed:pthread
+tool policy "$out/p_sl_nodecl.toml" "clean;system_libs=pthread"
+gate_case sl_nodecl $SYM 1 "$out/p_sl_nodecl.toml" clean -- system-lib-not-declared:pthread
+tool policy "$out/p_sl_bad.toml" "clean;system_libs=m"
+"${RIGOR[@]}" facts --gate $SYM --facts "$out/fd/sl_nodecl.$SYM" --policy "$out/p_sl_bad.toml" --libc "$out/libc.symbols" --out "$out/res/sl_bad.json" > "$out/res/sl_bad.txt" 2>&1
+rc=$?
+[ "$rc" = 2 ] || fail "$CUR: a policy allowing system library m exited $rc, wanted 2" "$out/res/sl_bad.txt"
+echo "  a policy naming system library m -> exit 2"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["system_libs"]==["pthread"] else 1)' "$out/facts/sl_ok.json" \
+  || fail "$CUR: the sl_ok facts do not record system_libs = [pthread]"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["system_libs"]==[] else 1)' "$out/facts/clean.json" \
+  || fail "$CUR: the clean facts record system libs"
+echo "  facts: sl_ok records [pthread], clean records []"
+for bad in 'system_libs = ["m"]' 'system_libs = ["pthread", "pthread"]' 'system_libs = "pthread"'; do
+  mkdir -p "$scratch/slbad"
+  printf 'load("@gate//rules:c.bzl", "c_library")\nc_library(name = "b", srcs = ["b.c"], %s)\n' "$bad" > "$scratch/slbad/BUCK"
+  printf 'int slbad_f(void) { return 0; }\n' > "$scratch/slbad/b.c"
+  if run "$out/slbad.log" build "//selftest/scratch_pc/slbad:b"; then fail "$CUR: $bad built" "$out/slbad.log"; fi
+  grep -q "system_libs" "$out/slbad.log" || fail "$CUR: $bad failed for the wrong reason" "$out/slbad.log"
+  echo "  macro refuses: $bad"
+done
+rm -rf "$scratch/slbad"
+bf_sl="$out/bf/sl_test"; rm -rf "$bf_sl"; mkdir -p "$bf_sl"
+printf 'load("@gate//rules:c.bzl", "c_test")\nc_test(name = "t", srcs = ["t.c"], system_libs = ["pthread"])\n' > "$bf_sl/BUCK"
+"${RIGOR[@]}" buckfiles --root "$bf_sl" --out "$bf_sl/r.json" > "$bf_sl/o.txt" 2>&1; rc=$?
+[ "$rc" = 1 ] || fail "$CUR: c_test with system_libs exited $rc, wanted 1" "$bf_sl/o.txt"
+tool check "$bf_sl/r.json" bad-argument || fail "$CUR: c_test system_libs findings" "$bf_sl/o.txt"
+echo "  buckfiles: system_libs on a c_test -> bad-argument"
 
 begin "builtins: the sealed flags make a direct call of a banned builtin a compile error, and break no header"
 if run "$out/direct.log" build "$pkg:b_direct"; then fail "$CUR: b_direct.c built" "$out/direct.log"; fi

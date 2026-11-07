@@ -16,6 +16,7 @@ LABEL = re.compile(r"[A-Za-z0-9_.-]*//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+")
 SYMBOL = re.compile(r"[A-Za-z0-9_.$@]+")
 SECTIONS = ("ro", "data", "bss", "tls")     # the section classes of a data object
 WRITABLE = ("data", "bss", "tls")
+SYSTEM_LIBS = ("pthread",)     # the sysroot libraries a c_library may name (T095); rules/c.bzl `_SYSTEM_LIBS` is the same list
 KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_third_party")
 
 
@@ -39,6 +40,7 @@ class Facts:
     kind: str
     deps: tuple
     units: tuple
+    system_libs: frozenset = frozenset()    # the `system_libs` of the c_library (T095); empty for every other kind
 
 
 def _fail(path, why):
@@ -146,7 +148,8 @@ def parse_facts(path, data):
         document = jsonio.strict_loads(data)
     except ValueError as exc:
         raise InternalError("%s: not valid JSON: %s" % (path, exc)) from exc
-    _exact(path, document, ("schema", "label", "kind", "deps", "units"), "facts file")
+    keys = ("schema", "label", "kind", "deps", "units") + (("system_libs",) if "system_libs" in document else ())
+    _exact(path, document, keys, "facts file")
     if document["schema"] != SCHEMA or type(document["schema"]) is not int:
         _fail(path, "unsupported schema")
     label = document["label"]
@@ -160,10 +163,18 @@ def parse_facts(path, data):
     if document["kind"] != "c_third_party" and not all(isinstance(u, dict) and "mutable" in u and "data" in u
                                                         for u in document["units"]):
         _fail(path, "every unit of a product target needs `mutable` and `data`")
+    # `system_libs` is written by every product scan; only the gate's own third-party facts lack it.
+    system_libs = _strings(path, document["system_libs"], "system_libs") if "system_libs" in document else frozenset()
+    if document["kind"] != "c_third_party" and "system_libs" not in document:
+        _fail(path, "every product target needs `system_libs`")
+    if not system_libs <= set(SYSTEM_LIBS):
+        _fail(path, "system_libs may only name %s" % (list(SYSTEM_LIBS),))
+    if system_libs and document["kind"] != "c_library":
+        _fail(path, "only a c_library has system_libs")
     units = tuple(parse_unit(path, unit) for unit in document["units"])
     if len({unit.name for unit in units}) != len(units):
         _fail(path, "duplicate unit names")
-    return Facts(label, document["kind"], tuple(sorted(deps)), units)
+    return Facts(label, document["kind"], tuple(sorted(deps)), units, system_libs)
 
 
 def load_facts_dir(directory):

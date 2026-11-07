@@ -41,6 +41,8 @@ def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
     )
     for dep in ctx.attrs.facts_deps:
         cmd.add("--dep", _label_text(dep.label))
+    for lib in ctx.attrs.system_libs:
+        cmd.add("--system-lib", lib)
     for name in sorted(objects.keys()):
         unit = objects[name][DefaultInfo]
         cmd.add(
@@ -78,6 +80,7 @@ _ATTRS = {
     "facts_name": attrs.string(),
     "kind": attrs.string(),
     "srcs": attrs.list(attrs.string(), default = []),
+    "system_libs": attrs.list(attrs.string(), default = []),
     "unit": attrs.dep(),
     "_modes_scanner": attrs.source(default = "gate//gate/rigor_lib:facts_modes.py"),
     "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),

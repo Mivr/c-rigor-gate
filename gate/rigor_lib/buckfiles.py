@@ -21,6 +21,8 @@ GATE_ID = "buckfiles"
 LOAD_PATH = "@gate//rules:c.bzl"
 MACROS = ("c_library", "c_binary", "c_test", "c_fuzz")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
+# Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
+MACRO_KEYWORDS = {"c_library": ("system_libs",)}
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
 # (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the
@@ -89,7 +91,7 @@ def call_findings(path, node, allowed, test_allowed):
     if call.args:
         found.append(finding("bad-argument", path=path, line=node.lineno, why="positional"))
     for keyword in call.keywords:
-        if keyword.arg is None or keyword.arg not in KEYWORDS:
+        if keyword.arg is None or keyword.arg not in KEYWORDS + MACRO_KEYWORDS.get(call.func.id, ()):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="keyword"))
         elif not _is_value(keyword.value):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))

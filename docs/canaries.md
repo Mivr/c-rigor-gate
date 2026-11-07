@@ -147,6 +147,15 @@ carries `impl` for its L2+ modules (T039's `impl-missing`). The red witness case
 | `witness-missing` | a core test change; the canary's bundle lists only `//util:util` | `witness-tests`: witness-missing | mutants-witness |
 | `witness-green` (control) | a strong new core test and the base witness | none: PASS | none |
 
+## Canaries added by T095
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `system-lib-not-allowed` | a new L3 library declares `system_libs = ["pthread"]`, its policy entry does not list it | `symbols`: system-lib-not-allowed; `witness-tests`: witness-missing | mutants-witness |
+| `system-lib-not-declared` | the policy entry lists `system_libs = ["pthread"]`, the library declares none | `symbols`: system-lib-not-declared; `witness-tests`: witness-missing | mutants-witness |
+
+Both are the `exports-missing-l3` shape (a new `//core:extra`, whose `witness-missing` is the same as there) with an `exports` list, so the
+`system_libs` cross-check is the only symbols finding.
+
 ## Canaries not in the tables above (T079)
 Added by their own tasks and never listed here. `bypass` is the `expect.json` field; each fail list is the exact set of
 FAIL gates with their error rules, and `N later gates` means a gate the bypass stops before (see the canary's `expect.json`).

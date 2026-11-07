@@ -1,0 +1,15 @@
+{
+  "bypass": "the product policy allows a sysroot library the module does not declare",
+  "description": "T095: a new L3 module's policy entry lists system_libs = [\"pthread\"] but its c_library declares none; an allow that grants nothing is an error, so a later declaration cannot ride on a stale allow.",
+  "fail": {
+    "symbols": [
+      "system-lib-not-declared"
+    ],
+    "witness-tests": [
+      "witness-missing"
+    ]
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
+}

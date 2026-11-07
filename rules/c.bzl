@@ -103,7 +103,7 @@ _RELEASE_OR_SAN = select({
     "DEFAULT": ["toolchains//:never"],
 })
 
-def _facts(name, kind, srcs, deps, unit = None):
+def _facts(name, kind, srcs, deps, unit = None, system_libs = []):
     for suffix, mode, rule in (("_facts", _RELEASE_ONLY, c_facts), ("_facts_san", _SAN_ONLY, c_san_facts)):
         rule(
             name = name + suffix,
@@ -112,11 +112,31 @@ def _facts(name, kind, srcs, deps, unit = None):
             kind = kind,
             srcs = srcs,
             facts_deps = deps,
+            system_libs = system_libs,
             target_compatible_with = mode,
         )
 
-def c_library(name, srcs = [], headers = [], deps = [], visibility = []):
+# The sysroot libraries a `c_library` may name (T095). `pthread` only: glibc 2.31 keeps pthread_create and
+# friends in libpthread. A new entry needs a product that needs it, and `facts_data.SYSTEM_LIBS` (the same list,
+# checked against this one by a test) so the policy gate knows it.
+_SYSTEM_LIBS = ["pthread"]
+
+def _system_libs(macro, libs):
+    if type(libs) != "list":
+        fail("{}: `system_libs` must be a list of sysroot library names, got {}".format(macro, type(libs)))
+    for lib in libs:
+        if type(lib) != "string" or lib not in _SYSTEM_LIBS:
+            fail("{}: `system_libs` entries must be one of {}, got {!r}".format(macro, _SYSTEM_LIBS, lib))
+    if len(set(libs)) != len(libs):
+        fail("{}: `system_libs` has duplicates: {}".format(macro, libs))
+    return ["-l" + lib for lib in libs]
+
+def c_library(name, srcs = [], headers = [], deps = [], visibility = [], system_libs = []):
     _check("c_library", srcs, headers)
+
+    # Exported as post-link flags (after every object and archive), resolved in the pinned sysroot by the
+    # toolchain's own link line: every binary, test and mutant binary that links this library gets them.
+    link_flags = _system_libs("c_library", system_libs)
     native.cxx_library(
         name = name,
         srcs = srcs,
@@ -124,9 +144,10 @@ def c_library(name, srcs = [], headers = [], deps = [], visibility = []):
         deps = deps,
         visibility = visibility,
         compiler_flags = _compile_flags(),
+        exported_post_linker_flags = link_flags,
         link_style = "static",
     )
-    _facts(name, "c_library", srcs, deps)
+    _facts(name, "c_library", srcs, deps, system_libs = system_libs)
 
     # What `c_mutants` needs to know about this module: its source files.
     mutsrc(name = name + "_mutsrc", srcs = srcs, headers = headers, visibility = ["PUBLIC"])
