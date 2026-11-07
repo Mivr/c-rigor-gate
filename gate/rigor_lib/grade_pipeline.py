@@ -26,6 +26,7 @@ GATES = (
     ("buckfiles", grade_checks.buckfiles_gate),
     _compiling("semantic-suppressions", grade_checks.semantic_gate),
     _compiling("symbols", grade_checks.symbols_gate),
+    ("layering", grade_checks.layering_gate),  # compiles only with an architecture.toml (it wraps itself)
     _compiling("build", grade_build.build_gate),
     _compiling("structure", grade_structure.structure_gate),
     _compiling("mode-divergence", grade_structure.modes_gate),

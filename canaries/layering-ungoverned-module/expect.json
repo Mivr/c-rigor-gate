@@ -1,0 +1,9 @@
+{
+  "bypass": "module that no architecture layer lists",
+  "description": "architecture.toml lists //core:core only; //util:util is in no layer (T087). Its edge to core is not judged.",
+  "fail": {
+    "layering": [
+      "ungoverned-module"
+    ]
+  }
+}
