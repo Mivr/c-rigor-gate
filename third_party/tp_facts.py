@@ -4,10 +4,15 @@ Writes the same JSON file `rigor facts` reads for every module (see gate/rigor_l
 with kind `c_third_party` and nothing but symbols: the library is trusted, not scanned. The symbol
 lists come from the pinned `llvm-nm`; nobody writes them by hand.
 
-Usage: tp_facts.py --label L --nm NM --out F --unit NAME OBJECT [--unit NAME OBJECT ...]
+Each unit also carries `data` (T089): every defined data object, `static` ones too, with its size and section
+class, written by `cscan.read_data` (loaded from `--cscan`, the gate's scanner) so a binary's RAM total counts
+the writable data of the trusted libraries it links.
+
+Usage: tp_facts.py --label L --nm NM --cscan CSCAN.PY --out F --unit NAME OBJECT [--unit NAME OBJECT ...]
 """
 
 import argparse
+import importlib.util
 import json
 import subprocess
 import sys
@@ -35,20 +40,29 @@ def symbols(nm, path):
     return sorted(defined), sorted(weak), sorted(undefined)
 
 
-def unit(nm, name, obj):
+def load_cscan(path):
+    spec = importlib.util.spec_from_file_location("cscan", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def unit(nm, cscan, name, obj):
     defined, weak, undefined = symbols(nm, obj)
     return {"name": name, "defined": defined, "weak": weak, "undefined": undefined, "pragmas": [],
-            "attributes": [], "identifiers": [], "line_directives": []}
+            "attributes": [], "identifiers": [], "line_directives": [], "data": cscan.read_data(nm, obj)}
 
 
 def main(argv):
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--label", required=True)
     parser.add_argument("--nm", required=True)
+    parser.add_argument("--cscan", required=True, help="path of cscan.py")
     parser.add_argument("--unit", nargs=2, action="append", default=[], metavar=("NAME", "OBJECT"))
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
-    units = sorted((unit(args.nm, *u) for u in args.unit), key=lambda u: u["name"])
+    cscan = load_cscan(args.cscan)
+    units = sorted((unit(args.nm, cscan, *u) for u in args.unit), key=lambda u: u["name"])
     document = {"schema": 1, "label": args.label, "kind": "c_third_party", "deps": [], "units": units}
     text = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     with open(args.out, "wb") as handle:

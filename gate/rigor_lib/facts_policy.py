@@ -10,13 +10,16 @@
     third_party = ["gate//third_party/mbedtls:mbedtls"]   # gate-owned libraries it may depend on
     level = "L3"                    # L1 is exempt from the exports check; see `exports`
     exports = ["core_add"]          # every external symbol the module may define (T033, gate `symbols`)
+    allow_mutable_data = false      # true: the module may define writable static data (data/bss/tls), T089
     impl = ["core/core.c"]          # the witness gates' implementation paths (T039); validated there, ignored here
+
+`ram-budget.toml` next to the policy file is read with it (`ram_budget.py`).
 """
 
 import tomllib
 from dataclasses import dataclass
 
-from rigor_lib import jsonio, semantic_table
+from rigor_lib import jsonio, ram_budget, semantic_table
 from rigor_lib.errors import InternalError
 from rigor_lib.facts_data import LABEL, SYMBOL
 
@@ -32,6 +35,7 @@ class Module:
     third_party: frozenset = frozenset()
     level: str = None       # None: not declared
     exports: frozenset = None   # None: no `exports` key
+    allow_mutable_data: bool = False    # may define writable static data, local or external (T089)
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,7 @@ class Policy:
     deny: frozenset
     trusted: frozenset
     modules: dict
+    ram_budget: dict = None     # binary label -> max_bytes from the sibling ram-budget.toml; None: no such file
 
 
 def _names(where, value, pattern=SYMBOL):
@@ -56,7 +61,11 @@ def _only(where, table, allowed):
 
 def _module(label, table, deny):
     where = "module %s" % label
-    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl"))
+    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl",
+                           "allow_mutable_data"))
+    mutable_data = table.get("allow_mutable_data", False)
+    if type(mutable_data) is not bool:
+        raise InternalError("policy: %s allow_mutable_data must be true or false" % label)
     level = table.get("level")
     if level is not None and level not in LEVELS:
         raise InternalError("policy: %s level must be one of %s" % (label, ", ".join(LEVELS)))
@@ -69,7 +78,7 @@ def _module(label, table, deny):
     if not builtins <= set(semantic_table.GUARDED_BUILTINS):
         raise InternalError("policy: %s allow_builtins names unguarded builtins" % label)
     third = _names(where + " third_party", table.get("third_party", []), LABEL)
-    return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins, third, level, exports)
+    return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins, third, level, exports, mutable_data)
 
 
 def load_policy(path):
@@ -95,4 +104,4 @@ def load_policy(path):
     if trusted & set(modules):
         raise InternalError("policy: a module cannot be both trusted and listed: %s"
                             % sorted(trusted & set(modules)))
-    return Policy(deny, trusted, modules)
+    return Policy(deny, trusted, modules, ram_budget.load_sibling(path))
