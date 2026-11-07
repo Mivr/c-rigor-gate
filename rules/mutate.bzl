@@ -343,7 +343,7 @@ def _stage1(dctx, artifacts, outputs, cfg):
             ordered.append((rel, mid))
     for batch in _batches(_batch_order(ordered, function_of), function_of, cfg.batch):
         for item, pair in _compile_batch(cfg, actions, batch, specs, "mutant/{}/{}".format(batch[0][0], batch[0][1])).items():
-            compiled[rel][item[1]] = pair
+            compiled[item[0]][item[1]] = pair
     infos = [compiled[rel][mid][1] for rel, mid in ordered] + [cfg.base_info[r] for r in sorted(cfg.base_info.keys())]
     actions.dynamic_output(
         dynamic = infos,
