@@ -6,6 +6,7 @@ toolchain
 buckfiles
 semantic-suppressions
 symbols
+layering
 build
 structure
 mode-divergence

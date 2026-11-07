@@ -1,8 +1,9 @@
 name = "business-apps"
 
 [layout]
-# Every module directory of the monorepo (the library tree; add apps/** when the first app module lands). Coverage (B14) makes a missing one a
+# Every module directory of the monorepo (one entry per module directory on main; add apps/** when the first app module lands). Coverage (B14) makes a missing one a
 # finding (ungraded-path), and an entry that matches nothing a finding (stale-include).
-include = ["lib/**"]
+include = ["lib/base/bits/**", "lib/base/core/**", "lib/ds/fmap/**", "lib/ds/pool/**", "lib/ds/ring/**", "lib/ds/sidx/**",
+           "lib/fmt/lines/**", "lib/rt/dtab/**"]
 # Non-code only (docs, plans, live fixtures): an exclude that covers a BUCK or C file is a finding.
 exclude = []

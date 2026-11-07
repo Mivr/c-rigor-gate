@@ -1,0 +1,9 @@
+{
+  "bypass": "binary over its RAM budget",
+  "description": "A binary links 64 bytes of writable static data against a budget of 63 (one byte over); its module may hold mutable data, so only the budget fails.",
+  "fail": {
+    "symbols": [
+      "ram-over-budget"
+    ]
+  }
+}

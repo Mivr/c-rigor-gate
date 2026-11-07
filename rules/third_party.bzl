@@ -78,6 +78,8 @@ def _symbols_impl(ctx: AnalysisContext) -> list[Provider]:
         _label_text(ctx.label, ctx.attrs.lib_name),
         "--nm",
         ctx.attrs._nm[RunInfo],
+        "--cscan",
+        ctx.attrs._cscan,
         "--out",
         facts.as_output(),
     )
@@ -93,6 +95,7 @@ third_party_symbols = rule(
         "lib_name": attrs.string(),
         "unit": attrs.dep(),
         "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
+        "_cscan": attrs.source(default = "gate//gate/rigor_lib:cscan.py"),
         "_script": attrs.source(default = "gate//third_party:tp_facts.py"),
     },
 )

@@ -1,0 +1,52 @@
+# A small monorepo contract: libraries below, an app domain, an app root on top.
+[layers]
+order = ["lib-base", "lib-ds", "app-domain", "app-root"]
+
+[layer."lib-base"]
+modules = ["//lib/base/core:core", "//lib/base/fmt:*"]
+
+[layer."lib-ds"]
+modules = ["//lib/ds/**"]
+
+[layer."app-domain"]
+modules = ["//apps/a/domain:*"]
+
+[layer."app-root"]
+modules = ["//apps/a/root:root"]
+
+[testkit]
+modules = ["//lib/base/core:testkit"]
+
+[composition]
+modules = ["//apps/a/root:root"]
+
+[[edge]]
+from = "lib-ds"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "app-domain"
+to = "lib-base"
+kind = "data"
+
+[[edge]]
+from = "app-domain"
+to = "lib-ds"
+kind = "port"
+symbols = ["ds_init"]
+
+[[edge]]
+from = "app-root"
+to = "app-domain"
+kind = "composition"
+
+[[edge]]
+from = "app-root"
+to = "lib-ds"
+kind = "pure"
+
+[[edge]]
+from = "lib-base"
+to = "lib-base"
+kind = "pure"
