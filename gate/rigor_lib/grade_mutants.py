@@ -342,10 +342,10 @@ def _copy_perf(run, results, perf_labels, built, modules):
     os.makedirs(out_dir, exist_ok=True)
     found = []
     for index, label in sorted(perf_labels.items()):
-        entry = results.get("root" + label)
+        entry = results.get("root" + label.split("[")[0])   # the report lists the sub-target's output under the target
         source = None
         if entry is not None and entry.get("success") == "SUCCESS":
-            source = grade_build.output_path(run.tree, label, entry)
+            source = grade_build.output_path(run.tree, label, {"outputs": {"DEFAULT": entry.get("outputs", {}).get("perf", [])}})
         if source is None:
             found.append(finding("perf-build-failed", module=modules[index].label))
             continue
