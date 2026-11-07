@@ -63,15 +63,24 @@ static void touch(const chain_node *node) {
     (void)sink;
 }
 
-static void t_nth(ctest_t *t) {
+static void t_nth_trivial(ctest_t *t) {
     CHECK(t, chain_nth(&g_a, 0) == &g_a);
-    touch(chain_nth(&g_a, 2)); /* no crash is all that is checked */
 }
 
-static void t_last(ctest_t *t) {
+static void t_nth_no_crash(ctest_t *t) {
+    touch(chain_nth(&g_a, 2));
+    CHECK(t, 1);
+}
+
+static void t_last_trivial(ctest_t *t) {
     CHECK(t, chain_last(&g_c) == &g_c);
-    touch(chain_last(&g_a));
 }
 
-CTEST_SUITE("chain", { "nth", t_nth }, { "last", t_last })
+static void t_last_no_crash(ctest_t *t) {
+    touch(chain_last(&g_a));
+    CHECK(t, 1);
+}
+
+CTEST_SUITE("chain", { "nth", t_nth_trivial }, { "nth_no_crash", t_nth_no_crash }, { "last", t_last_trivial },
+            { "last_no_crash", t_last_no_crash })
 EOF
