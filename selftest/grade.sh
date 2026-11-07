@@ -305,9 +305,10 @@ git -C "$repo" checkout -q -f -B case-extra-export "$base"
 git -C "$repo" clean -q -fdx
 (
   cd "$repo" || exit 1
-  sed -i 's|^int core_sign(int value);$|&\nint core_extra(int value);|' core/core.h
-  printf '\nint core_extra(int value) {\n    return value;\n}\n' >> core/core.c
-  grep -q 'int core_extra(int value);' core/core.h || exit 1
+  # Only core.c changes (a header edit is a test-surface change and would need a witness), and the body has
+  # nothing to mutate, so only `symbols` can object.
+  printf '\nvoid core_extra(void);\nvoid core_extra(void) {\n}\n' >> core/core.c
+  grep -q 'void core_extra(void) {' core/core.c || exit 1
 ) || fail "extra-export: the edit did not apply"
 git -C "$repo" add -A
 git -C "$repo" commit -q -m extra-export
