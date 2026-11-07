@@ -17,7 +17,7 @@ trusted = ["gate//ctest:ctest"]
 level = "L3"
 impl = ["core/core.c"]
 allow = []
-exports = ["core_add", "core_sign"]
+exports = ["core_add", "core_sign", "core_zero"]
 
 [module."//core:core_test"]
 allow = []
