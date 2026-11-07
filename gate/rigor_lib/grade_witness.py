@@ -95,7 +95,7 @@ def _judge_tests(g, directories):
         result = tests_gate.run(Namespace(
             results=directories[mode], expected=_expected_path(g), previous=None,
             approvals=g.args.approvals, repo=g.src, head=g.head,
-            allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS))
+            allowed_signers=g.args.allowed_signers))
         found.extend(dict(item, rule=TEST_RENAMES.get(item["rule"], item["rule"]), mode=mode)
                      for item in result.findings)
     return found

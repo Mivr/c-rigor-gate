@@ -2,12 +2,13 @@
 
 import json
 import os
+import pathlib
 import shutil
 import subprocess
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import approvals, grade, jsonio, verdict, witness_bundle
+from rigor_lib import approval_args, approvals, grade, grade_steps, jsonio, verdict, witness_bundle
 from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase, base_env, read_json, run_rigor
 from tests.test_verdict_inputs import Fixture, HEAD, GATE, WITNESS_FIXTURE
@@ -38,6 +39,8 @@ class GradeVerdict(TempDirTestCase):
         g.order_bytes = self.order_bytes
         g.results = str(self.results)
         g.args.verdict_out = str(self.out)
+        g.args.order_file = str(GATE_DIR / "order.txt")
+        g.args.allowed_signers = "signers"
         return g
 
     def test_a_pass_binds_the_inputs_and_uncached_stays_top_level(self):
@@ -377,3 +380,79 @@ class UnusedApprovals(GradeVerdict):
             grade.write_verdict(g)
         load.assert_not_called()
         self.assertEqual(read_json(self.out)["core"]["unused_approvals"], [])
+
+
+class TrustFilesFromSnapshot(TempDirTestCase):
+    """T071: the signers file and the gate order are snapshotted with the other inputs; the gates and
+    the verdict read only the copies, so a change to the live files mid-grade changes nothing."""
+
+    def setUp(self):
+        super().setUp()
+        self.live_signers = self.tmp / "live_allowed_signers"
+        self.live_signers.write_bytes(b"original signers\n")
+        self.live_order = self.tmp / "live_order.txt"
+        self.live_order.write_bytes((GATE_DIR / "order.txt").read_bytes())
+        self.work = self.tmp / "work"
+        self.out = self.tmp / "verdict.json"
+        task = self.tmp / "task.toml"
+        task.write_text('id = "t"\nallowed = ["**"]\n')
+        self.args = SimpleNamespace(
+            product_repo=str(self.tmp / "repo"), task=str(task), approvals=None, witness=None, sign_key=None,
+            work=str(self.work), verdict_out=str(self.out), allow_dirty_gate=False, uncached=False,
+            product=str(GATE_DIR.parent / "products" / "selftest" / "product.toml"))
+
+    def start(self):
+        with mock.patch.object(grade.grade_context, "ORDER_FILE", str(self.live_order)), \
+                mock.patch.object(approval_args, "DEFAULT_ALLOWED_SIGNERS",
+                                  str(self.live_signers)), \
+                mock.patch.object(grade.grade_context, "seal_process_environment"), \
+                mock.patch.object(grade.grade_context, "gate_checkout_state", return_value=(GATE, True)):
+            return grade.start_grading(self.args)
+
+    def test_a_change_to_the_live_files_mid_grade_changes_neither_the_gates_nor_the_verdict(self):
+        seen = {}
+
+        def hook(g):
+            self.live_signers.write_bytes(b"loosened signers\n")
+            self.live_order.write_bytes(b"clone\n")
+            with mock.patch.object(grade_steps.suppressions, "run") as run, \
+                    mock.patch.object(grade_steps, "_graded_entries", return_value=[]):
+                run.return_value = SimpleNamespace(status="PASS")
+                grade_steps.suppressions_gate(g)
+            path = run.call_args[0][0].allowed_signers
+            seen["signers"] = pathlib.Path(path).read_bytes()
+            return None
+
+        g = self.start()
+        with mock.patch.object(grade.grade_pipeline, "GATES", (("clone", hook),)):
+            grade.run_gates(g)
+        self.assertEqual(seen["signers"], b"original signers\n")
+        inputs = g.inputs
+        self.assertEqual(inputs["allowed_signers_sha256"], jsonio.sha256_hex(b"original signers\n"))
+        self.assertEqual(g.args.allowed_signers, str(self.work / "inputs" / "allowed_signers"))
+        order = (GATE_DIR / "order.txt").read_bytes()
+        self.assertEqual(inputs["order_sha256"], jsonio.sha256_hex(order))
+        self.assertEqual(g.order_bytes, order)
+        self.assertEqual(pathlib.Path(g.args.order_file).read_bytes(), order)
+
+    def test_the_verdict_is_built_from_the_snapshotted_order(self):
+        g = self.start()
+        self.live_order.write_bytes(b"clone\n")
+        order = verdict.parse_order(g.order_bytes)
+        os.makedirs(g.results, exist_ok=True)
+        passing_results(pathlib.Path(g.results), order)
+        with mock.patch.object(grade.verdict_inputs, "build_inputs", return_value={}), \
+                mock.patch.object(grade.verdict_inputs, "missing_inputs", return_value=[]):
+            grade.write_verdict(g)
+        document = read_json(self.out)
+        self.assertEqual(document["metadata"]["order_file"], str(self.work / "inputs" / "order.txt"))
+        self.assertEqual(len(document["core"]["gates"]), len(order))
+
+    def test_a_missing_signers_file_or_order_is_an_internal_error_before_any_gate(self):
+        self.live_signers.unlink()
+        with self.assertRaisesRegex(InternalError, "allowed_signers"):
+            self.start()
+        self.live_signers.write_bytes(b"x\n")
+        self.live_order.unlink()
+        with self.assertRaisesRegex(InternalError, "order.txt"):
+            self.start()
