@@ -625,6 +625,10 @@ assert mu["executed_actions"] > 0 and mu["cached_actions"] == 0, mu
 f = u["metadata"]["gate_metadata"]["symbols"]
 print("  uncached facts: executed %d, cached %d" % (f["executed_actions"], f["cached_actions"]))
 assert f["executed_actions"] > 0 and f["cached_actions"] == 0, f
+# T073: the toolchain gate verified the cached trees in the uncached grade, and only there.
+assert u["metadata"]["gate_metadata"]["toolchain"]["verified"] is True, u["metadata"]["gate_metadata"]["toolchain"]
+assert w["metadata"]["gate_metadata"]["toolchain"]["verified"] is False
+print("  toolchain: verified in the uncached grade, not verified (cached grade) in the warm one")
 assert u["core_sha256"] != w["core_sha256"]
 EOF4
 
