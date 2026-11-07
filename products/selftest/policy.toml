@@ -17,7 +17,7 @@ trusted = ["gate//ctest:ctest"]
 level = "L3"
 impl = ["core/core.c"]
 allow = []
-exports = ["core_add", "core_marker", "core_sign", "core_slow", "core_stop", "core_sum_ff"]
+exports = ["core_add", "core_sign"]
 
 [module."//core:core_test"]
 allow = []
@@ -27,7 +27,7 @@ exports = ["main"]
 level = "L2"
 impl = ["util/util.c"]
 allow = ["malloc"]
-exports = ["util_fact", "util_long", "util_make_ramp", "util_sum"]
+exports = ["util_make_ramp", "util_sum"]
 
 [module."//util:core_test"]
 allow = []

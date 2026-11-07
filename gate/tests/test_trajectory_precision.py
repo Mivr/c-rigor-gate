@@ -220,3 +220,96 @@ class EnvironmentCopyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     sys.exit(unittest.main())
+
+
+class UnknownCwdAndPipedTextTests(TrajectoryCase):
+    """T072 (B21, B23): an unresolvable `cd`, `cat <<EOF | tee f`, and clones that were moved, copied or linked."""
+
+    def rules_of(self, *commands):
+        _, result = self.audit_steps([cases.bash(c) for c in commands], fast=True)
+        return sorted(f["rule"] for f in result["findings"])
+
+    # -- B21: the working directory after a `cd` the audit cannot resolve ---------------------------------
+    def test_a_relative_read_after_an_unresolvable_cd_is_unresolved(self):
+        self.assertEqual(self.rules_of('cd "$DIR" && cat sub/notes.txt'), ["path-unresolved"])
+        self.assertEqual(self.rules_of('cd "$(pick)"; head -3 ./notes.txt'), ["path-unresolved"])
+
+    def test_a_relative_script_after_an_unresolvable_cd_is_unresolved(self):
+        self.assertEqual(self.rules_of('cd "$DIR" && ./run.sh'), ["path-unresolved"])
+        self.assertEqual(self.rules_of('cd "$DIR" && sh run.sh'), ["path-unresolved"])
+
+    def test_the_unknown_directory_lasts_into_the_next_call(self):
+        self.assertEqual(self.rules_of('cd "$DIR"', "cat sub/notes.txt"), ["path-unresolved"])
+
+    def test_a_resolvable_cd_makes_it_known_again(self):
+        self.assertEqual(self.rules_of('cd "$DIR"; cd %s; cat sub/notes.txt' % cases.SC), [])
+
+    def test_a_subshell_keeps_the_directory_known_outside(self):
+        self.assertEqual(self.rules_of('cd %s && (cd "$DIR"; true); cat sub/notes.txt' % cases.SC), [])
+        self.assertEqual(self.rules_of('cd "$DIR" && (cd %s; cat sub/notes.txt); true' % cases.SC), [])
+
+    def test_a_relative_forbidden_read_after_an_unresolvable_cd_still_blocks(self):
+        self.assertEqual(self.rules_of('cd "$DIR" && cat .config/club/token'), ["read-secret-dir"])
+        self.assertEqual(self.rules_of('cd "$DIR" && cat .config'), ["read-secret-dir"])
+
+    # -- B21: `cat <<EOF | tee f` ------------------------------------------------------------------------
+    def piped(self, flag, body, *more):
+        return "cd %s && cat <<'EOF' | tee %sr.sh\n%s\nEOF\n" % (cases.SC, flag, body) + "\n".join(more)
+
+    def test_a_piped_here_document_is_the_text_of_the_file(self):
+        self.assertEqual(self.rules_of(self.piped("", "ls", "sh r.sh")), [])
+
+    def test_the_text_a_piped_here_document_wrote_is_audited_when_run(self):
+        self.assertEqual(self.rules_of(self.piped("", "gh pr list", "sh r.sh")), ["cmd-gh"])
+
+    def test_tee_append_extends_the_known_text(self):
+        first = self.piped("", "ls")
+        self.assertEqual(self.rules_of(first + "cat <<'EOF' | tee -a r.sh\ngh pr list\nEOF\nsh r.sh"), ["cmd-gh"])
+
+    def test_another_feeder_leaves_the_file_unknown(self):
+        self.assertEqual(self.rules_of(self.piped("", "ls", "echo x | tee -a r.sh", "sh r.sh")), ["cmd-unresolved"])
+        self.assertEqual(self.rules_of("cd %s && cat <<'EOF' | sed s/a/b/ | tee r.sh\nls\nEOF\nsh r.sh" % cases.SC),
+                         ["cmd-obfuscated-exec"])
+        self.assertEqual(self.rules_of("cd %s && cat <<'EOF' | tee r.sh\nls\nEOF\ncat x.txt | tee -a r.sh\nsh r.sh"
+                                       % cases.SC), ["cmd-unresolved"])
+
+    def test_an_append_to_an_unknown_file_stays_unknown(self):
+        self.assertEqual(self.rules_of(self.piped("-a", "ls", "sh r.sh")), ["cmd-obfuscated-exec"])
+
+    # -- B23: moved, copied and linked clones --------------------------------------------------------------
+    def clone_then(self, *commands):
+        make = "mkdir -p %s && cd %s && %s" % (cases.SC, cases.SC, cases.LOCAL_CLONE)
+        return self.rules_of(make, *commands)
+
+    def test_a_clone_moved_within_scratch_stays_proven(self):
+        sc, clone = cases.SC, cases.CLONE
+        self.assertEqual(self.clone_then("mv %s %s/moved && cd %s/moved && git fetch -q origin" % (clone, sc, sc)), [])
+        self.assertEqual(self.clone_then("mkdir -p %s/sub && mv %s %s/sub/ && cd %s/sub/annas-c && git pull -q origin"
+                                         % (sc, clone, sc, sc)), [])
+
+    def test_a_clone_copied_within_scratch_stays_proven_and_the_original_too(self):
+        sc, clone = cases.SC, cases.CLONE
+        self.assertEqual(self.clone_then("cp -r %s %s/copy && cd %s/copy && git fetch -q origin" % (clone, sc, sc)), [])
+        self.assertEqual(self.clone_then("cp -r %s %s/copy && cd %s && git fetch -q origin" % (clone, sc, clone)), [])
+
+    def test_a_link_made_in_scratch_to_a_clone_keeps_the_proof(self):
+        sc, clone = cases.SC, cases.CLONE
+        self.assertEqual(self.clone_then("ln -s %s %s/lnk && cd %s/lnk && git fetch -q origin" % (clone, sc, sc)), [])
+
+    def test_moving_or_linking_out_of_scratch_loses_the_proof(self):
+        sc, clone = cases.SC, cases.CLONE
+        net = ["cmd-git-network", "write-outside"]
+        self.assertEqual(self.clone_then("mv %s /var/tmp/away && cd /var/tmp/away && git fetch -q origin" % clone), net)
+        self.assertEqual(self.clone_then("ln -s %s /var/tmp/lnk && cd /var/tmp/lnk && git fetch -q origin" % clone), net)
+        self.assertEqual(self.clone_then("cp %s %s/copy && cd %s/copy && git fetch -q origin" % (clone, sc, sc)),
+                         ["cmd-git-network"])  # no -r: nothing was copied
+
+    def test_a_config_edit_loses_the_proof_of_a_moved_clone_and_of_a_link(self):
+        sc, clone = cases.SC, cases.CLONE
+        net = ["cmd-git-network"]
+        self.assertEqual(self.clone_then("echo x >> %s/.git/config; mv %s %s/moved && cd %s/moved && git fetch origin"
+                                         % (clone, clone, sc, sc)), net)
+        self.assertEqual(self.clone_then("mv %s %s/moved; echo x >> %s/moved/.git/config; cd %s/moved && "
+                                         "git fetch origin" % (clone, sc, sc, sc)), net)
+        self.assertEqual(self.clone_then("ln -s %s %s/lnk; echo x >> %s/lnk/.git/config; cd %s && git fetch origin"
+                                         % (clone, sc, sc, clone)), net)

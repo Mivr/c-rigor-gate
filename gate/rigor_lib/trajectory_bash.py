@@ -468,6 +468,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         data_skip = self._data_indexes(argv, name, item.group in flags["sink"])
         write_idx = self._write_targets(item, argv, raw)
         write_idx |= self.modelled_writes(item, argv, name, raw, flags)  # T061 (R008 #16)
+        self._piped_text(item, argv, name, flags)
         if item.job_dir is not None:
             self.write(item.job_dir, "create", raw)
         self._read_words(item, argv, raw, name, write_idx | data_skip | item.job_skip)
@@ -489,6 +490,18 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         self.clean_env = item.clean_env
         if not item.wrapped:
             self._heredocs(item, depth, flags, data_only=False)
+
+    def _piped_text(self, item, argv, name, flags):
+        """`cat <<EOF | tee [-a] f` (T072, B21): when the stage feeding `tee` is a plain `cat` of a known here-document,
+        the text of f is that body, as for `cat <<EOF > f`. Any other feeder leaves f unknown."""
+        feeder = flags["feeder"].get(id(item))
+        if name != "tee" or item.wrapped or item.cmd.heredocs or feeder is None or feeder.wrapped:
+            return
+        if list(feeder.argv) != ["cat"] or len(feeder.cmd.heredocs) != 1 or \
+                feeder.cmd.redirects or not known_body(feeder.cmd.heredocs[0]):
+            return
+        for index, op in cmds.write_specs(argv):
+            self.keep_text(argv[index], op, feeder.cmd.heredocs[0].body)
 
     def _literal_output(self, command, argv, name):
         """`echo TEXT > f`, `printf FMT ARGS >> f` with a literal text: the content of f is known (T049)."""

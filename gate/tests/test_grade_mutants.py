@@ -226,7 +226,8 @@ class Gate(TempDirTestCase):
         product = self.sub("product") / "product.toml"
         task = self.tmp / "task.toml"
         task.write_text('id = "t"\nallowed = ["**"]\nrole = "%s"\n' % role, encoding="utf-8")
-        args = SimpleNamespace(product=str(product), uncached=False, approvals=None, task=str(task))
+        args = SimpleNamespace(product=str(product), uncached=False, approvals=None, task=str(task),
+                               allowed_signers="signers")
         done = {k: "PASS" for k in ("assemble", "buckfiles", "build", "tests-release", "tests-san")}
         done.update(status or {})
         return SimpleNamespace(args=args, work=str(work), tree=str(tree), src=str(work / "src"), head="",

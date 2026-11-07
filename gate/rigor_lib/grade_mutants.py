@@ -247,7 +247,7 @@ def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT
         handle.write(policy_text([modules[i] for i in built], built).encode("utf-8"))
     result = rigor_mutants.run(Namespace(
         results=run.mutants_reports, policy=policy, approvals=g.args.approvals,
-        repo=g.src, head=g.head, allowed_signers=approval_args.DEFAULT_ALLOWED_SIGNERS), approval_kind)
+        repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind)
     names = {target_label(i, modules[i]): modules[i].label for i in built}
     summaries = {names.get(label, label): summary for label, summary in result.metadata["modules"].items()}
     found = [dict(item, rule=renames.get(item["rule"], item["rule"])) for item in
