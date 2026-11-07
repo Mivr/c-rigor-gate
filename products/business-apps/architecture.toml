@@ -18,17 +18,17 @@ modules = ["//lib/rt/**"]
 
 [layer."lib-fmt"]
 modules = ["//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*", "//lib/fmt/httpresp:*",
-           "//lib/fmt/jdom:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*", "//lib/fmt/lines:*", "//lib/fmt/mbrtu:*",
-           "//lib/fmt/url:*"]
+           "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jpull:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*",
+           "//lib/fmt/kv:*", "//lib/fmt/lines:*", "//lib/fmt/mbrtu:*", "//lib/fmt/url:*"]
 
 [layer."lib-io"]
-modules = []
+modules = ["//lib/io/**"]
 
 [layer."lib-ui"]
 modules = []
 
 [layer."lib-sim"]
-modules = []
+modules = ["//lib/sim/**"]
 
 [layer."app-domain"]
 modules = []
@@ -156,4 +156,62 @@ kind = "pure"
 [[edge]]
 from = "lib-fmt"
 to = "//lib/fmt/httpdef:httpdef"
+kind = "data"
+
+[[edge]]
+from = "//lib/fmt/i18n:i18n"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jpull:jpull"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jpull:jpull"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/kv:kv"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/kv:kv"
+to = "//lib/fmt/lines:lines"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/kv:kv"
+to = "//lib/fmt/url:url"
+kind = "pure"
+
+# mbox queues events (same tier) and reaches threads only through the ports_osal_t table it is given (lib-base).
+[[edge]]
+from = "//lib/rt/mbox:mbox"
+to = "//lib/rt/ev:ev"
+kind = "pure"
+
+# lib-io adapters and fakes use core and the port types; lib-sim cores the same.
+[[edge]]
+from = "lib-io"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "lib-sim"
+to = "lib-base"
+kind = "pure"
+
+# trace renders events as JSON lines: it calls jw and reads ev's header only.
+[[edge]]
+from = "//lib/sim/trace:trace"
+to = "//lib/fmt/jw:jw"
+kind = "pure"
+
+[[edge]]
+from = "//lib/sim/trace:trace"
+to = "//lib/rt/ev:ev"
 kind = "data"
