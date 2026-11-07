@@ -2,7 +2,7 @@
 
 Repo: `Mivr/c-rigor-gate`. Branch `task/T080`. Read `AGENTS.md`, the R011 summary `/var/tmp/cache/T080/R011-report.md`,
 `docs/perf.md` (T076: `c_perf`, `ctest/perf.h`, the `perf.jsonl` record), and `docs/witness.md` plus
-`gate/rigor_lib/witness_bundle.py`, `witness_digest.py`, `verdict_inputs.py` and `verify.py`. The perf bundle is bound
+`gate/rigor_lib/witness_bundle.py` (load, validate, digest) and `verdict_inputs.py` (snapshot, `core.inputs`, `rigor verify` and its `--expect-*` options). The perf bundle is bound
 **the same way** as the witness bundle: snapshot, digest, `core.inputs` key, and a `rigor verify` expectation.
 
 ## Goal
@@ -30,7 +30,7 @@ Each rejection is exit 2 with a clear message, as for a bad witness bundle.
 
 ## Requirements
 1. `gate/rigor_lib/perf_bundle.py`: load, validate and snapshot. The canonical digest uses the same scheme as
-   `witness_digest`, over `perf.toml` plus the named sources.
+   the witness bundle's digest in `witness_bundle.py`, over `perf.toml` plus the named sources.
 2. `rigor grade --perf DIR`: the snapshot goes to `<work>/inputs/perf` before any gate runs, and readers use only the
    snapshot (T071's rule). `core.inputs.perf_sha256` is the digest, or `null` without `--perf`. A bundle for another
    product is exit 2.
@@ -44,7 +44,7 @@ Each rejection is exit 2 with a clear message, as for a bad witness bundle.
 
 ## Allowed paths
 `gate/rigor_lib/perf_bundle.py` (new), `gate/tools/perf.py` (new), `gate/rigor_lib/grade_pipeline.py` and
-`gate/rigor_lib/grade.py` (the flag and snapshot only), `gate/rigor_lib/verdict_inputs.py`, `gate/rigor_lib/verify.py`,
+`gate/rigor_lib/grade.py` (the flag and snapshot only), `gate/rigor_lib/verdict_inputs.py`, `gate/rigor_lib/witness_bundle.py` (only to share the digest helper, no behaviour change),
 `gate/rigor_lib/grade_context.py` (if the args object needs the field), `gate/tests/test_perf*.py`,
 `gate/tests/test_verify*.py`, `gate/tests/test_verdict*.py`, `gate/tests/fixtures/perf/**`, `docs/perf.md`, `docs/grade.md`
 (one paragraph).
