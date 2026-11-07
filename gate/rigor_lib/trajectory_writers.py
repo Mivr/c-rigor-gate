@@ -379,6 +379,7 @@ class WritersMixin:
                 skip.add(index)
             self.write_tree(text, raw)
         skip |= self.note_links(argv, name, raw)
+        self.move_clones(argv, name)
         if name == "patch":
             skip |= self._patch(item, argv, raw)
         elif name == "git":
@@ -453,6 +454,40 @@ class WritersMixin:
             elif UNRESOLVED in source:
                 self.add("path-unresolved", raw, source.replace(UNRESOLVED, "$("))
         return set(layout["sources"])
+
+    def move_clones(self, argv, name):
+        """`mv` and `cp -r` of a proven local clone (or a directory holding one) from one declared scratch directory to
+        another (T072, B23): the proof moves with `mv` and is copied by `cp -r`, with its taint. A move or copy out of
+        the scratch directories ends the proof of what moved; a destination that replaces a clone ends its proof."""
+        flags = [a for a in argv[1:] if a.startswith("-") and not a.startswith("--")]
+        args = argv[1:]
+        if name == "mv":
+            copy = False
+        elif name == "cp" and ("--recursive" in args or any(set(a[1:]) & set("rRa") for a in flags)) and not (
+                "--symbolic-link" in args or "--link" in args or any(set(a[1:]) & set("sl") for a in flags)):
+            copy = True
+        else:
+            return
+        layout = transfer(argv)
+        if layout is None or not self.clones:
+            return
+        into = layout["dir"] or self.is_dir(layout["text"], layout.get("follow", True))
+        scratch = self.policy.own[1:]
+        for index in layout["sources"]:
+            source = self.policy.normalize(argv[index], self.cwd)
+            dest = self.policy.normalize(into_dir(layout["text"], argv[index]) if into else layout["text"], self.cwd)
+            if source is None or dest is None:
+                continue
+            moved = {c: t for c, t in self.clones.items() if self.policy.is_inside(source, c)}
+            for old in [c for c in self.clones if self.policy.is_inside(dest, c)]:
+                self.clones.pop(old)  # replaced by what lands there
+            for old, tainted in moved.items():
+                new = dest + old[len(source):]
+                if not copy:
+                    self.clones.pop(old, None)
+                if any(self.policy.is_inside(b, source) for b in scratch) and any(
+                        self.policy.is_inside(b, new) for b in scratch):
+                    self.clones[new] = tainted
 
     def known_text(self, path_text):
         """The text of a file as this transcript wrote it, or None when the audit does not know it."""
