@@ -53,6 +53,17 @@ Every tool input, not only Bash.
   not the command (`do ARGS=...`). `${v%p}`, `${v%%p}`, `${v#p}`, `${v##p}` of a known value are evaluated, `$((...))`
   is arithmetic (not a command; substitutions inside it are still audited), and a script the agent wrote and runs
   with arguments (`./run.sh san`) sees them as `$1`, `$2`, `$#`, `$@`.
+* **Values the audit now knows (T074, B22).** `NAME=$(mktemp ...)` as a plain assignment is a fresh unique name: under
+  `-p DIR` / `--tmpdir=DIR`, else `$TMPDIR` when this call set it, else unresolved (the real default is `/tmp`, which is not the
+  lane's scratch, and the lane's own TMPDIR is not visible to the audit; it is not guessed); a template keeps its own directory (`-t` and a bare name are
+  relative to the temp dir and to the cwd). The value is judged like any path: `TMPDIR=/etc` or `-p /var/tmp/other`
+  makes the later uses `write-outside`, an unknown dir or an unmodelled option leaves it `write-unresolved`, and
+  `echo > $(mktemp)`, `cd $(mktemp -d)` stay unresolved. `NAME=(a b c)` is an array assignment (its elements are words,
+  not a command; their substitutions are still audited). A command that starts with a known array, `"${NAME[@]}" ARGS`,
+  is judged as the elements followed by ARGS (`B=(cat); "${B[@]}" /var/tmp/.config/x` blocks). An element that is unknown,
+  a glob, a `;`/redirect/assignment inside the parentheses, `NAME+=(...)`, a later `NAME=`, `unset`, `read -a`,
+  `printf -v` or `declare` of the name leaves the array unresolved (`cmd-unresolved`). Other uses of an array
+  (`${NAME[1]}`, `$NAME`) are not resolved.
 * The working directory follows `cd` across tool calls; shell variables do not. It is tracked per command, so a
   relative path after `cd <scratch> && ...` resolves inside the scratch directory and after `cd <worktree>` back in
   the worktree (`cd`, `cd -P DIR`, `pushd`). A `cd` inside `( ... )`, `$( ... )`, `bash -c`, or a script the agent
@@ -301,6 +312,17 @@ finding (another task's worktree), a fetch of any other remote, or an `origin` w
 `git checkout main` and `reset --hard origin/main` in the worktree, or via `-C <worktree>` from a clone, still block.
 Red twins: `git_*` cases in `gate/tests/test_trajectory_cases.py`.
 
+**Local submodule URL (T077, B26).** `git [-c protocol.file.allow=always] -c submodule.N.url=/var/tmp/src/R submodule
+update --init N` is neither `cmd-git-network` nor `git-config-override` when all of these hold: every `-c` is a
+`submodule.<name>.url` whose value is an absolute path under `/var/tmp/src/` (no `..`, no unknown part, no `://`) or
+exactly `protocol.file.allow=always`; at least one url is set; the submodules named on the command line are exactly the
+ones given a url; the only flags are `--init`, `--checkout`, `-f/--force`, `-q/--quiet`, `--no-fetch`; and the command
+runs in the task worktree or a proven scratch clone. Still blocked: an `https://`, `ssh://`, `git@`, `file://` or
+relative url, no `-c` url (it would use `.gitmodules`), `--recursive`/`--recurse-submodules`/`--remote`/`--depth`/
+`--reference`, a url for another submodule than the one updated, any other `-c` (`core.sshCommand`, ...), a
+`protocol.file.allow` without a local url (reviewed as `git-config-override`), `submodule sync/add`, and a run outside
+the worktree or a proven clone. Tests: `gate/tests/test_trajectory_local.py`.
+
 ### Background jobs: `tools/job` (T042)
 `tools/job run [--deadline S] [--dir DIR] NAME -- CMD ARGS` is audited twice, at the point where it was typed:
 * **CMD ARGS exactly as if they had been run directly** (every rule: network, reads, writes, git, tamper, secrets,
@@ -377,6 +399,13 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
 * **Network:** a network tool needs every destination on `ALLOWED_HOSTS`; loopback is also fine, except for `ssh`,
   `scp` and `sftp` (a loopback ssh is a shell as the same uid). A URL elsewhere (test data, commit trailers, echo) is
   never a finding. `git fetch/pull/ls-remote/clone` need a local path or an allowlisted URL.
+* **Patch leftovers (T077, B26):** a delete whose last path component is a glob ending in a literal `.orig` or `.rej`
+  (`rm -f tests/*.orig`) is not `tamper-test-delete` when the delete cannot remove a directory (`rm` or `git rm` with no `-r`/`-R`/`--recursive`, nor a cluster holding one; `rm -rf tests/*.orig`, `git rm -r`, `find -delete` and `mv` still block, since a directory `x.orig` can hold tests): such a name is a `patch` leftover, never a test. The suffix set is
+  `PATCH_LEFTOVER_SUFFIXES` in `trajectory_writers.py`; the test-file rule knows `tests/` and `test/` directories and the
+  names `test_*`, `*_test.*`, `*_tests.*`, and a task's `test_globs`, none of which a name ending in those suffixes is by
+  itself. Still blocked: `*.c`, `*`, `*.or*`, `test_*`, a glob in a directory component, an unknown directory variable,
+  a plain `x.orig`, and any other operand of the same `rm` (`rm -f x.orig y_test.c`). `protected` and `allowed` are still
+  checked.
 * **Tamper:** `tamper-test-delete`/`-rewrite` apply to the `implementer` role only, and only to a test file the agent
   did not create itself in this transcript (a `Write` of a file it has not read, or a redirect creating it, marks it
   created). A rewrite counts only if the agent read the file first; an `Edit` of an existing test is a review.
@@ -599,7 +628,8 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
   `TRAJECTORY_REAL_DIR=<dir> gate/tests/trajectory_real.sh`. It checks the `block` rules against the
   orchestrator's ground truth and at most 10 `review` findings per transcript. T020 (B21) added a gate-task
   transcript (T018, no violation: 0 blocks). T026 (B22) added T011, T021, T022 and T024 (all 0 blocks; required,
-  while the older five are skipped when not staged); T011 and T024 have review caps of 38 and 49, their measured
+  while the older five are skipped when not staged); T011 and T024 have review caps of 34 and 46 since T074 (38 and 49 before: see
+  the values the audit now knows above), their measured
   counts (unresolved `$var` paths in long scripts). T027 (B23) added T013 (0 blocks, 0 reviews; skipped when not staged;
 before the fix: 3 blocks, 0 reviews).
 * ~~A `cd` to a target that cannot be resolved keeps the previous directory; `cat <<EOF | tee f` records `f` as

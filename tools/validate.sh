@@ -36,7 +36,7 @@ command_of() {
     gate) echo "selftest/gate.sh" ;;
     canaries) echo "selftest/canaries.sh --jobs 8" ;;
     trajectory_real) echo "gate/tests/trajectory_real.sh" ;;
-    grade|mutate|structure|product_checks|toolchain|ctest|fuzz|third_party) echo "selftest/$1.sh" ;;
+    grade|mutate|structure|product_checks|toolchain|ctest|fuzz|third_party|perf) echo "selftest/$1.sh" ;;
     *) echo "validate.sh: unknown selftest $1" >&2; return 1 ;;
   esac
 }
@@ -45,7 +45,7 @@ command_of() {
 # `buck2 log what-ran` (the last command of the root), so they run one after another in lane "root". grade and
 # canaries work in their own clones; gate and trajectory_real do not use Buck2.
 have() { printf '%s\n' "$selected" | grep -qx "$1"; }
-ROOT_ORDER=(product_checks ctest toolchain fuzz structure mutate third_party)
+ROOT_ORDER=(product_checks ctest perf toolchain fuzz structure mutate third_party)
 root_lane=()
 for n in "${ROOT_ORDER[@]}"; do have "$n" && root_lane+=("$n"); done
 other_lanes=()

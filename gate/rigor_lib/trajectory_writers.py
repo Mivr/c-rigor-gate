@@ -18,6 +18,49 @@ _COMPILER_RE = re.compile(r"\A(?:[\w.+]+-)*(?:cc|c\+\+|gcc|g\+\+|clang|clang\+\+
                           r"rustc)(?:-[0-9][0-9.]*)?\Z")
 
 
+# File-name endings of patch leftovers (T077, B26): a glob that ends in one of these literal suffixes names only such
+# leftovers. The test-file rule knows names like `test_*`, `*_test.*` and `*_tests.*` and the directories `tests/` and
+# `test/`; a name ending in `.orig` or `.rej` is a leftover of `patch`, never a test or a fixture.
+PATCH_LEFTOVER_SUFFIXES = (".orig", ".rej")  # only for a delete that cannot remove a directory: `recursive_delete`
+_GLOB_CHARS = "*?["
+
+
+def patch_leftover_glob(path):
+    """True when the last component of `path` is a glob whose literal tail (after its last glob character) is a patch
+    leftover suffix, and no earlier component is a glob: `dir/*.orig`, `dir/x*.rej`. Not `*`, `*.or*`, `*.c`,
+    `test_*`, `d*/x.orig` or a plain `x.orig`."""
+    head, _, last = path.rpartition("/")
+    if any(ch in head for ch in _GLOB_CHARS) or not any(ch in last for ch in _GLOB_CHARS):
+        return False
+    tail = last[max(last.rfind(ch) for ch in _GLOB_CHARS) + 1:]
+    return tail.endswith(PATCH_LEFTOVER_SUFFIXES)
+
+
+def recursive_delete(argv):
+    """True unless the command is one that cannot remove a directory tree (T077): `rm` and `git rm` without a
+    recursive flag (`-r`, `-R`, any cluster holding one, `--recursive` or a prefix of it), `rmdir` and `unlink`.
+    Everything else that deletes (`find -delete`, `mv` of a directory, `git clean`) counts as recursive."""
+    name = cmds.name_of(argv[0])
+    args = argv[1:]
+    if name in ("rmdir", "unlink"):
+        return False
+    if name == "git":
+        _, sub, args = cmds.git_parts(argv)
+        if sub != "rm":
+            return True
+    elif name != "rm":
+        return True
+    for arg in args:
+        if arg == "--":
+            break
+        if arg.startswith("--"):
+            if len(arg) >= 5 and "--recursive".startswith(arg.split("=", 1)[0]):
+                return True
+        elif arg.startswith("-") and set(arg[1:]) & {"r", "R"}:
+            return True
+    return False
+
+
 def is_compiler(name):
     return _COMPILER_RE.match(name) is not None
 

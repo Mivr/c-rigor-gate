@@ -6,7 +6,7 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf
 # "all" is shorthand for every one of them.
 
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
@@ -102,7 +102,7 @@ glob = "mutate/**"
 selftests = ["mutate", "grade", "canaries"]
 [[rule]]
 glob = "ctest/**"
-selftests = ["ctest", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure"]
+selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure"]
 [[rule]]
 glob = "examples/**"
 selftests = ["toolchain", "ctest", "product_checks"]
@@ -154,6 +154,9 @@ selftests = ["toolchain"]
 [[rule]]
 glob = "selftest/ctest.sh"
 selftests = ["ctest"]
+[[rule]]
+glob = "selftest/perf.sh"
+selftests = ["perf"]
 [[rule]]
 glob = "selftest/fuzz.sh"
 selftests = ["fuzz"]

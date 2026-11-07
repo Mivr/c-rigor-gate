@@ -89,6 +89,14 @@ def excerpt_around(raw, token):
     return raw[start:start + rules.MAX_EXCERPT]
 
 
+_MKTEMP_FLAGS = re.compile(r"-[duqt]+\Z")
+_MKTEMP_X = re.compile(r"XXX")
+
+
+ARRAY = "[]"  # env key suffix of an array: env["NAME[]"] is the tuple of its elements (T074)
+_ARRAY_CALL_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\[@\]\}")
+
+
 class Prepared:
     __slots__ = ("cmd", "argv", "extra", "words", "group", "cwd", "inner", "wrapped", "job_dir", "job_skip", "clean_env",
                  "prefix_values", "env_values")
@@ -110,6 +118,8 @@ class Prepared:
 
 
 class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin):
+    delete_recursive = True  # whether the delete being judged can remove a tree; `_write_targets` sets it (T077)
+
     def __init__(self, policy, task):
         self.policy = policy
         self.task = task
@@ -135,6 +145,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         self.grade_outputs = set()  # stdout files of grade keep runs, not written by anything else since
         self.call_outputs = set()   # the same for canary keep runs, within the current call only
         self.cmd_env = {}     # the environment the command being analysed sees, as far as it is known (T057)
+        self.binding = False  # expanding the values of a plain assignment (no command on the line, T074)
         self.dirs = set()     # directories the transcript made (mkdir, tar -C, unzip -d): copy targets (T061)
 
     # -- plumbing ----------------------------------------------------------------------------
@@ -218,6 +229,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             return posixpath.dirname(args[0].rstrip("/") or "/") or "."
         if any(w.subs for w in found[0].words):
             return None
+        if name == "mktemp" and self.binding:
+            return self._mktemp(args, env)
         if name == "pwd" and not args:
             return self.cwd
         if name == "git" and args == ["rev-parse", "--show-toplevel"]:
@@ -227,6 +240,38 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if name == "printf" and len(args) >= 2 and args[0] == "%s":
             return "".join(args[1:])
         return None
+
+    def _mktemp(self, args, env):
+        """The path `mktemp` prints, for a plain assignment `NAME=$(mktemp ...)` (T074): a fresh unique name under `-p DIR`, else `$TMPDIR`, else unresolved (not guessed:
+        the real default `/tmp` is outside every lane's scratch, and the lane's own TMPDIR is not visible to the audit). A template
+        keeps its own directory. An option the audit does not model leaves the value unresolved. The result is judged
+        like any other path: `TMPDIR=/etc` or `-p /etc` makes the later uses of it block."""
+        tmpdir, template, relative, index = None, None, False, 0
+        while index < len(args):
+            arg = args[index]
+            index += 1
+            if arg in ("-p", "--tmpdir") and index < len(args):
+                tmpdir, index = args[index], index + 1
+            elif arg.startswith("--tmpdir="):
+                tmpdir = arg[len("--tmpdir="):]
+            elif _MKTEMP_FLAGS.match(arg):
+                relative = relative or "t" in arg
+            elif arg.startswith("-") or template is not None:
+                return None
+            else:
+                template = arg
+        if template is not None and not _MKTEMP_X.search(template):
+            return None  # no run of `XXX`: mktemp fails, prints nothing
+        if tmpdir is None and (relative or template is None):
+            tmpdir = env.get("TMPDIR")
+            if tmpdir is None:
+                return None  # the default is /tmp, but the lane's TMPDIR is not known here: not guessed (T074)
+        if tmpdir is not None and (not tmpdir or UNRESOLVED in tmpdir):
+            return None
+        name = "tmp.XXXXXXXXXX" if template is None else template
+        if tmpdir is None:
+            return None if template is None or UNRESOLVED in self.cwd else posixpath.join(self.cwd, name)
+        return posixpath.join(tmpdir, name)
 
     # -- entry point -------------------------------------------------------------------------
     def bash(self, text, depth=0, env=None):
@@ -350,15 +395,24 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             if rules.SECRET_NAME_RE.fullmatch(name):
                 self.add("secret-env-mention", command.raw, name)
             self._live_secrets(word, command.raw)
+        self.binding = not command.words  # `NAME=$(mktemp ...)` alone on its line is modelled (T074)
+        self._forget_arrays(command, env)
         values = {name: self.expand(word, env) for name, word in command.assigns}
+        self.binding = False
         if not command.words:
             env.update(values)
+            for name, word in command.assigns:  # `NAME=(a b)`: the elements, when all are known (T074)
+                elements = tuple(self.expand(w, env) for w in word.array) if word.array is not None else None
+                if elements is None or any(UNRESOLVED in e for e in elements):
+                    env.pop(name + ARRAY, None)
+                else:
+                    env[name + ARRAY] = elements
             item = Prepared(command, [], [], [], here)
             item.prefix_values = list(values.items())
             return item
         for word in command.words:
             self._live_secrets(word, command.raw)
-        words = [self.expand(word, env) for word in command.words]
+        words = self._words(command, env)
         item = self._unwrapped(command, words, here, values.get("TMPDIR", env.get("TMPDIR")), 0)
         link = item
         while link is not None:  # CMD of `tools/job run` inherits the prefix assignments too
@@ -436,6 +490,26 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
                 self.add("secret-env-access", raw, match.group(0))
 
     # -- analysis ----------------------------------------------------------------------------
+    @staticmethod
+    def _forget_arrays(command, env):
+        """A command that assigns, unsets or reads into an array name makes what the audit knows of it stale (T074):
+        `NAME=x`, `NAME+=(x)`, `unset NAME`, `read -a NAME`, `printf -v NAME`, `declare -a NAME=(...)`, `for NAME in`."""
+        texts = [w.text for w in command.words] + [name for name, _ in command.assigns]
+        for key in [k for k in env if k.endswith(ARRAY)]:
+            name = key[:-len(ARRAY)]
+            if any(t == name or t.startswith((name + "=", name + "+=", name + "[")) for t in texts):
+                del env[key]
+
+    def _words(self, command, env):
+        """The expanded words of a command. A command that starts with a known array, `"${NAME[@]}" ARGS`, starts with
+        its elements (T074); any other use of an array stays what `expand` makes of it (unresolved)."""
+        words = [self.expand(word, env) for word in command.words]
+        first = _ARRAY_CALL_RE.fullmatch(command.words[0].text)
+        elements = env.get(first.group(1) + ARRAY) if first is not None else None
+        if elements:
+            words[:1] = list(elements)
+        return words
+
     def analyze(self, item, flags, depth, env):
         command = item.cmd
         raw = command.raw
@@ -599,6 +673,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             self._note_git_add(argv)
             argv = self.effective_git_argv(argv, self.cmd_env)  # GIT_CONFIG_*, --config-env are `-c` (T057)
             found = cmds.git_hits(argv)
+            if "git-config-override" in found and self.local_submodule(argv):
+                found = [rule for rule in found if rule != "git-config-override"]  # T077
             self.git_taint(argv, found)
             for rule in found:
                 if rule != "cmd-git-main" or not self.git_in_own_clone(argv):
@@ -889,6 +965,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         carried = self._carried_texts(argv, layout)
         if layout is not None and not (layout["dir"] or self.is_dir(layout["text"], layout.get("follow", True))):
             layout = None
+        self.delete_recursive = writers.recursive_delete(argv)
         for index, op, text in writers.write_targets(argv):
             if index < len(argv):
                 indexes.add(index)
@@ -902,6 +979,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
                     self._carry(next(iter(carried.values())) if len(carried) == 1 else None, text)
         if layout is not None and layout["target"] is None:  # `ln -s TARGET` links ./basename(TARGET)
             self.write(writers.into_dir(".", argv[layout["sources"][0]]), "rewrite", raw)
+        self.delete_recursive = True  # any other writer of a delete is judged as able to remove a tree
         if cmds.name_of(argv[0]) == "mkdir":
             self.dirs.update(n for n in (self.policy.normalize(argv[i], self.cwd) for i in indexes) if n)
         return indexes
@@ -1040,7 +1118,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if task.implementer and any(task.is_test(p) for p in probes):
             made = normal in self.created
             if op == "delete" and not made:
-                self.add("tamper-test-delete", raw, token)
+                # `rm dir/*.orig` removes patch leftovers, unless it can remove a directory with tests (T077, B26)
+                if self.delete_recursive or not writers.patch_leftover_glob(rel):
+                    self.add("tamper-test-delete", raw, token)
             elif op == "rewrite" and normal in self.read_set and not made:
                 self.add("tamper-test-rewrite", raw, token)
             elif op == "edit" and not made:
