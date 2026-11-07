@@ -27,6 +27,11 @@ class ExportsCase(TempDirTestCase):
     def test_exact_list_is_green(self):
         self.assertEqual(self.exp(module("L3", ["f", "g"]), [unit(defined=["f"]), unit("b.c.o", defined=["g"])], 0), [])
 
+    def test_the_impl_key_of_the_witness_gates_is_accepted_and_changes_nothing(self):
+        policy = module("L3", ["f"]) + 'impl = ["p/lib.c"]\n'
+        self.assertEqual(self.exp(policy, [unit(defined=["f"])], 0), [])
+        self.assertEqual(self.exp(policy, [unit(defined=["f", "hook"])], 1), [("unexpected-export", "hook")])
+
     def test_a_list_may_be_wider_than_the_module(self):
         self.assertEqual(self.exp(module("L3", ["f", "g"]), [unit(defined=["f"])], 0), [])
 

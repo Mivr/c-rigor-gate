@@ -10,7 +10,7 @@ load("@gate//rules:structure.bzl", "c_structure")
     for n in [
         "clean", "selfrec", "macrorec", "stmtexprrec", "cleanuprec", "asmrec", "aliasrec", "len51", "params7",
         "nest5", "fpcycle", "callbackcycle", "gotos", "stmtnest", "linehide", "packed", "longline", "macrofn",
-        "file501",
+        "file501", "ports", "castcycle", "unprotocycle", "voidcastcycle",
     ]
 ]
 

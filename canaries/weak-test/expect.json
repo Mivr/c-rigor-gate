@@ -4,6 +4,9 @@
   "fail": {
     "mutants": [
       "survived-mutant"
+    ],
+    "mutants-witness": [
+      "witness-survived-mutant"
     ]
   }
 }

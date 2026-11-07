@@ -19,6 +19,9 @@
     "mode-divergence",
     "tests-release",
     "tests-san",
-    "mutants"
+    "tests-stub",
+    "mutants",
+    "witness-tests",
+    "mutants-witness"
   ]
 }

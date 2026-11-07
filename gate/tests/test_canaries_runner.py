@@ -38,6 +38,18 @@ class ScheduleCase(unittest.TestCase):
         self.assertEqual((first, slow, sorted(rest)), ([], [], ["inline-asm", "nolint"]))
 
 
+class WitnessCase(unittest.TestCase):
+    def test_own_bundle_else_shared_base_bundle(self):
+        base = str(ROOT / "canaries" / "_base" / "witness")
+        self.assertEqual(runner.witness_dir("control"), base)
+        self.assertEqual(runner.witness_dir("witness-missing"), str(ROOT / "canaries" / "witness-missing" / "witness"))
+
+    def test_every_bundle_is_a_manifest_and_files(self):
+        for canary_id in runner.list_ids() + ["_base"]:
+            bundle = Path(runner.witness_dir(canary_id)) if canary_id != "_base" else ROOT / "canaries" / "_base" / "witness"
+            self.assertEqual(sorted(p.name for p in bundle.iterdir()), ["files", "witness.toml"], canary_id)
+
+
 class MissCase(unittest.TestCase):
     def test_errored_and_absent_are_misses_pending_is_not(self):
         outcomes = [outcome("a"), outcome("b", ok=False), outcome("c", ok=False, pending="T1")]

@@ -10,9 +10,13 @@
     ],
     "symbols": [
       "policy-module-without-facts"
+    ],
+    "witness-tests": [
+      "missing-test"
     ]
   },
   "not_run": [
-    "mutants"
+    "mutants",
+    "mutants-witness"
   ]
 }

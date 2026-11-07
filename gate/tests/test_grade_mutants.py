@@ -179,45 +179,33 @@ class Levels(TempDirTestCase):
             with self.assertRaises(InternalError, msg=text):
                 grade_policy.load_levels(self.policy(text))
 
-    def test_the_symbol_policy_is_the_same_policy_without_the_levels(self):
-        stripped = self.tmp / "stripped.toml"
-        stripped.write_text(grade_policy.symbol_policy_text(self.policy(self.GOOD)), encoding="utf-8")
-        loaded = facts_policy.load_policy(str(stripped))
+    def test_the_symbols_reader_takes_the_whole_policy_and_ignores_impl(self):
+        text = self.GOOD.replace('level = "L3"', 'level = "L3"\nimpl = ["core/core.c"]')
+        loaded = facts_policy.load_policy(self.policy(text))
         self.assertEqual(loaded.deny, frozenset({"kill"}))
         self.assertEqual(loaded.trusted, frozenset({"gate//ctest:ctest"}))
         self.assertEqual(set(loaded.modules), {"//core:core", "//core:t"})
         self.assertEqual(loaded.modules["//core:core"].allow, frozenset({"memcpy"}))
+        self.assertEqual(loaded.modules["//core:core"].level, "L3")
 
-    def test_the_symbol_policy_keeps_every_other_key_so_that_a_typo_is_still_rejected(self):
-        text = self.GOOD.replace('level = "L3"', 'level = "L3"\nalloww = ["x"]')
-        stripped = self.tmp / "stripped.toml"
-        stripped.write_text(grade_policy.symbol_policy_text(self.policy(text)), encoding="utf-8")
+    def test_a_typo_next_to_impl_is_still_rejected_by_the_symbols_reader(self):
+        text = self.GOOD.replace('level = "L3"', 'level = "L3"\nimpl = ["core/core.c"]\nalloww = ["x"]')
         with self.assertRaises(InternalError):
-            facts_policy.load_policy(str(stripped))
+            facts_policy.load_policy(self.policy(text))
 
-    def test_values_the_policy_never_has_are_refused_not_dropped(self):
-        for text in ('[global]\ndeny = []\nx = 1\n', '[global]\ndeny = [1]\n', '[global]\ndeny = []\n'
-                     '[module."//a:a"]\nallow = {k = "v"}\n'):
-            with self.assertRaises(InternalError, msg=text):
-                grade_policy.symbol_policy_text(self.policy(text))
-
-    def test_strings_with_quotes_survive_the_round_trip(self):
-        text = '[global]\ndeny = ["a\\"b", "c\\\\d"]\n'
-        stripped = self.tmp / "stripped.toml"
-        stripped.write_text(grade_policy.symbol_policy_text(self.policy(text)), encoding="utf-8")
-        self.assertEqual(grade_policy.symbol_policy_text(str(stripped)),
-                         grade_policy.symbol_policy_text(self.policy(text)))
-        import tomllib
-        self.assertEqual(tomllib.loads(stripped.read_text(encoding="utf-8"))["global"]["deny"], ['a"b', "c\\d"])
+    def test_the_document_is_what_the_witness_scope_reads(self):
+        text = self.GOOD.replace('level = "L3"', 'level = "L3"\nimpl = ["core/core.c"]')
+        document = grade_policy.load_document(self.policy(text))
+        self.assertEqual(document["module"]["//core:core"]["impl"], ["core/core.c"])
+        with self.assertRaises(InternalError):
+            grade_policy.load_document(str(self.tmp / "missing.toml"))
 
     def test_the_shipped_policies_load(self):
         for product in ("selftest", "annas-c"):
             path = str(GATE_DIR.parent / "products" / product / "policy.toml")
             levels = grade_policy.load_levels(path)
             self.assertTrue(levels, product)
-            out = self.tmp / (product + ".toml")
-            out.write_text(grade_policy.symbol_policy_text(path), encoding="utf-8")
-            facts_policy.load_policy(str(out))
+            facts_policy.load_policy(path)
 
 
 class WorkDirectory(TempDirTestCase):
@@ -232,21 +220,22 @@ class WorkDirectory(TempDirTestCase):
 
 
 class Gate(TempDirTestCase):
-    def grading(self, status=None):
+    def grading(self, status=None, role="implementer"):
         work = self.sub("work")
         tree = self.sub("work/tree")
         product = self.sub("product") / "product.toml"
-        args = SimpleNamespace(product=str(product), uncached=False, approvals=None)
+        task = self.tmp / "task.toml"
+        task.write_text('id = "t"\nallowed = ["**"]\nrole = "%s"\n' % role, encoding="utf-8")
+        args = SimpleNamespace(product=str(product), uncached=False, approvals=None, task=str(task))
         done = {k: "PASS" for k in ("assemble", "buckfiles", "build", "tests-release", "tests-san")}
         done.update(status or {})
         return SimpleNamespace(args=args, work=str(work), tree=str(tree), src=str(work / "src"), head="",
                                status=done)
 
-    def test_it_is_registered_last_and_in_the_order_file(self):
+    def test_it_is_registered_after_the_tests_and_before_the_witness_gates_and_is_in_the_order_file(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
-        self.assertEqual(ids[-1], "mutants")
-        self.assertEqual(ids[-2:], ["tests-san", "mutants"])
-        self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-1], "mutants")
+        self.assertEqual(ids[-5:], ["tests-san", "tests-stub", "mutants", "witness-tests", "mutants-witness"])
+        self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-5:], ids[-5:])
 
     def test_it_does_not_run_unless_the_tree_was_built_and_every_test_passed(self):
         for gate in ("assemble", "buckfiles", "build", "tests-release", "tests-san"):
@@ -256,6 +245,22 @@ class Gate(TempDirTestCase):
                         mock.patch("rigor_lib.grade_context.kill_daemon"):
                     self.assertIsNone(grade_mutants.mutants_gate(g), (gate, value))
                 layout_mock.assert_not_called()
+
+    def test_role_test_author_is_not_applicable_and_runs_nothing(self):
+        g = self.grading(role="test-author")
+        with mock.patch.object(grade_mutants, "read_layout") as layout_mock, \
+                mock.patch("rigor_lib.grade_build.run_buck") as buck:
+            result = grade_mutants.mutants_gate(g)
+        layout_mock.assert_not_called()
+        buck.assert_not_called()
+        self.assertEqual(result.status, "PASS")
+        self.assertEqual([(f["rule"], f["severity"], f["role"]) for f in result.findings],
+                         [("not-applicable", "info", "test-author")])
+        self.assertEqual(result.metadata["modules"], {})   # nothing a witness reuse could stand in for
+
+    def test_role_test_author_still_needs_a_clean_build_and_present_tests(self):
+        for gate in ("assemble", "buckfiles", "build", "tests-release", "tests-san"):
+            self.assertIsNone(grade_mutants.mutants_gate(self.grading({gate: "FAIL"}, role="test-author")), gate)
 
     def test_a_directory_of_the_product_that_collides_with_the_gate_package_is_an_error(self):
         g = self.grading()

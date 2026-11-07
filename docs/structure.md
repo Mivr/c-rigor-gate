@@ -37,10 +37,13 @@ the build. A header-only module (no sources) has nothing to compile and gets no 
    "functions":[{"name","key","static","file","line","end_line","body_lines","split","macro",
                  "params","nesting","cyclomatic","statements",
                  "calls":[{"to","fp_args","line"}],             // direct calls, macros expanded
-                 "indirect":[{"file","line"}],                  // calls through a value
-                 "refs":[{"to","file","line"}]}],               // the function's address is taken here
-   "refs":[{"to","file","line"}]}]}                             // the same, outside every function (tables)
+                 "indirect":[{"file","line","type"?}],          // calls through a value, with the pointee's type
+                 "refs":[{"to","file","line","type"?}],         // the function's address is taken here
+                 "type"?, "conversions"?:[{"file","line","kind","types"}]}],
+   "refs":[{"to","file","line","type"?}],                       // the same, outside every function (tables)
+   "conversions"?:[...]}]}                                      // function-pointer conversions outside functions
 ```
+The keys marked `?` (T063) are optional so that older facts still read; see "Function types" below.
 * `key` names a function: the link name for external linkage (`mangledName`: an `__asm__("x")` label is honoured,
   an `alias` attribute resolves to its aliasee); `static:FILE:NAME` for a static function.
 * `body_lines` runs from the line of `{` to the line of `}`, both included; `null` with `split: true` when the
@@ -61,6 +64,45 @@ Other keys (`allow`, ...) are not ours and are ignored. A module without `level`
 (and kept in the metadata). Tests and fuzz targets (kind `c_test`, `c_fuzz`) must be present but are not graded.
 Exit 0 / 1 / 2 like every other gate; the result file is replaced by a FAIL on an internal error.
 
+### Function types (T063): which call can reach which function
+The untyped rule (any call through a value reaches any address-taken function) made ports-and-adapters code
+unfixable: every port is a table of function pointers and every adapter calls another port. A call through a value
+of function type T can only reach a function of a type compatible with T (C11 6.5.2.2p9: calling through an
+incompatible type is undefined), unless the program converts a function pointer between types. So:
+
+* **Canonical type** (`structure_scan.Types`): clang prints typedefs resolved only at the top (`desugaredQualType`;
+  `size_t` inside a parameter list stays `size_t`), so the scanner expands every typedef of the translation unit
+  itself (a name defined two ways is *unknown*), drops parameter names and **all** qualifiers (looser than C:
+  `const void *` and `void *` are one type here, which can only add edges), unifies integer spellings
+  (`long unsigned int` = `unsigned_long`) and writes `enum X` as the token `enum`, which `structure_types.compatible`
+  matches with any integer type (C11 6.7.2.2p4). A canonical function type is `RET ( P , P )`, tokens separated by
+  single spaces. A function-pointer typedef is substituted with its stars in the right place (`cb *` is
+  `int ( * * ) ( int )`). Anything the scanner cannot read (array typedefs, unnamed aggregates, an ambiguous
+  typedef) is `null`: unknown, which matches everything.
+* **Call site** `indirect[].type`: the pointee function type of the callee expression. **Function** `type`: the type
+  of its definition; `refs[].type`: the type of the *declaration* the address was taken from (a declaration in
+  another file may disagree with the definition; both count).
+* **Compatible** (`structure_types.compatible`): equal after canonicalisation, enum matching integers; unknown,
+  unprototyped (`int ()`) and variadic types match everything.
+* **Conversions** (`conversions[]`, per function and per unit): `cast` (an implicit or explicit cast that changes the
+  type, or goes between a function pointer, or a pointer to one, and `void *`, an integer or another type;
+  `FunctionToPointerDecay`, `LValueToRValue`, null pointer constants such as `NULL`, and `(void)` are not), `union` (a union with a function
+  pointer, or a struct holding one - an unnamed struct or union member included - and a member of another type), `copy` (`memcpy`/`memmove` between objects of two
+  different types, one of them holding a function pointer, which includes copying it into a byte buffer), `vararg`
+  (`va_arg` of a function pointer type). Each lists the canonical function types involved, or `null` when the
+  scanner could not tell.
+* **Fail closed.** A call site is *untyped*, and reaches every address-taken function as before, when: its type is
+  unknown, unprototyped or variadic; its type is compatible with a type any conversion involves (both ends of a
+  cast, so `f` cast `long(long)` to `int(int)` makes both types untyped); any conversion has `null` types; any
+  function or unit lacks its `conversions` list. An address-taken function of unknown, unprototyped or variadic type
+  may be reached through any pointer type. Each untyped call through a value is reported as info
+  `indirect-untyped-fallback` with its `reason`. Facts with no conversion list anywhere (made before T063) are the
+  untyped rule everywhere, silently. Callbacks handed to outside code (`callback:qsort`) are always untyped.
+* Why no real cycle passes: a cycle through a value needs a call through a pointer holding F. In defined C that
+  pointer's type is compatible with F's (typed edge, kept), or it was converted from F's type (a cast, union, copy or
+  `va_arg`: recorded, both types untyped), or it passed through code the product does not define (callback, kept).
+  What is left is undefined behaviour in C itself (see the limits).
+
 ### Rules (`rigor_lib/structure.py`; limits `rigor_lib/structure_limits.py`, gate-owned)
 | Level | function body | file | params | nesting | cyclomatic | statements\* | longest line\* |
 |---|---|---|---|---|---|---|---|
@@ -75,7 +117,8 @@ once, at the strictest level of the modules whose units contain it (a function i
 | Rule | When |
 |---|---|
 | `recursion` | a cycle in the direct call graph of the whole product (all modules, all translation units): self-recursion, mutual recursion across files and across modules. Names the cycle. **Every level**, L1 included. A callee the product does not define (libc, a dependency's export) is a leaf. Two programs (`c_binary`) may define the same names; each program has its own nodes, a library function is shared. |
-| `indirect-cycle-possible` | L3 (info at L2): module M takes the address of one of its own functions F, some function G of the product makes a call through a value *or passes a function pointer to code the product does not define* (`qsort(.., cmp)`: that code may call back), and F reaches G by direct calls (F = G included). Stricter than the minimum reading: G may be in any module. |
+| `indirect-cycle-possible` | L3 (info at L2): module M takes the address of one of its own functions F, some function G of the product makes a call through a value *or passes a function pointer to code the product does not define* (`qsort(.., cmp)`: that code may call back), F reaches G by direct calls (F = G included), **and the call can reach F by type** (below). Stricter than the minimum reading: G may be in any module. The finding names `path`, the direct calls from F to G. |
+| `indirect-untyped-fallback` | info only: a call through a value that the type rule could not resolve, with the site and the `reason` (below). Not for a callback handed to outside code, which keeps the untyped rule by design. |
 | `function-length`, `parameter-count`, `nesting-depth`, `cyclomatic-complexity`, `statement-count` | over the limit of the level; the finding names the function, `value` and `limit` |
 | `file-length`, `line-length` | every file the compiler read (headers too) over the limit |
 | `split-function-body` | L2/L3: the body is not within one file (an `#include` inside the body) |
@@ -111,8 +154,15 @@ function (`file:line pointer` or `file:line callback:<callee>`), and the address
 ## 4. Known limits (honest list)
 * A function pointer kept in a struct and passed to code outside the product is not seen as a callback (only values
   whose own type is a function pointer, and function names, are). The product's own indirect calls are all listed.
-* `indirect-cycle-possible` is conservative: it cannot tell which functions a pointer may hold. It has no sanction;
-  a module that needs a dispatch table must keep the table's functions from reaching their dispatcher.
+* `indirect-cycle-possible` is conservative: it knows the type of a pointer, not its value. It has no sanction; a
+  module that needs a dispatch table must keep the table's functions from reaching a dispatcher of a compatible type.
+* Type punning that C itself calls undefined is not seen: reading a struct of function pointers through a pointer to
+  another struct type (`(struct b *)(void *)&a`), a copy loop over `unsigned char *` instead of `memcpy`, and
+  `memcpy` called through a pointer. The `void *` cast of a *struct* is not a conversion (it is how every ops table
+  with a context pointer is written); the cast of a function pointer or a pointer to one is. A union is a conversion
+  only when its members' types differ; reading the member last written is not distinguished.
+* Typing is by the scanner's reading of clang's type spelling: a type it cannot canonicalise is unknown (fails closed);
+  the qualifier and enum rules above are looser than C, never stricter.
 * `sizeof(f(x))` and the unselected branches of `_Generic` contribute edges although they are never run: a
   false positive, never a miss.
 * Recursion through `setjmp`/`longjmp`, signals or threads is not a call-graph cycle; those symbols are on the

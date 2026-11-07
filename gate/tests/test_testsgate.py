@@ -436,3 +436,70 @@ class TestsGateErrorTests(ResultsCase):
                    self.write_expected(["s/one"]), "--out", out])
         self.assertEqual(read_json(out)["status"], "FAIL")
         self.assertEqual(read_json(out)["gate"], "tests")
+
+
+class TestsGatePresenceOnlyTests(ResultsCase):
+    """`--presence-only` (role test-author, P002 Q2): statuses are not judged, everything else is."""
+
+    ONLY = ["--presence-only"]
+
+    def test_failing_skipped_and_assertion_free_expected_tests_are_not_judged(self):
+        self.write_file([test_line("s/one", "fail", 0), test_line("s/two", "skip", 0),
+                         test_line("s/three", "pass", 0), summary_line(3, 1)])
+        result = self.assertRules(self.write_expected(["s/one", "s/two", "s/three"]), [], code=0,
+                                  extra=self.ONLY)
+        self.assertEqual(result["status"], "PASS")
+        self.assertIs(result["metadata"]["statuses_judged"], False)
+
+    def test_the_same_results_judged_in_full_fail(self):
+        self.write_file([test_line("s/one", "fail", 0), summary_line(1, 0)])
+        result = self.assertRules(self.write_expected(["s/one"]),
+                                  [("test-not-pass", "s/one"), ("no-assertions", "s/one")])
+        self.assertNotIn("statuses_judged", result["metadata"])
+
+    def test_an_unexpected_failing_test_is_info_with_its_status(self):
+        self.write_file([test_line("s/one"), test_line("s/bad", "fail"), summary_line(2, 1)])
+        result = self.assertRules(self.write_expected(["s/one"]), [("unexpected-test", "s/bad")], code=0,
+                                  extra=self.ONLY)
+        self.assertEqual([(f["severity"], f["status"]) for f in result["findings"]], [("info", "fail")])
+
+    def test_presence_is_still_judged(self):
+        self.write_file([test_line("s/one", "fail"), summary_line(1, 0)])
+        self.assertRules(self.write_expected(["s/one", "s/two"]), [("missing-test", "s/two")], extra=self.ONLY)
+
+    def test_duplicates_are_still_judged(self):
+        self.write_file([test_line("s/one", "fail"), test_line("s/one", "fail"), test_line("s/x", "fail"),
+                         test_line("s/x", "fail"), summary_line(4, 0)])
+        self.assertRules(self.write_expected(["s/one"]), [("duplicate-test", "s/one"), ("duplicate-test", "s/x")],
+                         extra=self.ONLY)
+
+    def test_parse_problems_are_still_judged(self):
+        self.write_file([test_line("s/one", "fail")])
+        self.assertRules(self.write_expected(["s/one"]), [("missing-summary", "a.jsonl")], extra=self.ONLY)
+        (self.results / "a.jsonl").write_bytes(b"")
+        self.assertRules(self.write_expected(["s/one"]),
+                         [("missing-summary", "a.jsonl"), ("missing-test", "s/one")], extra=self.ONLY)
+
+    def test_empty_lists_and_no_results_are_still_judged(self):
+        self.assertRules(self.write_expected(["s/one"]), [("no-results", None), ("missing-test", "s/one")],
+                         extra=self.ONLY)
+        self.write_file([test_line("s/one", "fail"), summary_line(1, 0)])
+        self.assertRules(self.write_expected([]), [("expected-empty", None), ("unexpected-test", "s/one")],
+                         extra=self.ONLY)
+
+    def test_removed_tests_still_need_an_approval(self):
+        self.write_file([test_line("s/one", "fail"), summary_line(1, 0)])
+        previous = self.write_expected(["s/one", "s/gone"], "previous.json")
+        self.assertRules(self.write_expected(["s/one"]), [("test-removed", "s/gone")],
+                         extra=self.ONLY + ["--previous", previous])
+
+    def test_a_non_boolean_option_is_an_internal_error(self):
+        from argparse import Namespace
+        from rigor_lib import tests_gate
+        from rigor_lib.errors import InternalError
+        self.write_good(["s/one"])
+        for value in ("yes", 1, None):
+            with self.subTest(value=value), self.assertRaises(InternalError):
+                tests_gate.run(Namespace(results=str(self.results), expected=str(self.write_expected(["s/one"])),
+                                         previous=None, approvals=None, repo=None, head=None,
+                                         allowed_signers=None, presence_only=value))

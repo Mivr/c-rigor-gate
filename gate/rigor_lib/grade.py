@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-from rigor_lib import grade_context, grade_pipeline, jsonio, product_layout, runner, verdict
+from rigor_lib import approvals, grade_context, grade_pipeline, jsonio, product_layout, runner, verdict
 from rigor_lib import approval_args, verdict_inputs
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
@@ -101,12 +101,24 @@ def file_sha256(path):
     return jsonio.sha256_hex(jsonio.read_bytes(path))
 
 
+def unused_approvals(g, documents):
+    """Verdict-level `unused-approval` info findings (docs/grade.md). Approvals that failed validation
+    are reported by their gates already and are not in `valid`. Without a graded head (the clone gate
+    did not finish) validity cannot be judged and the list is empty; that grade is a FAIL anyway."""
+    if g.args.approvals is None or not g.head:
+        return []
+    loaded = approvals.load_approvals(g.args.approvals, g.src, g.head,
+                                      approval_args.DEFAULT_ALLOWED_SIGNERS)
+    return verdict.unused_approval_findings(loaded.valid, documents)
+
+
 def write_verdict(g):
     """`rigor verdict` over the results, plus the bound inputs (and `uncached`) in the hashed core."""
     order = verdict.parse_order(g.order_bytes)
     documents = verdict.load_results(g.results, order)
     core = verdict.build_core(order, documents)
     core["uncached"] = bool(g.args.uncached)
+    core["unused_approvals"] = unused_approvals(g, documents)
     core["inputs"] = verdict_inputs.build_inputs(g, documents)
     if core["overall"] == verdict.STATUS_PASS and verdict_inputs.missing_inputs(core["inputs"]):
         raise InternalError("a PASS without every input bound: %s"

@@ -1,0 +1,9 @@
+product = "canary"
+
+[module."//core:core"]
+origin = "canaries/bool-function"
+written_against = "0000000000000000000000000000000000000000"
+
+[module."//util:util"]
+origin = "canaries/bool-function"
+written_against = "0000000000000000000000000000000000000000"

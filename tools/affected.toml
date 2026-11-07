@@ -115,9 +115,10 @@ selftests = ["third_party", "grade", "product_checks", "canaries"]
 [[rule]]
 glob = "products/selftest/**"
 selftests = ["grade", "canaries"]
+# The real product: no selftest or canary reads it (T066; test_affected keeps this honest), only the unit tests do.
 [[rule]]
 glob = "products/annas-c/**"
-selftests = ["grade", "canaries"]
+selftests = []
 [[rule]]
 glob = "canaries/**"
 selftests = ["canaries"]

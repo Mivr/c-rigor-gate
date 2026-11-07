@@ -10,6 +10,7 @@
     third_party = ["gate//third_party/mbedtls:mbedtls"]   # gate-owned libraries it may depend on
     level = "L3"                    # L1 is exempt from the exports check; see `exports`
     exports = ["core_add"]          # every external symbol the module may define (T033, gate `symbols`)
+    impl = ["core/core.c"]          # the witness gates' implementation paths (T039); validated there, ignored here
 """
 
 import tomllib
@@ -55,7 +56,7 @@ def _only(where, table, allowed):
 
 def _module(label, table, deny):
     where = "module %s" % label
-    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports"))
+    _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl"))
     level = table.get("level")
     if level is not None and level not in LEVELS:
         raise InternalError("policy: %s level must be one of %s" % (label, ", ".join(LEVELS)))

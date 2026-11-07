@@ -4,6 +4,12 @@
   "fail": {
     "mutants": [
       "unviable-ratio"
+    ],
+    "witness-tests": [
+      "witness-build-failed"
     ]
-  }
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
 }

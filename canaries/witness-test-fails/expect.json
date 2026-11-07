@@ -1,0 +1,12 @@
+{
+  "bypass": "a test the gate-held witness does not satisfy (R003 G1)",
+  "description": "The head adds a strong core_add(1, 1) == 2 check that its own core_add passes; the witness core_add returns a + b + 1, so the test fails on the witness.",
+  "fail": {
+    "witness-tests": [
+      "witness-test-not-pass"
+    ]
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
+}

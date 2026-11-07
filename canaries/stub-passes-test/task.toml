@@ -1,0 +1,3 @@
+id = "canary"
+allowed = ["core/**", "util/**"]
+role = "test-author"

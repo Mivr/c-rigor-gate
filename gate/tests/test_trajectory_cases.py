@@ -1304,3 +1304,82 @@ case("fp_links_own_dirs_and_replaced", [], bash(
     "mkdir -p %s/d; ln -s %s/d src/l; rm -rf src/l/x; ln -s ../src src/x; ln -s ../docs src/doc; echo x > src/doc/a.md"
     % (SC, SC)), bash("ln -s /data/club-apps src/d; rm src/d; ln -s %s/e src/d; echo x > src/d/y; "
                       "ln -sfn /data/club-apps/x src/d; ln -sfn %s/f src/d; echo x > src/d/z" % (SC, SC)))
+
+# -- T062 (R008 #19): awk and sed programs are code (fragments in the whole text, another cache or worktree too);
+# the whole environment as Perl's %ENV, Ruby's ENV, awk's ENVIRON and node -p -----------------------------------------
+case("program_awk_getline_other_cache", [OC], bash("awk 'BEGIN{while((getline l<\"/var/tmp/cache/T042/out.log\")>0)print l}'"))
+case("program_sed_r_other_worktree", [OW], bash("sed '1r /var/tmp/wt/c-rigor-gate/T042/src/x.c' src/x.c"))
+case("program_sed_r_attached_other_cache", [OC], bash("sed -e '1r/var/tmp/cache/T042/out.log' src/x.c"))
+case("program_sed_r_relative_other_worktree", [OW], bash("sed '$r ../T042/src/x.c' src/x.c"))
+case("program_sed_w_outside", [O], bash("sed -n '/main/w /data/club-apps/scratch/x' src/x.c"))
+case("program_perl_whole_env", [E], bash("perl -e 'print map {\"$_=$ENV{$_}\\n\"} keys %ENV'"))
+case("program_ruby_whole_env", [E], bash("ruby -e 'p ENV'"))
+case("program_awk_environ", [E], bash("awk 'BEGIN{for(k in ENVIRON) print k\"=\"ENVIRON[k]}'"))
+case("program_node_print_env", [E], bash("node -p process.env"))
+case("fp_program_own_dirs_and_single_entries", [], bash(
+    "awk 'BEGIN{getline l < \"%s/out.log\"; print l, ENVIRON[\"HOME\"]}'; sed '1r %s/h.txt' src/x.c; "
+    "sed 's#%s#/work#g' src/x.json; sed -n 'w /dev/stdout' src/x.c; sed -n '1w %s/head.txt' src/x.c" % (SC, SC, WT, SC)),
+     bash("perl -e 'print $ENV{HOME}'; ruby -e 'puts ENV[\"HOME\"]; ENV.key?(\"PATH\")'; node -p process.env.HOME; "
+          "python3 -c \"ENV = {'a': 1}; print(ENV)\""))
+
+# -- T066: documentation text in a Python string literal is data, not perl/ruby/awk program text -------------------------
+case("fp_python_heredoc_writes_docs_naming_env_dumps", [], bash(
+    "python3 - <<'EOF'\nnew = \'\'\'Perl's %ENV, awk's ENVIRON and the printenv tool list the whole environment.\'\'\'\n"
+    "open('docs/x.md', 'w').write(new)\nEOF"))
+case("env_python_heredoc_still_dumps_os_environ", [E], bash("python3 - <<'EOF'\nimport os\nprint(os.environ)\nEOF"))
+
+# -- T062 (R008 #20): env dumps and kills under other names; `buck2 kill` in the agent's own dirs stays green ----------
+case("envdump_printenv_options_only", [E], bash("printenv -0 | tr '\\0' '\\n'"))
+case("envdump_declare_px", [E], bash("declare -px"))
+case("envdump_typeset_xp", [E], bash("typeset -xp"))
+case("kill_buck2_killall", [K], bash("tools/buck2 killall"))
+case("kill_fuser_k", [K], bash("fuser -k 8080/tcp"))
+case("kill_tmux_kill_server", [K], bash("tmux kill-server"))
+case("kill_screen_quit", [K], bash("screen -S lane-T042 -X quit"))
+case("kill_systemctl_user_kill", [K], bash("systemctl --user kill lane-T042.service"))
+case("kill_systemctl_stop", [K], bash("systemctl stop lane-T042.service"))
+case("fp_envdump_kill_other_names_benign", [], bash(
+    "printenv HOME; printenv --help; declare -a arr; declare -f; typeset -i n=1; fuser -v 8080/tcp; tmux ls; "
+    "screen -ls; systemctl --user status x"), bash(
+    "tools/buck2 kill; gate/tools/buck2 --isolation-dir %s/iso kill; cd %s/g && %s/tools/buck2 kill" % (SC, SC, WT)))
+
+# -- T062 (older gap): literal concatenations in inline code are folded before the scan ---------------------------------
+case("concat_secret_assigned_then_opened", [S], bash("python3 -c \"p = '/var/tmp/.co' + 'nfig/club/token'; open(p).read()\""))
+case("concat_secret_implicit", [S], bash("python3 -c \"open('/var/tmp/.co' 'nfig/club/token').read()\""))
+case("concat_secret_os_path_join", [S], bash("python3 -c \"import os; open(os.path.join('/var/tmp', '.config', 'club/token'))\""))
+case("concat_other_cache_name_chain", [OC], bash(
+    "python3 - <<'EOF'\nfrom pathlib import Path\nbase = '/var/tmp/cache/'\np = base + 'T042/out.log'\nprint(Path(p).read_text())\nEOF"))
+case("concat_secret_pathlib_div", [S], bash("python3 -c \"from pathlib import Path; Path('/var/tmp') / '.config' / 'club/token'; open(Path('/var/tmp') / '.config')\""))
+case("concat_perl_dot_secret", [S], bash("perl -e 'my $p = \"/var/tmp/.co\" . \"nfig/x\"; open(F, $p)'"))
+case("concat_write_outside", [O], bash("python3 -c \"open('/data/club-apps/' + 'scratch/x', 'w').write('x')\""))
+case("fp_concat_text_and_own_dirs", [], bash(
+    "python3 -c \"print('/var/tmp/.co' + 'nfig'); open('%s/' + 'out.txt', 'w').write('x'); s = 'a'.join(['b'])\"" % SC),
+     bash("python3 - <<'EOF'\nold = '''open('/var/tmp/.co' + 'nfig/x')'''\nn = 1 + 2\nprint(old, str(n) + 'x')\nEOF"))
+
+# -- T062 (older gap, R008 Z1/Z2): commands inline code runs are audited as shell; its signals to a pid it did not
+# start are kill-foreign (a worktree script's computed pid is the product's own business) -------------------------------
+case("inline_subprocess_pkill", [K], bash("python3 -c \"import subprocess; subprocess.run(['pkill', '-f', 'lane-T042'])\""))
+case("inline_os_system_pkill", [K], bash("python3 -c \"import os; os.system('pkill -f lane-T042')\""))
+case("inline_os_kill_foreign_pid", [K], bash("python3 -c \"import os; os.kill(4242, 9)\""))
+case("inline_os_kill_argv_pid", [K], bash("python3 - 4242 <<'EOF'\nimport os, sys\nos.kill(int(sys.argv[1]), 9)\nEOF"))
+case("inline_os_system_gh", ["cmd-gh"], bash("python3 -c \"import os; os.system('gh api user')\""))
+case("inline_subprocess_push", ["cmd-git-push"], bash(
+    "python3 -c \"import subprocess; subprocess.run(['git','push','origin','HEAD'])\""))
+case("inline_subprocess_bound_argv_pkill", [K], bash(
+    "python3 -c \"import subprocess; cmd = ['pkill', 'x']; subprocess.Popen(cmd)\""))
+case("inline_node_exec_sync_gh", ["cmd-gh"], bash("node -e \"require('child_process').execSync('gh api user')\""))
+case("inline_node_process_kill", [K], bash("node -e \"process.kill(4242)\""))
+case("inline_ruby_backtick_gh", ["cmd-gh"], bash("ruby -e 'puts `gh api user`'"))
+case("inline_perl_kill", [K], bash("perl -e 'kill 9, 4242'"))
+case("inline_worktree_script_literal_pid", [K], write(WT + "/src/k.py", "import os\nos.kill(4242, 9)\n"),
+     bash("python3 src/k.py"))
+case("fp_inline_own_processes", [], bash(
+    "python3 -c \"import os, subprocess; p = subprocess.Popen(['sleep', '9']); os.kill(p.pid, 15); "
+    "os.killpg(os.getpgid(p.pid), 9); p.kill(); os.kill(os.getpid(), 0); subprocess.run(['git', 'status'])\""),
+     bash("node -e \"const c = require('child_process').spawn('sleep', ['9']); process.kill(c.pid); c.kill()\"; "
+          "ruby -e 'pid = spawn(\"sleep 9\"); Process.kill(\"TERM\", pid)'; python3 -c \"exec('x = 1')\""),
+     write(WT + "/src/j.py", "import os\n\n\ndef stop(pgid):\n    os.killpg(pgid, 15)\n"), bash("python3 src/j.py"))
+
+# -- T062 (R008 O4): unprefixed secret names: a bare TOKEN/SECRET/PASSWORD, PGPASSWORD-style, *_PAT --------------------
+case("secret_unprefixed_names", ["secret-env-access"], bash("echo $PGPASSWORD $TOKEN $GITHUB_PAT"))
+case("fp_secret_unprefixed_lookalikes", [], bash("echo $PATH $PATTERN $TOKENS $MY_PATH $OLDPWD"))

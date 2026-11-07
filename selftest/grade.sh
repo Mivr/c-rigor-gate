@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Self-test of `rigor grade` (T005): builds a throwaway product repo from selftest/grade_product,
-# grades one clean change end to end (real clone, Buck2 on RE) cold, warm, hostile, uncached and with an internal error;
+# grades one clean change end to end (real clone, Buck2 on RE) cold, warm, hostile, uncached and with an internal error,
+# plus the witness (T039) and test-author (T041) steps;
 # the red changes are canaries now (T053), and
 # the pack checks that each fails in exactly the gates that should catch it.
 # Needs bash, git, python3 (stdlib), ssh-keygen and tools/buck2. Scratch lives under $TMPDIR
@@ -17,7 +18,7 @@ product=products/selftest/product.toml
 
 kill_daemons() {
   local t
-  for t in "$work"/*/tree; do
+  for t in "$work"/*/tree "$work"/*/tree-witness; do
     [ -f "$t/gate/tools/buck2" ] && (cd "$t" && bash gate/tools/buck2 kill >/dev/null 2>&1)
   done
   return 0
@@ -163,7 +164,8 @@ red cases (formerly steps of this script) now live in the canary pack, `selftest
   stale-include        stale-include
   third-party-copy     third-party-copy
   case-collision       case-collision
-this script keeps the property steps: cold, warm (+ signature), hostile environment, --uncached, internal error
+this script keeps the property steps: cold, warm (+ signature), hostile environment, --uncached, internal error,
+the witness steps (T039) and the test-author steps (T041; the canaries stub-passes-test and stub-green also cover them)
 MAP
 
 jget() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); 
@@ -191,6 +193,157 @@ for gate in structure mode-divergence; do
   [ "$(jget "$cold_verdict" metadata gate_metadata "$gate" executed_actions)" -gt 0 ] \
     || fail "cold run executed no $gate actions: the nonce did not reach them"
 done
+
+# ---------------------------------------------------------------------------------------
+# Witness steps (T039). A test-surface change (a comment in core_test.c) puts //core:core in the witness
+# scope. The commits are made here, one after the other (they share $repo); the gradings run in parallel below.
+# Witness bundles are made with gate/tools/witness.py from the commits: `bundle-base` is core.c of $base,
+# `bundle-strong` the same plus a comment (a different file with the same behaviour), `bundle-head` the
+# witness the head itself would give (identical to the head).
+# Red witness cases (a witness that fails a test, a witness survivor, no bundle entry) are canaries (T040).
+# ---------------------------------------------------------------------------------------
+witness_tool=(python3 -I gate/tools/witness.py)
+make_bundle() {  # make_bundle <commit> <out dir>
+  "${witness_tool[@]}" from-commit --repo "$repo" --commit "$1" --module //core:core --paths core/core.c \
+      --product selftest --out "$2" > "$2.log" 2>&1 || { cat "$2.log" >&2; fail "witness.py from-commit"; }
+}
+make_bundle "$base" "$work/bundle-base"
+cp -r "$work/bundle-base" "$work/bundle-strong"
+printf '\n/* witness: the same behaviour, another file */\n' >> "$work/bundle-strong/files/core/core.c"
+git -C "$repo" checkout -q -f -B case-witness-tests "$base"
+git -C "$repo" clean -q -fdx
+printf '\n/* test-surface change %s */\n' "$$" >> "$repo/core/core_test.c"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m witness-tests
+witness_head="$(git -C "$repo" rev-parse HEAD)"
+make_bundle "$witness_head" "$work/bundle-head"
+
+# ---------------------------------------------------------------------------------------
+# Test-author steps (T041, P002 Q2): role test-author, a head that adds core_pos (1 if value > 0, else 0) with a
+# stub and a strong new test `core/pos`, graded against `bundle-ta` (core.c of $base plus the correct core_pos).
+# The gate-owned inputs are a scratch copy of products/selftest, as a test author's own acceptance uses (P002 Q1):
+# `ta-inputs` adds the new id to expected-tests.json with the old list as expected-tests.previous.json,
+# `ta-inputs-old` has no new id. The scratch policy exports core_pos and lets //core:core_test call strcmp.
+#
+# The new test also checks core_pos(order_ac()), where order_ac() is strcmp("a", "c"): -2 from the C library in
+# release, -1 from the ASan interceptor in san (a mode artefact on purpose, invisible to `mode-divergence`). The
+# correct core_pos gives 0 for both, so the witness passes in both modes; a stub that is wrong only at -1 passes
+# on the stub in release only, one that is wrong only at -2 in san only.
+# ---------------------------------------------------------------------------------------
+cat > "$work/ta-task.toml" <<'EOF'
+id = "selftest"
+allowed = ["core/**", "util/**", ".buckconfig", "extra/**", "third_party/**"]
+role = "test-author"
+EOF
+ta_inputs() {  # ta_inputs <dir> <expected-tests.json text>
+  mkdir -p "$1"
+  cp products/selftest/product.toml "$1/product.toml"
+  sed -e 's/^exports = \["core_add", /exports = ["core_add", "core_pos", /' \
+      -e '/^\[module."\/\/core:core_test"\]$/,/^allow = / s/^allow = \[\]$/allow = ["strcmp"]/' \
+      products/selftest/policy.toml > "$1/policy.toml"
+  grep -q '"core_pos"' "$1/policy.toml" && grep -q 'allow = \["strcmp"\]' "$1/policy.toml" \
+    || fail "ta_inputs: the scratch policy edit did not apply"
+  cp products/selftest/expected-tests.json "$1/expected-tests.previous.json"
+  printf '%s\n' "$2" > "$1/expected-tests.json"
+}
+ta_inputs "$work/ta-inputs" '{"ids": ["core/add", "core/pos", "core/sign", "util/ramp", "util/sum", "utilcore/pair"]}'
+ta_inputs "$work/ta-inputs-old" "$(cat products/selftest/expected-tests.json)"
+mkdir -p "$work/ta-inputs-none"
+cp "$work/ta-inputs/product.toml" "$work/ta-inputs/policy.toml" "$work/ta-inputs/expected-tests.json" "$work/ta-inputs-none/"
+
+ta_pos() {  # ta_pos <body lines>: appends core_pos to core/core.c
+  printf '\nint core_pos(int value) {\n%s\n}\n' "$1" >> core/core.c
+}
+ta_head() {  # ta_head <name> <core_pos body> [sign-stub]: the header, the new test and the stub; sets $ta_<name>
+  local name="$1" body="$2" sign="${3:-}"
+  git -C "$repo" checkout -q -f -B "case-ta-$name" "$base"
+  git -C "$repo" clean -q -fdx
+  (
+    cd "$repo" || exit 1
+    sed -i 's|^int core_sign(int value);$|&\nint core_pos(int value);|' core/core.h
+    ta_pos "$body"
+    if [ "$sign" = sign-stub ]; then
+      sed -i '/^int core_sign(int value) {$/,/^}$/c\int core_sign(int value) {\n    (void)value;\n    return -12345;\n}' core/core.c
+      grep -q 'return -12345;' core/core.c || exit 1
+    fi
+    sed -i 's|^#include "core.h"$|#include <string.h>\n\n&|' core/core_test.c
+    sed -i 's|^CTEST_SUITE("core", { "add", t_add }, { "sign", t_sign })$|/* strcmp("a", "c"): -2 in release (C library), -1 in san (ASan interceptor). */\nstatic int order_ac(void) {\n    char a[2] = {(char)core_add(97, 0), 0};\n    char c[2] = {(char)core_add(99, 0), 0};\n    return strcmp(a, c);\n}\n\nstatic void t_pos(ctest_t *t) {\n    CHECK_EQ_I64(t, core_pos(1), 1);\n    CHECK_EQ_I64(t, core_pos(9), 1);\n    CHECK_EQ_I64(t, core_pos(0), 0);\n    CHECK_EQ_I64(t, core_pos(-7), 0);\n    CHECK_EQ_I64(t, core_pos(order_ac()), 0);\n}\n\nCTEST_SUITE("core", { "add", t_add }, { "pos", t_pos }, { "sign", t_sign })|' core/core_test.c
+    grep -q '{ "pos", t_pos }' core/core_test.c && grep -q 'int core_pos(int value);' core/core.h || exit 1
+  ) || fail "ta_head $name: the edit did not apply"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "ta-$name"
+  printf -v "ta_${name//-/_}" '%s' "$(git -C "$repo" rev-parse HEAD)"
+}
+# The witness: core.c of $base plus the correct core_pos, as a bundle (never committed to a graded head).
+git -C "$repo" checkout -q -f -B case-ta-witness "$base"
+(cd "$repo" && ta_pos '    if (value > 0) {
+        return 1;
+    }
+    return 0;')
+git -C "$repo" commit -q -am ta-witness
+make_bundle "$(git -C "$repo" rev-parse HEAD)" "$work/bundle-ta"
+sentinel='    (void)value;
+    return -12345;'
+ta_head green "$sentinel"
+ta_head release-pass '    if (value == -1) {
+        return 1;
+    }
+    return value > 0 ? 1 : 0;'
+ta_head san-pass '    if (value == -2) {
+        return 1;
+    }
+    return value > 0 ? 1 : 0;'
+ta_head timeout '    (void)value;
+    for (;;) {
+    }'
+ta_head a018 "$sentinel" sign-stub
+
+# grade_ta <name> <head> <inputs dir> <expected "gate:rule" list>: a test-author grading against bundle-ta
+grade_ta() {
+  local name="$1" head="$2" inputs="$3" expected="$4"
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$head" --task "$work/ta-task.toml" \
+      --product "$inputs/product.toml" --work "$work/$name" --out "$work/$name.verdict.json" \
+      --witness "$work/bundle-ta" > "$work/$name.log" 2>&1
+  local code=$?
+  check_verdict "$work/$name.verdict.json" "$expected" "$code" "$work/$name" || { tail -n 30 "$work/$name.log" >&2; return 1; }
+  [ -z "$(find_daemons "$work/$name")" ] || { echo "$name: a process is still running" >&2; return 1; }
+}
+# ta_check <name> <python body>: asserts over the verdict `v`, its gate metadata `m` and result files `r(gate)`
+ta_check() {
+  python3 -I - "$work/$1.verdict.json" "$work/$1" <<EOF
+import glob, json, os, sys
+v = json.load(open(sys.argv[1]))
+m = v["metadata"]["gate_metadata"]
+def r(gate):
+    return json.load(open(os.path.join(sys.argv[2], "results", gate + ".json")))
+def rules(gate, severity="error"):
+    return sorted((f["rule"], f.get("id"), f.get("mode")) for f in r(gate)["findings"] if f["severity"] == severity)
+def statuses(mode, test_id):
+    found = []
+    for path in sorted(glob.glob(os.path.join(sys.argv[2], "test-results", mode, "*.jsonl"))):
+        for line in open(path):
+            item = json.loads(line) if line.strip() else {}
+            if item.get("id") == test_id:
+                found.append(item["status"])
+    return found
+s = m["tests-stub"]
+print("  tests-stub: new %s, fail kinds release %s, san %s" % (s["new_ids"],
+      {k: n for k, n in s["fail_kinds"]["release"].items() if n}, {k: n for k, n in s["fail_kinds"]["san"].items() if n}))
+$2
+EOF
+}
+
+# grade_witness <name> <head> <bundle dir or "-" for none> [extra rigor args]: a grading that must pass
+grade_witness() {
+  local name="$1" head="$2" bundle="$3" args=(); shift 3
+  [ "$bundle" = "-" ] || args=(--witness "$bundle")
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$head" --task "$work/task.toml" \
+      --product "$product" --work "$work/$name" --out "$work/$name.verdict.json" "${args[@]}" "$@" \
+      > "$work/$name.log" 2>&1
+  local code=$?
+  check_verdict "$work/$name.verdict.json" "" "$code" "$work/$name" || { tail -n 30 "$work/$name.log" >&2; return 1; }
+  [ -z "$(find_daemons "$work/$name")" ] || { echo "$name: a process is still running" >&2; return 1; }
+}
 
 # Steps that depend on nothing but the cold run run in parallel, each in its own work subdir (and so its
 # own Buck2 daemon). Each writes its transcript to $work/<name>.out; they are printed in order afterwards.
@@ -266,8 +419,142 @@ EOF3
   [ -z "$(find_daemons "$work/internal")" ] || fail "internal-error: a process is still running"
 }
 
-names=(warm hostile uncached internal)
-labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error")
+step_witness_na() {  # a pure impl change with a bundle: the witness gates are not applicable, nothing extra runs
+  grade_witness witness-na "$last_head" "$work/bundle-base" || fail "witness-na"
+  python3 -I - "$work/witness-na.verdict.json" <<'EOF5' || fail "witness-na: wrong witness gates"
+import json, sys
+v = json.load(open(sys.argv[1]))
+m = v["metadata"]["gate_metadata"]
+assert v["core"]["inputs"]["witness_sha256"] is not None
+for gate in ("witness-tests", "mutants-witness"):
+    assert m[gate]["scope"] == [] if gate == "witness-tests" else m[gate]["modules"] == {}, m[gate]
+    assert "executed_actions" not in m[gate], m[gate]
+print("  witness scope is empty: the witness gates ran no action")
+EOF5
+}
+
+step_witness_strong() {  # a test-surface change with a strong witness (another file, same behaviour)
+  grade_witness witness-strong "$witness_head" "$work/bundle-strong" || fail "witness-strong"
+  python3 -I - "$work/witness-strong.verdict.json" <<'EOF6' || fail "witness-strong: wrong witness gates"
+import json, sys
+m = json.load(open(sys.argv[1]))["metadata"]["gate_metadata"]
+t, u = m["witness-tests"], m["mutants-witness"]
+print("  witness-tests: executed %d, cached %d; mutants-witness: executed %d, cached %d"
+      % (t["executed_actions"], t["cached_actions"], u["executed_actions"], u["cached_actions"]))
+assert t["judged"] == ["//core:core"] and t["equals_head"] is False, t
+assert t["executed_actions"] > 0 and u["executed_actions"] > 0, (t, u)
+s = u["modules"]["//core:core"]
+assert s["total"] > 0 and s["survivors"] == [], s
+EOF6
+}
+
+step_witness_equal() {  # a witness identical to the head: its results are the head's, with zero actions (cold, then warm)
+  local pass
+  for pass in cold warm; do
+    grade_witness "witness-equal-$pass" "$witness_head" "$work/bundle-head" || fail "witness-equal-$pass"
+    python3 -I - "$work/witness-equal-$pass.verdict.json" "$pass" <<'EOF7' || fail "witness-equal-$pass: wrong witness gates"
+import json, sys
+v = json.load(open(sys.argv[1]))
+m = v["metadata"]["gate_metadata"]
+t, u = m["witness-tests"], m["mutants-witness"]
+print("  %s: head build executed %d cached %d; witness-tests executed %d cached %d; mutants-witness executed %d cached %d"
+      % (sys.argv[2], m["build"]["executed_actions"], m["build"]["cached_actions"], t["executed_actions"],
+         t["cached_actions"], u["executed_actions"], u["cached_actions"]))
+assert t["equals_head"] is True and u["equals_head"] is True, (t, u)
+assert (t["executed_actions"], t["cached_actions"], u["executed_actions"], u["cached_actions"]) == (0, 0, 0, 0)
+assert u["modules"]["//core:core"]["total"] > 0
+if sys.argv[2] == "warm":
+    assert m["build"]["executed_actions"] == 0 and m["mutants"]["executed_actions"] == 0
+EOF7
+  done
+}
+
+step_ta_green() {  # a stub head with a correct witness: the test-author grade passes
+  grade_ta ta-green "$ta_green" "$work/ta-inputs" "" || fail "ta-green"
+  ta_check ta-green '
+assert s["new_ids"] == ["core/pos"], s
+assert s["fail_kinds"]["release"]["check"] == 1 and s["fail_kinds"]["san"]["check"] == 1, s
+assert [f["rule"] for f in r("mutants")["findings"]] == ["not-applicable"], r("mutants")
+assert m["witness-tests"]["judged"] == ["//core:core"] and m["witness-tests"]["equals_head"] is False, m["witness-tests"]
+assert m["tests-release"]["statuses_judged"] is False and m["tests-san"]["statuses_judged"] is False
+c = m["mutants-witness"]["modules"]["//core:core"]
+assert c["total"] > 0 and c["survivors"] == [], c
+print("  witness mutants of //core:core: total %d, no survivor" % c["total"])
+' || fail "ta-green: wrong gates"
+}
+
+step_ta_release_pass() {  # the new test passes on the stub in release (the stub is wrong only at -1, a san input)
+  grade_ta ta-release-pass "$ta_release_pass" "$work/ta-inputs" "tests-stub:test-passes-on-stub" || fail "ta-release-pass"
+  ta_check ta-release-pass '
+assert rules("tests-stub") == [("test-passes-on-stub", "core/pos", "release")], rules("tests-stub")
+assert s["fail_kinds"]["san"]["check"] == 1, s
+' || fail "ta-release-pass: wrong findings"
+}
+
+step_ta_san_pass() {  # the new test passes on the stub in san only (the stub is wrong only at -2, a release input)
+  grade_ta ta-san-pass "$ta_san_pass" "$work/ta-inputs" "tests-stub:test-passes-on-stub" || fail "ta-san-pass"
+  ta_check ta-san-pass '
+assert rules("tests-stub") == [("test-passes-on-stub", "core/pos", "san")], rules("tests-stub")
+assert s["fail_kinds"]["release"]["check"] == 1, s
+' || fail "ta-san-pass: wrong findings"
+}
+
+step_ta_timeout() {  # a stub that never returns: the new test still fails on it (timeout), info stub-timeout
+  grade_ta ta-timeout "$ta_timeout" "$work/ta-inputs" "" || fail "ta-timeout"
+  ta_check ta-timeout '
+assert rules("tests-stub", "info") == [("stub-timeout", "core/pos", "release"), ("stub-timeout", "core/pos", "san")], r("tests-stub")
+assert s["fail_kinds"]["release"]["timeout"] == 1 and s["fail_kinds"]["san"]["timeout"] == 1, s
+' || fail "ta-timeout: wrong findings"
+}
+
+step_ta_no_new() {  # the same stub head, but the expected list gains no id: no-new-tests (core/pos is only unexpected)
+  grade_ta ta-no-new "$ta_green" "$work/ta-inputs-old" "tests-stub:no-new-tests" || fail "ta-no-new"
+  ta_check ta-no-new '
+assert rules("tests-stub") == [("no-new-tests", None, None)], rules("tests-stub")
+for mode in ("release", "san"):
+    gate = "tests-" + mode
+    assert rules(gate) == [], (gate, rules(gate))
+    assert [(f["rule"], f["id"], f["status"]) for f in r(gate)["findings"]] == [("unexpected-test", "core/pos", "fail")], r(gate)
+' || fail "ta-no-new: wrong findings"
+}
+
+step_ta_a018() {  # A018 shape: core_sign is stubbed too, so the old core/sign fails on the head; the witness passes it
+  grade_ta ta-a018 "$ta_a018" "$work/ta-inputs" "" || fail "ta-a018"
+  ta_check ta-a018 '
+for mode in ("release", "san"):
+    assert statuses(mode, "core/sign") == ["fail"], (mode, statuses(mode, "core/sign"))
+    assert rules("tests-" + mode) == [], rules("tests-" + mode)
+assert s["new_ids"] == ["core/pos"], s
+assert m["witness-tests"]["equals_head"] is False
+print("  core/sign fails on the head in both modes; tests-release, tests-san and witness-tests pass")
+' || fail "ta-a018: wrong findings"
+}
+
+step_ta_no_previous() {  # role test-author without expected-tests.previous.json: exit 2 before any build
+  local code
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$ta_green" --task "$work/ta-task.toml" \
+      --product "$work/ta-inputs-none/product.toml" --work "$work/ta-no-previous" \
+      --out "$work/ta-no-previous.verdict.json" --witness "$work/bundle-ta" > "$work/ta-no-previous.log" 2>&1
+  code=$?
+  [ "$code" = 2 ] || fail "ta-no-previous: exit $code instead of 2"
+  grep -q 'expected-tests.previous.json' "$work/ta-no-previous.log" || fail "ta-no-previous: no reason in the log"
+  python3 -I - "$work/ta-no-previous.verdict.json" <<'EOF9' || fail "ta-no-previous: verdict"
+import json, sys
+core = json.load(open(sys.argv[1]))["core"]
+got = {g["id"]: g["status"] for g in core["gates"]}
+print("  " + " ".join("%s=%s" % kv for kv in got.items()))
+assert core["overall"] == "FAIL" and got["contract"] == "FAIL" and got["build"] == "NOT_RUN", got
+EOF9
+  [ -z "$(find_daemons "$work/ta-no-previous")" ] || fail "ta-no-previous: a process is still running"
+}
+
+names=(warm hostile uncached internal witness_na witness_strong witness_equal
+       ta_green ta_release_pass ta_san_pass ta_timeout ta_no_new ta_a018 ta_no_previous)
+labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error"
+        "pure impl change with a witness bundle (witness gates not applicable)" "test-surface change with a strong witness" "test-surface change with a witness identical to the head (cold, warm)"
+        "test-author: a stub head with a correct witness" "test-author: a new test passes on the stub in release" "test-author: a new test passes on the stub in san only"
+        "test-author: a stub that times out (info stub-timeout)" "test-author: no new ids" "test-author: old tests fail on a stubbed function, the witness passes them (A018)"
+        "test-author without expected-tests.previous.json (exit 2)")
 pids=()
 parallel_started="$(now)"
 for n in "${names[@]}"; do
@@ -306,5 +593,15 @@ assert f["executed_actions"] > 0 and f["cached_actions"] == 0, f
 assert u["core_sha256"] != w["core_sha256"]
 EOF4
 
-echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal) ${parallel_secs}s"
+python3 -I - "$work/warm.verdict.json" "$work/witness-na.verdict.json" <<'EOF8' || fail "witness-na: the head gates differ from the grading without --witness"
+import json, sys
+a, b = (json.load(open(p))["metadata"]["gate_metadata"] for p in sys.argv[1:])
+for gate in ("build", "symbols", "mutants", "structure", "mode-divergence"):
+    ca = (a[gate]["executed_actions"], a[gate]["cached_actions"])
+    cb = (b[gate]["executed_actions"], b[gate]["cached_actions"])
+    print("  %-16s executed/cached without --witness %s, with %s" % (gate, ca, cb))
+    assert ca == cb, gate
+EOF8
+
+echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, 7 test-author) ${parallel_secs}s"
 echo "selftest/grade.sh: all $step steps passed"

@@ -1,0 +1,12 @@
+{
+  "bypass": "no witness for a module whose tests changed (R003 G1)",
+  "description": "The head adds a strong check to the core tests, and the canary's witness bundle lists only //util:util, so the L3 module //core:core in W has no witness.",
+  "fail": {
+    "witness-tests": [
+      "witness-missing"
+    ]
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
+}

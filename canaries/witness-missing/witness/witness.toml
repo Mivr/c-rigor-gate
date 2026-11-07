@@ -1,0 +1,5 @@
+product = "canary"
+
+[module."//util:util"]
+origin = "canaries/witness-missing"
+written_against = "0000000000000000000000000000000000000000"

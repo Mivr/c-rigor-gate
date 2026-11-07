@@ -1,0 +1,5 @@
+product = "canary"
+
+[module."//core:core"]
+origin = "canaries/stub-passes-test"
+written_against = "0000000000000000000000000000000000000000"

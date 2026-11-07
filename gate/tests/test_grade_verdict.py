@@ -7,7 +7,7 @@ import subprocess
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import grade, jsonio, verdict, witness_bundle
+from rigor_lib import approvals, grade, jsonio, verdict, witness_bundle
 from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase, base_env, read_json, run_rigor
 from tests.test_verdict_inputs import Fixture, HEAD, GATE, WITNESS_FIXTURE
@@ -312,3 +312,68 @@ class GradeWitnessOption(TempDirTestCase):
         self.assertIn("witness.toml", outcome.stderr)
         self.assertFalse(self.out.exists())
         self.assertEqual(os.listdir(self.work / "results"), [])
+
+
+def approval(stem, kind="equivalent-mutant", scope="mutants/core#abc123"):
+    return approvals.Approval(kind, scope, "why", "a" * 40, stem)
+
+
+class UnusedApprovals(GradeVerdict):
+    """T068: valid approvals no gate used are verdict-level `unused-approval` info findings."""
+
+    def graded(self, valid, used=(), drop=(), approvals_dir="/a"):
+        g = self.grading()
+        g.args.approvals, g.src, g.head = approvals_dir, "/src", "a" * 40
+        doc = {"gate": "mutants", "status": "PASS", "findings": [],
+               "metadata": {"approvals_used": list(used)}}
+        (self.results / "mutants.json").write_text(json.dumps(doc))
+        for gate_id in drop:
+            (self.results / (gate_id + ".json")).unlink()
+        with mock.patch.object(grade.approvals, "load_approvals",
+                               return_value=approvals.ApprovalSet(valid, [])) as load:
+            code = grade.write_verdict(g)
+        return code, read_json(self.out)["core"], load
+
+    def test_an_approval_no_gate_used_is_reported_as_info_and_the_verdict_still_passes(self):
+        # the T058 drift shape: the body changed, the mutant id no longer exists, nothing used the approval
+        code, core, load = self.graded([approval("s1")], used=[])
+        self.assertEqual((code, core["overall"]), (0, "PASS"))
+        self.assertEqual(core["unused_approvals"], [{
+            "rule": "unused-approval", "severity": "info", "kind": "equivalent-mutant", "stem": "s1",
+            "scope": "mutants/core#abc123", "reason": "not_used"}])
+        self.assertEqual(load.call_args.args[:3], ("/a", "/src", "a" * 40))
+
+    def test_a_used_approval_is_not_reported_and_the_rest_are_sorted(self):
+        _, core, _ = self.graded([approval("s2"), approval("s1"), approval("s3")], used=["s2"])
+        self.assertEqual([item["stem"] for item in core["unused_approvals"]], ["s1", "s3"])
+
+    def test_a_gate_that_did_not_run_makes_the_report_fail_closed(self):
+        _, core, _ = self.graded([approval("s1"), approval("s2")], used=["s2"], drop=["witness-tests"])
+        self.assertEqual([(i["stem"], i["reason"]) for i in core["unused_approvals"]],
+                         [("s1", "gate_not_run")])
+        self.assertEqual(core["overall"], "FAIL")
+
+    def test_the_entry_is_covered_by_the_core_hash(self):
+        _, with_entry, _ = self.graded([approval("s1")])
+        document = read_json(self.out)
+        self.assertEqual(document["core_sha256"], jsonio.sha256_hex(jsonio.canonical_dumps(with_entry)))
+        stripped = dict(with_entry, unused_approvals=[])
+        self.assertNotEqual(jsonio.sha256_hex(jsonio.canonical_dumps(stripped)), document["core_sha256"])
+
+    def test_invalid_approvals_are_not_double_reported(self):
+        g = self.grading()
+        g.args.approvals, g.src, g.head = "/a", "/src", "a" * 40
+        forged = approvals.ApprovalSet([], [{"rule": "forged-approval", "severity": "error"}])
+        with mock.patch.object(grade.approvals, "load_approvals", return_value=forged):
+            grade.write_verdict(g)
+        self.assertEqual(read_json(self.out)["core"]["unused_approvals"], [])
+
+    def test_without_approvals_or_a_head_the_list_is_empty(self):
+        self.assertEqual(grade.write_verdict(self.grading()), 0)
+        self.assertEqual(read_json(self.out)["core"]["unused_approvals"], [])
+        g = self.grading()
+        g.args.approvals, g.head = "/a", ""
+        with mock.patch.object(grade.approvals, "load_approvals") as load:
+            grade.write_verdict(g)
+        load.assert_not_called()
+        self.assertEqual(read_json(self.out)["core"]["unused_approvals"], [])
