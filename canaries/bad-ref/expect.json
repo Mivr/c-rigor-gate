@@ -17,6 +17,7 @@
     "symbols",
     "build",
     "structure",
+    "layering",
     "mode-divergence",
     "tests-release",
     "tests-san",
