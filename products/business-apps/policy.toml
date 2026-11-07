@@ -603,7 +603,8 @@ exports = ["main"]
 [module."//lib/io/posix_clock:posix_clock"]
 level = "L2"
 impl = ["lib/io/posix_clock/src/**"]
-allow = ["__errno_location", "clock_gettime"]
+allow = ["__errno_location"]
+deny_exempt = ["clock_gettime"]
 exports = ["posix_clock_faults", "posix_clock_init", "posix_clock_init_real", "posix_clock_port",
     "posix_clock_set_wall_offset", "posix_clock_sys_libc", "posix_wall_port"]
 
