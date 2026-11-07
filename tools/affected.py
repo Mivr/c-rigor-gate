@@ -16,7 +16,7 @@ import tomllib
 
 ALL = (
     "gate", "grade", "mutate", "structure", "product_checks", "toolchain", "ctest", "fuzz", "third_party",
-    "canaries", "trajectory_real", "perf",
+    "canaries", "tripwires", "trajectory_real", "perf",
 )
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -44,6 +44,11 @@ def glob_regex(glob):
     return re.compile("".join(out) + r"\Z")
 
 
+# The tripwire pack (T086) runs wherever the canary pack runs ("tripwires" is added to every rule that selects
+# "canaries"), plus on its own files. These rules sit before the rules file, which names only the canary pack.
+TRIPWIRE_RULES = (("tripwires/**", frozenset({"tripwires"})), ("selftest/tripwires.sh", frozenset({"tripwires"})))
+
+
 def load_rules(path=RULES_FILE):
     """Parse the rules file into [(glob, regex, frozenset(selftests))]; a bad entry is an error, never skipped."""
     with open(path, "rb") as handle:
@@ -60,8 +65,10 @@ def load_rules(path=RULES_FILE):
                 names.add(name)
             else:
                 raise ValueError("unknown selftest %r in rule %r" % (name, entry["glob"]))
+        if "canaries" in names:
+            names.add("tripwires")
         rules.append((entry["glob"], glob_regex(entry["glob"]), frozenset(names)))
-    return rules
+    return [(glob, glob_regex(glob), names) for glob, names in TRIPWIRE_RULES] + rules
 
 
 def match_rule(rules, path):
