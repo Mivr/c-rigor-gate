@@ -1,8 +1,9 @@
 # perf: deterministic cost counts for performance tests (`c_perf`)
 
-The building block of the later `perf` gate (R011, B13). `c_perf` builds a perf binary from a module and a
+The building block of the `perf` gate (R011, B13). `c_perf` builds a perf binary from a module and a
 gate-held generator and driver, runs it on RE and produces a cacheable `perf.jsonl` of **cost counts** at
-two or more input sizes. It gives no verdict; a later gate compares the counts at `n` and `4n`.
+two or more input sizes. It gives no verdict itself; the `perf` gate (T090, "Judging" below) compares the counts at the
+first and the last size with the complexity class the policy declares.
 
 ## The rule
 
@@ -90,7 +91,8 @@ record instead of the ratios.
 ## The perf bundle (`--perf DIR`, T080)
 
 The hidden input of the later `perf` gate: the generators and drivers an implementation is judged against.
-`gate/rigor_lib/perf_bundle.py` loads and validates it; `rigor grade --perf DIR` binds it; nothing judges it yet.
+`gate/rigor_lib/perf_bundle.py` loads and validates it; `rigor grade --perf DIR` binds it; the `perf` gate judges its
+targets as `bundle_<id>` (class `linear` is O(n), `nlogn` is O(n log n); T090, "Judging").
 
 ```
 <dir>/perf.toml
@@ -131,3 +133,67 @@ gate/tools/perf.py check DIR --product products/<p>/product.toml    # prints: ok
 gate/tools/perf.py digest DIR                                       # format checks only
 ```
 A tiny valid bundle for the selftest product is `gate/tests/fixtures/perf/selftest`.
+
+## Judging: complexity classes and the `perf` gate (T090, G30)
+
+A product cannot declare `c_perf` (the `buckfiles` gate allows no such macro, and the driver must be gate-held). The
+gate generates the package `gate-perf/` (`gate/rigor_lib/perf_package.py`: one `c_perf` per target, the sources next to
+the BUCK file) from two gate-owned places, and judges each target's `<name>_perf` output.
+
+**The policy shape** (`products/<p>/policy.toml`, read by `gate/rigor_lib/perf_policy.py`; any defect is exit 2). Per module:
+```toml
+[module."//json:json".perf.lookup]       # name [a-z][a-z0-9_]*; the target is //gate-perf:lookup_perf
+class = "O(log n)"                       # O(1) | O(log n) | O(n) | O(n log n)
+sizes = [2000, 8000]                     # 2 to 8 increasing positive sizes; the first and the last are judged
+seed = 3
+[module."//json:json".perf.lookup.srcs]  # generator + driver (ctest/perf.h API): file name -> text
+"lookup.c" = '''
+...C source, a literal multi-line string...
+'''
+```
+The sources are inside the policy on purpose: the verdict binds the policy snapshot (`<work>/inputs/product`), so the
+driver is bound with the class, and the product cannot change either. (The spec for this task wrote
+`perf."//x:y_perf"`; target names are generated, hence the name here and the label `//gate-perf:<name>_perf`.) The
+perf bundle (`--perf DIR`) adds its targets under the name `bundle_<id>` (ids use `-`, names `_`) with `linear` read
+as O(n) and `nlogn` as O(n log n); a name used twice is exit 2. The driver includes its module's public header by
+its package path (`#include "core/core.h"`).
+
+**The thresholds** (`gate/rigor_lib/perf_judge.py`). `c1` and `c2` are the counts at the first and the last size
+(`n1`, `n2`, `k = n2 / n1`, normally 4), for `instructions` and for `libc_bytes`; either counter above its limit fails:
+
+| class | allowed `c2` |
+|---|---|
+| O(1) | `floor(1.10 * c1) + 16` |
+| O(log n) | the larger of `floor((1 + log2(k) / 4) * c1) + 16` (ratio 1.5 at k = 4: exact for pure log growth from n1 >= 16) and `c1 + max(64, c1 / 10) + 16` |
+| O(n) | `floor(1.10 * k * c1) + 16` (4.4 at k = 4) |
+| O(n log n) | `floor(1.10 * k * log2(n2) / log2(n1) * c1) + 16` (`log2(max(n1, 2))`; 5.1 for 4000 -> 16000) |
+
+The `+ 16` is the counter's jitter floor (a count of 0 at both sizes is inside every class). The ratio part is the
+class's own growth plus 10 %; the classes nest (a lower class's limit is never above a higher class's).
+Measured on the `selftest/perf.sh` fixtures (honest class, `instructions`; `libc_bytes` of the same fixtures are either 0
+or linear, the same way):
+
+| fixture | class | counts | ratio | limit | headroom |
+|---|---|---|---|---|---|
+| `flat` (hash set, 64 lookups) | O(1) | 1473 -> 1573 | 1.068 | 1636 | 3.9 % |
+| `bsearch` (64 binary searches) | O(log n) | 7816 -> 9053 | 1.158 | 11740 | 22.9 % |
+| `lin` (one pass) | O(n) | 11551 -> 46051 | 3.987 | 50840 | 9.4 % |
+| `nlogn` (heapsort) | O(n log n) | 401506 -> 1915509 | 4.771 | 2088849 | 8.3 % |
+| `quad` (all pairs) | none | 606733 -> 9551984 | 15.743 | | outside all four |
+
+The class matrix is exact on these: each fixture is inside the classes at or above its own and outside the ones below
+(`quad` outside all). The O(1) fixture is the tight one: an open-addressing set has a data-dependent probe count, so even
+the honest 64 lookups grow 6.8 % from 2000 to 8000 keys; a driver for an O(1) class should do a fixed work whose
+probe lengths do not depend on the load (or declare O(log n)).
+
+**Findings of the `perf` gate** (`gate/rigor_lib/perf_gate.py`, after the test gates, before `mutants`):
+`perf-class-exceeded` (error: `module`, `target`, `class`, `counter`, `n1`, `n2`, `count1`, `count2`, `ratio`, `limit`),
+`perf-counter-unavailable` (error: the counter could not be read on the worker, so there is no verdict without counts),
+`perf-record-bad` (error: `status` of the first record that is not `ok`, or fewer than two records),
+`perf-build-failed` (error). No perf targets: PASS with info `no-perf-targets`. The step writes `gate-perf/` and the root
+`PACKAGE` file into the grading tree, builds the targets in `toolchains//:linux_release` (`--no-remote-cache` with
+`--uncached`) and removes both again. Metadata: the summarised records of every target.
+
+**Perf kills.** The same targets run for the mutants that survive the tests: `docs/mutate.md`, "Perf kills".
+Canary `perf-class-exceeded`: an O(n^2) driver declared O(n) (`canaries/perf-class-exceeded/policy.toml`), red in
+`perf` only; `control` has no perf targets and stays green.

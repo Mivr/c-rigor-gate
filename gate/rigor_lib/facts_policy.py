@@ -12,6 +12,7 @@
     exports = ["core_add"]          # every external symbol the module may define (T033, gate `symbols`)
     allow_mutable_data = false      # true: the module may define writable static data (data/bss/tls), T089
     impl = ["core/core.c"]          # the witness gates' implementation paths (T039); validated there, ignored here
+    [module."//core:core".perf.lookup]   # a perf target and its class (T090); validated by perf_policy, used by the perf gate
 
 `ram-budget.toml` next to the policy file is read with it (`ram_budget.py`).
 """
@@ -19,7 +20,7 @@
 import tomllib
 from dataclasses import dataclass
 
-from rigor_lib import jsonio, ram_budget, semantic_table
+from rigor_lib import jsonio, perf_policy, ram_budget, semantic_table
 from rigor_lib.errors import InternalError
 from rigor_lib.facts_data import LABEL, SYMBOL
 
@@ -62,7 +63,8 @@ def _only(where, table, allowed):
 def _module(label, table, deny):
     where = "module %s" % label
     _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl",
-                           "allow_mutable_data"))
+                           "allow_mutable_data", "perf"))
+    perf_policy.parse_module(label, table)
     mutable_data = table.get("allow_mutable_data", False)
     if type(mutable_data) is not bool:
         raise InternalError("policy: %s allow_mutable_data must be true or false" % label)

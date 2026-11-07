@@ -20,14 +20,20 @@ killed), crash-kill-ratio (L3 and up, info in L2: a function with at least MIN_K
 than CRASH_RATIO_NUM/CRASH_RATIO_DEN of which were killed by a crash and not by a failed check: the tests
 mostly check "does not crash"), baseline-red, harness-mismatch, missing-run, bad-results, module-not-in-policy,
 policy-module-without-report, no-reports. Survivors of L2 modules are info findings.
+
+Perf kills (T090): a module table of the policy may carry `[module."label".perf."//x:y_perf"] class = "O(n)"`; the
+reports then come with perf evidence (`--perf-results DIR`, mutants_perf) and a survivor that makes one of those
+targets leave its class is `killed-perf` (counted as killed). Findings: perf-counter-unavailable, perf-baseline-bad,
+perf-evidence-missing.
 """
 
 import tomllib
 
-from rigor_lib import approval_args, approvals, jsonio, mutants_report, mutants_verdict
+from rigor_lib import approval_args, approvals, jsonio, mutants_perf, mutants_report, mutants_verdict
 from rigor_lib.errors import InternalError
 from rigor_lib.facts_data import LABEL
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
+from rigor_lib.perf_judge import CLASSES as PERF_CLASSES
 from rigor_lib.runner import gate_handler
 
 GATE_ID = "mutants"
@@ -55,11 +61,35 @@ def load_policy(path):
         raise InternalError("policy: the only top-level table is [module.\"label\"]")
     levels = {}
     for label, table in document["module"].items():
-        if not LABEL.fullmatch(label) or not isinstance(table, dict) or set(table) != {"level"} \
+        if not LABEL.fullmatch(label) or not isinstance(table, dict) or set(table) - {"perf"} != {"level"} \
                 or table["level"] not in LEVELS:
-            raise InternalError("policy: module %r needs exactly level = \"L2\" or \"L3\"" % label)
+            raise InternalError("policy: module %r needs exactly level = \"L2\" or \"L3\" (and optionally perf)" % label)
+        perf_classes(label, table)
         levels[label] = table["level"]
     return levels
+
+
+def perf_classes(label, table):
+    """{perf target label: class} of a module table's `perf` sub-tables: `[module."m".perf."//gate-perf:x_perf"]
+    class = "O(1)"` (T090)."""
+    perf = table.get("perf", {})
+    if not isinstance(perf, dict):
+        raise InternalError("policy: module %r: perf must be a table of tables" % label)
+    found = {}
+    for target, entry in perf.items():
+        if not LABEL.fullmatch(target) or not isinstance(entry, dict) or set(entry) != {"class"} \
+                or entry["class"] not in PERF_CLASSES:
+            raise InternalError("policy: module %r perf %r needs exactly class = one of %s"
+                                % (label, target, ", ".join(PERF_CLASSES)))
+        found[target] = entry["class"]
+    return found
+
+
+def load_perf_classes(path):
+    """{module label: {perf target: class}} of the policy's perf tables (T090)."""
+    document = tomllib.loads(jsonio.read_bytes(path).decode("utf-8"))
+    return {label: classes for label, table in document["module"].items()
+            for classes in [perf_classes(label, table)] if classes}
 
 
 def survivor_fields(label, mutant):
@@ -193,7 +223,7 @@ def function_findings(report, verdicts):
         by_function.setdefault(key, set()).add(by_id[verdict.of] if verdict.of else verdict.verdict)
     found = []
     for (file, function), kinds in sorted(by_function.items()):
-        if "killed-assert" in kinds or "survived" in kinds or "unrun" in kinds:
+        if "killed-assert" in kinds or "killed-perf" in kinds or "survived" in kinds or "unrun" in kinds:
             continue  # survivors and unrun mutants are findings of their own
         rule = "crash-only-function" if "killed-crash" in kinds else "no-assert-kill-function"
         found.append(finding(rule, module=report.label, file=file, function=function))
@@ -238,7 +268,7 @@ def survivor_findings(report, level, verdicts, approval_set, used, approval_kind
     return found
 
 
-def module_summary(report, verdicts):
+def module_summary(report, verdicts, perf=None):
     verdict_counts = {name: 0 for name in mutants_verdict.VERDICTS}
     operators = {}
     for verdict in verdicts:
@@ -247,15 +277,23 @@ def module_summary(report, verdicts):
     survivors = [{"id": v.mutant.id, "at": "%s:%d" % (v.mutant.file, v.mutant.line),
                   "operator": v.mutant.operator, "replacement": v.mutant.replacement}
                  for v in verdicts if v.verdict == "survived"]
-    return {"total": len(verdicts), "verdicts": verdict_counts, "operators": operators,
-            "survivors": survivors, "tce": mutants_verdict.tce_counts(report, verdicts)}
+    summary = {"total": len(verdicts), "verdicts": verdict_counts, "operators": operators,
+               "survivors": survivors, "tce": mutants_verdict.tce_counts(report, verdicts)}
+    if perf is not None:
+        summary["perf"] = perf
+    return summary
 
 
-def module_findings(report, level, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, packages=None):
-    """(findings, summary) for one report."""
+def module_findings(report, level, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, packages=None,
+                    perf=None):
+    """(findings, summary) for one report. `perf` is `(classes, evidence)` of the module (T090) or None."""
     found, baseline_ids = mutants_verdict.baseline_findings(report, level)
     verdicts, problems = mutants_verdict.derive(report, baseline_ids)
     found.extend(problems)
+    perf_summary = None
+    if perf is not None:
+        verdicts, perf_found, perf_summary = mutants_perf.apply(report, level, verdicts, perf[1], perf[0])
+        found.extend(perf_found)
     found.extend(blindness_findings(report, verdicts))
     found.extend(unviable_findings(report, level, verdicts))
     found.extend(skipped_findings(report, level, packages))
@@ -264,7 +302,7 @@ def module_findings(report, level, approval_set, used, approval_kind=approvals.K
     if level in STRICT_LEVELS:
         found.extend(function_findings(report, verdicts))
     found.extend(crash_ratio_findings(report, level, verdicts))
-    return found, module_summary(report, verdicts)
+    return found, module_summary(report, verdicts, perf_summary)
 
 
 def run(args, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
@@ -275,11 +313,15 @@ def run(args, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
     found = list(approval_set.problems)
     summaries = {}
     packages = product_packages(levels)
+    classes = load_perf_classes(args.policy)
+    evidence = mutants_perf.load_dir(getattr(args, "perf_results", None))
     for label in sorted(reports):
         if label not in levels:
             found.append(finding("module-not-in-policy", module=label))
             continue
-        module, summaries[label] = module_findings(reports[label], levels[label], approval_set, used, approval_kind, packages)
+        perf = (classes[label], evidence.get(label, {})) if label in classes else None
+        module, summaries[label] = module_findings(reports[label], levels[label], approval_set, used, approval_kind,
+                                                   packages, perf)
         found.extend(module)
     for label in sorted(set(levels) - set(reports)):
         found.append(finding("policy-module-without-report", module=label))
@@ -291,6 +333,7 @@ def add_parser(subparsers):
                                    help="zero surviving mutants in L3 modules")
     parser.add_argument("--results", required=True)
     parser.add_argument("--policy", required=True)
+    parser.add_argument("--perf-results")
     parser.add_argument("--out")
     approval_args.add_approval_arguments(parser, repo_and_head_optional=True)
     parser.set_defaults(handler=gate_handler(run), gate_id=GATE_ID)

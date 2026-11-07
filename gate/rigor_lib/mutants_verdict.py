@@ -6,6 +6,8 @@
     killed-assert some test failed with a check failure (the tests noticed the wrong value)
     killed-crash  a test crashed, was killed, timed out or tripped a sanitizer, or no test failed a check
     survived      every test passed: the tests do not constrain this behaviour
+    killed-perf   every test passed, but a perf target of the module left its declared complexity class
+                  (mutants_perf; counted as killed, reported separately)
     unrun         a mutant that had to run did not, or its results were unusable (a finding says why)
 """
 
@@ -15,7 +17,7 @@ from dataclasses import dataclass
 from rigor_lib import jsonio, results_parse
 from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, finding
 
-VERDICTS = ("killed-assert", "killed-crash", "survived", "equivalent", "duplicate", "unviable", "unrun")
+VERDICTS = ("killed-assert", "killed-crash", "killed-perf", "survived", "equivalent", "duplicate", "unviable", "unrun")
 CHECK_FAILURE = re.compile(r"[0-9]+ of [0-9]+ checks failed; first: ")
 
 

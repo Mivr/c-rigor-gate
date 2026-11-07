@@ -18,11 +18,16 @@ Pipeline (all on RE, release mode):
   4b. `dynamic_output` over those -O0 compiles: a candidate stays equivalent (or duplicate) only if
      its -O0 object is identical too; otherwise it is live and its -O0 object is relinked into each
      test and run. Mutants that already differ at -O2 cost nothing extra;
+  4c. (`perf = [...]`, T090) for every mutant that survived all tests: the perf binary of each listed `c_perf`
+     target is relinked with the mutated object and run (one action per survivor and target; the unmutated
+     module is run once per target as the baseline); the counts go to the `[perf]` sub-target. Functional killers
+     cost nothing extra;
   5. one report file with the raw facts. `rigor mutants` decides; nothing here says "killed".
 """
 
 load("@prelude//cxx:cxx_toolchain_types.bzl", "CxxToolchainInfo")
 load("@prelude//cxx:preprocessor.bzl", "CPreprocessorInfo")
+load("@gate//rules:perf.bzl", "PERF_WRAPS", "PerfInfo")
 
 MutSources = provider(fields = ["srcs", "headers"])
 
@@ -234,6 +239,10 @@ def _link_run_batch(cfg, actions, batch, run_objs, test, ident):
     )
     return outs
 
+def _declared(cfg, outputs):
+    """The outputs every dynamic step of the chain declares: the report, and the perf records if there are any."""
+    return [outputs[o].as_output() for o in cfg.outs]
+
 def _stage2(dctx, artifacts, outputs, cfg, compiled, ordered, specs, function_of):
     """Decide from the -O2 objects; every mutant that would be equivalent or a duplicate is compiled
     again at -O0 (and only those), then `_stage3` decides with both."""
@@ -258,7 +267,7 @@ def _stage2(dctx, artifacts, outputs, cfg, compiled, ordered, specs, function_of
     actions.dynamic_output(
         dynamic = watched,
         inputs = [],
-        outputs = [outputs[cfg.report].as_output()],
+        outputs = _declared(cfg, outputs),
         f = lambda d, a, o: _stage3(d, a, o, cfg, compiled, ordered, results, baseline_hash, o0, function_of),
     )
 
@@ -319,6 +328,101 @@ def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_
         cmd_args(_python(cfg.tool), "collect", "--manifest", manifest, "--out", outputs[cfg.report].as_output()),
         category = "mutant_report",
     )
+    if cfg.perf_out != None:
+        runs = {item: manifest_mutants[item[0]][item[1]]["runs"] for item in run_objs}
+        watched = [out for item in run_objs for out in runs[item].values()]
+        actions.dynamic_output(
+            dynamic = watched,
+            inputs = [],
+            outputs = [outputs[cfg.perf_out].as_output()],
+            f = lambda d, a, o: _stage4(d, a, o, cfg, run_objs, runs),
+        )
+
+def _perf_run(cfg, actions, script, target, objects, ident):
+    """Relink one perf binary with OBJECTS (the driver's, then the module's), run it, return the output file:
+    the harness records (JSON Lines), or one marker line when linking or the harness failed."""
+    out = actions.declare_output("perf/{}.jsonl".format(ident))
+    actions.run(
+        cmd_args(
+            "/bin/sh",
+            script,
+            out.as_output(),
+            target.name,
+            str(target.seed),
+            ",".join([str(n) for n in target.sizes]),
+            "--",
+            cfg.linker,
+            cfg.link_flags,
+            ["-Wl,--wrap=" + f for f in PERF_WRAPS],
+            target.objects,
+            objects,
+            cfg.perf_libs,
+        ),
+        category = "mutant_perf",
+        identifier = ident,
+    )
+    return out
+
+_PERF_SCRIPT = [
+    "set -u",
+    'out="$1"; name="$2"; seed="$3"; sizes="$4"; shift 5',
+    'scratch="$(mktemp -d)" || exit 1',
+    'trap \'rm -rf "$scratch"\' EXIT',
+    'if ! "$@" -o "$scratch/bin" 2> "$scratch/link.err"; then printf \'{"marker":"link-failed"}\\n\' > "$out"; exit 0; fi',
+    'rc=0',
+    '"$scratch/bin" --name "$name" --seed "$seed" --sizes "$sizes" --out "$out" > /dev/null 2>&1 || rc=$?',
+    'if [ "$rc" -ne 0 ] || [ ! -s "$out" ]; then printf \'{"marker":"harness-failed","rc":%s}\\n\' "$rc" > "$out"; fi',
+    "exit 0",
+]
+
+_PERF_COLLECT = """
+import json, sys
+manifest = json.load(open(sys.argv[1]))
+targets = {}
+def records(path):
+    found = []
+    for line in open(path, encoding="utf-8"):
+        line = line.strip()
+        if line:
+            found.append(json.loads(line))
+    return found
+for label, entry in manifest["targets"].items():
+    targets[label] = {"baseline": records(entry["baseline"]),
+                      "mutants": {key: records(path) for key, path in entry["mutants"].items()}}
+with open(sys.argv[2], "w", encoding="utf-8") as out:
+    json.dump({"schema": 1, "label": manifest["label"], "targets": targets}, out, sort_keys=True, separators=(",", ":"))
+    out.write("\\n")
+"""
+
+def _stage4(dctx, artifacts, outputs, cfg, run_objs, runs):
+    """The perf runs. A mutant is a candidate when every test passed with it (a superset of the survivors that
+    `mutants_verdict` derives: it also needs the results to parse); the baseline is run once per target through
+    the same link, so a mutant is only judged against a baseline that was measured the same way."""
+    actions = dctx.actions
+    candidates = []
+    for item in sorted(run_objs.keys()):
+        passed = True
+        for out in runs[item].values():
+            record = artifacts[out].read_json()
+            if record["rc"] != 0 or record["timed_out"]:
+                passed = False
+        if passed:
+            candidates.append(item)
+    script = actions.write("perf/run.sh", _PERF_SCRIPT, is_executable = True)
+    entries = {}
+    for index, target in enumerate(cfg.perf):
+        baseline = _perf_run(cfg, actions, script, target, [cfg.base_obj[r] for r in cfg.rels], "{}/baseline".format(index))
+        mutants = {}
+        for item in candidates:
+            objs = [run_objs[item] if r == item[0] else cfg.base_obj[r] for r in cfg.rels]
+            mutants[item[1]] = _perf_run(cfg, actions, script, target, objs, "{}/{}/{}".format(index, item[0], item[1]))
+        entries[target.label] = {"baseline": baseline, "mutants": mutants}
+    manifest = actions.write_json("perf/manifest.json", {"label": cfg.label, "targets": entries}, with_inputs = True)
+    collect = actions.write("perf/collect.py", _PERF_COLLECT)
+    actions.run(
+        cmd_args(_python(collect), manifest, outputs[cfg.perf_out].as_output()),
+        category = "mutant_perf_report",
+    )
 
 def _stage1(dctx, artifacts, outputs, cfg):
     actions = dctx.actions
@@ -349,7 +453,7 @@ def _stage1(dctx, artifacts, outputs, cfg):
     actions.dynamic_output(
         dynamic = infos,
         inputs = [],
-        outputs = [outputs[cfg.report].as_output()],
+        outputs = _declared(cfg, outputs),
         f = lambda d, a, o: _stage2(d, a, o, cfg, compiled, ordered, specs, function_of),
     )
 
@@ -370,6 +474,21 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
     if ctx.attrs.batch < 1:
         fail("{}: batch must be at least 1".format(ctx.label))
     report = ctx.actions.declare_output("report.json")
+    perf_out = ctx.actions.declare_output("perf.json") if len(ctx.attrs.perf) > 0 else None
+    perf = [
+        struct(
+            label = _label_text(p.label),
+            name = p[PerfInfo].name,
+            seed = p[PerfInfo].seed,
+            sizes = p[PerfInfo].sizes,
+            objects = p[PerfInfo].objects,
+        )
+        for p in ctx.attrs.perf
+    ]
+    if len(set([t.label for t in perf])) != len(perf):
+        fail("{}: perf targets must be distinct".format(ctx.label))
+    # The perf binary links the driver, the module and the libraries of its own deps, never ctest (which has a main of its own).
+    perf_libs = _link_inputs(ctx.label, ctx.attrs.deps) + [ctx.attrs._perfkit[DefaultInfo].default_outputs[0]] if perf else []
     cfg_pieces = {
         "base_info": {},
         "base_info_o0": {},
@@ -381,6 +500,10 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
         "link_flags": ctx.attrs.link_flags,
         "linker": toolchain.linker_info.linker,
         "original": {},
+        "outs": [report] + ([perf_out] if perf_out != None else []),
+        "perf": perf,
+        "perf_libs": perf_libs,
+        "perf_out": perf_out,
         "prefix": _compile_prefix(ctx, sources, toolchain),
         "rels": rels,
         "report": report,
@@ -452,10 +575,11 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.dynamic_output(
         dynamic = cfg.gens.values(),
         inputs = [],
-        outputs = [report.as_output()],
+        outputs = [o.as_output() for o in cfg.outs],
         f = lambda d, a, o: _stage1(d, a, o, cfg),
     )
-    return [DefaultInfo(default_output = report)]
+    subs = {"perf": [DefaultInfo(default_output = perf_out)]} if perf_out != None else {}
+    return [DefaultInfo(default_output = report, sub_targets = subs)]
 
 c_mutants_rule = rule(
     impl = _mutants_impl,
@@ -465,8 +589,10 @@ c_mutants_rule = rule(
         "link_flags": attrs.list(attrs.string(), default = []),
         "module": attrs.dep(),
         "module_src": attrs.dep(providers = [MutSources]),
+        "perf": attrs.list(attrs.dep(providers = [PerfInfo]), default = []),
         "test_targets": attrs.list(attrs.dep()),
         "_ctest": attrs.dep(default = "gate//ctest:ctest"),
+        "_perfkit": attrs.dep(default = "gate//ctest:perf"),
         "_gen": attrs.source(default = "gate//mutate:gen.py"),
         "_toolchain": attrs.toolchain_dep(default = "toolchains//:cxx", providers = [CxxToolchainInfo]),
         "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),

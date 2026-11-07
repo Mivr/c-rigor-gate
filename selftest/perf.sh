@@ -196,3 +196,375 @@ if bad:
     sys.exit(1)
 print("perf selftest: ok (%d fixtures, counts identical across two cold builds)" % len(fixtures))
 PY
+
+# ==== T090: judging against complexity classes, and perf-killed mutants ============================
+# One package of five modules, each with a c_perf at its honest class (flat O(1), bsearch O(log n), lin O(n), nlogn
+# O(n log n), quad O(n^2)), judged by perf_judge against every class: the matrix of who is inside which class is
+# exact. `flat` is a hash set whose lookups are O(1); its `c_mutants` must turn the mutants that make the
+# lookup O(n) (the hash replaced by `return 0`) into killed-perf, while the same mutants survive when the report is judged
+# without the perf evidence.
+judge="selftest/scratch_perf_judge"
+trap 'rm -rf "$scratch" "$judge" "$out"' EXIT
+mkdir -p "$judge"
+cat > "$judge/gen.inc" <<'C'
+static size_t fill(uint64_t seed, size_t n, char *out, size_t cap) {
+    uint64_t x = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+    size_t i;
+    if (n > cap) { return 0; }
+    for (i = 0; i < n; i++) {
+        x = x * 6364136223846793005ULL + 1442695040888963407ULL;
+        out[i] = (char)(x >> 56);
+    }
+    return n;
+}
+C
+cat > "$judge/flat.h" <<'C'
+#ifndef FLAT_H
+#define FLAT_H
+#include <stddef.h>
+#include <stdint.h>
+
+/* A set of nonzero 32-bit keys: open addressing over a caller-provided power-of-two slot array. */
+struct flat {
+    uint32_t *slots;
+    size_t mask;
+};
+
+void flat_init(struct flat *m, uint32_t *slots, size_t cap);
+int flat_insert(struct flat *m, uint32_t key);
+int flat_contains(const struct flat *m, uint32_t key);
+#endif
+C
+cat > "$judge/flat.c" <<'C'
+#include "flat.h"
+
+static size_t flat_slot(uint32_t key, size_t mask)
+{
+    return (size_t)((key * 2654435761u) >> 11) & mask;
+}
+
+void flat_init(struct flat *m, uint32_t *slots, size_t cap)
+{
+    size_t i;
+    m->slots = slots;
+    m->mask = cap - 1;
+    for (i = 0; i < cap; i++) {
+        slots[i] = 0;
+    }
+}
+
+int flat_insert(struct flat *m, uint32_t key)
+{
+    size_t i = flat_slot(key, m->mask);
+    size_t probes;
+    for (probes = 0; probes <= m->mask; probes++) {
+        if (m->slots[i] == key) {
+            return 0;
+        }
+        if (m->slots[i] == 0) {
+            m->slots[i] = key;
+            return 1;
+        }
+        i = (i + 1) & m->mask;
+    }
+    return -1;
+}
+
+int flat_contains(const struct flat *m, uint32_t key)
+{
+    size_t i = flat_slot(key, m->mask);
+    size_t probes;
+    for (probes = 0; probes <= m->mask; probes++) {
+        if (m->slots[i] == key) {
+            return 1;
+        }
+        if (m->slots[i] == 0) {
+            return 0;
+        }
+        i = (i + 1) & m->mask;
+    }
+    return 0;
+}
+C
+cat > "$judge/flat_test.c" <<'C'
+#include "ctest/ctest.h"
+#include "flat.h"
+
+static void t_roundtrip(ctest_t *t)
+{
+    uint32_t slots[16];
+    struct flat m;
+    uint32_t k;
+    flat_init(&m, slots, 16);
+    CHECK_EQ_I64(t, flat_contains(&m, 5), 0);
+    CHECK_EQ_I64(t, flat_insert(&m, 5), 1);
+    CHECK_EQ_I64(t, flat_insert(&m, 5), 0);
+    CHECK_EQ_I64(t, flat_contains(&m, 5), 1);
+    CHECK_EQ_I64(t, flat_contains(&m, 6), 0);
+    for (k = 1; k <= 16; k++) {
+        (void)flat_insert(&m, k * 7u);
+    }
+    CHECK_EQ_I64(t, flat_insert(&m, 1000), -1);
+    CHECK_EQ_I64(t, flat_contains(&m, 1000), 0);
+    CHECK_EQ_I64(t, flat_contains(&m, 14), 1);
+}
+
+CTEST_SUITE("flat", { "roundtrip", t_roundtrip })
+C
+# flat: the set is built by the first call of perf_run (the harness's median is never the first of its 7 runs);
+# every counted call then looks up 64 keys.
+cat > "$judge/flat_drv.c" <<'C'
+#include "ctest/perf.h"
+#include "flat.h"
+@GEN@
+#define CAP ((size_t)1 << 17)
+#define PROBES 64u
+static uint32_t g_slots[CAP];
+static struct flat g_set;
+static int g_built;
+size_t perf_gen(uint64_t seed, size_t n, char *out, size_t cap) { return fill(seed, n, out, cap); }
+uint64_t perf_run(const char *in, size_t len)
+{
+    uint64_t found = 0;
+    uint32_t k;
+    if (!g_built) {
+        size_t i;
+        flat_init(&g_set, g_slots, CAP);
+        for (i = 0; i < len; i++) {
+            (void)flat_insert(&g_set, (uint32_t)(i + 1u) * 40503u + (uint32_t)(unsigned char)in[i]);
+        }
+        g_built = 1;
+    }
+    for (k = 1; k <= PROBES; k++) {
+        found += (uint64_t)flat_contains(&g_set, k * 40503u + 7u);
+    }
+    return found;
+}
+C
+for n in bsearch lin nlogn quad; do
+  printf '#include <stddef.h>\n#include <stdint.h>\nuint64_t %s_work(const char *in, size_t len);\n' "$n" > "$judge/$n.h"
+  printf '#include "ctest/perf.h"\n#include "selftest/scratch_perf_judge/%s.h"\n@GEN@\nsize_t perf_gen(uint64_t seed, size_t n, char *out, size_t cap) { return fill(seed, n, out, cap); }\nuint64_t perf_run(const char *in, size_t len) { return %s_work(in, len); }\n' "$n" "$n" > "$judge/${n}_drv.c"
+done
+cat > "$judge/bsearch.c" <<'C'
+#include <stddef.h>
+#include <stdint.h>
+static uint32_t g_arr[1 << 15];
+static size_t g_n;
+uint64_t bsearch_work(const char *in, size_t len)
+{
+    uint64_t found = 0;
+    uint32_t p;
+    (void)in;
+    if (g_n == 0) {
+        size_t i;
+        g_n = len;
+        for (i = 0; i < g_n; i++) { g_arr[i] = (uint32_t)i * 2u; }
+    }
+    for (p = 0; p < 64; p++) {
+        uint32_t want = (p * 7919u) % (uint32_t)(2u * g_n);
+        size_t lo = 0, hi = g_n;
+        while (lo < hi) {
+            size_t mid = lo + (hi - lo) / 2;
+            if (g_arr[mid] < want) { lo = mid + 1; } else { hi = mid; }
+        }
+        found += (uint64_t)(lo < g_n && g_arr[lo] == want);
+    }
+    return found;
+}
+C
+cat > "$judge/lin.c" <<'C'
+#include <stddef.h>
+#include <stdint.h>
+uint64_t lin_work(const char *in, size_t len)
+{
+    uint64_t h = 0;
+    size_t i;
+    for (i = 0; i < len; i++) { h = h * 31u + (unsigned char)in[i]; }
+    return h;
+}
+C
+# heapsort of a copy of the input: O(n log n) instructions, no recursion
+cat > "$judge/nlogn.c" <<'C'
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+static unsigned char g_buf[1 << 16];
+static void sift(size_t root, size_t n)
+{
+    for (;;) {
+        size_t child = 2 * root + 1;
+        unsigned char tmp;
+        if (child >= n) { return; }
+        if (child + 1 < n && g_buf[child] < g_buf[child + 1]) { child++; }
+        if (g_buf[root] >= g_buf[child]) { return; }
+        tmp = g_buf[root]; g_buf[root] = g_buf[child]; g_buf[child] = tmp;
+        root = child;
+    }
+}
+uint64_t nlogn_work(const char *in, size_t len)
+{
+    size_t i;
+    memcpy(g_buf, in, len);
+    for (i = len / 2; i > 0; i--) { sift(i - 1, len); }
+    for (i = len; i > 1; i--) {
+        unsigned char tmp = g_buf[0];
+        g_buf[0] = g_buf[i - 1]; g_buf[i - 1] = tmp;
+        sift(0, i - 1);
+    }
+    return (uint64_t)g_buf[0] + g_buf[len - 1];
+}
+C
+cat > "$judge/quad.c" <<'C'
+#include <stddef.h>
+#include <stdint.h>
+uint64_t quad_work(const char *in, size_t len)
+{
+    uint64_t c = 0;
+    size_t i, j;
+    for (i = 0; i < len; i++) {
+        for (j = 0; j < i; j++) { c += (uint64_t)(in[i] == in[j]); }
+    }
+    return c;
+}
+C
+for d in "$judge"/*_drv.c; do
+  if grep -q "^@GEN@" "$d"; then
+    { sed -n "1,/^@GEN@/p" "$d" | sed '$d'; cat "$judge/gen.inc"; sed -n "/^@GEN@/,\$p" "$d" | sed 1d; } > "$d.new" && mv "$d.new" "$d"
+  fi
+done
+rm -f "$judge/gen.inc"
+cat > "$judge/BUCK" <<'B'
+load("@gate//rules:c.bzl", "c_library", "c_mutants", "c_perf", "c_test")
+
+c_library(name = "flat", srcs = ["flat.c"], headers = ["flat.h"])
+c_test(name = "flat_test", srcs = ["flat_test.c"], deps = [":flat"])
+c_perf(name = "flat_p", module = ":flat", srcs = ["flat_drv.c"], sizes = [2000, 8000], seed = 3)
+c_mutants(name = "flat_mutants", module = ":flat", tests = [":flat_test"], perf = [":flat_p_perf"])
+
+c_library(name = "bsearch", srcs = ["bsearch.c"], headers = ["bsearch.h"])
+c_perf(name = "bsearch_p", module = ":bsearch", srcs = ["bsearch_drv.c"], sizes = [2000, 8000], seed = 3)
+c_library(name = "lin", srcs = ["lin.c"], headers = ["lin.h"])
+c_perf(name = "lin_p", module = ":lin", srcs = ["lin_drv.c"], sizes = [2000, 8000], seed = 3)
+c_library(name = "nlogn", srcs = ["nlogn.c"], headers = ["nlogn.h"])
+c_perf(name = "nlogn_p", module = ":nlogn", srcs = ["nlogn_drv.c"], sizes = [2000, 8000], seed = 3)
+c_library(name = "quad", srcs = ["quad.c"], headers = ["quad.h"])
+c_perf(name = "quad_p", module = ":quad", srcs = ["quad_drv.c"], sizes = [500, 2000], seed = 3)
+B
+
+jlog="$out/judge-build.log"
+jt=(//selftest/scratch_perf_judge:flat_p_perf //selftest/scratch_perf_judge:bsearch_p_perf //selftest/scratch_perf_judge:lin_p_perf
+    //selftest/scratch_perf_judge:nlogn_p_perf //selftest/scratch_perf_judge:quad_p_perf
+    //selftest/scratch_perf_judge:flat_mutants '//selftest/scratch_perf_judge:flat_mutants[perf]')
+"${B[@]}" build --target-platforms "$PLAT" "${jt[@]}" --show-output 2>&1 | sed 's/\x1b\[[0-9;]*m//g' > "$jlog"
+[ "${PIPESTATUS[0]}" -eq 0 ] || fail "judge fixtures: build failed" "$jlog"
+mkdir -p "$out/judge" "$out/mut/r" "$out/mut/p"
+for n in flat bsearch lin nlogn quad; do
+  p="$(awk -v t="scratch_perf_judge:${n}_p_perf" 'index($1, t) && /buck-out/ {print $2}' "$jlog" | tail -1)"
+  [ -f "$p" ] || fail "judge fixtures: no perf.jsonl for $n" "$jlog"
+  cp "$p" "$out/judge/$n.jsonl"
+done
+p="$(awk 'index($1, "scratch_perf_judge:flat_mutants ") == 0 && index($1, "scratch_perf_judge:flat_mutants") && !index($1, "[perf]") && /buck-out/ {print $2}' "$jlog" | tail -1)"
+[ -f "$p" ] || fail "judge fixtures: no mutants report" "$jlog"
+cp "$p" "$out/mut/r/flat.json"
+p="$(awk 'index($1, "flat_mutants[perf]") && /buck-out/ {print $2}' "$jlog" | tail -1)"
+[ -f "$p" ] || fail "judge fixtures: no perf evidence" "$jlog"
+cp "$p" "$out/mut/p/flat.json"
+
+# -- 1. the class matrix --------------------------------------------------------------------------------
+python3 -I -B - "$out" "$root/gate" <<'PY' || exit 1
+import json, sys
+out, gate = sys.argv[1], sys.argv[2]
+sys.path.insert(0, gate)
+from rigor_lib import perf_judge
+
+def load(n):
+    with open("%s/judge/%s.jsonl" % (out, n), encoding="utf-8") as fh:
+        return [json.loads(line) for line in fh]
+
+CLASSES = perf_judge.CLASSES
+HONEST = {"flat": "O(1)", "bsearch": "O(log n)", "lin": "O(n)", "nlogn": "O(n log n)", "quad": None}
+bad = []
+rows = []
+for n, honest in HONEST.items():
+    recs = load(n)
+    if any(r.get("counter") == "unavailable" for r in recs):
+        print("perf judge: counter unavailable here (the matrix is not checked)")
+        sys.exit(0)
+    if any(r["status"] != "ok" for r in recs):
+        bad.append("%s: statuses %s" % (n, [r["status"] for r in recs]))
+        continue
+    for cls in CLASSES:
+        over = perf_judge.exceeded(cls, recs)
+        inside = not over
+        want = honest is not None and CLASSES.index(cls) >= CLASSES.index(honest)
+        if inside != want:
+            bad.append("%s vs %s: inside=%s, want %s (%s)" % (n, cls, inside, want, over))
+    first, last = recs[0], recs[-1]
+    if honest is not None:
+        for field in perf_judge.COUNTERS:
+            c1, c2 = first[field], last[field]
+            if c1:
+                bound = perf_judge.limit(honest, c1, first["n"], last["n"])
+                rows.append("  %-8s %-11s %-12s %9d -> %9d  ratio %7.3f  limit %9d  headroom %5.1f%%"
+                            % (n, honest, field, c1, c2, c2 / c1, bound, 100.0 * (bound - c2) / bound))
+            else:
+                rows.append("  %-8s %-11s %-12s %9d -> %9d" % (n, honest, field, c1, c2))
+    else:
+        rows.append("  %-8s %-11s instructions %9d -> %9d  ratio %7.3f (outside every class)"
+                    % (n, "-", first["instructions"], last["instructions"], last["instructions"] / first["instructions"]))
+print("perf judge: counts, limits and headroom of the honest class")
+print("\n".join(rows))
+if bad:
+    print("FAIL:\n  " + "\n  ".join(bad), file=sys.stderr)
+    sys.exit(1)
+print("perf judge: ok (5 fixtures x 4 classes: each is inside exactly the classes at or above its own)")
+PY
+
+# -- 2. perf kills ----------------------------------------------------------------------------------------
+M="//selftest/scratch_perf_judge:flat_mutants"
+printf '[module."%s"]\nlevel = "L2"\n[module."%s".perf."//selftest/scratch_perf_judge:flat_p_perf"]\nclass = "O(1)"\n' "$M" "$M" > "$out/mut/policy.toml"
+printf '[module."%s"]\nlevel = "L2"\n' "$M" > "$out/mut/policy-noperf.toml"
+mkdir -p "$out/mut/nop"
+gate/rigor mutants --results "$out/mut/r" --policy "$out/mut/policy.toml" --perf-results "$out/mut/p" --out "$out/mut/with.json" > "$out/mut/with.log" 2>&1
+gate/rigor mutants --results "$out/mut/r" --policy "$out/mut/policy-noperf.toml" --out "$out/mut/without.json" > "$out/mut/without.log" 2>&1
+python3 -I -B - "$out/mut" "$M" <<'PY' || exit 1
+import json, sys
+d, label = sys.argv[1], sys.argv[2]
+with open(d + "/with.json", encoding="utf-8") as fh:
+    with_perf = json.load(fh)
+with open(d + "/without.json", encoding="utf-8") as fh:
+    without = json.load(fh)
+a, b = with_perf["metadata"]["modules"][label], without["metadata"]["modules"][label]
+bad = []
+if any(r["rule"].startswith("perf-") and r["severity"] == "error" for r in with_perf["findings"]):
+    bad.append("perf findings: %s" % [r for r in with_perf["findings"] if r["rule"].startswith("perf-")])
+if "perf" in b:
+    bad.append("a policy without perf grew a perf summary")
+v, w = a["verdicts"], b["verdicts"]
+if w["killed-perf"] != 0 or v["killed-perf"] < 1:
+    bad.append("killed-perf: with %d, without %d" % (v["killed-perf"], w["killed-perf"]))
+if v["survived"] + v["killed-perf"] != w["survived"]:
+    bad.append("survivors %d + killed-perf %d != survivors without perf %d" % (v["survived"], v["killed-perf"], w["survived"]))
+if v["killed-assert"] != w["killed-assert"] or v["killed-crash"] != w["killed-crash"]:
+    bad.append("functional verdicts changed by the perf evidence")
+killed = {k["id"]: k for k in a["perf"]["killed"]}
+ret0 = [s for s in b["survivors"] if s["replacement"] == "{ (void)key; (void)mask; return 0; }"]
+if len(ret0) != 1 or ret0[0]["id"] not in killed:
+    bad.append("the mutant that replaces the hash by `return 0` is not killed-perf: %s" % ret0)
+else:
+    k = killed[ret0[0]["id"]]
+    if k["counter"] != "instructions" or k["count2"] < 3 * k["count1"]:
+        bad.append("its counts are not linear: %s" % k)
+inside = [s["id"] for s in a["survivors"]]
+if len(inside) != v["survived"]:
+    bad.append("survivor list does not match the count")
+print("perf kills: %d survivors of the tests, %d killed-perf (counted as killed), %d still survive; %d perf candidates"
+      % (w["survived"], v["killed-perf"], v["survived"], a["perf"]["candidates"]))
+for k in a["perf"]["killed"]:
+    print("  killed-perf %s %s: %s %d -> %d (ratio %s, class %s allows %d)"
+          % (k["id"], k["at"], k["counter"], k["count1"], k["count2"], k["ratio"], k["class"], k["limit"]))
+if bad:
+    print("FAIL:\n  " + "\n  ".join(bad), file=sys.stderr)
+    sys.exit(1)
+print("perf kills selftest: ok")
+PY

@@ -18,7 +18,7 @@ import re
 from argparse import Namespace
 from dataclasses import dataclass
 
-from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, jsonio
+from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, jsonio, perf_package, perf_policy
 from rigor_lib import mutants_gate as rigor_mutants
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
@@ -32,6 +32,8 @@ PLATFORM = "toolchains//:linux_release"
 _ROOT = "root//"
 _LABEL = re.compile(r"[A-Za-z0-9_.-]+//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+")
 _TAIL_CHARS = 4000
+PERF_DIR = "mutants-perf"
+PERF_KIT = "gate//ctest:perf"   # the harness has a main of its own: never linked into a test
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class Module:
     level: str
     tests: tuple   # c_tests that depend on the module directly
     deps: tuple    # libraries linked into those tests besides the module (any cell), dependents first
+    perf: tuple = ()   # ((`//x:y_perf` target, class), ...) the policy declares for the module (T090), sorted
 
 
 @dataclass(frozen=True)
@@ -154,7 +157,7 @@ def read_layout(run):
     return parse_layout(results, add_external(attributes, libraries), binaries)
 
 
-def _link_deps(layout, module, tests):
+def _link_deps(layout, module, tests, extra=(), skip=()):
     """What the module's tests link besides the module, as `(deps, unresolved)`. `deps` is the closure of their
     deps and of the module's over every library of the layout, first-party or from another cell (third-party
     ones included), without the module; a library comes before the ones it depends on (static archives, one
@@ -163,10 +166,10 @@ def _link_deps(layout, module, tests):
     wanted = set()
     unresolved = set()
     links = layout.deps if layout.links is None else layout.links
-    stack = [d for t in tests for d in links[t]] + list(links[module])
+    stack = [d for t in tests for d in links[t]] + list(links[module]) + [d for b in extra for d in links[b]]
     while stack:
         label = stack.pop()
-        if label == module or label in wanted or label in unresolved:
+        if label == module or label in wanted or label in unresolved or label in skip:
             continue
         if label in linkable:
             wanted.add(label)
@@ -187,14 +190,24 @@ def _link_deps(layout, module, tests):
     return tuple(reversed(order)), tuple(sorted(unresolved))
 
 
-def plan(layout, levels):
-    """Which modules get mutants, with which tests; and the findings about modules that cannot."""
+def perf_binary(target):
+    """The `c_perf` binary behind a `<name>_perf` target label."""
+    return target[:-len(perf_policy.SUFFIX)]
+
+
+def plan(layout, levels, perf=None):
+    """Which modules get mutants, with which tests; and the findings about modules that cannot.
+    `perf` is the policy's {module: {perf target: class}} (T090): the modules that have entries also run those
+    perf targets for their survivors, so what the perf binaries link is linked into the mutants too."""
+    perf = perf or {}
     found = []
     for label in sorted(set(levels) & layout.tests):
         found.append(finding("level-on-test", module=label))
     modules = []
     wanted = 0
     for label in sorted(layout.libs | layout.binaries):
+        if label.startswith("//%s:" % perf_policy.PACKAGE):
+            continue   # the gate's own perf binaries (perf_package): no level
         level = levels.get(label)
         if level is None:
             found.append(finding("level-missing", module=label))
@@ -206,11 +219,16 @@ def plan(layout, levels):
             wanted += 1
             tests = tuple(sorted(t for t in layout.tests if label in layout.deps[t]))
             if tests:
-                linked, unresolved = _link_deps(layout, label, tests)
+                classes = perf.get(label, {})
+                for target in sorted(classes):
+                    if perf_binary(target) not in layout.binaries:
+                        found.append(finding("perf-target-unknown", module=label, target=target))
+                classes = {t: c for t, c in classes.items() if perf_binary(t) in layout.binaries}
+                linked, unresolved = _link_deps(layout, label, tests, [perf_binary(t) for t in classes], (PERF_KIT,))
                 for dep in unresolved:
                     found.append(finding("unresolved-link-dep", module=label, dep=dep))
                 if not unresolved:
-                    modules.append(Module(label, level, tests, linked))
+                    modules.append(Module(label, level, tests, linked, tuple(sorted(classes.items()))))
             else:
                 found.append(finding("module-without-tests", module=label, level=level))
     if not wanted:
@@ -231,8 +249,14 @@ def _list(items):
 
 
 def build_file_text(modules):
-    calls = ['c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    deps = %s,\n)\n'
-             % (target_name(i, m), m.label, _list(m.tests), _list(m.deps)) for i, m in enumerate(modules)]
+    calls = []
+    for i, m in enumerate(modules):
+        if m.perf:  # T090: the module's perf targets run for the survivors
+            calls.append('c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    perf = %s,\n    deps = %s,\n)\n'
+                         % (target_name(i, m), m.label, _list(m.tests), _list([t for t, _ in m.perf]), _list(m.deps)))
+        else:
+            calls.append('c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    deps = %s,\n)\n'
+                         % (target_name(i, m), m.label, _list(m.tests), _list(m.deps)))
     return 'load("@gate//rules:c.bzl", "c_mutants")\n\n' + "\n".join(calls)
 
 
@@ -240,34 +264,50 @@ def policy_text(modules, indexes=None):
     """The `rigor mutants` policy; `indexes` are the package positions of `modules` (default: all)."""
     indexes = range(len(modules)) if indexes is None else indexes
     return "\n".join('[module."%s"]\nlevel = "%s"\n' % (target_label(i, m), m.level)
+                     + "".join('[module."%s".perf."%s"]\nclass = "%s"\n' % (target_label(i, m), t, c) for t, c in m.perf)
                      for i, m in zip(indexes, modules))
 
 
-def write_gate_package(tree, package_dir, build_text):
-    """Write a gate-owned package (`<package_dir>/BUCK`) and the root `PACKAGE` file that makes the product's
-    targets visible to it. Refuses to touch anything the product put in their place. Returns the BUCK sha256.
-    Shared with the hidden-test package of B7."""
-    for name in (package_dir, PACKAGE_FILE):
-        if os.path.lexists(os.path.join(tree, name)):
-            raise InternalError("%s exists in the grading tree before the gate package was written" % name)
+def write_shared_package_file(tree):
+    """The root `PACKAGE` file that makes the product's targets visible to the gate's packages. Refuses to touch
+    anything the product put in its place."""
+    if os.path.lexists(os.path.join(tree, PACKAGE_FILE)):
+        raise InternalError("%s exists in the grading tree before the gate package was written" % PACKAGE_FILE)
     write_file(tree, PACKAGE_FILE, PACKAGE_TEXT.encode("utf-8"), 0o644)
+
+
+def remove_shared_package_file(tree):
+    path = os.path.join(tree, PACKAGE_FILE)
+    if os.path.isfile(path) and not os.path.islink(path) and jsonio.read_bytes(path) == PACKAGE_TEXT.encode("utf-8"):
+        os.unlink(path)
+
+
+def write_gate_package(tree, package_dir, build_text, shared=False):
+    """Write a gate-owned package (`<package_dir>/BUCK`) and the root `PACKAGE` file that makes the product's
+    targets visible to it (`shared`: the file was written by `gate-perf/`'s writer and is left alone). Refuses to touch
+    anything the product put in their place. Returns the BUCK sha256. Shared with the hidden-test package of B7."""
+    if os.path.lexists(os.path.join(tree, package_dir)):
+        raise InternalError("%s exists in the grading tree before the gate package was written" % package_dir)
+    if not shared:
+        write_shared_package_file(tree)
     return write_file(tree, package_dir + "/BUCK", build_text.encode("utf-8"), 0o644)
 
 
-def write_package(run, modules):
+def write_package(run, modules, shared=False):
     """Write the `c_mutants` package of the tree."""
-    return write_gate_package(run.tree, PACKAGE_DIR, build_file_text(modules))
+    return write_gate_package(run.tree, PACKAGE_DIR, build_file_text(modules), shared)
 
 
 def build_reports(run, uncached, modules):
     """Build every c_mutants target; copy the reports. Returns (findings, metadata, built indexes)."""
     labels = [target_label(i, m) for i, m in enumerate(modules)]
+    perf_labels = {i: target_label(i, m) + "[perf]" for i, m in enumerate(modules) if m.perf}
     report = run.report_path("mutants")
     if os.path.lexists(report):
         os.unlink(report)  # never read a report an earlier run left
     flags = ["--no-remote-cache"] if uncached else []
     code, _, err = grade_build.run_buck(run.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
-                                                 "--build-report", report] + flags + labels)
+                                                 "--build-report", report] + flags + labels + sorted(perf_labels.values()))
     executed, cached = grade_build.action_counts(run.tree)
     metadata = {"executed_actions": executed, "cached_actions": cached, "exit_code": code}
     if code != 0:
@@ -287,7 +327,28 @@ def build_reports(run, uncached, modules):
         with open(os.path.join(out_dir, "%03d.json" % index), "xb") as handle:
             handle.write(jsonio.read_bytes(source))
         built.append(index)
+    found.extend(_copy_perf(run, results, perf_labels, built, modules))
     return found, metadata, built
+
+
+def _copy_perf(run, results, perf_labels, built, modules):
+    """Copy the perf evidence of the modules that have it into `<work>/mutants-perf/` (beside the reports)."""
+    if not perf_labels:
+        return []
+    out_dir = os.path.join(os.path.dirname(run.mutants_reports), PERF_DIR)
+    os.makedirs(out_dir, exist_ok=True)
+    found = []
+    for index, label in sorted(perf_labels.items()):
+        entry = results.get("root" + label.split("[")[0])   # the report lists the sub-target's output under the target
+        source = None
+        if entry is not None and entry.get("success") == "SUCCESS":
+            source = grade_build.output_path(run.tree, label, {"outputs": {"DEFAULT": entry.get("outputs", {}).get("perf", [])}})
+        if source is None:
+            found.append(finding("perf-build-failed", module=modules[index].label))
+            continue
+        with open(os.path.join(out_dir, "%03d.json" % index), "xb") as handle:
+            handle.write(jsonio.read_bytes(source))
+    return found
 
 
 def _relabel(found, names):
@@ -306,8 +367,9 @@ def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT
     os.makedirs(os.path.dirname(policy), exist_ok=True)
     with open(policy, "xb") as handle:
         handle.write(policy_text([modules[i] for i in built], built).encode("utf-8"))
+    perf_dir = os.path.join(os.path.dirname(run.mutants_reports), PERF_DIR)
     result = rigor_mutants.run(Namespace(
-        results=run.mutants_reports, policy=policy, approvals=g.args.approvals,
+        results=run.mutants_reports, policy=policy, perf_results=perf_dir, approvals=g.args.approvals,
         repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind)
     names = {target_label(i, modules[i]): modules[i].label for i in built}
     summaries = {names.get(label, label): summary for label, summary in result.metadata["modules"].items()}
@@ -334,11 +396,15 @@ def mutants_gate(g):
 
 def _run(g, run):
     levels = grade_policy.load_levels(grade_policy.policy_path(g))
-    chosen = plan(read_layout(run), levels)
+    targets = perf_policy.load(grade_policy.policy_path(g), getattr(g, "perf", None))
+    if targets:   # the perf binaries must be in the tree before the layout is read
+        write_shared_package_file(run.tree)
+        perf_package.write(run.tree, targets)
+    chosen = plan(read_layout(run), levels, perf_policy.by_module(targets))
     found = list(chosen.findings)
     if not chosen.modules:
         return GateResult(rigor_mutants.GATE_ID, found, {"modules": {}})
-    package_sha = write_package(run, chosen.modules)
+    package_sha = write_package(run, chosen.modules, bool(targets))
     build_found, metadata, built = build_reports(run, g.args.uncached, chosen.modules)
     found.extend(build_found)
     metadata["package_sha256"] = package_sha

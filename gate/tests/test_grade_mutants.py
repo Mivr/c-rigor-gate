@@ -180,6 +180,60 @@ class GeneratedPackage(unittest.TestCase):
                          '[module."//gate-mutants:m001_url_url"]\nlevel = "L2"\n')
 
 
+class PerfModules(unittest.TestCase):
+    """T090: a module with perf entries in the policy links what its perf binaries link and runs the perf targets."""
+    PERF = {"//core:core": {"//core:p_perf": "O(1)", "//core:q_perf": "O(n)"}}
+
+    def planned(self, perf, binaries=("//core:p", "//core:q"), deps=None):
+        lay = layout(libs=["//core:core", "//u:u"], binaries=binaries, tests={"//core:t": ["//core:core"]},
+                     deps=dict({"//core:p": ("//core:core", "//u:u"), "//core:q": ("//core:core",)}, **(deps or {})))
+        return grade_mutants.plan(lay, {"//core:core": "L3", "//u:u": "L1", "//core:p": "L1", "//core:q": "L1"}, perf)
+
+    def test_the_perf_targets_and_classes_are_part_of_the_module_and_their_deps_are_linked(self):
+        chosen = self.planned(self.PERF)
+        (module,) = chosen.modules
+        self.assertEqual(module.perf, (("//core:p_perf", "O(1)"), ("//core:q_perf", "O(n)")))
+        self.assertEqual(module.deps, ("//u:u",))   # linked for the perf binary p, not for the test
+        self.assertEqual(chosen.findings, [])
+
+    def test_without_perf_entries_nothing_changes(self):
+        for perf in (None, {}, {"//other:x": {"//core:p_perf": "O(1)"}}):
+            (module,) = self.planned(perf).modules
+            self.assertEqual((module.perf, module.deps), ((), ()))
+
+    def test_a_perf_target_without_a_perf_binary_is_a_finding_and_is_dropped(self):
+        chosen = self.planned({"//core:core": {"//core:p_perf": "O(1)", "//core:gone_perf": "O(1)"}})
+        self.assertEqual([(f["rule"], f["target"]) for f in chosen.findings], [("perf-target-unknown", "//core:gone_perf")])
+        self.assertEqual(chosen.modules[0].perf, (("//core:p_perf", "O(1)"),))
+
+    def test_the_build_file_calls_the_perf_macro_only_for_a_module_with_perf(self):
+        lay = layout(libs=["//core:core", "//url:url"], binaries=["//core:p"],
+                     tests={"//core:t": ["//core:core"], "//url:t": ["//url:url"]}, deps={"//core:p": ("//core:core",)})
+        modules = grade_mutants.plan(lay, {"//core:core": "L3", "//url:url": "L2", "//core:p": "L1"},
+                                     {"//core:core": {"//core:p_perf": "O(log n)"}}).modules
+        text = grade_mutants.build_file_text(modules)
+        self.assertNotIn("mutate.bzl", text)
+        self.assertIn('c_mutants(\n    name = "m000_core_core",\n    module = "//core:core",\n'
+                      '    tests = [\n        "//core:t",\n    ],\n    perf = [\n        "//core:p_perf",\n    ],\n', text)
+        self.assertIn('c_mutants(\n    name = "m001_url_url",', text)
+        self.assertEqual(grade_mutants.policy_text(modules),
+                         '[module."//gate-mutants:m000_core_core"]\nlevel = "L3"\n'
+                         '[module."//gate-mutants:m000_core_core".perf."//core:p_perf"]\nclass = "O(log n)"\n\n'
+                         '[module."//gate-mutants:m001_url_url"]\nlevel = "L2"\n')
+
+    def test_the_gate_perf_binaries_need_no_level_and_the_perf_harness_is_never_linked_into_a_test(self):
+        lay = layout(libs=["//core:core"], binaries=["//gate-perf:lk"], external=["gate//ctest:perf"],
+                     tests={"//core:t": ["//core:core"]}, deps={"//gate-perf:lk": ("//core:core", "gate//ctest:perf")})
+        chosen = grade_mutants.plan(lay, {"//core:core": "L3"}, {"//core:core": {"//gate-perf:lk_perf": "O(1)"}})
+        self.assertEqual(chosen.findings, [])
+        self.assertEqual((chosen.modules[0].deps, chosen.modules[0].perf), ((), (("//gate-perf:lk_perf", "O(1)"),)))
+
+    def test_a_plan_without_perf_has_the_old_build_file(self):
+        lay = layout(libs=["//core:core"], tests={"//core:t": ["//core:core"]})
+        text = grade_mutants.build_file_text(grade_mutants.plan(lay, {"//core:core": "L3"}).modules)
+        self.assertNotIn("mutate.bzl", text)
+
+
 class QueryParsing(unittest.TestCase):
     def test_labels_lose_the_root_cell_and_other_cells_keep_theirs(self):
         tests = {"root//core:t_results": {"test": "root//core:t"}}
@@ -293,6 +347,7 @@ class Gate(TempDirTestCase):
         work = self.sub("work")
         tree = self.sub("work/tree")
         product = self.sub("product") / "product.toml"
+        (self.sub("product") / "policy.toml").write_text("[global]\ndeny = []\n", encoding="utf-8")   # no perf entries
         task = self.tmp / "task.toml"
         task.write_text('id = "t"\nallowed = ["**"]\nrole = "%s"\n' % role, encoding="utf-8")
         args = SimpleNamespace(product=str(product), uncached=False, approvals=None, task=str(task),
@@ -304,8 +359,8 @@ class Gate(TempDirTestCase):
 
     def test_it_is_registered_after_the_tests_and_before_the_witness_gates_and_is_in_the_order_file(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
-        self.assertEqual(ids[-5:], ["tests-san", "tests-stub", "mutants", "witness-tests", "mutants-witness"])
-        self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-5:], ids[-5:])
+        self.assertEqual(ids[-6:], ["tests-san", "tests-stub", "perf", "mutants", "witness-tests", "mutants-witness"])
+        self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-6:], ids[-6:])
 
     def test_it_does_not_run_unless_the_tree_was_built_and_every_test_passed(self):
         for gate in ("assemble", "buckfiles", "build", "tests-release", "tests-san"):

@@ -29,6 +29,7 @@ headers of its own is an analysis error (`provides neither a library nor headers
 | 3 `mutant_compile` | `dynamic_output` over the lists: one action per **batch** of at most 16 mutants (T064) writes the mutated copy of the source and compiles it with the same command, once per mutant; result = sha256 of the object, or `unviable` | RE, cached |
 | 3b `mutant_compile_o0` | the same, in batches, for every mutant whose `-O2` object equals the baseline's or an earlier mutant's (the candidates for `equivalent` and `duplicate`), and for each source's unmodified baseline: the same command with `-O0` appended (T051, B15) | RE, cached |
 | 4 `mutant_run` | `dynamic_output` over the compile results: for every mutant that is live (see below) and every test, one action per batch and test relinks, for each mutant of the batch in its own process, the test with the mutated object (the `-O0` one for a mutant the optimiser folded) and runs it with ctest (`--seed 1`) | RE, cached |
+| 4c `mutant_perf` | only with `perf = [...]` (T090, "Perf kills" below): for every mutant that passed all its tests, one action per perf target relinks the perf binary with the mutated object and runs it; one more action per target measures the unmutated module the same way | RE, cached |
 | 5 `mutant_report` | one `report.json` with the raw facts of all of the above | RE |
 
 ### Batched actions (T064, R006 #9)
@@ -245,6 +246,43 @@ and whose return type is void, a scalar or a record has the `function-body` muta
 function-pointer return. `mutants_verdict.accounting_findings(report, level)` makes it an **error at L3 and above**
 and info below; with no `level` it is info (the caller must pass the module's level).
 
+## Perf kills: `killed-perf` (T090, G30)
+Some mutants are not equivalent although no test can see them: in a hash map, `hash(key)` replaced by `return 0`
+leaves the map correct and makes every operation O(n). The module's complexity is a promise (`docs/perf.md`,
+"Judging"); a mutant that breaks it is killed by that promise.
+
+- **The attribute.** `c_mutants(name, module, tests, deps, perf = [":x_perf", ...])` (`rules/c.bzl`): `perf` lists the
+  `c_perf` targets that exercise the module. `rigor grade` writes it into `gate-mutants/BUCK` for a module
+  whose policy declares perf targets, and links the libraries of the perf binaries into the module's mutant links. The
+  `[perf]` sub-target of the `c_mutants` target is `perf.json` (evidence, below).
+- **Which mutants.** A functional killer costs nothing extra. The perf stage is a `dynamic_output` over the test runs: a
+  mutant for which every test run passed (`rc` 0, no timeout) gets one `mutant_perf` action per perf target: the
+  driver objects of the `c_perf` binary, the mutated module object (the `-O0` object for a mutant the optimiser folded;
+  the baseline objects for the other sources), the link flags of the tests plus the `-Wl,--wrap=` list, the harness
+  `gate//ctest:perf` (never `ctest`, which has its own `main`), run with the sizes and seed of the target. The actions
+  are independent and cached on the mutant's object, like `mutant_run`.
+- **Cost per survivor.** One link and one harness run per perf target: about 0.5 s of work on top of the roughly 1.5 s fixed
+  cost of an RE action (measured: 24 `mutant_perf` actions of the `flat` fixture, 2.0 s average and 3.5 s at most,
+  the whole stage adds one layer of about 3 s plus the 1 s `mutant_perf_report`; a mutant that makes the driver quadratic
+  costs its quadratic run, the harness caps each size at 100 s). A module with no survivors costs the baseline run only.
+  A module without `perf` is unchanged: not a single action more.
+- **Evidence** (`perf.json`, read by `mutants_perf.py`): `{"schema": 1, "label", "targets": {"<perf label>": {"baseline":
+  [records], "mutants": {"<mutant id>": [records]}}}}`; records are those of `perf.jsonl`, or one marker line
+  (`{"marker": "link-failed"}`, `harness-failed`) when the link or the harness did not produce records.
+- **The verdict** (`rigor mutants --perf-results DIR`, the policy table `[module."label".perf."<perf label>"] class = "O(n)"`
+  that `rigor grade` writes from the product policy). A `survived` mutant becomes `killed-perf` when for some target its
+  records are all `ok` and a counter leaves the class (`perf_judge.exceeded`, the same thresholds as the `perf` gate),
+  or its run timed out. A mutant that crashes, fails to link, or whose run is otherwise not ok stays `survived`: that is
+  behaviour the tests missed, not a complexity change. The baseline is measured through the same link; if it is not
+  ok or is itself outside the class, nothing is judged against it (`perf-baseline-bad`), and an unreadable counter gives
+  `perf-counter-unavailable`. Both only when there is a survivor to judge; error at L3 and above, info at L2.
+  `perf-evidence-missing` (always an error) means a survivor has no record: the rule and the verdicts disagree.
+- **Accounting.** `killed-perf` counts as killed: it is not a survivor, needs no approval, and a function whose mutants are
+  killed by checks or by perf is not `no-assert-kill-function`. `crash-kill-ratio` counts only `killed-assert` and
+  `killed-crash`, so it is unaffected. The module summary gets `verdicts.killed-perf` and a `perf` object
+  (`targets`, `candidates`, `killed`: id, place, target, class, counter, both counts, ratio, limit); it is absent for
+  a module without perf.
+
 ## Verdicts (derived by `rigor mutants`, never by the build)
 | Verdict | Meaning |
 |---|---|
@@ -253,10 +291,11 @@ and info below; with no `level` it is info (the caller must pass the module's le
 | `duplicate` | object identical to an earlier mutant's in the same file at `-O2` and at `-O0`; that mutant's verdict stands |
 | `killed-assert` | some test failed with a check failure (`N of M checks failed; first: ...`) |
 | `killed-crash` | no check failure, but a test crashed, was killed, timed out (ctest 10 s per test, 180 s per binary), tripped a sanitizer exit, or the binary died |
+| `killed-perf` | every test passed, but a perf target of the module (`perf = [...]`) left its declared complexity class with this mutant (T090, below). Counted as killed, reported separately |
 | `survived` | every test passed |
 | `unrun` | a live mutant has no usable run (a `missing-run` or `bad-results` finding says why) |
 
-## `rigor mutants --results DIR --policy P.toml [--out F] [--approvals DIR --repo R --head H]`
+## `rigor mutants --results DIR --policy P.toml [--perf-results DIR] [--out F] [--approvals DIR --repo R --head H]`
 `DIR` holds one `report.json` copy (`*.json`) per `c_mutants` target; the policy is
 `[module."//pkg:name"]` with `level = "L2" | "L3" | "L4" | "L5"` for each (L3, L4 and L5 are equally strict;
 L1 is "not mutated" and never appears here; `rigor grade` writes this policy, see docs/grade.md). Findings (all errors unless noted):
