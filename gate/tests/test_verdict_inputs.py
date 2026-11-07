@@ -50,7 +50,7 @@ class Fixture:
                     ["gate/tools/buck2.version", jsonio.sha256_hex(version)]]
         documents = {"clone": {"metadata": dict(self.commits)}, "assemble": {"metadata": {"manifest": manifest}}}
         g = SimpleNamespace(tree=self.tree, work=self.root, gate_sha=self.gate_sha, gate_clean=self.gate_clean,
-                            product=SimpleNamespace(name=self.name), args=SimpleNamespace(uncached=self.uncached),
+                            product=SimpleNamespace(name=self.name), args=SimpleNamespace(uncached=self.uncached, approvals=None),
                             inputs=dict(self.file_hashes))
         return g, documents
 
