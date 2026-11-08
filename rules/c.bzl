@@ -163,7 +163,7 @@ def _catalog_files(macro, attr, items, suffix):
         fail("{}: `{}` must be a non-empty list of plain file names, got {!r}".format(macro, attr, items))
     _plain_files(macro, attr, items, suffix)
 
-def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, deps = [], visibility = []):
+def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, deps = [], names = {}, visibility = []):
     """A const message catalog from gettext files (T105): a `c_library` `name` with the header `<package>/<name>.h`.
 
     `pots`: ordered `.pot` files of the package. `po`: {lang: [`.po` files, one per pot, same order]} for every
@@ -172,6 +172,7 @@ def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, deps = [], vi
     `const i18n_catalog_t`; the msgid enum is `<SYMBOL>_<WORDS>`. `runtime`: the i18n library (`//package:name`); its
     header is `<package>/<name>.h`, a dep of the library. `deps`: the libraries the runtime header includes from (the generated
     header includes it, and `deps` of a library are not exported), e.g. the core and fmt of the business-apps i18n.
+    `names`: {msgid: WORDS} overrides of the enum name, each only to resolve a real collision (po2c checks).
     `gate/rigor_lib/po2c.py` fails the build on a bad translation.
     The sources are generated in buck-out and are not mutated: a catalog is an L1 module.
     """
@@ -185,8 +186,11 @@ def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, deps = [], vi
     header = (package + "/" if package else "") + name + ".h"
     runtime_package, _, runtime_name = runtime[2:].partition(":")
     runtime_header = (runtime_package + "/" if runtime_package else "") + runtime_name + ".h"
+    if type(names) != "dict":
+        fail("c_catalog: `names` must be a dict of msgid -> enum words, got {}".format(type(names)))
     c_catalog_gen(
         name = name + "__gen",
+        names = names,
         stem = name,
         pots = pots,
         po = po,

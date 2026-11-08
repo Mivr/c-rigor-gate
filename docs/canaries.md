@@ -227,10 +227,11 @@ FAIL gates with their error rules, and `N later gates` means a gate the bypass s
 ## Canaries added by T105 (`c_catalog`)
 | canary | bypass | fails | NOT_RUN |
 |---|---|---|---|
-| `catalog-ok` (control) | two pots with one shared msgid, bg and en, a `c_test` formatting three ids in both languages; the catalog is an L1 module | none: PASS | none |
+| `catalog-ok` (control) | two pots with one shared msgid, one needed `names` override (`Hello` / `hello!`), bg and en, a `c_test` formatting three ids in both languages; the catalog is an L1 module | none: PASS | none |
 | `catalog-empty-bg` | an untranslated phrase in the default language (empty `msgstr`) | `build`: build-failed (`no bg translation`) | semantic-suppressions, symbols, structure, mode-divergence, tests-release, tests-san, mutants |
 | `catalog-extra-msgid` | a `.po` msgid that its `.pot` does not have | `build`: build-failed (`not in cat/a.pot`) | same |
 | `catalog-placeholder` | a translation that drops the source's `{0}` | `build`: build-failed (`bg uses placeholders []`) | same |
+| `catalog-names-unneeded` | a `names` entry for a msgid whose name collides with nothing | `build`: build-failed (`names: entry not needed`) | same |
 | `catalog-name-collision` | two msgids (`Hello`, `hello`) naming one enum constant | `build`: build-failed (`also the name of msgid`) | same |
 
 All five share `canaries/_catalog/files/` (a canary-local `i18n` runtime with the layout of the business-apps one, a two-pot

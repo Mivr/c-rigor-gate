@@ -8,6 +8,7 @@ c_catalog(
     source_lang = "en",
     symbol = "cv_catalog",
     runtime = "//i18n:i18n",
+    names = {"hello!": "HELLO_BANG"},
     visibility = ["PUBLIC"],
 )
 

@@ -7,3 +7,6 @@ msgstr ""
 
 msgid "Locker {0}"
 msgstr ""
+
+msgid "hello!"
+msgstr ""

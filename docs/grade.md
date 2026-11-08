@@ -40,7 +40,8 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 ```
 c_catalog(name = "catalog", pots = ["lockers.pot", "kit.pot"], po = {"bg": ["lockers.bg.po", "kit.bg.po"]},
           langs = ["bg", "en"], source_lang = "en", symbol = "lk_catalog", runtime = "//lib/fmt/i18n:i18n",
-          deps = ["//lib/base/core:core", "//lib/fmt/fmt:fmt"], visibility = ["PUBLIC"])
+          deps = ["//lib/base/core:core", "//lib/fmt/fmt:fmt"], names = {"codes unavailable": "CODES_UNAVAILABLE_INLINE"},
+          visibility = ["PUBLIC"])
 ```
 `pots`: ordered `.pot` files of the package; `po`: language -> `.po` files, one per pot, same order, for every language of `langs`
 but `source_lang` (whose text is the msgid itself); `langs`: ordered codes, the index is the runtime `lang`; `symbol`: the C
@@ -61,6 +62,17 @@ one generated `.c` (buck-out only, never checked in), plus `<name>__gen`, the ru
 - **Enum names**: `<UPPER symbol>_<WORDS>`; WORDS is the msgid with every run of non-`[A-Za-z0-9]` bytes (of the UTF-8) turned into one
   `_`, upper-cased, outer `_` dropped, cut to 48 characters (outer `_` dropped again after the cut), `N` before a leading digit. Two
   different msgids with one name, or a msgid with no letter or digit, fail the build; there is no suffix or override.
+- **`names` (optional): a narrow enum-name override.** `{msgid: WORDS}`, a literal dict of strings in the `BUCK` (anything else is
+  `bad-argument`). It exists for msgids that differ only in case or punctuation (`Codes unavailable` / `codes unavailable`), where renaming a
+  msgid would split the C catalog from the Rust translation files that Bulgarian proofreading shares. `{"codes unavailable":
+  "CODES_UNAVAILABLE_INLINE"}` gives `LK_CATALOG_CODES_UNAVAILABLE_INLINE`. Build errors: `names: unknown msgid` (not a msgid of the merged pots);
+  a value that is not `[A-Z0-9_]+`, starts with a digit or is over 48 characters; `names: entry not needed` (the msgid's derived name
+  is shared with no other msgid, so the table cannot become a free-form rename list); an override that collides with another
+  name or with `<SYMBOL>__COUNT`. Either side of a collision may be overridden, or both.
+- **Why `deps`.** The generated header includes the runtime header, and a library's `deps` are not exported to its dependents' compiles,
+  so what that header itself includes (the business-apps `i18n.h` includes `lib/base/core/buf.h`, `str.h` and `lib/fmt/fmt/fmt.h`) must
+  be named again here: `deps = ["//lib/base/core:core", "//lib/fmt/fmt:fmt"]`. Without it the catalog does not compile
+  (`'lib/base/core/buf.h' file not found`).
 - **C text**: strings are literals with every byte outside printable ASCII, and `"` `\` `?` (trigraphs), as a 3-digit octal escape;
   `str` is `n_msgs * n_langs` row-major, `n_args` a `static const uint8_t` array, nothing mutable, `_Static_assert` on the counts.
 - **How the other gate steps see it.** The `.c` is a generated source, so `c_facts` gets it in a new `generated` attribute (counted

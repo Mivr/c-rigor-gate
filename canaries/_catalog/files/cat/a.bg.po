@@ -7,3 +7,6 @@ msgstr "Здравей"
 
 msgid "Locker {0}"
 msgstr "Shkafche {0}"
+
+msgid "hello!"
+msgstr "Zdrasti"

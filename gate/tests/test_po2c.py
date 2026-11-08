@@ -21,11 +21,11 @@ def po_text(*pairs):
     return HEADER + "".join('msgid "%s"\nmsgstr "%s"\n\n' % pair for pair in pairs)
 
 
-def make(pots, bgs, langs=("bg", "en"), source="en", symbol="lk_cat"):
+def make(pots, bgs, langs=("bg", "en"), source="en", symbol="lk_cat", names=None):
     """build() from texts: `pots` and `bgs` are lists of str (one bg po per pot)."""
     return po2c.build([("p%d.pot" % k, t.encode("utf-8")) for k, t in enumerate(pots)],
                       {"bg": [("p%d.bg.po" % k, t.encode("utf-8")) for k, t in enumerate(bgs)]},
-                      list(langs), source, symbol)
+                      list(langs), source, symbol, names)
 
 
 def one(msgid, msgstr):
@@ -271,6 +271,60 @@ class NamesCase(TempDirTestCase):
         self.assertIn('msgid "..."', str(caught.exception))
 
 
+def clash(names):
+    """Two msgids with one derived name (`Open`, `open!`) and a third that is fine."""
+    return make([pot_text("Open", "open!", "Close")], [po_text(("Open", "1"), ("open!", "2"), ("Close", "3"))], names=names)
+
+
+class OverrideCase(TempDirTestCase):
+    def red(self, names, *needles):
+        with self.assertRaises(po2c.CatalogError) as caught:
+            clash(names)
+        for needle in needles:
+            self.assertIn(needle, str(caught.exception))
+
+    def test_an_override_resolves_a_collision(self):
+        self.assertEqual([m.name for m in clash({"open!": "OPEN_BANG"})], ["LK_CAT_OPEN", "LK_CAT_OPEN_BANG", "LK_CAT_CLOSE"])
+        self.assertEqual([m.name for m in clash({"Open": "OPEN_UPPER"})], ["LK_CAT_OPEN_UPPER", "LK_CAT_OPEN", "LK_CAT_CLOSE"])
+
+    def test_without_an_override_the_collision_stays(self):
+        self.red(None, "also the name of")
+        self.red({}, "also the name of")
+
+    def test_unknown_msgid(self):
+        self.red({"open!": "X", "nope": "NOPE"}, "names: unknown msgid", '"nope"')
+
+    def test_bad_values(self):
+        for words in ("lower", "A-B", "", "1ABC", "A B", "A" * 49, "ÄB"):
+            with self.subTest(words=words):
+                self.red({"open!": words}, "names: msgid", "at most 48")
+
+    def test_longest_value_is_fine(self):
+        self.assertEqual(clash({"open!": "A" * 48})[1].name, "LK_CAT_" + "A" * 48)
+
+    def test_entry_not_needed(self):
+        self.red({"Close": "CLOSE_IT"}, "names: entry not needed", '"Close"', "LK_CAT_CLOSE")
+
+    def test_entry_not_needed_without_any_collision(self):
+        with self.assertRaises(po2c.CatalogError) as caught:
+            make([pot_text("Open")], [po_text(("Open", "1"))], names={"Open": "OPEN_2"})
+        self.assertIn("names: entry not needed", str(caught.exception))
+
+    def test_both_sides_of_a_collision_may_be_overridden(self):
+        self.assertEqual([m.name for m in clash({"Open": "A", "open!": "B"})][:2], ["LK_CAT_A", "LK_CAT_B"])
+
+    def test_an_override_that_collides_fails(self):
+        self.red({"open!": "CLOSE"}, "msgid", "LK_CAT_CLOSE", '"Close"')
+        self.red({"open!": "OPEN"}, "LK_CAT_OPEN")
+
+    def test_an_override_may_not_take_the_count_name(self):
+        self.red({"open!": "_COUNT"}, "the count")
+
+    def test_the_header_uses_the_override(self):
+        text = po2c.render_header(clash({"open!": "OPEN_BANG"}), "lk_cat", "r.h")
+        self.assertIn("    LK_CAT_OPEN_BANG = 1,\n", text)
+
+
 class OutputCase(TempDirTestCase):
     def messages(self):
         return make([pot_text("Open {0}", 'Say \\"hi\\"\\n')], [po_text(("Open {0}", "Отвори {0}"), ('Say \\"hi\\"\\n', "Каза\\n\\t\\\\ \\\"x\\\" ?? 1"))])
@@ -335,6 +389,18 @@ class CliCase(TempDirTestCase):
         (self.tmp / "o.c").unlink()
         self.assertEqual(self.run_cli().returncode, 0)
         self.assertEqual(((self.tmp / "o.h").read_bytes(), (self.tmp / "o.c").read_bytes()), first)
+
+    def test_name_option(self):
+        self.files(pot_text("Open", "open!"), po_text(("Open", "1"), ("open!", "2")))
+        done = self.run_cli()
+        self.assertEqual(done.returncode, 1)
+        command = [sys.executable, "-I", "-B", str(GATE_DIR / "rigor_lib" / "po2c.py"), "--symbol", "s",
+                   "--langs", "bg,en", "--source-lang", "en", "--header", "x.h", "--runtime-header", "r.h",
+                   "--pot", str(self.tmp / "a.pot"), "--po", "bg", str(self.tmp / "a.bg.po"),
+                   "--name", "open!", "OPEN_BANG", "--out-h", str(self.tmp / "o.h"), "--out-c", str(self.tmp / "o.c")]
+        done = subprocess.run(command, capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, msg=done.stderr)
+        self.assertIn("S_OPEN_BANG", (self.tmp / "o.h").read_text())
 
     def test_error_exits_1_names_file_line_msgid_and_writes_nothing(self):
         self.files(pot_text("a"), po_text(("a", "")))

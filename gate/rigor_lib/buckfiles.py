@@ -29,7 +29,7 @@ MACRO_KEYWORDS = {"c_library": ("system_libs",)}
 # are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
 # is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).
 CATALOG_MACRO = "c_catalog"
-CATALOG_KEYWORDS = ("name", "visibility", "deps", "pots", "po", "langs", "source_lang", "symbol", "runtime")
+CATALOG_KEYWORDS = ("name", "visibility", "deps", "pots", "po", "langs", "source_lang", "symbol", "runtime", "names")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
 # (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the
@@ -66,6 +66,12 @@ def _is_value(node):
 
 def _is_string_list(node):
     return isinstance(node, ast.List) and all(_is_string(e) for e in node.elts)
+
+
+def _is_string_dict(node):
+    """`{"msgid": "WORDS", ...}`: literal string keys and values."""
+    return (isinstance(node, ast.Dict) and all(k is not None and _is_string(k) for k in node.keys)
+            and all(_is_string(v) for v in node.values))
 
 
 def _is_po_dict(node):
@@ -138,7 +144,8 @@ def call_findings(path, node, allowed, test_allowed):
     for keyword in call.keywords:
         if keyword.arg is None or keyword.arg not in known:
             found.append(finding("bad-argument", path=path, line=node.lineno, why="keyword"))
-        elif not (_is_po_dict(keyword.value) if macro == CATALOG_MACRO and keyword.arg == "po" else (
+        elif not (_is_po_dict(keyword.value) if macro == CATALOG_MACRO and keyword.arg == "po" else
+                  _is_string_dict(keyword.value) if macro == CATALOG_MACRO and keyword.arg == "names" else (
                 _is_value(keyword.value) or (
                     macro in GLOB_MACROS and keyword.arg in GLOB_KEYWORDS and _is_glob_value(keyword.value)))):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))

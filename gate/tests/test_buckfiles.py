@@ -427,6 +427,16 @@ class CatalogCase(TempDirTestCase):
         self.setUp()
         self.bad(CAT_LOAD + CAT.replace('visibility', 'deps = ":x", visibility'), "dep")
 
+    def test_names_is_a_literal_string_dict(self):
+        self.assertEqual(self.check(CAT_LOAD + CAT.replace('visibility', 'names = {"a": "B"}, visibility'), 0), [])
+        for value in ('{"a": ["B"]}', '{"a": x}', '{"a": "B" + "C"}', '{k: "B"}', '{**x}', '["a"]', '"a"', 'dict(a = "B")'):
+            with self.subTest(value=value):
+                self.setUp()
+                self.bad(CAT_LOAD + CAT.replace('visibility', 'names = %s, visibility' % value))
+
+    def test_names_belongs_to_the_catalog_only(self):
+        self.bad(CAT_LOAD + 'c_library(name = "a", names = {"a": "B"})\n', "keyword")
+
     def test_the_load_may_name_it(self):
         self.assertEqual(self.check('load("@gate//rules:c.bzl", "c_catalog")\n', 0), [])
 

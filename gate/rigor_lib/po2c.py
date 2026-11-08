@@ -4,7 +4,7 @@ Runs inside a Buck2 action (`rules/catalog.bzl`) and in the unit tests; Python 3
 the rest of the gate (a Buck action runs it with `python3 -I -B`).
 
     python3 -I -B po2c.py --symbol S --langs bg,en --source-lang en --header pkg/name.h --runtime-header RH
-                          --pot FILE... [--po LANG FILE]... --out-h FILE --out-c FILE
+                          --pot FILE... [--po LANG FILE]... [--name MSGID WORDS]... --out-h FILE --out-c FILE
 
 The generated code targets the runtime `i18n.h` (`i18n_catalog_t`): `str[msgid * n_langs + lang]` and `n_args[msgid]`.
 Every violation is a build error that names the file, the line and the msgid; the first one stops the run
@@ -19,6 +19,9 @@ Template rules (grammar of i18n.h): `{0}`..`{9}`, `{{`, `}}`, everything else wi
 Every language must use the same set of indices as the source. Counts: an index the source uses exactly once is
 used exactly once by every translation; an index the source repeats is used at least once (a translation may
 repeat it fewer or more times).
+
+`--name MSGID WORDS` overrides the WORDS of one enum name, only to resolve a real collision between derived names (an
+unknown msgid, a bad value, an entry that collides with nothing, or an override that collides itself fails).
 """
 
 import argparse
@@ -222,6 +225,7 @@ def enum_words(msgid):
 class Message:
     def __init__(self, msgid, n_args, texts):
         self.msgid, self.n_args, self.texts = msgid, n_args, texts
+        self.name = None   # the enum constant, set by build()
 
 
 def translations(files, other, pot_ids, source_lang, pot_path):
@@ -281,7 +285,7 @@ def check_names(langs, source_lang, pots, pos, symbol):
             raise CatalogError("%s: %d po files for %d pots" % (lang, len(files), len(pots)))
 
 
-def build(pots, pos, langs, source_lang, symbol):
+def build(pots, pos, langs, source_lang, symbol, names=None):
     """-> [Message] in first-appearance order. `pots`: [(path, bytes)]; `pos`: {lang: [(path, bytes)]}."""
     check_names(langs, source_lang, pots, pos, symbol)
     messages, index = [], {}
@@ -291,23 +295,51 @@ def build(pots, pos, langs, source_lang, symbol):
         raise CatalogError("the pot files hold no message")
     if len(messages) > MAX_MSGS:
         raise CatalogError("%d messages do not fit a uint16_t msgid" % len(messages))
+    for message, name in zip(messages, enum_names(messages, symbol, names)):
+        message.name = name
     return messages
 
 
-def enum_names(messages, symbol):
-    names, owner = [], {}
+NAME_WORDS = re.compile(r"[A-Z0-9_]+\Z")
+
+
+def check_override(msgid, words):
+    if not NAME_WORDS.match(words) or words[0] in DIGITS or len(words) > MAX_WORDS:
+        raise CatalogError("names: msgid %s: %s is not [A-Z0-9_]+ without a leading digit, at most %d characters"
+                           % (show(msgid), show(words), MAX_WORDS))
+
+
+def enum_names(messages, symbol, names=None):
+    """The enum name of every message. `names`: {msgid: WORDS}, each entry for a msgid whose derived name is
+    shared with another msgid (a free-form rename is a build error), each result still unique."""
+    names = names or {}
     prefix = symbol.upper()
+    known = {m.msgid for m in messages}
+    for msgid in sorted(names):
+        if msgid not in known:
+            raise CatalogError("names: unknown msgid %s" % show(msgid))
+        check_override(msgid, names[msgid])
+    derived, count = [], {}
     for message in messages:
         words = enum_words(message.msgid)
         if not words:
             raise CatalogError("msgid %s: no letter or digit to name it by" % show(message.msgid))
-        name = "%s_%s" % (prefix, words)
+        derived.append("%s_%s" % (prefix, words))
+        count[derived[-1]] = count.get(derived[-1], 0) + 1
+    for message, name in zip(messages, derived):
+        if message.msgid in names and count[name] == 1:
+            raise CatalogError("names: entry not needed: msgid %s has the unique enum name %s"
+                               % (show(message.msgid), name))
+    out, owner = [], {"%s__COUNT" % prefix: None}
+    for message, name in zip(messages, derived):
+        if message.msgid in names:
+            name = "%s_%s" % (prefix, names[message.msgid])
         if name in owner:
-            raise CatalogError("msgid %s: enum name %s is also the name of msgid %s"
-                               % (show(message.msgid), name, show(owner[name])))
+            other = "the count" if owner[name] is None else "msgid %s" % show(owner[name])
+            raise CatalogError("msgid %s: enum name %s is also the name of %s" % (show(message.msgid), name, other))
         owner[name] = message.msgid
-        names.append(name)
-    return names
+        out.append(name)
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -331,7 +363,7 @@ def render_header(messages, symbol, runtime_header):
     lines = ["/* Generated by po2c.py from gettext catalogs. Do not edit. */",
              "#ifndef %s" % guard, "#define %s" % guard, "", '#include "%s"' % runtime_header, "",
              "typedef enum {"]
-    lines += ["    %s = %d," % (name, number) for number, name in enumerate(enum_names(messages, symbol))]
+    lines += ["    %s = %d," % (name, number) for number, name in enumerate(m.name for m in messages)]
     lines += ["    %s__COUNT = %d," % (prefix, len(messages)), "} %s_msg_t;" % symbol, "",
               "extern const i18n_catalog_t %s;" % symbol, "", "#endif", ""]
     return "\n".join(lines)
@@ -384,6 +416,7 @@ def parser():
     p.add_argument("--runtime-header", required=True)
     p.add_argument("--pot", action="append", default=[])
     p.add_argument("--po", action="append", nargs=2, metavar=("LANG", "FILE"), default=[])
+    p.add_argument("--name", action="append", nargs=2, metavar=("MSGID", "WORDS"), default=[])
     p.add_argument("--out-h", required=True)
     p.add_argument("--out-c", required=True)
     return p
@@ -397,7 +430,7 @@ def run(args):
     pos = {}
     for lang, path in args.po:
         pos.setdefault(lang, []).append(read(path))
-    messages = build([read(p) for p in args.pot], pos, langs, args.source_lang, args.symbol)
+    messages = build([read(p) for p in args.pot], pos, langs, args.source_lang, args.symbol, dict(args.name))
     header = render_header(messages, args.symbol, args.runtime_header)
     source = render_source(messages, langs, args.symbol, args.header)
     write(args.out_h, header)

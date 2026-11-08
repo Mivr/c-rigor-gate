@@ -30,6 +30,8 @@ def _catalog_impl(ctx: AnalysisContext) -> list[Provider]:
     for lang in sorted(ctx.attrs.po.keys()):
         for po in ctx.attrs.po[lang]:
             cmd.add("--po", lang, po)
+    for msgid in sorted(ctx.attrs.names.keys()):
+        cmd.add("--name", msgid, ctx.attrs.names[msgid])
     cmd.add("--out-h", header.as_output(), "--out-c", source.as_output())
     ctx.actions.run(cmd, category = "po2c")
     return [DefaultInfo(
@@ -45,6 +47,7 @@ c_catalog_gen = rule(
     attrs = {
         "header": attrs.string(),
         "langs": attrs.list(attrs.string()),
+        "names": attrs.dict(attrs.string(), attrs.string(), default = {}),
         "po": attrs.dict(attrs.string(), attrs.list(attrs.source())),
         "pots": attrs.list(attrs.source()),
         "runtime_header": attrs.string(),
