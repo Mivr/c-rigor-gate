@@ -1,9 +1,12 @@
 name = "business-apps"
 
 [layout]
-# Every module directory of the monorepo (one entry per module directory on main; add apps/** when the first app module lands). Coverage (B14) makes a missing one a
+# Every module directory of the monorepo (one entry per module directory on main; apps/lockers/** modules are listed one directory each). Coverage (B14) makes a missing one a
 # finding (ungraded-path), and an entry that matches nothing a finding (stale-include).
-include = ["lib/base/bits/**",
+include = ["apps/lockers/lk/code/**",
+           "apps/lockers/lk/syncsched/**",
+           "apps/lockers/lk/types/**",
+           "lib/base/bits/**",
            "lib/base/core/**",
            "lib/base/ports/**",
            "lib/ds/blob/**",
@@ -43,6 +46,7 @@ include = ["lib/base/bits/**",
            "lib/io/posix_lock/**",
            "lib/io/posix_net/**",
            "lib/io/posix_rand/**",
+           "lib/io/tls_stream/**",
            "lib/rt/dtab/**",
            "lib/rt/elog/**",
            "lib/rt/ev/**",
@@ -57,8 +61,12 @@ include = ["lib/base/bits/**",
            "lib/sim/simclock/**",
            "lib/sim/simfs/**",
            "lib/sim/simfs_tab/**",
+           "lib/sim/simhost/**",
            "lib/sim/simnet/**",
            "lib/sim/simrng/**",
-           "lib/sim/trace/**"]
+           "lib/sim/trace/**",
+           "lib/ui/a11y/**",
+           "lib/ui/scene/**",
+           "lib/ui/scenediff/**"]
 # Non-code only (docs, plans, live fixtures): an exclude that covers a BUCK or C file is a finding.
 exclude = []

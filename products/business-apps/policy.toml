@@ -17,6 +17,84 @@ deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace",
 # The ctest runtime forks, kills and exits by design; it is the gate's own code.
 trusted = ["gate//ctest:ctest"]
 
+[module."//apps/lockers/lk/code:code"]
+level = "L3"
+impl = ["apps/lockers/lk/code/src/**"]
+allow = []
+exports = []
+
+[module."//apps/lockers/lk/code:code_class_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/code:code_eq_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/code:code_nondigit_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/code:code_out_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/code:code_unpack_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/syncsched:backoff_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/syncsched:banner_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/syncsched:result_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/syncsched:schedule_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/syncsched:state_decode_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/syncsched:state_encode_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/syncsched:syncsched"]
+level = "L3"
+impl = ["apps/lockers/lk/syncsched/src/**"]
+allow = []
+exports = []
+
+[module."//apps/lockers/lk/types:types"]
+level = "L3"
+impl = ["apps/lockers/lk/types/src/**"]
+allow = []
+exports = []
+
+[module."//apps/lockers/lk/types:types_bcd_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/types:types_consts_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/types:types_fault_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/types:types_valid_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/base/bits:bits"]
 level = "L3"
 impl = ["lib/base/bits/src/**"]
@@ -997,6 +1075,10 @@ exports = ["main"]
 allow = []
 exports = []
 
+[module."//lib/io/posix_net:wait_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/io/posix_rand:posix_rand"]
 level = "L2"
 impl = ["lib/io/posix_rand/src/**"]
@@ -1005,6 +1087,112 @@ exports = ["prand_init", "prand_port", "prand_port_over", "prand_sys_libc"]
 
 [module."//lib/io/posix_rand:rand_test"]
 allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:alert_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:api_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:bulk_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:cert_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:deadline_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:eof_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:errno_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:fault_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:gap_test"]
+allow = []
+third_party = ["gate//third_party/mbedtls:mbedtls", "gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:heap_test"]
+allow = []
+third_party = ["gate//third_party/mbedtls:mbedtls", "gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:host_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:pnet_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/io/tls_stream:reuse_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:session_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:sizing_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:split_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:state_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:testkit"]
+allow = []
+exports = []
+
+[module."//lib/io/tls_stream:tls_stream"]
+level = "L3"
+allow_mutable_data = true   # heap.c g_active: the mbedTLS calloc/free hook has no context argument (third-party API)
+third_party = ["gate//third_party/mbedtls:mbedtls"]
+impl = ["lib/io/tls_stream/src/**"]
+allow = []
+exports = []
+
+[module."//lib/io/tls_stream:trust_test"]
+allow = []
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+exports = ["main"]
+
+[module."//lib/io/tls_stream:wall_bound_test"]
+allow = []
+third_party = ["gate//third_party/mbedtls:mbedtls", "gate//third_party/tls_peer:tls_peer"]
 exports = ["main"]
 
 [module."//lib/rt/dtab:dtab"]
@@ -1344,6 +1532,40 @@ allow = ["bcmp", "memcmp", "memcpy", "memmove"]
 exports = ["simtab_erase", "simtab_first_ge", "simtab_init", "simtab_insert", "simtab_is_at",
     "simtab_name_err", "simtab_off", "simtab_set_data", "simtab_str_bad", "simtab_used"]
 
+[module."//lib/sim/simhost:simhost"]
+level = "L3"
+impl = ["lib/sim/simhost/src/**"]
+allow = []
+exports = []
+
+[module."//lib/sim/simhost:simhost_cond_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simhost:simhost_gap_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simhost:simhost_init_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simhost:simhost_mbox_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simhost:simhost_osal_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simhost:simhost_sched_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simhost:simhost_seed_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/sim/simnet:simnet"]
 level = "L3"
 impl = ["lib/sim/simnet/src/**"]
@@ -1441,4 +1663,114 @@ exports = ["main"]
 [module."//lib/sim/trace:trace_hash_test"]
 allow = ["memcpy", "memset"]
 exports = ["main"]
+
+[module."//lib/ui/a11y:a11y"]
+level = "L3"
+impl = ["lib/ui/a11y/src/**"]
+allow = []
+exports = []
+
+[module."//lib/ui/a11y:a11y_args_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/a11y:a11y_buf_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/a11y:a11y_escape_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/a11y:a11y_golden_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/a11y:a11y_parse_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/a11y:a11y_text_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scene:scene"]
+level = "L3"
+impl = ["lib/ui/scene/src/**"]
+allow = []
+exports = []
+
+[module."//lib/ui/scene:scene_args_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scene:scene_build_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scene:scene_check_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scene:scene_dump_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scene:scene_init_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scene:scene_notice_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scene:scene_overflow_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:scenediff"]
+level = "L3"
+impl = ["lib/ui/scenediff/src/**"]
+allow = []
+exports = []
+
+[module."//lib/ui/scenediff:sd_big_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:sd_edge_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:sd_gap_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:sd_notice_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:sd_ops_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:sd_order_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:sd_prop_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:sd_stale_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:sd_struct_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/scenediff:testkit"]
+allow = []
+exports = []
 
