@@ -197,7 +197,8 @@ def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, visibility = 
     native.cxx_library(
         name = name,
         srcs = [":" + name + "__gen[c]"],
-        exported_headers = {header: ":" + name + "__gen[h]"},
+        # A dict keeps the key under the package: the header is `<package>/<name>.h`, as a list of files would be.
+        exported_headers = {name + ".h": ":" + name + "__gen[h]"},
         deps = [runtime],
         visibility = visibility,
         compiler_flags = _compile_flags(),
