@@ -217,7 +217,7 @@ allow = ["bcmp", "memset"]
 exports = ["main"]
 
 [module."//lib/ds/fmap:fmap_home_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/ds/fmap:fmap_model_test"]
@@ -407,7 +407,7 @@ exports = []
 [module."//lib/fmt/httphdr:httphdr"]
 level = "L3"
 impl = ["lib/fmt/httphdr/src/**"]
-allow = []
+allow = ["memchr"]
 exports = ["http_header_line", "http_headers_end", "http_text_ok"]
 
 [module."//lib/fmt/httpredir:complexity_redirect_test"]
@@ -449,7 +449,7 @@ exports = ["main"]
 [module."//lib/fmt/httpresp:httpresp"]
 level = "L3"
 impl = ["lib/fmt/httpresp/src/**"]
-allow = ["memchr", "memset"]
+allow = ["memset"]
 exports = ["http_parser_eof", "http_parser_init", "http_parser_next", "http_status_line"]
 
 [module."//lib/fmt/httpresp:parse_basic_test"]
@@ -745,7 +745,7 @@ allow = ["bcmp", "memset"]
 exports = ["main"]
 
 [module."//lib/io/pfio:pf_kfs_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/io/pfio:pf_stream_test"]
@@ -761,7 +761,7 @@ exports = ["pf_kfs", "pf_stream"]
 [module."//lib/io/pfscript:pfscript"]
 level = "L2"
 impl = ["lib/io/pfscript/src/**"]
-allow = []
+allow = ["memcpy"]
 exports = ["pf_consumed", "pf_done", "pf_finish", "pf_next", "pf_script_init", "pf_simple", "pf_take", "pf_violate", "pf_violations", "pf_why"]
 
 [module."//lib/io/portfakes:pf_osal_test"]
@@ -783,7 +783,7 @@ exports = ["main"]
 [module."//lib/io/portfakes:portfakes"]
 level = "L2"
 impl = ["lib/io/portfakes/src/**"]
-allow = []
+allow = ["memset"]
 exports = ["pf_clock", "pf_lock", "pf_osal", "pf_random", "pf_wall"]
 
 [module."//lib/io/posix_clock:clock_test"]
@@ -799,13 +799,15 @@ exports = ["posix_clock_faults", "posix_clock_init", "posix_clock_init_real", "p
     "posix_clock_set_wall_offset", "posix_clock_sys_libc", "posix_wall_port"]
 
 [module."//lib/io/posix_lock:lock_test"]
-allow = []
+allow = ["__xstat", "bcmp", "getpid", "memcpy", "memset", "snprintf", "strlen"]
+deny_exempt = ["getenv", "unlink"]
 exports = ["main"]
 
 [module."//lib/io/posix_lock:posix_lock"]
 level = "L2"
 impl = ["lib/io/posix_lock/src/**"]
-allow = []
+allow = ["__errno_location", "close", "flock", "memchr", "memcpy", "nanosleep"]
+deny_exempt = ["clock_gettime", "open"]
 exports = ["posix_lock_init", "posix_lock_init_real", "posix_lock_port", "posix_lock_sys_libc"]
 
 [module."//lib/io/posix_rand:posix_rand"]
@@ -942,39 +944,39 @@ exports = ["fk_fail_init", "fk_fail_lock", "fk_fail_wake", "fk_hook_at", "fk_n",
 [module."//lib/rt/rxwire:rxwire"]
 level = "L3"
 impl = ["lib/rt/rxwire/src/**"]
-allow = []
+allow = ["memset"]
 exports = ["rxwire_index", "rxwire_index_bytes", "rxwire_lookup", "rxwire_validate"]
 
 [module."//lib/rt/rxwire:rxwire_args_test"]
-allow = []
+allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/rt/rxwire:rxwire_bound_test"]
-allow = []
+allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/rt/rxwire:rxwire_edge_test"]
-allow = []
+allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/rt/rxwire:rxwire_full_test"]
-allow = []
+allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/rt/rxwire:rxwire_index_test"]
-allow = []
+allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/rt/rxwire:rxwire_random_test"]
-allow = []
+allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/rt/rxwire:rxwire_red_test"]
-allow = []
+allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/rt/rxwire:rxwire_table_test"]
-allow = []
+allow = ["abort"]
 exports = ["main"]
 
 [module."//lib/rt/sel:sel"]
@@ -1031,51 +1033,51 @@ exports = ["main"]
 [module."//lib/sim/simfs:simfs"]
 level = "L3"
 impl = ["lib/sim/simfs/src/**"]
-allow = []
+allow = ["bcmp", "memcmp", "memcpy", "memmove"]
 exports = ["simfs_fault", "simfs_fsyncs", "simfs_init", "simfs_mode", "simfs_port", "simfs_steps", "simfs_storage_bytes"]
 
 [module."//lib/sim/simfs:simfs_args_test"]
-allow = []
+allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_canary_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_crash_test"]
-allow = []
+allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_fault_test"]
-allow = []
+allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_init_test"]
-allow = []
+allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_list_test"]
-allow = []
+allow = ["memset", "snprintf", "strcat", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_model_test"]
-allow = []
+allow = ["memcpy", "memset", "snprintf", "strcat", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_port_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_rw_test"]
-allow = []
+allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_space_test"]
-allow = []
+allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simfs:simfs_store_test"]
-allow = []
+allow = ["memcpy", "strlen"]
 exports = ["main"]
 
 [module."//lib/sim/simrng:simrng"]
