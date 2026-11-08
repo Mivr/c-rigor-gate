@@ -342,6 +342,19 @@ class WorkDirectory(TempDirTestCase):
         self.assertEqual(sorted(p.name for p in work.iterdir()), ["home", "results", "tmp"])
 
 
+    def test_a_second_grading_into_the_same_work_directory_does_not_trip_over_the_perf_results(self):
+        work = self.sub("work")
+        (work / "mutants-perf").mkdir()
+        (work / "mutants-perf" / "004.json").write_text("stale", encoding="utf-8")
+        with mock.patch("rigor_lib.grade_context.kill_daemon"):
+            grade_context.prepare_work(str(work))
+        self.assertFalse((work / "mutants-perf").exists())
+        out_dir = work / grade_mutants.PERF_DIR
+        out_dir.mkdir()
+        with open(str(out_dir / "004.json"), "xb") as handle:   # what _copy_perf does: exclusive create
+            handle.write(b"{}")
+
+
 class Gate(TempDirTestCase):
     def grading(self, status=None, role="implementer"):
         work = self.sub("work")
