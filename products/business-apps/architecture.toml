@@ -24,7 +24,10 @@ modules = ["//lib/fmt/fp:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//
 
 # Non-test libraries only tests may use (test kits over a module's fake or real seam).
 [testkit]
-modules = ["//lib/io/posix_fs:testkit", "//lib/io/posix_net:testkit", "//lib/io/tls_stream:testkit", "//lib/sim/simnet:testkit",
+modules = ["//lib/io/posix_fs:testkit",
+           "//lib/io/posix_net:testkit",
+           "//lib/io/tls_stream:testkit",
+           "//lib/sim/simnet:testkit",
            "//lib/ui/scenediff:testkit",
            "//apps/lockers/lk/auditplan:testkit",
            "//apps/lockers/lk/book:testkit",
@@ -36,11 +39,26 @@ modules = ["//lib/io/posix_fs:testkit", "//lib/io/posix_net:testkit", "//lib/io/
            "//apps/lockers/lk/syncbody:testkit",
            "//apps/lockers/lkadp/auditfile:testkit",
            "//apps/lockers/lkadp/bookfile:testkit",
+           "//apps/lockers/lkadp/codeshttp:testkit",
            "//apps/lockers/lkadp/inventoryfile:testkit",
+           "//apps/lockers/lkadp/relaytcp:testkit",
+           "//apps/lockers/lkapp/commission:boardkit",
+           "//apps/lockers/lkapp/commission:testkit",
            "//apps/lockers/lkapp/winpolicy:testkit",
+           "//apps/lockers/lkrx/boot:testkit",
            "//apps/lockers/lkrx/catalog:testkit",
+           "//apps/lockers/lkrx/codes:testkit",
+           "//apps/lockers/lkrx/fold_core:testkit",
+           "//apps/lockers/lkrx/fold_status:testkit",
+           "//apps/lockers/lkrx/notice:testkit",
+           "//apps/lockers/lkrx/pad:testkit",
+           "//apps/lockers/lkrx/shift:testkit",
+           "//apps/lockers/lkrx/visit:testkit",
            "//apps/lockers/lkrx/vstate:testkit",
            "//apps/lockers/lksim/board:testkit",
+           "//apps/lockers/lkui/notices:testkit",
+           "//apps/lockers/lkui/screens:testkit",
+           "//apps/lockers/relay/driver:testkit",
            "//apps/lockers/relay/opener_sm:testkit"]
 
 [layer."lib-io"]
@@ -634,3 +652,66 @@ kind = "pure"
 from = "app-root"
 to = "lib-base"
 kind = "pure"
+
+# Lockers sub-layer rules for the modules merged after T104 (T111), by the dependency column of design.md section 4.1.
+# lkrx/codes fingerprints codes with fp (design column: fp).
+[[edge]]
+from = "app-reactors"
+to = "//lib/fmt/fp:fp"
+kind = "pure"
+
+# lkadp/relaytcp writes only relay frames after relay_frame_is_safe and runs the relay driver.
+[[edge]]
+from = "app-adapters"
+to = "app-safety"
+kind = "pure"
+
+# lkadp/codeshttp builds and parses HTTP and JSON with the lib-fmt http and json modules.
+[[edge]]
+from = "app-adapters"
+to = "lib-fmt"
+kind = "pure"
+
+# The relay transport runs over posix_net.
+[[edge]]
+from = "//apps/lockers/lkadp/relaytcp:relaytcp"
+to = "//lib/io/posix_net:posix_net"
+kind = "pure"
+
+# lkadp/codeshttp emits its events by the catalog types (not in the design column).
+[[edge]]
+from = "//apps/lockers/lkadp/codeshttp:codeshttp"
+to = "//lib/rt/ev:ev"
+kind = "pure"
+
+[[edge]]
+from = "//apps/lockers/lkadp/codeshttp:codeshttp"
+to = "//lib/rt/rxwire:rxwire"
+kind = "pure"
+
+[[edge]]
+from = "//apps/lockers/lkadp/codeshttp:codeshttp"
+to = "//apps/lockers/lkrx/catalog:catalog"
+kind = "pure"
+
+# Composition root and shells: commissioning drives the relay driver over the relay transport.
+[[edge]]
+from = "app-root"
+to = "app-safety"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "app-adapters"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "lib-fmt"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "lib-io"
+kind = "pure"
+
