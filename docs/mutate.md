@@ -38,7 +38,7 @@ Now `c_mutants` has an attribute `batch` (default 16):
 | What | One action per |
 |---|---|
 | `mutant_compile` (`-O2`) and `mutant_compile_o0` | batch of at most `batch` mutants (of one or more sources); `tool.py compile-batch` compiles each mutant on its own, in its own scratch directory, and writes its object and its record. A mutant the compiler rejects is `unviable`, the others still compile. A compiler crash or a stale spec fails the batch (as it failed the single action) |
-| `mutant_run` | batch and test; `tool.py linkrun-batch` links and runs each mutant in a fresh process and scratch directory, one after another, with the timeouts of before (10 s per test inside ctest, 180 s per binary). A crash or timeout is that mutant's record only; a failed link fails the batch |
+| `mutant_run` | batch and test (resource limits: every mutant binary runs under the ctest harness limits, 64 MiB per file, 20 s CPU per test, 256 descriptors, no core, a 256 MiB scratch quota per test, see "Runaway tests" below); `tool.py linkrun-batch` links and runs each mutant in a fresh process and scratch directory, one after another, with the timeouts of before (10 s per test inside ctest, 180 s per binary). A crash or timeout is that mutant's record only; a failed link fails the batch |
 
 The records are the same files as before (`obj/.../<id>.json`, `run/.../<id>.json`), one per mutant (and test), so
 `collect` and `rigor mutants` are unchanged; a missing record fails the build (exit 2, never a pass). A batch that fails
@@ -80,6 +80,15 @@ Only mutants identical at both levels (a constant the front end folds, `1 * 1 ->
 mutant is run at `-O0` against tests that passed at `-O2`; for undefined behaviour the two builds legitimately differ, so a
 test written against the optimised result kills such a mutant, and a test that never reaches the branch lets it survive.
 Canary `o2-folded-mutant`; selftest `mutate.sh` module `fold`.
+
+### Runaway tests (T097)
+A mutant can turn a bounded loop into an endless one (`left -= w` -> `left += w` in a write retry). In a test that uses a real file under
+`$TMPDIR` that filled the shared RE farm's disk (`No space left on device ... /data/cas/tmp`). The harness every `c_test` and every
+`mutant_run` executes (`ctest_run`, [ctest.md](ctest.md#resource-limits-t097)) therefore sets `RLIMIT_FSIZE` 64 MiB, `RLIMIT_CPU` 20 s per test,
+`RLIMIT_NOFILE` 256 and `RLIMIT_CORE` 0, ignores `SIGXFSZ`, gives each test a private `$TMPDIR` with a 256 MiB / 4096 entry quota and removes it
+afterwards. The mutant's test then fails on `EFBIG` (a failed check: `killed-assert`) or is killed by the quota or `SIGXCPU`
+(`killed-crash`); it never becomes `unrun` or an action error, and the action finishes in seconds instead of at the 180 s kill.
+`selftest/mutate.sh` module `runaway` proves it with the incident's mutant.
 
 ### Deterministic results (T034, B34)
 What `mutant_run` stores is a function of the verdict, not of the execution: a mutant that reads uninitialised memory

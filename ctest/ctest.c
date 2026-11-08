@@ -4,6 +4,7 @@
 #include "sanlog.h"
 
 #include <errno.h>
+#include <ftw.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <poll.h>
@@ -13,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/random.h>
+#include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -28,7 +30,17 @@ enum {
     TIMEOUT_S = 10, /* fixed; deliberately not configurable by a test file */
     SAN_TEXT_CAP = 1 << 16, /* one test's sanitizer log; longer logs are cut */
     SAN_REPORT_CAP = 1 << 20,
-    SAN_SUM_CAP = 200
+    SAN_SUM_CAP = 200,
+    /* Hard resource limits (T097): the same in every mode. See docs/ctest.md "Resource limits". */
+    LIM_FSIZE = 64 << 20,   /* RLIMIT_FSIZE: one file; a write past it fails with EFBIG (SIGXFSZ is ignored) */
+    LIM_CPU_CHILD_S = 20,   /* RLIMIT_CPU per test process: twice the wall timeout, so 2 busy threads still pass */
+    LIM_CPU_PARENT_S = 600, /* RLIMIT_CPU of the runner itself, which only waits */
+    LIM_NOFILE = 256,       /* RLIMIT_NOFILE */
+    SCRATCH_BYTES = 256 << 20, /* total bytes (apparent size) under one test's private $TMPDIR */
+    SCRATCH_ENTRIES = 4096,    /* total entries under it */
+    SCRATCH_PATH_CAP = 4096,
+    SCRATCH_POLL_MS = 20,
+    SCRUB_FRAMES = 64 /* x 256 bytes */
 };
 #define REPORT_MAGIC 0x43544531U
 
@@ -68,6 +80,9 @@ static char g_san_sum[SAN_SUM_CAP]; /* static: keeps the stack frames of the inl
 static char g_san_head[2 * NAME_CAP + 16];
 static char g_san_out[SAN_REPORT_CAP];
 static size_t g_san_out_len;
+static char g_scratch[SCRATCH_PATH_CAP]; /* this test's private $TMPDIR; empty = none */
+static uint64_t g_scratch_bytes;
+static uint64_t g_scratch_entries;
 
 /* ------------------------------------------------------------------ checks (run in the child) */
 
@@ -304,8 +319,84 @@ static int write_out(const char *path) {
 
 /* ------------------------------------------------------------------ running one test */
 
+static int set_limit(__rlimit_resource_t what, rlim_t v) {
+    struct rlimit rl;
+    rl.rlim_cur = v;
+    rl.rlim_max = v;
+    return setrlimit(what, &rl);
+}
+
+/* ------------------------------------------------------------------ scratch quota (T097) */
+
+static int scratch_visit(const char *path, const struct stat *sb, int type, struct FTW *f) {
+    (void)path;
+    (void)f;
+    (void)type;
+    g_scratch_entries++;
+    g_scratch_bytes += (uint64_t)sb->st_size;
+    return 0;
+}
+
+/* 1 when the test's private $TMPDIR holds more than the quota. */
+static int scratch_over(void) {
+    if (g_scratch[0] == '\0') {
+        return 0;
+    }
+    g_scratch_bytes = 0;
+    g_scratch_entries = 0;
+    (void)nftw(g_scratch, scratch_visit, 16, FTW_PHYS);
+    return g_scratch_bytes > (uint64_t)SCRATCH_BYTES || g_scratch_entries > (uint64_t)SCRATCH_ENTRIES;
+}
+
+static int scratch_remove_one(const char *path, const struct stat *sb, int type, struct FTW *f) {
+    (void)sb;
+    (void)type;
+    (void)f;
+    return remove(path);
+}
+
+static void scratch_make(void) {
+    const char *base = getenv("TMPDIR");
+    int n;
+    g_scratch[0] = '\0';
+    if (base == NULL || base[0] == '\0') {
+        base = "/tmp";
+    }
+    n = snprintf(g_scratch, sizeof g_scratch, "%s/ctest.XXXXXX", base);
+    if (n < 0 || (size_t)n >= sizeof g_scratch || mkdtemp(g_scratch) == NULL) {
+        g_scratch[0] = '\0'; /* no quota; RLIMIT_FSIZE still applies */
+    }
+}
+
+/* Overwrites the stack below the caller. mkdtemp and nftw leave random directory names (and pids) in dead stack
+ * slots; a test (or a mutant) that reads an uninitialised local would see them, so its verdict would change from
+ * run to run. After the scrub the dead slots hold zeros, the same every time. */
+static void scrub_stack(int depth) {
+    volatile char pad[256];
+    for (size_t i = 0; i < sizeof pad; i++) {
+        pad[i] = 0;
+    }
+    if (depth > 0) {
+        scrub_stack(depth - 1);
+    }
+    pad[0] = 0;
+}
+
+static void scratch_drop(void) {
+    if (g_scratch[0] != '\0') {
+        (void)nftw(g_scratch, scratch_remove_one, 16, FTW_DEPTH | FTW_PHYS);
+        g_scratch[0] = '\0';
+    }
+}
+
 static void child_main(const ctest_case_t *c) {
     if (setpgid(0, 0) != 0 || dup2(2, 1) < 0) {
+        _exit(4);
+    }
+    if (set_limit(RLIMIT_CPU, LIM_CPU_CHILD_S) != 0) {
+        _exit(4);
+    }
+    if (g_scratch[0] != '\0' && setenv("TMPDIR", g_scratch, 1) != 0) {
         _exit(4);
     }
     c->fn(&g_t); /* a test that exits or crashes never reaches the report below */
@@ -317,8 +408,9 @@ static void child_main(const ctest_case_t *c) {
     exit(0); /* not _exit: runs atexit, so the leak sanitizer can still fail the test */
 }
 
-/* Waits for the child to be reaped until the deadline. 0 = reaped, 1 = timeout, -1 = error. */
+/* Waits for the child to be reaped until the deadline. 0 = reaped, 1 = timeout, 2 = scratch quota exceeded, -1 = error. */
 static int wait_child(pid_t pid, int64_t deadline, int *status) {
+    int64_t next_scratch = 0;
     for (;;) {
         pid_t r = waitpid(pid, status, WNOHANG);
         int64_t now;
@@ -334,6 +426,12 @@ static int wait_child(pid_t pid, int64_t deadline, int *status) {
         }
         if (now >= deadline) {
             return 1;
+        }
+        if (now >= next_scratch) {
+            next_scratch = now + SCRATCH_POLL_MS;
+            if (scratch_over()) {
+                return 2;
+            }
         }
         (void)poll(NULL, 0, 1); /* bounded 1 ms wait between reaping attempts */
     }
@@ -395,6 +493,13 @@ static void timed_out(result_t *res) {
     (void)snprintf(res->reason, sizeof res->reason, "timeout after %d s", TIMEOUT_S);
 }
 
+static void over_quota(result_t *res) {
+    memset(res, 0, sizeof *res);
+    fail_with(res, 0);
+    (void)snprintf(res->reason, sizeof res->reason, "scratch quota exceeded (limit %d MiB, %d entries under $TMPDIR)",
+                   SCRATCH_BYTES >> 20, SCRATCH_ENTRIES);
+}
+
 static void keep_san_text(const char *suite, const char *name, size_t n) {
     int h = snprintf(g_san_head, sizeof g_san_head, "== %s/%s ==\n", suite, name);
     if (h < 0 || g_san_out_len + (size_t)h + n >= sizeof g_san_out) {
@@ -436,8 +541,11 @@ static int run_one(const char *suite, const ctest_case_t *c, result_t *res) {
     pid_t pid;
     int64_t deadline = now_ms() + (int64_t)TIMEOUT_S * 1000;
     memset(g_rep, 0, sizeof *g_rep);
+    scratch_make();
+    scrub_stack(SCRUB_FRAMES);
     pid = fork();
     if (pid < 0) {
+        scratch_drop();
         return -1;
     }
     if (pid == 0) {
@@ -453,11 +561,14 @@ static int run_one(const char *suite, const ctest_case_t *c, result_t *res) {
         }
     }
     kill_tree(pid); /* stragglers the test left in its process group */
+    scratch_drop();
     if (wt < 0) {
         return -1;
     }
     if (wt == 1) {
         timed_out(res);
+    } else if (wt == 2) {
+        over_quota(res);
     } else {
         classify(status, res);
     }
@@ -589,6 +700,14 @@ int ctest_run(int argc, char **argv, const char *suite, const ctest_case_t *case
         return 2;
     }
     if (getrandom(&g_nonce, sizeof g_nonce, 0) != (ssize_t)sizeof g_nonce) {
+        return 2;
+    }
+    /* Hard limits before any test runs; every test process inherits them. SIGXFSZ is ignored so a write
+     * past RLIMIT_FSIZE fails with EFBIG and the test's own check fails, instead of killing the process. */
+    if (signal(SIGXFSZ, SIG_IGN) == SIG_ERR || set_limit(RLIMIT_FSIZE, LIM_FSIZE) != 0 ||
+        set_limit(RLIMIT_CPU, LIM_CPU_PARENT_S) != 0 || set_limit(RLIMIT_NOFILE, LIM_NOFILE) != 0 ||
+        set_limit(RLIMIT_CORE, 0) != 0) {
+        (void)fputs("ctest: cannot set resource limits\n", stderr);
         return 2;
     }
     g_rep = mmap(NULL, sizeof *g_rep, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
