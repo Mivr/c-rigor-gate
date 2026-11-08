@@ -3,6 +3,8 @@ set -eu
 # only by pattern, so a witness (see witness/) that writes another file name under src/ still builds.
 mkdir core/src
 git mv core/core.c core/src/core.c
+sed -i '1s|#include "core.h"|#include "core/core.h"|' core/src/core.c   # product includes are repo-root paths
+head -1 core/src/core.c | grep -q '"core/core.h"'
 python3 - <<'PY'
 text = open("core/BUCK", encoding="utf-8").read()
 old = '    srcs = ["core.c"],\n    headers = ["core.h"],\n'

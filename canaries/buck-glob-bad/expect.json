@@ -1,12 +1,21 @@
 {
   "bypass": "BUCK glob beyond the accepted forms",
-  "description": "`**`, `..`, `exclude`, a glob in deps, a test glob and glob + glob: only the two package-local `src/` forms are accepted.",
+  "description": "`**`, `..`, `exclude`, a glob in deps, a test glob and glob + glob: only the two package-local `src/` forms are accepted. Buck2 also refuses the file, which is the second defence.",
   "fail": {
     "buckfiles": [
       "bad-argument"
+    ],
+    "build": [
+      "query-failed"
     ]
   },
   "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "structure",
+    "mode-divergence",
+    "tests-release",
+    "tests-san",
     "mutants",
     "witness-tests",
     "mutants-witness"

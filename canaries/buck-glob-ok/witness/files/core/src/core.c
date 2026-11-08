@@ -1,4 +1,4 @@
-#include "core.h"
+#include "core/core.h"
 
 int core_add(int a, int b) { return a + b; }
 
