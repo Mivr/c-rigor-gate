@@ -175,6 +175,24 @@ class BuckFilesCase(TempDirTestCase):
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = LIBS)\n', "bad-argument")
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = [LIB])\n', "bad-argument")
 
+    def test_exported_deps_on_a_library(self):
+        self.assertEqual(self.check({"BUCK": LOAD + 'c_library(name = "a", srcs = ["a.c"], exported_deps = [":c", "//p:d"])\n'}, 0), [])
+
+    def test_exported_deps_is_a_c_library_keyword_only(self):
+        for macro in ("c_test", "c_binary", "c_fuzz"):
+            self.red('load("@gate//rules:c.bzl", "%s")\n%s(name = "a", srcs = ["a.c"], exported_deps = [":c"])\n'
+                     % (macro, macro), "bad-argument")
+
+    def test_exported_deps_are_checked_like_deps(self):
+        self.red(LOAD + 'c_library(name = "a", exported_deps = ["@prelude//x:y"])\n', "bad-argument")
+        self.red(LOAD + 'c_library(name = "a", exported_deps = DEPS)\n', "bad-argument")
+        self.red(LOAD + 'c_library(name = "a", exported_deps = glob(["src/*.c"]))\n', "bad-argument")
+
+    def test_exported_deps_may_not_name_a_test(self):
+        files = {"BUCK": LOAD + 'c_test(name = "t", srcs = ["t.c"])\n'
+                 'c_library(name = "a", srcs = ["a.c"], exported_deps = [":t"])\n'}
+        self.assertEqual(self.check(files, 1), ["bad-argument"])
+
     def test_unknown_keyword(self):
         self.red(LOAD + 'c_library(name = "a", exec_compatible_with = ["x"])\n', "bad-argument")
 

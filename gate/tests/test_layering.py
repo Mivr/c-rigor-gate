@@ -92,6 +92,14 @@ class Findings(unittest.TestCase):
         edge = next(f for f in result.findings if f["rule"] == "undeclared-edge")
         self.assertEqual((edge["from_layer"], edge["to_layer"]), ("lib-base", "lib-ds"))
 
+    def test_an_exported_dep_is_an_edge_from_the_exporter_only(self):
+        # T110: `c_library(exported_deps=)` reaches the facts as an ordinary dep of the exporting library. Its
+        # dependent keeps its own edges: no edge to the exported library is gained by inheriting its header.
+        facts = green()
+        facts[FMT] = mod(FMT, [CORE, DS], ["fmt_int"], ["core_add"])   # FMT exports DS: lib-base -> lib-ds
+        # ROOT lists only what its own sources use; every finding is about the exporter, none about its dependents
+        self.assertEqual({t for _, t, _ in judge(facts)[1]}, {FMT})
+
     def test_a_sideways_edge_in_one_layer_must_be_declared(self):
         facts = green()
         facts["//apps/a/domain:two"] = mod("//apps/a/domain:two", [DOM])

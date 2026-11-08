@@ -8,6 +8,20 @@ Each product has a gate-owned directory `products/<name>/` (`product.toml`, `pol
 | `annas-c` | `Mivr/annas-c` | `core/**`, `json/**`, `url/**`, ... (14 module directories) | The model product; policy is the standard deny list. |
 | `business-apps` | `Mivr/business-apps` (private monorepo, cell `biz`) | `lib/**` | Add `apps/**` when the first app module lands (a pattern that matches nothing is `stale-include`). `main` holds `lib/base/core` only (131 tests), moved from annas-c `core`. |
 
+## `c_library` parameters and `exported_deps` (T110)
+`c_library(name, srcs, headers, deps, exported_deps, visibility, system_libs)`. `deps` are private: their headers are not
+visible to the library's dependents. `exported_deps` (a literal list of labels, `c_library` only) are passed to the cxx
+library as exported deps, so their headers and link inputs reach every dependent transitively. For every gate check
+(facts, layering/architecture edges, fan-out counts, the mutants package, the witness scope) they are deps of THIS library:
+the edge is `B -> C`, it must be allowed for B exactly as a plain dep is, and a dependent `A -> B` gains no edge to `C`.
+If A's own sources use `C` (call its symbols), the `symbols` gate still reports `undeclared-symbol` unless A lists `C`
+directly in `deps`: the gate checks symbols against the DIRECT deps' exports, never against what a header makes visible,
+and that is unchanged. A label in both `deps` and `exported_deps` fails the package load with a clear message. `rigor buckfiles` accepts
+`exported_deps` on `c_library` only, checked like `deps`.
+
+**When to export.** Export exactly the libraries whose headers the library's PUBLIC headers include. Never export for
+convenience, to save a dependent a line, or because the library's `.c` files use it (that is a private `deps` entry).
+
 ## Linking a sysroot library (T095)
 A module that needs libpthread (business-apps `lib/io/osal`, the only module allowed to call pthread) declares it on its
 library, and the product policy repeats it in that module's table (the gate's cross-check; both directions are errors):

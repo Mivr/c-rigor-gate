@@ -24,7 +24,7 @@ LOAD_PATH = "@gate//rules:c.bzl"
 MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
-MACRO_KEYWORDS = {"c_library": ("system_libs",)}
+MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps")}
 # T105: `c_catalog` has keywords of its own and no `srcs`/`headers`. `pots`, `langs`, `source_lang` and `symbol`
 # are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
 # is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).
@@ -151,8 +151,8 @@ def call_findings(path, node, allowed, test_allowed):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
         elif keyword.arg == "runtime" and not _is_string(keyword.value):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
-        elif keyword.arg in ("deps", "runtime"):
-            value = keyword.value if keyword.arg == "deps" else ast.List(elts=[keyword.value])
+        elif keyword.arg in ("deps", "exported_deps", "runtime"):
+            value = keyword.value if keyword.arg != "runtime" else ast.List(elts=[keyword.value])
             why = _dep_problem(value, allowed, test_allowed, macro)
             if why is not None:
                 found.append(finding("bad-argument", path=path, line=node.lineno, why=why))
@@ -161,7 +161,7 @@ def call_findings(path, node, allowed, test_allowed):
 
 def _dep_strings(call):
     """The labels a macro call depends on: `deps`, and the `runtime` of a `c_catalog`."""
-    return _keyword_strings(call, "deps") + (_keyword_strings(call, "runtime") if call.func.id == CATALOG_MACRO else [])
+    return _keyword_strings(call, "deps") + _keyword_strings(call, "exported_deps") + (_keyword_strings(call, "runtime") if call.func.id == CATALOG_MACRO else [])
 
 
 def _keyword_strings(call, name):

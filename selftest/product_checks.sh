@@ -67,6 +67,10 @@ c_library(name = "x_func", srcs = ["x_func.c"])
 c_library(name = "x_mut", srcs = ["x_mut.c"])
 c_library(name = "x_const", srcs = ["x_const.c"])
 c_library(name = "sl_ok", srcs = ["sl_ok.c"], system_libs = ["pthread"])
+c_library(name = "ex_c", srcs = ["ex_c.c"], headers = ["ex_c.h"])
+c_library(name = "ex_b", srcs = ["ex_b.c"], headers = ["ex_b.h"], exported_deps = [":ex_c"])
+c_library(name = "ex_a", srcs = ["ex_a.c"], deps = [":ex_b"])
+c_library(name = "ex_d", srcs = ["ex_d.c"], deps = [":ex_b"])
 EOF
 
 # --- green ---
@@ -165,6 +169,36 @@ EOF
 cat > dep_c.c <<'EOF'
 int a_value(void);
 int c_value(void) { return a_value() + 2; }
+EOF
+# T110: ex_b's public header includes ex_c.h and ex_b exports ex_c; ex_a lists only ex_b and builds. ex_d uses ex_c itself.
+cat > ex_c.h <<'EOF'
+#ifndef EX_C_H
+#define EX_C_H
+int ex_c_fn(void);
+#endif
+EOF
+cat > ex_c.c <<'EOF'
+#include "ex_c.h"
+int ex_c_fn(void) { return 3; }
+EOF
+cat > ex_b.h <<'EOF'
+#ifndef EX_B_H
+#define EX_B_H
+#include "selftest/scratch_pc/p/ex_c.h"
+int ex_b_fn(void);
+#endif
+EOF
+cat > ex_b.c <<'EOF'
+#include "ex_b.h"
+int ex_b_fn(void) { return ex_c_fn() + 1; }
+EOF
+cat > ex_a.c <<'EOF'
+#include "selftest/scratch_pc/p/ex_b.h"
+int ex_a_fn(void) { return ex_b_fn() + 1; }
+EOF
+cat > ex_d.c <<'EOF'
+#include "selftest/scratch_pc/p/ex_b.h"
+int ex_d_fn(void) { return ex_b_fn() + ex_c_fn(); }
 EOF
 cat > exittest.c <<'EOF'
 #define _POSIX_C_SOURCE 200809L
@@ -460,7 +494,7 @@ done
 echo "  16 sources: line scan exit 0 on all"
 
 begin "facts actions build on RE for every target (release) and the libc export list exists"
-targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const sl_ok)
+targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const sl_ok ex_a ex_b ex_c ex_d)
 args=(); for t in "${targets[@]}"; do args+=("$pkg:${t}_facts"); done
 run "$out/facts.log" build "${args[@]}" //ctest:ctest_facts //examples/hello:lib_facts //examples/hello:hello_facts //examples/hello:hello_test_facts toolchains//:libc_symbols --show-output || fail "$CUR" "$out/facts.log"
 tool collect "$out/facts.log" "$out/facts" || fail "$CUR: collect"
@@ -530,6 +564,29 @@ tool policy "$out/p_puts.toml" puts
 gate_case puts $SYM 1 "$out/p_puts.toml" puts -- undeclared-symbol:puts
 tool policy "$out/p_puts_ok.toml" "puts;allow=puts"
 gate_case puts_ok $SYM 0 "$out/p_puts_ok.toml" puts --
+
+begin "exported_deps (T110): the facts of ex_b carry the edge to ex_c, ex_a's only ex_b; a dependent still needs its own dep"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["deps"]==[sys.argv[2]] else 1)' "$out/facts/ex_b.json" "//selftest/scratch_pc/p:ex_c" \
+  || fail "$CUR: ex_b facts do not list exactly ex_c"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["deps"]==[sys.argv[2]] else 1)' "$out/facts/ex_a.json" "//selftest/scratch_pc/p:ex_b" \
+  || fail "$CUR: ex_a facts do not list exactly ex_b"
+tool policy "$out/p_ex_ok.toml" ex_c ex_b ex_a
+gate_case ex_ok $SYM 0 "$out/p_ex_ok.toml" ex_c ex_b ex_a --
+tool policy "$out/p_ex_d.toml" ex_c ex_b ex_d
+gate_case ex_d $SYM 1 "$out/p_ex_d.toml" ex_c ex_b ex_d -- undeclared-symbol:ex_c_fn
+
+begin "exported_deps (T110): a label in both deps and exported_deps is a load error (the whole package fails to evaluate)"
+mkdir -p "$scratch/q"
+cat > "$scratch/q/BUCK" <<'EOF'
+load("@gate//rules:c.bzl", "c_library")
+
+c_library(name = "x", srcs = ["x.c"])
+c_library(name = "both", srcs = ["both.c"], deps = [":x"], exported_deps = [":x"])
+EOF
+printf 'int x_fn(void) { return 1; }\n' > "$scratch/q/x.c"
+printf 'int both_fn(void) { return 1; }\n' > "$scratch/q/both.c"
+if run "$out/both.log" build "//selftest/scratch_pc/q:both"; then fail "$CUR: both built" "$out/both.log"; fi
+grep -q "both \`deps\` and \`exported_deps\`" "$out/both.log" || fail "$CUR: failed for the wrong reason" "$out/both.log"
 
 begin "symbols: defining write (libc) or ctest_check (the test runtime) is interposition"
 tool policy "$out/p_write.toml" write

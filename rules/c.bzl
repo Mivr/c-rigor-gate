@@ -133,8 +133,24 @@ def _system_libs(macro, libs):
         fail("{}: `system_libs` has duplicates: {}".format(macro, libs))
     return ["-l" + lib for lib in libs]
 
-def c_library(name, srcs = [], headers = [], deps = [], visibility = [], system_libs = []):
+def _exported_deps(deps, exported_deps):
+    if type(exported_deps) != "list":
+        fail("c_library: `exported_deps` must be a list of labels, got {}".format(type(exported_deps)))
+    for label in exported_deps:
+        if label in deps:
+            fail("c_library: {!r} is in both `deps` and `exported_deps`; list it once, in `exported_deps` if a public header includes it".format(label))
+    if len(set(exported_deps)) != len(exported_deps):
+        fail("c_library: `exported_deps` has duplicates: {}".format(exported_deps))
+
+def c_library(name, srcs = [], headers = [], deps = [], visibility = [], system_libs = [], exported_deps = []):
+    """A C17 library. `exported_deps`: the libraries whose headers this library's PUBLIC headers include.
+
+    Their headers and link inputs reach every dependent, and each is an edge FROM this library for every gate check
+    (facts, layering, fan-out, mutants). A dependent gains no edge to them: its own sources that use them still
+    need a direct dep. Export exactly what the public headers include, never for convenience.
+    """
     _check("c_library", srcs, headers)
+    _exported_deps(deps, exported_deps)
 
     # Exported as post-link flags (after every object and archive), resolved in the pinned sysroot by the
     # toolchain's own link line: every binary, test and mutant binary that links this library gets them.
@@ -144,12 +160,13 @@ def c_library(name, srcs = [], headers = [], deps = [], visibility = [], system_
         srcs = srcs,
         exported_headers = headers,
         deps = deps,
+        exported_deps = exported_deps,
         visibility = visibility,
         compiler_flags = _compile_flags(),
         exported_post_linker_flags = link_flags,
         link_style = "static",
     )
-    _facts(name, "c_library", srcs, deps, system_libs = system_libs)
+    _facts(name, "c_library", srcs, deps + exported_deps, system_libs = system_libs)
 
     # What `c_mutants` needs to know about this module: its source files.
     mutsrc(name = name + "_mutsrc", srcs = srcs, headers = headers, visibility = ["PUBLIC"])
