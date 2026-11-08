@@ -119,6 +119,18 @@ class BuckFilesCase(TempDirTestCase):
         self.red("\x00\n", "parse-error")
         self.red(b"\xff\xfe\n", "parse-error")
 
+    def test_system_libs_on_a_library(self):
+        self.assertEqual(self.check({"BUCK": LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = ["pthread"])\n'}, 0), [])
+
+    def test_system_libs_is_a_c_library_keyword_only(self):
+        for macro in ("c_test", "c_binary", "c_fuzz"):
+            self.red('load("@gate//rules:c.bzl", "%s")\n%s(name = "a", srcs = ["a.c"], system_libs = ["pthread"])\n'
+                     % (macro, macro), "bad-argument")
+
+    def test_system_libs_must_be_literal_strings(self):
+        self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = LIBS)\n', "bad-argument")
+        self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = [LIB])\n', "bad-argument")
+
     def test_unknown_keyword(self):
         self.red(LOAD + 'c_library(name = "a", exec_compatible_with = ["x"])\n', "bad-argument")
 

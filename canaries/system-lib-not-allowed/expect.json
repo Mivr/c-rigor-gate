@@ -1,0 +1,15 @@
+{
+  "bypass": "a library links a sysroot library the product policy does not allow",
+  "description": "T095: a new L3 module declares system_libs = [\"pthread\"] but its policy entry has no system_libs; the symbols gate must name it. Witness tests fail with witness-missing for the new module exactly as in exports-missing-l3.",
+  "fail": {
+    "symbols": [
+      "system-lib-not-allowed"
+    ],
+    "witness-tests": [
+      "witness-missing"
+    ]
+  },
+  "not_run": [
+    "mutants-witness"
+  ]
+}

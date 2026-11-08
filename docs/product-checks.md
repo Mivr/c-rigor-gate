@@ -76,6 +76,7 @@ deny_exempt = []             # entries of global.deny this module may use (this 
 allow_builtins = []          # guarded builtins (trap/unreachable/debugtrap) this module may use
 level = "L3"                 # L1..L5; read by the exports check (below)
 exports = ["core_add"]       # every external symbol the module may define (T033)
+system_libs = ["pthread"]    # sysroot libraries its c_library declares, exactly (T095; below)
 ```
 For every non-trusted target: undefined symbols minus its own definitions must be defined by a **direct**
 dependency, be in `allow` or in `deny_exempt`. Findings:
@@ -92,8 +93,23 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 | `exports-missing` | the module is L3 or above and has no `exports` key (T033; info at L2) |
 | `unused-allow` | info only (T085): an `allow` or `deny_exempt` entry that no object of the module references (a module with no objects reports every entry; fields `list`, `symbol`, `reason = "not referenced"`), or an `allow` entry that a direct dep's exports already cover (`reason = "covered by <dep>"`). Never changes PASS/FAIL; such an entry only widens what a later change may use without review, so remove it |
 | `mutable-global-export` | defines an external object in a writable data/bss section, listed or not (T033; error at L3 and above, info at L2) |
+| `system-lib-not-allowed` | a `c_library` declares `system_libs = [..]` and its policy entry does not list the library (T095; field `lib`) |
+| `system-lib-not-declared` | the policy entry lists a `system_libs` entry the module's `c_library` does not declare (T095; field `lib`) |
 | `mutable-data` | a module without `allow_mutable_data` defines any writable static data, `static` locals included (T089; below) |
 | `ram-over-budget` / `ram-unbudgeted` | a binary links more writable bytes than its `ram-budget.toml` entry, or has no entry (T089; below) |
+
+### System libraries (T095)
+`c_library(..., system_libs = ["pthread"])` is the only way for a product to link a sysroot library (a
+`#pragma comment(lib, ...)` is a `pragma` finding, correctly). The rules accept bare names from an allow-list, `pthread`
+only, and the macro fails analysis for any other name, a duplicate, or a non-list. A `c_test`, `c_binary` and `c_fuzz`
+take no such argument (`rigor buckfiles`: `bad-argument`). The cross-check is the symbols gate's: `cscan.py` writes the
+facts key `system_libs` (sorted; empty for every kind but `c_library`; required in every product facts file, absent
+only from gate-owned third-party facts), the policy lists the same set under the module's table, and **both
+directions are errors**, so a stale allow cannot wait for a later declaration. A policy or facts file that names a
+library outside the allow-list is exit 2. `facts_data.SYSTEM_LIBS` and `rules/c.bzl` `_SYSTEM_LIBS` are the same list; a
+unit test pins it. The module still needs `allow = ["pthread_create", ...]` for the symbols it references (libpthread
+symbols are not in the libc export list of the pinned glibc 2.31 sysroot), and the global deny list still applies.
+Canaries `system-lib-not-allowed` and `system-lib-not-declared` pin both directions end to end.
 
 ### Exports policy (T033, R003 G7, backlog B32)
 `exports` is the gate-owned allowed set of **defined external symbols** of a module, all units together (a test or

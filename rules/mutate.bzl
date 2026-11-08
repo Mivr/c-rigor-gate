@@ -27,6 +27,7 @@ Pipeline (all on RE, release mode):
 
 load("@prelude//cxx:cxx_toolchain_types.bzl", "CxxToolchainInfo")
 load("@prelude//cxx:preprocessor.bzl", "CPreprocessorInfo")
+load("@prelude//linking:link_info.bzl", "LinkStrategy", "MergedLinkInfo")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "PerfInfo")
 
 MutSources = provider(fields = ["srcs", "headers"])
@@ -81,6 +82,28 @@ def _link_inputs(label: Label, deps: list[Dependency]) -> list[Artifact]:
         elif not _own_headers(d):
             fail("{}: dep {} provides neither a library nor headers".format(label, d.label))
     return libs
+
+def _system_lib_flags(label: Label, deps: list[Dependency]) -> list:
+    """The post-link flags the libraries export (`system_libs` of `c_library`, T095), each once, in link order.
+
+    The mutant links are raw linker commands, not Buck2 link actions, so the flags Buck2 would add for the
+    library are read from its link info. Only `-l<name>` flags are accepted: anything else is a mistake."""
+    flags = []
+    seen = []
+    for d in deps:
+        info = d.get(MergedLinkInfo)
+        if info == None:
+            continue
+        for infos in info._infos[LinkStrategy("static")].traverse():
+            for flag in infos.default.post_flags:
+                # Buck2 hands the flag over as a resolved string whose text is quoted, not as a plain string.
+                text = str(flag).strip("\"")
+                if not text.startswith("-l"):
+                    fail("{}: unexpected post-link flag {} from {}".format(label, text, d.label))
+                if text not in seen:
+                    seen.append(text)
+                    flags.append(flag)
+    return flags
 
 def _compile_prefix(ctx, headers, toolchain):
     """The module's exact compile command up to the source: toolchain clang, then its argsfile."""
@@ -488,7 +511,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
     if len(set([t.label for t in perf])) != len(perf):
         fail("{}: perf targets must be distinct".format(ctx.label))
     # The perf binary links the driver, the module and the libraries of its own deps, never ctest (which has a main of its own).
-    perf_libs = _link_inputs(ctx.label, ctx.attrs.deps) + [ctx.attrs._perfkit[DefaultInfo].default_outputs[0]] if perf else []
+    perf_libs = _link_inputs(ctx.label, ctx.attrs.deps) + [ctx.attrs._perfkit[DefaultInfo].default_outputs[0]] + _system_lib_flags(ctx.label, [ctx.attrs.module] + ctx.attrs.deps) if perf else []
     cfg_pieces = {
         "base_info": {},
         "base_info_o0": {},
@@ -496,7 +519,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
         "batch": ctx.attrs.batch,
         "gens": {},
         "label": _label_text(ctx.label),
-        "libs": _link_inputs(ctx.label, ctx.attrs.deps + [ctx.attrs._ctest]),
+        "libs": _link_inputs(ctx.label, ctx.attrs.deps + [ctx.attrs._ctest]) + _system_lib_flags(ctx.label, [ctx.attrs.module] + ctx.attrs.deps),
         "link_flags": ctx.attrs.link_flags,
         "linker": toolchain.linker_info.linker,
         "original": {},

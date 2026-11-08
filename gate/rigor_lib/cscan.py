@@ -1,6 +1,6 @@
 """Fact scanner. Runs inside a Buck2 action on RE (`rules/facts.bzl`), Python 3.8+ stdlib only.
 
-    python3 -I -B cscan.py --label L --kind K [--dep D]... --nm NM [--system-root R]...
+    python3 -I -B cscan.py --label L --kind K [--dep D]... [--system-lib L]... --nm NM [--system-root R]...
                            [--unit NAME PREPROCESSED OBJECT]... --out FILE
 
 It reports facts, never verdicts (the decision is `rigor facts`):
@@ -533,13 +533,14 @@ def main(argv):
     parser.add_argument("--dep", action="append", default=[])
     parser.add_argument("--nm", required=True)
     parser.add_argument("--system-root", action="append", default=[])
+    parser.add_argument("--system-lib", action="append", default=[])
     parser.add_argument("--unit", nargs=3, action="append", default=[],
                         metavar=("NAME", "PREPROCESSED", "OBJECT"))
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     units = sorted((build_unit(args, *u) for u in args.unit), key=lambda u: u["name"])
     document = {"schema": SCHEMA, "label": args.label, "kind": args.kind,
-                "deps": sorted(set(args.dep)), "units": units}
+                "deps": sorted(set(args.dep)), "system_libs": sorted(set(args.system_lib)), "units": units}
     text = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     with open(args.out, "wb") as handle:
         handle.write(text.encode("ascii") + b"\n")

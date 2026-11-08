@@ -2,6 +2,8 @@
 
 import json
 import os
+import pathlib
+import re
 
 from tests.helpers import TempDirTestCase, read_json, run_rigor
 
@@ -30,8 +32,11 @@ def unit(name="a.c.o", defined=(), undefined=(), weak=(), pragmas=(), attributes
             "line_directives": [{"name": a, "file": "p/a.c", "line": n} for a, n in line_directives]}
 
 
-def facts(label, units, deps=(), kind="c_library"):
-    return {"schema": 1, "label": label, "kind": kind, "deps": sorted(deps), "units": units}
+def facts(label, units, deps=(), kind="c_library", system_libs=()):
+    document = {"schema": 1, "label": label, "kind": kind, "deps": sorted(deps), "units": units}
+    if kind != "c_third_party":     # the gate-owned third-party facts carry no system_libs
+        document["system_libs"] = sorted(system_libs)
+    return document
 
 
 CTEST = facts("//ctest:ctest", [unit("ctest.c.o", defined=["ctest_run", "ctest_check"],
@@ -306,6 +311,58 @@ def tp_facts(label=MBED, units=None):
     units = units or [unit("ssl_tls.c.o", defined=["mbedtls_ssl_read", "mbedtls_ssl_write", "psa_crypto_init"],
                            undefined=["memcpy", "getrandom", "fopen"])]
     return facts(label, units, kind="c_third_party")
+
+
+class SystemLibsCase(TempDirTestCase):
+    """T095: the `system_libs` a c_library declares against the `system_libs` its policy entry allows."""
+    run_gate = FactsCase.run_gate
+
+    def sym(self, declared, policy_line, code, kind="c_library", libc=LIBC):
+        policy = GLOBAL + '[module."//p:lib"]\n' + policy_line
+        outcome, result = self.run_gate("symbols", [facts("//p:lib", [unit()], kind=kind, system_libs=declared), CTEST],
+                                        policy=policy, libc=libc, expect_code=code)
+        return sorted((f["rule"], f.get("lib")) for f in result["findings"] if f["severity"] == "error")
+
+    def test_declared_and_allowed_is_green(self):
+        self.assertEqual(self.sym(["pthread"], 'system_libs = ["pthread"]\n', 0), [])
+
+    def test_neither_is_green(self):
+        self.assertEqual(self.sym([], "", 0), [])
+
+    def test_declared_without_the_policy_allow_is_an_error(self):
+        self.assertEqual(self.sym(["pthread"], "", 1), [("system-lib-not-allowed", "pthread")])
+
+    def test_allowed_without_the_declaration_is_an_error(self):
+        self.assertEqual(self.sym([], 'system_libs = ["pthread"]\n', 1), [("system-lib-not-declared", "pthread")])
+
+    def test_the_policy_may_only_name_allow_listed_libraries(self):
+        self.sym([], 'system_libs = ["m"]\n', 2)
+
+    def test_policy_duplicates_are_refused(self):
+        self.sym(["pthread"], 'system_libs = ["pthread", "pthread"]\n', 2)
+
+    def test_the_facts_may_only_name_allow_listed_libraries(self):
+        self.sym(["m"], 'system_libs = ["m"]\n', 2)
+
+    def test_only_a_library_has_system_libs(self):
+        self.sym(["pthread"], 'system_libs = ["pthread"]\n', 2, kind="c_test")
+
+    def test_a_product_facts_file_without_the_key_is_refused(self):
+        document = facts("//p:lib", [unit()])
+        del document["system_libs"]
+        fdir = self.sub("facts")
+        (fdir / "f.json").write_text(json.dumps(document), encoding="utf-8")
+        (self.tmp / "policy.toml").write_text(GLOBAL + '[module."//p:lib"]\n', encoding="utf-8")
+        outcome = run_rigor(["facts", "--gate", "symbols", "--facts", fdir, "--policy", self.tmp / "policy.toml",
+                             "--libc", self.tmp / "libc", "--out", self.tmp / "o.json"])
+        self.assertExit(outcome, 2)
+
+    def test_the_rule_and_the_facts_reader_agree_on_the_allow_list(self):
+        from rigor_lib import facts_data
+        text = (pathlib.Path(__file__).resolve().parents[2] / "rules" / "c.bzl").read_text(encoding="utf-8")
+        match = re.search(r"^_SYSTEM_LIBS = \[(.*)\]$", text, re.M)
+        self.assertIsNotNone(match)
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', match.group(1))), facts_data.SYSTEM_LIBS)
 
 
 class ThirdPartyFactsCase(TempDirTestCase):

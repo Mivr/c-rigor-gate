@@ -115,6 +115,17 @@ def export_findings(facts, module):
     return found
 
 
+def system_lib_findings(facts, module):
+    """`system-lib-*` (T095): the `system_libs` a `c_library` declares against the `system_libs` its policy entry
+    allows. Both directions are errors: a declaration the policy does not allow, and an allow nothing declares."""
+    found = []
+    for lib in sorted(facts.system_libs - module.system_libs):
+        found.append(finding("system-lib-not-allowed", target=facts.label, lib=lib))
+    for lib in sorted(module.system_libs - facts.system_libs):
+        found.append(finding("system-lib-not-declared", target=facts.label, lib=lib))
+    return found
+
+
 TEST_KINDS = ("c_test", "c_fuzz")
 
 
@@ -161,6 +172,7 @@ def run(facts_by_label, policy, libc, third=None):
             found.extend(unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes))
         found.extend(unused_allow_findings(facts, module, allowed, own))
         found.extend(export_findings(facts, module))
+        found.extend(system_lib_findings(facts, module))
         found.extend(mutable_data_findings(facts, module))
     budget_found, ram = ram_budget.findings(products, libs, policy.ram_budget)
     found.extend(budget_found)

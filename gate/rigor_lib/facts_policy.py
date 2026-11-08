@@ -10,6 +10,7 @@
     third_party = ["gate//third_party/mbedtls:mbedtls"]   # gate-owned libraries it may depend on
     level = "L3"                    # L1 is exempt from the exports check; see `exports`
     exports = ["core_add"]          # every external symbol the module may define (T033, gate `symbols`)
+    system_libs = ["pthread"]       # sysroot libraries the module's c_library declares (`system_libs`, T095); exact match
     allow_mutable_data = false      # true: the module may define writable static data (data/bss/tls), T089
     impl = ["core/core.c"]          # the witness gates' implementation paths (T039); validated there, ignored here
     [module."//core:core".perf.lookup]   # a perf target and its class (T090); validated by perf_policy, used by the perf gate
@@ -22,7 +23,7 @@ from dataclasses import dataclass
 
 from rigor_lib import jsonio, perf_policy, ram_budget, semantic_table
 from rigor_lib.errors import InternalError
-from rigor_lib.facts_data import LABEL, SYMBOL
+from rigor_lib.facts_data import LABEL, SYMBOL, SYSTEM_LIBS
 
 
 LEVELS = ("L1", "L2", "L3", "L4", "L5")
@@ -37,6 +38,7 @@ class Module:
     level: str = None       # None: not declared
     exports: frozenset = None   # None: no `exports` key
     allow_mutable_data: bool = False    # may define writable static data, local or external (T089)
+    system_libs: frozenset = frozenset()    # the system libraries the module must declare, exactly (T095)
 
 
 @dataclass(frozen=True)
@@ -63,7 +65,7 @@ def _only(where, table, allowed):
 def _module(label, table, deny):
     where = "module %s" % label
     _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl",
-                           "allow_mutable_data", "perf"))
+                           "allow_mutable_data", "perf", "system_libs"))
     perf_policy.parse_module(label, table)
     mutable_data = table.get("allow_mutable_data", False)
     if type(mutable_data) is not bool:
@@ -80,7 +82,11 @@ def _module(label, table, deny):
     if not builtins <= set(semantic_table.GUARDED_BUILTINS):
         raise InternalError("policy: %s allow_builtins names unguarded builtins" % label)
     third = _names(where + " third_party", table.get("third_party", []), LABEL)
-    return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins, third, level, exports, mutable_data)
+    system_libs = _names(where + " system_libs", table.get("system_libs", []))
+    if not system_libs <= set(SYSTEM_LIBS):
+        raise InternalError("policy: %s system_libs may only name %s" % (label, list(SYSTEM_LIBS)))
+    return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins, third, level, exports,
+                  mutable_data, system_libs)
 
 
 def load_policy(path):
