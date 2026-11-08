@@ -16,7 +16,7 @@ library as exported deps, so their headers and link inputs reach every dependent
 the edge is `B -> C`, it must be allowed for B exactly as a plain dep is, and a dependent `A -> B` gains no edge to `C`.
 If A's own sources use `C` (call its symbols), the `symbols` gate still reports `undeclared-symbol` unless A lists `C`
 directly in `deps`: the gate checks symbols against the DIRECT deps' exports, never against what a header makes visible,
-and that is unchanged. A label in both `deps` and `exported_deps` is an analysis error. `rigor buckfiles` accepts
+and that is unchanged. A label in both `deps` and `exported_deps` fails the package load with a clear message. `rigor buckfiles` accepts
 `exported_deps` on `c_library` only, checked like `deps`.
 
 **When to export.** Export exactly the libraries whose headers the library's PUBLIC headers include. Never export for

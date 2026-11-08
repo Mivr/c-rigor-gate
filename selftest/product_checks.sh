@@ -575,7 +575,7 @@ gate_case ex_ok $SYM 0 "$out/p_ex_ok.toml" ex_c ex_b ex_a --
 tool policy "$out/p_ex_d.toml" ex_c ex_b ex_d
 gate_case ex_d $SYM 1 "$out/p_ex_d.toml" ex_c ex_b ex_d -- undeclared-symbol:ex_c_fn
 
-begin "exported_deps (T110): a label in both deps and exported_deps is an analysis error"
+begin "exported_deps (T110): a label in both deps and exported_deps is a load error (the whole package fails to evaluate)"
 mkdir -p "$scratch/q"
 cat > "$scratch/q/BUCK" <<'EOF'
 load("@gate//rules:c.bzl", "c_library")
@@ -587,7 +587,6 @@ printf 'int x_fn(void) { return 1; }\n' > "$scratch/q/x.c"
 printf 'int both_fn(void) { return 1; }\n' > "$scratch/q/both.c"
 if run "$out/both.log" build "//selftest/scratch_pc/q:both"; then fail "$CUR: both built" "$out/both.log"; fi
 grep -q "both \`deps\` and \`exported_deps\`" "$out/both.log" || fail "$CUR: failed for the wrong reason" "$out/both.log"
-run "$out/q_ok.log" build "//selftest/scratch_pc/q:x" || fail "$CUR: x alone does not build" "$out/q_ok.log"
 
 begin "symbols: defining write (libc) or ctest_check (the test runtime) is interposition"
 tool policy "$out/p_write.toml" write
