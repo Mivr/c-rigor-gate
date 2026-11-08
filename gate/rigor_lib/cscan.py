@@ -1,6 +1,6 @@
 """Fact scanner. Runs inside a Buck2 action on RE (`rules/facts.bzl`), Python 3.8+ stdlib only.
 
-    python3 -I -B cscan.py --label L --kind K [--dep D]... [--system-lib L]... --nm NM [--system-root R]...
+    python3 -I -B cscan.py --label L --kind K [--dep D]... [--system-lib L]... --nm NM [--system-root R]... [--vendor-marker M]...
                            [--unit NAME PREPROCESSED OBJECT]... --out FILE
 
 It reports facts, never verdicts (the decision is `rigor facts`):
@@ -304,8 +304,11 @@ class ToolchainCode:
 
 
 class Collector:
-    def __init__(self, system_roots):
+    def __init__(self, system_roots, vendor_markers=()):
         self.roots = [os.path.normpath(root) + "/" for root in system_roots]
+        # Path fragments of the gate-owned third-party header trees (`/art/<gate cell>/third_party/`, T108): text
+        # there is not the product's either. No marker (or one that matches nothing) keeps today's behaviour.
+        self.vendor = [marker for marker in vendor_markers if marker]
         self.pragmas = set()
         self.attributes = set()
         self.identifiers = set()
@@ -323,7 +326,7 @@ class Collector:
         if path.startswith("<"):   # "<built-in>" and "<command line>": the compiler's own text
             return True
         norm = os.path.normpath(path) + "/"
-        return any(norm.startswith(root) for root in self.roots)
+        return any(norm.startswith(root) for root in self.roots) or any(m in norm for m in self.vendor)
 
     def header_name(self, path):
         norm = os.path.normpath(path)
@@ -517,7 +520,7 @@ def read_symbols(nm, path):
 def build_unit(args, name, preprocessed, obj):
     with open(preprocessed, "rb") as handle:
         text = handle.read().decode("utf-8", "replace")
-    collector = Collector(args.system_root)
+    collector = Collector(args.system_root, args.vendor_marker)
     collector.scan(text)
     defined, weak, undefined, mutable = read_symbols(args.nm, obj)
     unit = {"name": name, "defined": defined, "weak": weak, "undefined": undefined, "mutable": mutable,
@@ -533,6 +536,7 @@ def main(argv):
     parser.add_argument("--dep", action="append", default=[])
     parser.add_argument("--nm", required=True)
     parser.add_argument("--system-root", action="append", default=[])
+    parser.add_argument("--vendor-marker", action="append", default=[])
     parser.add_argument("--system-lib", action="append", default=[])
     parser.add_argument("--unit", nargs=3, action="append", default=[],
                         metavar=("NAME", "PREPROCESSED", "OBJECT"))

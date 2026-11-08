@@ -55,6 +55,20 @@ class ScanCase(TempDirTestCase):
         self.assertEqual(doc["label"], "//p:lib")
         self.assertEqual([(c["name"], c["line"]) for c in doc["units"][0]["calls"]], [("f", 1), ("g", 1)])
 
+    def test_the_script_skips_calls_in_vendor_headers(self):
+        pre = self.tmp / "a.i"
+        header = "buck-out/v2/art/gate/third_party/lvgl/__h__/0123456789abcdef/buck-headers/lvgl.h"
+        pre.write_text(mark("a.c") + "int f(void) { return g(); }\n" + mark(header, 1, " 1")
+                       + "static inline int inner(void) { return hidden(); }\n" + mark("a.c", 2, " 2"), encoding="utf-8")
+        out = self.tmp / "calls.json"
+        done = subprocess.run([sys.executable, "-I", "-B", str(GATE_DIR / "rigor_lib" / "facts_modes.py"), "scan",
+                               "--label", "//p:lib", "--cscan", str(GATE_DIR / "rigor_lib" / "cscan.py"),
+                               "--vendor-marker", "/art/gate/third_party/", "--unit", "a.c.o", str(pre),
+                               "--out", str(out)], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        doc = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual([(c["name"], c["line"]) for c in doc["units"][0]["calls"]], [("f", 1), ("g", 1)])
+
 
 class ModesCase(TempDirTestCase):
     def put(self, mode, name, document, calls=()):

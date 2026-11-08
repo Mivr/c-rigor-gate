@@ -12,8 +12,12 @@ from tests.helpers import GATE_DIR, TempDirTestCase
 ROOT = "buck-out/v2/art/toolchains/0123456789abcdef/__sysroot__/tree/usr/include"
 
 
-def scan(text, roots=(ROOT,)):
-    collector = cscan.Collector(roots)
+VENDOR = "/art/gate/third_party/"
+LVGL_H = "buck-out/v2/art/gate/third_party/lvgl/__lvgl_headers__/0123456789abcdef/buck-headers/lvgl.h"
+
+
+def scan(text, roots=(ROOT,), vendor=()):
+    collector = cscan.Collector(roots, vendor)
     collector.scan(text)
     return collector.result()
 
@@ -105,6 +109,25 @@ class ScanCase(TempDirTestCase):
     def test_dotdot_into_the_root_is_normalised(self):
         path = "p/../" + ROOT + "/stdio.h"
         self.assertEqual(self.names(mark(path) + "__attribute__((weak)) int h;\n"), [])
+
+    def test_gate_owned_third_party_headers_are_skipped_like_toolchain_headers(self):
+        text = (mark("a.c") + mark(LVGL_H, 1, " 1") + "#define _LV_CONCAT(a, b) a##b\n#define __LV_X_H__\n"
+                + "extern int f(void) __asm__(\"g\");\n" + mark("a.c", 2, " 2") + "int x;\n")
+        self.assertEqual(scan(text, vendor=[VENDOR]), {"pragmas": [], "attributes": [], "identifiers": [],
+                                                       "line_directives": []})
+
+    def test_without_a_marker_or_in_a_product_dir_of_that_name_the_text_is_scanned(self):
+        text = mark(LVGL_H) + "#define _LV_CONCAT(a, b) a##b\n"
+        self.assertEqual(self.names(text, "identifiers"), ["#define _LV_CONCAT"])           # no marker: fail closed
+        other = text.replace("art/gate", "art/annas")   # a product dir of that name is not exempt
+        self.assertEqual(sorted(i["name"] for i in scan(other, vendor=[VENDOR])["identifiers"]), ["#define _LV_CONCAT"])
+        self.assertEqual(sorted(i["name"] for i in scan(text, vendor=[""])["identifiers"]), ["#define _LV_CONCAT"])
+
+    def test_a_product_redefining_a_third_party_macro_is_still_reported(self):
+        text = (mark("a.c") + mark(LVGL_H, 1, " 1") + "#define LV_COLOR_DEPTH 16\n" + mark("a.c", 2, " 2")
+                + "#undef LV_COLOR_DEPTH\n#define _LV_CONCAT(a, b) a##b\n")
+        names = sorted(i["name"] for i in scan(text, vendor=[VENDOR])["identifiers"])
+        self.assertEqual(names, ["#define _LV_CONCAT", "#undef LV_COLOR_DEPTH"])
 
     PREAMBLE = (mark("a.c") + mark("<built-in>", 1, " 1") + mark("<built-in>", 1, " 3")
                 + "#define __x 1\n" + mark("<command line>", 1, " 1") + mark("<built-in>", 1, " 2")

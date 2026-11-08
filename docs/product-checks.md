@@ -28,7 +28,10 @@ Python, run on RE) writes one JSON file:
   their primary spelling). `#define`/`#undef` lines (kept by `-dD`) are not scanned as code: only
   expansions count. Text from a file below the toolchain's own header directories
   (`toolchains//:system-roots`, decided by path, not by the system-header flag a product could set with a
-  pragma) is skipped as product text; so are `<built-in>` and `<command line>`. Config hashes are removed
+  pragma) is skipped as product text; so are `<built-in>` and `<command line>`, and (T108) the exported header
+  trees of the gate-owned third-party libraries (path contains `/art/<gate cell>/third_party/`, passed by
+  `rules/facts.bzl` as `--vendor-marker`; a macro such a header defines counts like a toolchain macro for
+  `reserved-macro`). Config hashes are removed
   from reported paths. Three more kinds of fact are reported as identifiers (the schema-1 facts file has
   no other place for them; see "Builtins" below): `#define X` / `#undef X` for a product macro directive
   on a reserved name, and `#include <h>` for a toolchain header entered inside a product brace.
@@ -59,7 +62,7 @@ latter), each with its own `--out` like every other gate.
 | `line-directive` | a line marker the compiler did not write: a flag-less marker that names another file, or goes back in the same file (a user `#line`), or a return marker that does not name the file it returns to. Markers are never believed: the file stays the one the compiler is really reading, so a `#line` naming a system header cannot hide the text after it |
 | `banned-builtin` | `alloca`, `__alloca`, `_alloca`, and every `__builtin_alloca*` (`_with_align`, `_uninitialized`, ...). No policy can allow it (`allow_builtins` naming one is exit 2) |
 | `forbidden-builtin` | any other builtin (a watched prefix, or a measured prefix-less builtin) that is not in `ALLOWED_BUILTINS`; except `__builtin_trap`/`__builtin_unreachable`/`__builtin_debugtrap` where the module's `allow_builtins` lists it, and `__builtin_setjmp`/`__builtin_longjmp` where the module may reference `setjmp`/`longjmp` (`deny_exempt`, or `allow` when the symbol is not denied) |
-| `reserved-macro` | a product `#define`/`#undef` of a reserved identifier (`__x`, `_X`), a C keyword, or a name a toolchain header (or `<built-in>`/`<command line>`) also defines or undefines in that unit. Feature-test macros (`semantic_table.FEATURE_TEST_MACROS`: `_GNU_SOURCE`, `_POSIX_C_SOURCE`, ...; not `_FORTIFY_SOURCE`) are fine |
+| `reserved-macro` | a product `#define`/`#undef` of a reserved identifier (`__x`, `_X`), a C keyword, or a name a toolchain or gate-owned third-party header (or `<built-in>`/`<command line>`) also defines or undefines in that unit. Feature-test macros (`semantic_table.FEATURE_TEST_MACROS`: `_GNU_SOURCE`, `_POSIX_C_SOURCE`, ...; not `_FORTIFY_SOURCE`) are fine |
 | `block-scope-include` | a toolchain header entered while a product brace is open (inside a function body or a struct) |
 
 An identifier the scanner reports but the table does not know is exit 2 (table and scanner drifted).

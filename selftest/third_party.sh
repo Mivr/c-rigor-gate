@@ -304,12 +304,25 @@ c_library(name = "lvt_ok", srcs = ["lvt_ok.c"], deps = ["$LVGL"])
 c_library(name = "lvt_noperm", srcs = ["lvt_noperm.c"], deps = ["$LVGL"])
 c_library(name = "lvt_collide", srcs = ["lvt_collide.c"], deps = ["$LVGL"])
 c_library(name = "lvt_prefix", srcs = ["lvt_prefix.c"])
+c_library(name = "lvt_undef", srcs = ["lvt_undef.c"], deps = ["$LVGL"])
+c_library(name = "lvt_redef", srcs = ["lvt_redef.c"], deps = ["$LVGL"])
 EOF
 cat > "$scratch/lv/lvt_ok.c" <<'EOF'
 #include "lvgl.h"
 void lvt_ok_start(void) { lv_init(); }
 EOF
 sed 's/lvt_ok_start/lvt_noperm_start/' "$scratch/lv/lvt_ok.c" > "$scratch/lv/lvt_noperm.c"
+cat > "$scratch/lv/lvt_undef.c" <<'EOF'
+#include "lvgl.h"
+#undef LV_COLOR_DEPTH
+void lvt_undef_start(void) { lv_init(); }
+EOF
+cat > "$scratch/lv/lvt_redef.c" <<'EOF'
+#include "lvgl.h"
+#undef _LV_CONCAT
+#define _LV_CONCAT(a, b) a##b
+void lvt_redef_start(void) { lv_init(); }
+EOF
 cat > "$scratch/lv/lvt_collide.c" <<'EOF'
 #include <stddef.h>
 void *lv_malloc(size_t size) { (void)size; return 0; }
@@ -555,7 +568,8 @@ LV_PERM="third-party-not-permitted://third_party/lvgl:lvgl"
 begin "build (release): LVGL, its computed exports, and the facts of the LVGL throwaway modules"
 must_pass build //third_party/lvgl:lvgl //third_party/lvgl:lvgl_symbols \
   //selftest/scratch_tp/lv:lvt_ok_facts //selftest/scratch_tp/lv:lvt_noperm_facts //selftest/scratch_tp/lv:lvt_collide_facts \
-  //selftest/scratch_tp/lv:lvt_prefix_facts //selftest/scratch_tp/lv:lvgl_ui_test_facts //ctest:ctest_facts --show-output
+  //selftest/scratch_tp/lv:lvt_prefix_facts //selftest/scratch_tp/lv:lvgl_ui_test_facts \
+  //selftest/scratch_tp/lv:lvt_undef_facts //selftest/scratch_tp/lv:lvt_redef_facts //ctest:ctest_facts --show-output
 tool collect "$out/$step.log" "$out/facts" || fail "$CUR: collect"
 lvlib="$(awk '/third_party\/lvgl:lvgl / && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
 echo "  library: $lvlib ($(stat -c %s "$lvlib") bytes)"
@@ -579,17 +593,17 @@ begin "green (LVGL): a permitted module and the throwaway test pass the symbols 
 gate_case lv_ok $SYM 0 "$out/lv_ok.toml" lvt_ok lvgl --
 tool policy "$out/lv_test.toml" "lv/lvgl_ui_test;lvgl=1"
 gate_case lv_test $SYM 0 "$out/lv_test.toml" lvgl_ui_test lvgl --
-# KNOWN GAP (T107 report, needs a gate change outside this task): `semantic-suppressions` scans the text of the
-# library's headers that ends up in a product unit, and the LVGL headers define identifiers the scan reserves
-# (_LV_CONCAT, _PARA, _LV_EVENT_LAST, ..., and the __LV_UEFI_*_H__ include guards that lvgl.h pulls in). Until the
-# scanner treats the headers of an allowlisted third-party library like toolchain headers (a --system-root), no
-# product can include lvgl.h and pass. This step pins the exact set; when the gate is fixed it must become `0`.
-begin "known gap (LVGL): semantic-suppressions reports the reserved macros of the LVGL headers"
-LV_GAP=(reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro
-        reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro
-        reserved-macro)
-gate_case lv_ok $SEM 1 "$out/lv_ok.toml" lvt_ok lvgl -- "${LV_GAP[@]}"
-gate_case lv_test $SEM 1 "$out/lv_test.toml" lvgl_ui_test lvgl -- "${LV_GAP[@]}"
+# T108: the headers of a gate-owned third-party library are not the product's text, like the toolchain's: the
+# macros and include guards lvgl.h defines (_LV_CONCAT, _PARA, _LV_EVENT_LAST, __LV_UEFI_*_H__, ...) are no findings.
+begin "green (LVGL): a product unit including lvgl.h, and the throwaway test, pass semantic-suppressions"
+gate_case lv_ok $SEM 0 "$out/lv_ok.toml" lvt_ok lvgl --
+gate_case lv_test $SEM 0 "$out/lv_test.toml" lvgl_ui_test lvgl --
+# ... but a product cannot undefine or redefine what the library defines, or a reserved name, behind its back.
+begin "red (LVGL): a product #undef LV_COLOR_DEPTH, or #undef + #define _LV_CONCAT, after lvgl.h is reserved-macro"
+tool policy "$out/lv_undef.toml" "lv/lvt_undef;lvgl=1"
+gate_case lv_undef $SEM 1 "$out/lv_undef.toml" lvt_undef lvgl -- reserved-macro
+tool policy "$out/lv_redef.toml" "lv/lvt_redef;lvgl=1"
+gate_case lv_redef $SEM 1 "$out/lv_redef.toml" lvt_redef lvgl -- reserved-macro reserved-macro
 
 LV_TESTS=(draws_a_label_and_a_button the_render_is_deterministic a_click_reaches_the_event_callback
           everything_deleted_gives_the_memory_back allocation_past_the_pool_fails_cleanly

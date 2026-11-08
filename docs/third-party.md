@@ -82,8 +82,12 @@ final newline, regular file; any defect is exit 2. A label may not be on both la
    own lists by default; `--allowed-labels FILE` and `--allowed-test-labels FILE` override them for tests.
 2. **`semantic-suppressions`.** A facts file of kind `c_third_party` whose label is on the allowlist is **not
    scanned**. One whose label is not on the allowlist is a finding (`third-party-not-allowed`) and is not trusted.
-   Text of the library's headers that ends up in a product unit is still scanned as the product's text (today it
-   yields only `__attribute__((mode(TI)))`, which is not forbidden).
+   Text of the library's headers that ends up in a product unit is **not** the product's text (T108): the facts
+   rule (`rules/facts.bzl`) passes `--vendor-marker /art/<gate cell>/third_party/` to the scanner (the fragment
+   `c_structure` already uses), and a file whose path contains it is skipped like a file below a `--system-root`.
+   A product `#define`/`#undef` of a name such a header also defines stays `reserved-macro`, so a product cannot
+   redefine `LV_*` or `MBEDTLS_*` behind the library's back. A product directory named `third_party` is another
+   cell/path and is not exempt; without the marker nothing changes (fail closed).
 3. **`symbols`.** The policy gains `third_party = ["gate//third_party/mbedtls:mbedtls"]` per module (labels must
    be on the allowlist, else exit 2). A module that depends on a library without that entry gets
    `third-party-not-permitted`, and the library's exports do **not** count for it (so its calls are also
@@ -410,13 +414,12 @@ and of the 5th 64 KiB chunk return NULL without aborting and that the pool works
 `void (*)(void *)` pointer to `lv_display_delete`). Delete displays and input devices first, then `lv_deinit()`; the
 self-test does.
 
-**Known gap, needs a gate change (not in T107's paths).** `semantic-suppressions` scans the text of a library's
-headers that ends up in a product unit, and the LVGL headers define identifiers it reserves (`_LV_CONCAT`,
-`_LV_CONCAT3`, `_PARA`, `_LV_EVENT_LAST`, `_LV_STYLE_LAST_BUILT_IN_PROP`, `_LV_FLEX_*`, `_LV_LL_READ*` and the
-`__LV_UEFI_*_H__` include guards that `lvgl.h` pulls in): 15 `reserved-macro` findings for any product unit that
-includes `lvgl.h`. Until the scanner treats the headers of an allowlisted library like toolchain headers (a
-`--system-root` for the library's header tree), no product can pass that gate with LVGL. The self-test pins the
-current set (steps "known gap"); it must become a green case when the gate is fixed. The `symbols` gate is green.
+**Headers are not product text (T108).** The LVGL headers define identifiers `semantic-suppressions` reserves
+(`_LV_CONCAT`, `_PARA`, `_LV_EVENT_LAST`, `_LV_FLEX_*`, `_LV_LL_READ*`, the `__LV_UEFI_*_H__` include guards): 15
+`reserved-macro` findings in any unit that includes `lvgl.h` until T108. Text in a gate-owned third-party header tree
+is now skipped exactly like toolchain-header text (see "`semantic-suppressions`" above and `docs/product-checks.md`).
+The self-test has a green case (a unit including `lvgl.h`, and the throwaway test, pass) and red cases (`#undef
+LV_COLOR_DEPTH`, or `#undef` + `#define _LV_CONCAT`, after `lvgl.h`: `reserved-macro`). The `symbols` gate is green.
 `RESERVED_PREFIXES` has `lv_`, `LV_`, `lvgl_`; `_lv_` (the task listed it) does not match the loader's prefix
 pattern (`[A-Za-z]...`), and no exported symbol starts with it.
 

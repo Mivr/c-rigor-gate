@@ -58,8 +58,8 @@ def _cscan(path=None):
 
 def _call_collector(cscan):
     class CallCollector(cscan.Collector):
-        def __init__(self, system_roots):
-            super().__init__(system_roots)
+        def __init__(self, system_roots, vendor_markers=()):
+            super().__init__(system_roots, vendor_markers)
             self.calls = set()
             self.pending = None
             self.skip = cscan.KEYWORDS | NOT_CALLS
@@ -79,6 +79,7 @@ def scan_main(argv):
     parser.add_argument("--label", required=True)
     parser.add_argument("--cscan", required=True, help="path of cscan.py")
     parser.add_argument("--system-root", action="append", default=[])
+    parser.add_argument("--vendor-marker", action="append", default=[])
     parser.add_argument("--unit", nargs=2, action="append", default=[], metavar=("NAME", "PREPROCESSED"))
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
@@ -87,7 +88,7 @@ def scan_main(argv):
     for name, path in sorted(args.unit):
         with open(path, "rb") as handle:
             text = handle.read().decode("utf-8", "replace")
-        collector = _call_collector(cscan)(args.system_root)
+        collector = _call_collector(cscan)(args.system_root, args.vendor_marker)
         collector.scan(text)
         units.append({"name": name, "calls": [{"name": n, "file": f, "line": line}
                                               for n, f, line in sorted(collector.calls)]})
@@ -213,5 +214,5 @@ def run(args):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] != "scan":
-        sys.exit("usage: facts_modes.py scan --label L --cscan cscan.py [--system-root R]... --unit NAME PREPROCESSED --out F")
+        sys.exit("usage: facts_modes.py scan --label L --cscan cscan.py [--system-root R]... [--vendor-marker M]... --unit NAME PREPROCESSED --out F")
     sys.exit(scan_main(sys.argv[2:]))
