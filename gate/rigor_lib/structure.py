@@ -13,6 +13,9 @@ not ours). Findings, all errors unless noted (the limits are in structure_limits
                              pointer to code outside the product), F reaches G by direct calls, and the call can
                              reach F by function type (structure_types; untyped wherever a function pointer is
                              converted between types or a type is unknown: docs/structure.md).
+                             A callback handed to a gate-owned vendored library (`gate//third_party/*`) is decided
+                             by the library rule instead: the library can only call back what the product
+                             passed to it, and the finding is a passed function that reaches a call into it.
   indirect-untyped-fallback  info: a call through a value not resolved by type, with the reason
   function-length, parameter-count, nesting-depth, cyclomatic-complexity, statement-count
                              a function over the limit of its level (the strictest level of the modules that
@@ -211,8 +214,9 @@ def call_sites(model):
     for node, entry in model.nodes.items():
         func = entry["func"]
         here = [(f, n, "pointer", t) for f, n, t in func.indirect]
+        readable = {to for to, _, _, opaque, _ in func.vendor if not opaque}
         for to, fp in func.calls:
-            if fp and not any(model.resolve(to, label) for label in entry["modules"]):
+            if fp and to not in readable and not any(model.resolve(to, label) for label in entry["modules"]):
                 here.append((func.file, func.line, "callback:" + to, None))
         if here:
             sites[node] = sorted(set(here), key=lambda s: (s[0], s[1], s[2], s[3] or ""))
@@ -311,7 +315,54 @@ def indirect_findings(model):
                 line=target.line, caller=origin.name, caller_file=origin.file,
                 sites=["%s:%d %s" % s[:3] for s in hit], path=[model.nodes[n]["func"].name for n in path],
                 severity="error" if level == "L3" else SEVERITY_INFO))
-    return found + fallback_findings(model, sites, typing)
+    return found + library_findings(model, graph) + fallback_findings(model, sites, typing)
+
+
+def library_calls(model):
+    """lib -> {node: [(line, callee)]}: the calls into gate-owned vendored libraries (the scanner marks them)."""
+    found = {}
+    for node, entry in model.nodes.items():
+        for to, lib, _, _, line in entry["func"].vendor:
+            found.setdefault(lib, {}).setdefault(node, []).append((line, to))
+    return found
+
+
+def library_callbacks(model):
+    """lib -> the nodes whose address is passed to any function of the library anywhere in the product. A
+    vendored library can only call back a function value the product handed to it, and may keep it for a later
+    call into the library, so this set is all it can call back."""
+    found = {}
+    for node, entry in model.nodes.items():
+        for label in entry["modules"]:
+            for _, lib, passes, _, _ in entry["func"].vendor:
+                for key in passes:
+                    found.setdefault(lib, set()).update(model.resolve(key, label))
+    return found
+
+
+def library_findings(model, graph):
+    """A function passed to a vendored library that reaches, by direct calls, any call into that library (itself
+    included): the library may call it back from that call."""
+    calls, found = library_calls(model), []
+    for lib, passed in sorted(library_callbacks(model).items()):
+        for node in sorted(passed):
+            modules = sorted(model.nodes[node]["modules"])
+            level = model.strictest(modules)
+            if level == "L1":
+                continue
+            target = model.nodes[node]["func"]
+            reachable = structure_graph.reaches(graph, node)
+            for caller in sorted(set(calls.get(lib, ())) & reachable):
+                origin = model.nodes[caller]["func"]
+                path = structure_graph.shortest_path(graph, node, caller)
+                found.append(finding(
+                    "indirect-cycle-possible", module=modules[0], function=target.name, file=target.file,
+                    line=target.line, caller=origin.name, caller_file=origin.file,
+                    sites=["%s:%d callback:%s (library %s)" % (origin.file, line, to, lib)
+                           for line, to in sorted(calls[lib][caller])],
+                    path=[model.nodes[n]["func"].name for n in path],
+                    severity="error" if level == "L3" else SEVERITY_INFO))
+    return found
 
 
 def fallback_findings(model, sites, typing):
@@ -325,6 +376,11 @@ def fallback_findings(model, sites, typing):
             if why:
                 found.append(finding("indirect-untyped-fallback", severity=SEVERITY_INFO, function=origin.name,
                                      file=file, line=line, site=kind, reason=why))
+        found += [finding("indirect-untyped-fallback", severity=SEVERITY_INFO, function=origin.name,
+                          file=origin.file, line=line, site="callback:" + to,
+                          reason="a function-pointer argument of a call into a vendored library that the scanner "
+                                 "cannot name (library %s)" % lib)
+                  for to, lib, _, opaque, line in model.nodes[caller]["func"].vendor if opaque]
     return found
 
 
@@ -342,6 +398,8 @@ def metadata(model, notes):
         "calls": sum(len(v) for v in graph.values()),
         "indirect_sites": {k: ["%s:%d %s" % s[:3] for s in v] for k, v in sorted(call_sites(model).items())},
         "address_taken": ["%s %s" % t for t in sorted(address_taken(model))],
+        "library_callbacks": {lib: sorted(model.nodes[n]["func"].name for n in nodes)
+                              for lib, nodes in sorted(library_callbacks(model).items())},
     }
 
 

@@ -29,3 +29,12 @@ c_library(name = "xa", srcs = ["xa.c"], headers = ["xa.h"])
 c_structure(name = "xa_s", module = ":xa", srcs = ["xa.c"], headers = ["xa.h"])
 c_library(name = "xb", srcs = ["xb.c"], deps = [":xa"])
 c_structure(name = "xb_s", module = ":xb", srcs = ["xb.c"], deps = [":xa"])
+
+# A callback handed to a gate-owned vendored library (T106): red if it calls back into the library, green if not.
+[
+    (
+        c_library(name = n, srcs = [n + ".c"], deps = ["gate//third_party/mbedtls:mbedtls"]),
+        c_structure(name = n + "_s", module = ":" + n, srcs = [n + ".c"], deps = ["gate//third_party/mbedtls:mbedtls"]),
+    )
+    for n in ["tpcallback", "tpgreen"]
+]

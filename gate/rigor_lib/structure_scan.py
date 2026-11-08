@@ -290,6 +290,16 @@ class Files:
         norm = os.path.normpath(name) + "/"
         return any(norm.startswith(root) for root in self.roots) or any(m in norm for m in self.vendor)
 
+    def vendor_lib(self, name):
+        """The directory name of the gate-owned third-party library a file belongs to (`mbedtls` for
+        `.../art/<cell>/third_party/mbedtls/...`), or None."""
+        norm = os.path.normpath(name) + "/"
+        for marker in self.vendor:
+            if marker in norm:
+                lib = norm.split(marker, 1)[1].split("/")[0]
+                return lib or None
+        return None
+
     def get(self, name):
         """SourceFile of a real file, or None for `<scratch space>`, `<built-in>` and the like."""
         if name.startswith("<"):
@@ -435,6 +445,17 @@ class Resolver:
                 return member["mangledName"]
         return name
 
+    def vendor_lib(self, decl):
+        """The gate-owned third-party library that declares this function (T106), or None. A function the
+        product declares itself is never taken for a library's."""
+        ident = decl.get("id")
+        for member in self.groups.get(self.find(ident) if ident is not None else None, []):
+            place = member.get("_loc")
+            lib = self.files.vendor_lib(place.expansion[0]) if place is not None and place.expansion else None
+            if lib:
+                return lib
+        return None
+
     def definition_file(self, node):
         place = node.get("_loc")
         if place is None or place.expansion is None:
@@ -534,6 +555,37 @@ class Measure:
         entry = self.calls.setdefault((to, fp_args), {"to": to, "fp_args": fp_args,
                                                       "line": self.site(node)["line"]})
         entry["line"] = min(entry["line"], self.site(node)["line"])
+        lib = self.resolver.vendor_lib(ref)
+        if lib:
+            self.vendor_call(entry, lib, args)
+
+    def vendor_call(self, entry, lib, args):
+        """A call into a gate-owned vendored library (T106): which functions it hands over (any function named
+        inside an argument: directly, in an initialiser, in a compound literal), and whether an argument of
+        function-pointer type is a value the scanner cannot name (a variable, a table element, a call result:
+        then the decision keeps the conservative rule for this call)."""
+        passes, opaque = set(), False
+        for arg in args:
+            self.named_functions(arg, passes)
+            opaque = opaque or (pointer_typed(arg) and not is_null_constant(arg)
+                                and is_function_ref(peel(arg)) is None)
+        entry["lib"] = lib
+        entry["passes"] = sorted(passes | set(entry.get("passes", [])))
+        entry["opaque"] = opaque or entry.get("opaque", False)
+
+    def named_functions(self, node, found):
+        stack = [node]
+        while stack:
+            item = stack.pop()
+            if not isinstance(item, dict):
+                continue
+            ref = is_function_ref(item)
+            if ref is not None:
+                found.add(self.resolver.key_of(ref))
+            inner = children(item)
+            if item.get("kind") == "CallExpr" and inner and is_function_ref(peel(inner[0])) is not None:
+                inner = inner[1:]   # the callee of a nested call is called, not handed over
+            stack.extend(inner)
 
     def note(self, node, kind, types):
         """A function pointer may change type here (or cannot be told): `types` are the function types involved,

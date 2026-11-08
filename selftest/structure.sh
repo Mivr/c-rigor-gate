@@ -33,8 +33,8 @@ if [ -n "${STRUCTURE_COLD:-}" ]; then
 fi
 
 GREEN="clean"
-RED="selfrec mutual macrorec cleanuprec asmrec aliasrec len51 params7 nest5 fpcycle callbackcycle gotos linehide packed longline macrofn file501 splitbody castcycle voidcastcycle"
-TYPED="ports"
+RED="selfrec mutual macrorec cleanuprec asmrec aliasrec len51 params7 nest5 fpcycle callbackcycle gotos linehide packed longline macrofn file501 splitbody castcycle voidcastcycle tpcallback"
+TYPED="ports tpgreen"
 OTHER="xa xb"
 # Modules whose real build is refused before any fact exists.
 IMPOSSIBLE="included stmtexprrec stmtnest unprotocycle"
@@ -70,7 +70,7 @@ rules() { json 'sorted({f["rule"] for f in r["findings"]})'; }
 nfind() { json 'len(r["findings"])'; }
 
 # --------------------------------------------------------------------------------------
-begin "build the structure facts of 25 modules on RE (cold if STRUCTURE_COLD=1)"
+begin "build the structure facts of 27 modules on RE (cold if STRUCTURE_COLD=1)"
 t0=$SECONDS
 build_all "$out/build1.log" || fail "$CUR: buck2 build failed" "$out/build1.log"
 COLD="$(executed "$out/build1.log")"
@@ -155,6 +155,15 @@ assert funcs["run"]["indirect"][0]["type"] == "int ( int )", funcs["run"]["indir
 assert funcs["hidden"]["type"] == "long ( long )" and funcs["hidden"]["conversions"], funcs["hidden"]
 print("    castcycle facts: run() calls int(int), hidden() is long(long) and is cast to it")
 PY
+
+begin "T106: a callback handed to a gate-owned vendored library can only call into that library through what it was handed"
+LEVEL=L3 gate tpgreen
+[ "$GATE_CODE" = 0 ] && [ "$(nfind)" = 0 ] || fail "$CUR: tpgreen (mbedTLS shape: registered callbacks that do not call the library, registrar behind an ops table) must pass" "$out/gate.log"
+echo "    tpgreen: no finding; library callbacks $(json 'r["metadata"]["library_callbacks"]')"
+check_red tpcallback indirect-cycle-possible
+[ "$(json 'r["findings"][0]["sites"]')" = "['selftest/scratch_st/tpcallback.c:8 callback:mbedtls_ssl_write (library mbedtls)']" ] \
+  || fail "$CUR: tpcallback site is $(json 'r["findings"][0]["sites"]')" "$out/gate.log"
+echo "    tpcallback sites: $(json 'r["findings"][0]["sites"]')"
 
 begin "RED (B2): the limits, one case each, the boundary exact (50 passes in the green module, 51 fails)"
 check_red len51 function-length 51
