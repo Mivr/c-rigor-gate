@@ -25,10 +25,12 @@ modules = ["//lib/fmt/fp:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//
 # Non-test libraries only tests may use (test kits over a module's fake or real seam).
 [testkit]
 modules = ["//lib/io/posix_fs:testkit",
+           "//lib/io/posix_listen:testkit",
            "//lib/io/posix_net:testkit",
            "//lib/io/tls_stream:testkit",
            "//lib/sim/simnet:testkit",
            "//lib/ui/scenediff:testkit",
+           "//lib/ui/uikit:testkit",
            "//apps/lockers/lk/auditplan:testkit",
            "//apps/lockers/lk/book:testkit",
            "//apps/lockers/lk/booktext:testkit",
@@ -40,10 +42,14 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/lkadp/auditfile:testkit",
            "//apps/lockers/lkadp/bookfile:testkit",
            "//apps/lockers/lkadp/codeshttp:testkit",
+           "//apps/lockers/lkadp/e2eclock:testkit",
            "//apps/lockers/lkadp/inventoryfile:testkit",
            "//apps/lockers/lkadp/relaytcp:testkit",
+           "//apps/lockers/lkadp/synchttp:testkit",
            "//apps/lockers/lkapp/commission:boardkit",
            "//apps/lockers/lkapp/commission:testkit",
+           "//apps/lockers/lkapp/e2e:testkit",
+           "//apps/lockers/lkapp/runtime:testkit",
            "//apps/lockers/lkapp/winpolicy:testkit",
            "//apps/lockers/lkrx/boot:testkit",
            "//apps/lockers/lkrx/catalog:testkit",
@@ -53,6 +59,8 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/lkrx/notice:testkit",
            "//apps/lockers/lkrx/pad:testkit",
            "//apps/lockers/lkrx/shift:testkit",
+           "//apps/lockers/lkrx/sync:testkit",
+           "//apps/lockers/lkrx/view:testkit",
            "//apps/lockers/lkrx/visit:testkit",
            "//apps/lockers/lkrx/vstate:testkit",
            "//apps/lockers/lksim/board:testkit",
@@ -715,3 +723,48 @@ from = "app-root"
 to = "lib-io"
 kind = "pure"
 
+# Lockers rules for the modules merged after T111 (T113), by the dependency column of design.md section 4.1.
+# lkrx/sync formats the sync banner time with lines (the line splitter, lib-fmt).
+[[edge]]
+from = "app-reactors"
+to = "//lib/fmt/lines:lines"
+kind = "pure"
+
+# lkadp/synchttp builds and parses HTTP and JSON (lib-fmt, above), reads the event types of the wiring runtime (lib-rt)
+# and the shared catalog types of lkrx/catalog; lkadp/e2eclock needs only the port types (lib-base).
+[[edge]]
+from = "app-adapters"
+to = "lib-rt"
+kind = "pure"
+
+[[edge]]
+from = "app-adapters"
+to = "//apps/lockers/lkrx/catalog:catalog"
+kind = "pure"
+
+# lkapp/e2e serves the CLUB_A11Y tree over the scene library (lib-ui), a11y and i18n; lkapp/runtime is the composition
+# root of the thread steps: it wires the reactors, the scene builders, the runtime, containers and scene libraries.
+[[edge]]
+from = "app-root"
+to = "lib-ui"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "lib-ds"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "lib-rt"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "app-reactors"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "app-ui"
+kind = "pure"
