@@ -71,6 +71,17 @@ def _run_buck(tree, args):
             _ANSI.sub("", done.stderr.decode("utf-8", "replace")))
 
 
+_TRANSPORT = re.compile(r"h2 protocol error|broken pipe|connection reset|transport error|connection closed|"
+                        r"stream closed|error reading a body from connection", re.IGNORECASE)
+
+
+def transport_failure(stderr):
+    """Whether Buck2's stderr says the daemon or RE stream dropped (not that the build itself failed). The caller
+    also checks that the build exited non-zero and left a target unbuilt; a compile or test failure has none of
+    these texts and is never retried."""
+    return _TRANSPORT.search(stderr) is not None
+
+
 def result_targets(tree):
     """Labels of every ctest_results target in the product, sorted. (code, labels, stderr)."""
     code, out, err = run_buck(tree, ["uquery", "kind(%s, //...)" % RESULT_KIND])

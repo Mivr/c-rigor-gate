@@ -32,6 +32,10 @@ PLATFORM = "toolchains//:linux_release"
 _ROOT = "root//"
 _LABEL = re.compile(r"[A-Za-z0-9_.-]+//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+")
 _TAIL_CHARS = 4000
+# Modules per `buck2 build` (T115). 112 modules in one build (42k actions) died three times of 3 with an h2
+# BrokenPipe under the shared 8 GiB cgroup. 12 keeps a build near 4k actions (about ten builds for 112 modules):
+# small enough for the stream and the daemon to survive, large enough that the RE farm still sees a wide graph.
+MUTANTS_CHUNK = 12
 PERF_DIR = "mutants-perf"
 PERF_KIT = "gate//ctest:perf"   # the harness has a main of its own: never linked into a test
 
@@ -298,36 +302,68 @@ def write_package(run, modules, shared=False):
     return write_gate_package(run.tree, PACKAGE_DIR, build_file_text(modules), shared)
 
 
+def chunks_of(count):
+    """The index ranges `build_reports` builds one by one: `MUTANTS_CHUNK` modules each, the last one shorter."""
+    return [range(start, min(start + MUTANTS_CHUNK, count)) for start in range(0, count, MUTANTS_CHUNK)]
+
+
+def _build_chunk(run, flags, number, indexes, labels, perf_labels):
+    """One bounded `buck2 build` of the chunk's targets (and `[perf]` outputs), retried once when it died of a
+    transport failure. Returns (results, exit code, stderr, executed, cached, retried)."""
+    report = run.report_path("mutants-%03d" % number)
+    wanted = [labels[i] for i in indexes]
+    extra = sorted(perf_labels[i] for i in indexes if i in perf_labels)
+    executed = cached = 0
+    retried = False
+    while True:
+        if os.path.lexists(report):
+            os.unlink(report)  # never read a report an earlier run (or attempt) left
+        code, _, err = grade_build.run_buck(run.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
+                                                     "--build-report", report] + flags + wanted + extra)
+        done_executed, done_cached = grade_build.action_counts(run.tree)
+        executed, cached = executed + done_executed, cached + done_cached
+        results = grade_build.read_report(report) or {}
+        missing = any((results.get("root" + label) or {}).get("success") != "SUCCESS" for label in wanted)
+        if retried or not (code != 0 and missing and grade_build.transport_failure(err)):
+            return results, code, err, executed, cached, retried
+        retried = True   # the same daemon: its cache is warm, so the retry only redoes what was not finished
+
+
 def build_reports(run, uncached, modules):
-    """Build every c_mutants target; copy the reports. Returns (findings, metadata, built indexes)."""
+    """Build every c_mutants target in chunks of `MUTANTS_CHUNK` modules; copy the reports. Returns
+    (findings, metadata, built indexes). One build of every module died of a dropped stream and took every
+    pending target with it (T115); a chunk that dies that way is retried once, and a chunk that still fails
+    costs only its own modules. The daemon stays up between the chunks."""
     labels = [target_label(i, m) for i, m in enumerate(modules)]
     perf_labels = {i: target_label(i, m) + "[perf]" for i, m in enumerate(modules) if m.perf}
-    report = run.report_path("mutants")
-    if os.path.lexists(report):
-        os.unlink(report)  # never read a report an earlier run left
     flags = ["--no-remote-cache"] if uncached else []
-    code, _, err = grade_build.run_buck(run.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
-                                                 "--build-report", report] + flags + labels + sorted(perf_labels.values()))
-    executed, cached = grade_build.action_counts(run.tree)
-    metadata = {"executed_actions": executed, "cached_actions": cached, "exit_code": code}
-    if code != 0:
-        metadata["stderr_tail"] = err[-_TAIL_CHARS:]
-    results = grade_build.read_report(report) or {}
     out_dir = run.mutants_reports
     os.makedirs(out_dir)
+    metadata = {"executed_actions": 0, "cached_actions": 0, "exit_code": 0, "chunks": 0, "retried": []}
     found, built = [], []
-    for index, label in enumerate(labels):
-        entry = results.get("root" + label)
-        source = None
-        if entry is not None and entry.get("success") == "SUCCESS":
-            source = grade_build.output_path(run.tree, label, entry)
-        if source is None:
-            found.append(finding("mutants-build-failed", module=modules[index].label))
-            continue
-        with open(os.path.join(out_dir, "%03d.json" % index), "xb") as handle:
-            handle.write(jsonio.read_bytes(source))
-        built.append(index)
-    found.extend(_copy_perf(run, results, perf_labels, built, modules))
+    for number, indexes in enumerate(chunks_of(len(modules))):
+        results, code, err, executed, cached, retried = _build_chunk(run, flags, number, indexes, labels, perf_labels)
+        metadata["chunks"] += 1
+        metadata["executed_actions"] += executed
+        metadata["cached_actions"] += cached
+        if retried:
+            metadata["retried"].append(number)
+        if code != 0:
+            if metadata["exit_code"] == 0:
+                metadata["exit_code"] = code
+            metadata["stderr_tail"] = err[-_TAIL_CHARS:]
+        for index in indexes:
+            entry = results.get("root" + labels[index])
+            source = None
+            if entry is not None and entry.get("success") == "SUCCESS":
+                source = grade_build.output_path(run.tree, labels[index], entry)
+            if source is None:
+                found.append(finding("mutants-build-failed", module=modules[index].label))
+                continue
+            with open(os.path.join(out_dir, "%03d.json" % index), "xb") as handle:
+                handle.write(jsonio.read_bytes(source))
+            built.append(index)
+        found.extend(_copy_perf(run, results, {i: perf_labels[i] for i in indexes if i in perf_labels}, built, modules))
     return found, metadata, built
 
 
