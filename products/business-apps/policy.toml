@@ -21,7 +21,7 @@ trusted = ["gate//ctest:ctest"]
 level = "L3"
 impl = ["apps/lockers/lk/code/src/**"]
 allow = []
-exports = []
+exports = ["lk_code_classify", "lk_code_eq", "lk_code_lockout_after", "lk_code_unpack"]
 
 [module."//apps/lockers/lk/code:code_class_test"]
 allow = []
@@ -52,35 +52,39 @@ allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lk/syncsched:result_test"]
-allow = []
+allow = ["bcmp"]
 exports = ["main"]
 
 [module."//apps/lockers/lk/syncsched:schedule_test"]
-allow = []
+allow = ["bcmp"]
 exports = ["main"]
 
 [module."//apps/lockers/lk/syncsched:state_decode_test"]
-allow = []
+allow = ["memcpy", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lk/syncsched:state_encode_test"]
-allow = []
+allow = ["strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lk/syncsched:syncsched"]
 level = "L3"
 impl = ["apps/lockers/lk/syncsched/src/**"]
-allow = []
-exports = []
+allow = ["memcpy"]
+exports = ["lk_syncsched_backoff_ms", "lk_syncsched_behind", "lk_syncsched_book_saved",
+    "lk_syncsched_failures", "lk_syncsched_init", "lk_syncsched_jitter_ms", "lk_syncsched_load",
+    "lk_syncsched_next", "lk_syncsched_on_result", "lk_syncsched_rejected", "lk_syncsched_state",
+    "lk_syncstate_decode", "lk_syncstate_encode"]
 
 [module."//apps/lockers/lk/types:types"]
 level = "L3"
 impl = ["apps/lockers/lk/types/src/**"]
 allow = []
-exports = []
+exports = ["lk_bcd_digit", "lk_bcd_pack", "lk_bcd_wellformed", "lk_cell_valid", "lk_fault_name",
+    "lk_fault_valid", "lk_lang_valid", "lk_locker_valid", "lk_relay_valid", "lk_size_valid"]
 
 [module."//apps/lockers/lk/types:types_bcd_test"]
-allow = []
+allow = ["strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lk/types:types_consts_test"]
@@ -88,7 +92,7 @@ allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lk/types:types_fault_test"]
-allow = []
+allow = ["strcmp"]
 exports = ["main"]
 
 [module."//apps/lockers/lk/types:types_valid_test"]
@@ -1027,6 +1031,7 @@ deny_exempt = ["open", "openat"]
 exports = ["posix_fs_close", "posix_fs_open", "posix_fs_port", "posix_fs_sys_libc"]
 
 [module."//lib/io/posix_fs:testkit"]
+level = "L1"
 allow = []
 exports = []
 
@@ -1045,17 +1050,17 @@ exports = ["posix_lock_init", "posix_lock_init_real", "posix_lock_port", "posix_
 [module."//lib/io/posix_net:connect_test"]
 allow = ["bcmp", "memcpy", "memset", "strlen", "strncpy"]
 exports = ["K", "k_sys", "k_token", "kit_count", "kit_matches", "kit_nth", "kit_reset", "kit_set",
-    "kit_str", "kit_v4", "kit_v6_last", "main"]
+    "kit_state", "kit_str", "kit_token_ptr", "kit_v4", "kit_v6_last", "main"]
 
 [module."//lib/io/posix_net:io_test"]
 allow = ["memcpy", "memset", "strncpy"]
 exports = ["K", "k_sys", "k_token", "kit_count", "kit_matches", "kit_nth", "kit_reset", "kit_set",
-    "kit_str", "kit_v4", "kit_v6_last", "main"]
+    "kit_state", "kit_str", "kit_token_ptr", "kit_v4", "kit_v6_last", "main"]
 
 [module."//lib/io/posix_net:port_test"]
 allow = ["memcpy", "memset", "strncpy"]
 exports = ["K", "k_sys", "k_token", "kit_count", "kit_matches", "kit_nth", "kit_reset", "kit_set",
-    "kit_str", "kit_v4", "kit_v6_last", "main"]
+    "kit_state", "kit_str", "kit_token_ptr", "kit_v4", "kit_v6_last", "main"]
 
 [module."//lib/io/posix_net:posix_net"]
 level = "L2"
@@ -1063,7 +1068,7 @@ impl = ["lib/io/posix_net/src/**"]
 allow = ["__errno_location", "close", "freeaddrinfo", "getaddrinfo", "getsockopt", "poll", "recv", "send"]
 deny_exempt = ["clock_gettime", "connect", "socket"]
 exports = ["pnet_close", "pnet_connect", "pnet_drain", "pnet_fd", "pnet_init", "pnet_init_real",
-    "pnet_is_open", "pnet_recv", "pnet_send", "pnet_stream_port", "pnet_sys_libc"]
+    "pnet_is_open", "pnet_recv", "pnet_send", "pnet_stream_port", "pnet_sys_libc", "pnet_wait"]
 
 [module."//lib/io/posix_net:real_test"]
 allow = ["accept", "alarm", "bind", "close", "fcntl", "getsockname", "in6addr_loopback", "listen", "poll",
@@ -1072,12 +1077,14 @@ deny_exempt = ["_exit", "fork", "signal", "socket"]
 exports = ["main"]
 
 [module."//lib/io/posix_net:testkit"]
+level = "L1"
 allow = []
 exports = []
 
 [module."//lib/io/posix_net:wait_test"]
-allow = []
-exports = ["main"]
+allow = ["memcpy", "memset", "strncpy"]
+exports = ["k_sys", "kit_count", "kit_matches", "kit_nth", "kit_reset", "kit_set", "kit_state",
+    "kit_str", "kit_token_ptr", "kit_v4", "kit_v6_last", "main"]
 
 [module."//lib/io/posix_rand:posix_rand"]
 level = "L2"
@@ -1090,90 +1097,205 @@ allow = ["bcmp", "memset"]
 exports = ["main"]
 
 [module."//lib/io/tls_stream:alert_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:api_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:bulk_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:cert_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:deadline_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:eof_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:errno_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:fault_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:gap_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/mbedtls:mbedtls", "gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:heap_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/mbedtls:mbedtls", "gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:host_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:pnet_test"]
-allow = []
+allow = ["accept", "bind", "close", "getsockname", "in6addr_loopback", "listen", "memset", "poll",
+    "read", "write"]
+deny_exempt = ["socket"]
 exports = ["main"]
 
 [module."//lib/io/tls_stream:reuse_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:session_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:sizing_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:split_test"]
-allow = []
+allow = ["memcmp", "memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:state_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:testkit"]
+level = "L1"
 allow = []
 exports = []
 
@@ -1182,18 +1304,35 @@ level = "L3"
 allow_mutable_data = true   # heap.c g_active: the mbedTLS calloc/free hook has no context argument (third-party API)
 third_party = ["gate//third_party/mbedtls:mbedtls"]
 impl = ["lib/io/tls_stream/src/**"]
-allow = []
-exports = []
+allow = ["memchr", "memcpy", "memset"]
+exports = ["tls_active", "tls_bio_recv", "tls_bio_send", "tls_claim", "tls_deadline_passed",
+    "tls_heap_setup", "tls_release", "tls_stream_deinit", "tls_stream_heap_peak",
+    "tls_stream_heap_used", "tls_stream_init", "tls_stream_pnet_transport", "tls_stream_port",
+    "tls_stream_version", "tls_transport_connect"]
 
 [module."//lib/io/tls_stream:trust_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/io/tls_stream:wall_bound_test"]
-allow = []
+allow = ["memcpy", "memmove", "memset", "strlen"]
 third_party = ["gate//third_party/mbedtls:mbedtls", "gate//third_party/tls_peer:tls_peer"]
-exports = ["main"]
+exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed", "kit_ca_other",
+    "kit_ca_repeated", "kit_ca_root", "kit_clock", "kit_clock_advance", "kit_config", "kit_done",
+    "kit_exchange", "kit_fill", "kit_inbox_corrupt", "kit_inbox_len", "kit_inbox_push",
+    "kit_inbox_truncate", "kit_init", "kit_now", "kit_open", "kit_peer_alert",
+    "kit_peer_client_closed", "kit_peer_close_notify", "kit_peer_data", "kit_peer_data_clear",
+    "kit_peer_data_len", "kit_peer_error", "kit_peer_established", "kit_peer_ingest",
+    "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
+    "kit_same", "kit_split_next_recv", "main"]
 
 [module."//lib/rt/dtab:dtab"]
 level = "L3"
@@ -1354,31 +1493,38 @@ exports = ["rx_emit", "rx_init", "rx_log", "rx_pending", "rx_push", "rx_push_fro
 
 [module."//lib/rt/rx:rx_effects_test"]
 allow = ["memset", "snprintf"]
-exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+exports = ["fx_build", "fx_cfg", "fx_cfg_ptr", "fx_ev", "fx_ntr", "fx_ntr_ptr", "fx_sl",
+    "fx_sl_buf", "fx_tag", "fx_tr", "fx_tr_buf", "fx_types", "fx_types_buf", "main"]
 
 [module."//lib/rt/rx:rx_fault_test"]
 allow = ["memset", "snprintf"]
-exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+exports = ["fx_build", "fx_cfg", "fx_cfg_ptr", "fx_ev", "fx_ntr", "fx_ntr_ptr", "fx_sl",
+    "fx_sl_buf", "fx_tag", "fx_tr", "fx_tr_buf", "fx_types", "fx_types_buf", "main"]
 
 [module."//lib/rt/rx:rx_init_test"]
 allow = ["memset"]
-exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+exports = ["fx_build", "fx_cfg", "fx_cfg_ptr", "fx_ev", "fx_ntr", "fx_ntr_ptr", "fx_sl",
+    "fx_sl_buf", "fx_tag", "fx_tr", "fx_tr_buf", "fx_types", "fx_types_buf", "main"]
 
 [module."//lib/rt/rx:rx_order_test"]
 allow = ["memset", "snprintf"]
-exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+exports = ["fx_build", "fx_cfg", "fx_cfg_ptr", "fx_ev", "fx_ntr", "fx_ntr_ptr", "fx_sl",
+    "fx_sl_buf", "fx_tag", "fx_tr", "fx_tr_buf", "fx_types", "fx_types_buf", "main"]
 
 [module."//lib/rt/rx:rx_shape_test"]
 allow = ["memset", "snprintf"]
-exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+exports = ["fx_build", "fx_cfg", "fx_cfg_ptr", "fx_ev", "fx_ntr", "fx_ntr_ptr", "fx_sl",
+    "fx_sl_buf", "fx_tag", "fx_tr", "fx_tr_buf", "fx_types", "fx_types_buf", "main"]
 
 [module."//lib/rt/rx:rx_trace_test"]
 allow = ["memset"]
-exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+exports = ["fx_build", "fx_cfg", "fx_cfg_ptr", "fx_ev", "fx_ntr", "fx_ntr_ptr", "fx_sl",
+    "fx_sl_buf", "fx_tag", "fx_tr", "fx_tr_buf", "fx_types", "fx_types_buf", "main"]
 
 [module."//lib/rt/rx:rx_version_test"]
 allow = ["memset"]
-exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+exports = ["fx_build", "fx_cfg", "fx_cfg_ptr", "fx_ev", "fx_ntr", "fx_ntr_ptr", "fx_sl",
+    "fx_sl_buf", "fx_tag", "fx_tr", "fx_tr_buf", "fx_types", "fx_types_buf", "main"]
 
 [module."//lib/rt/rxindex:rxindex"]
 level = "L3"
@@ -1536,35 +1682,43 @@ exports = ["simtab_erase", "simtab_first_ge", "simtab_init", "simtab_insert", "s
 level = "L3"
 impl = ["lib/sim/simhost/src/**"]
 allow = []
-exports = []
+exports = ["sh_cond_broadcast", "sh_cond_destroy", "sh_cond_init", "sh_cond_signal",
+    "sh_cond_wait", "sh_get", "sh_get_c", "sh_known", "sh_max", "sh_mem_lock", "sh_min",
+    "sh_mutex_destroy", "sh_mutex_init", "sh_mutex_lock", "sh_mutex_unlock", "sh_next_wake",
+    "sh_now", "sh_prio_apply", "sh_register", "sh_step_due", "sh_tag", "sh_thread_join",
+    "sh_thread_nice", "sh_thread_start", "sh_wait", "simhost_add", "simhost_current",
+    "simhost_deadlocks", "simhost_hash", "simhost_init", "simhost_log_count", "simhost_osal",
+    "simhost_prio", "simhost_run_steps", "simhost_run_until", "simhost_set_wake_latency",
+    "simhost_steps", "simhost_task_name", "simhost_thread_task", "simhost_wake",
+    "simhost_wake_time"]
 
 [module."//lib/sim/simhost:simhost_cond_test"]
 allow = []
-exports = ["main"]
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simhost:simhost_gap_test"]
 allow = []
 exports = ["main"]
 
 [module."//lib/sim/simhost:simhost_init_test"]
-allow = []
-exports = ["main"]
+allow = ["memset"]
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simhost:simhost_mbox_test"]
-allow = []
-exports = ["main"]
+allow = ["memset"]
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simhost:simhost_osal_test"]
 allow = []
-exports = ["main"]
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simhost:simhost_sched_test"]
 allow = []
-exports = ["main"]
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simhost:simhost_seed_test"]
-allow = []
-exports = ["main"]
+allow = ["memcpy"]
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simnet:simnet"]
 level = "L3"
@@ -1574,40 +1728,48 @@ exports = ["simnet_arm", "simnet_arm_random", "simnet_armed", "simnet_init", "si
 
 [module."//lib/sim/simnet:simnet_api_test"]
 allow = ["memcpy", "memmove", "memset", "strlen"]
-exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
-    "hostn", "main", "rd", "read_all", "setup", "wr"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn",
+    "frame_bytes", "hostn", "main", "peerkit_c2p", "peerkit_clock", "peerkit_net", "peerkit_p2c",
+    "peerkit_peer", "peerkit_rng", "rd", "read_all", "setup", "wr"]
 
 [module."//lib/sim/simnet:simnet_edge_test"]
 allow = ["memcpy", "memmove", "memset", "strlen"]
-exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
-    "hostn", "main", "rd", "read_all", "setup", "wr"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn",
+    "frame_bytes", "hostn", "main", "peerkit_c2p", "peerkit_clock", "peerkit_net", "peerkit_p2c",
+    "peerkit_peer", "peerkit_rng", "rd", "read_all", "setup", "wr"]
 
 [module."//lib/sim/simnet:simnet_fault_conn_test"]
 allow = ["memcpy", "memmove", "memset", "strlen"]
-exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
-    "hostn", "main", "rd", "read_all", "setup", "wr"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn",
+    "frame_bytes", "hostn", "main", "peerkit_c2p", "peerkit_clock", "peerkit_net", "peerkit_p2c",
+    "peerkit_peer", "peerkit_rng", "rd", "read_all", "setup", "wr"]
 
 [module."//lib/sim/simnet:simnet_fault_rx_test"]
 allow = ["memcpy", "memmove", "memset", "strlen"]
-exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
-    "hostn", "main", "rd", "read_all", "setup", "wr"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn",
+    "frame_bytes", "hostn", "main", "peerkit_c2p", "peerkit_clock", "peerkit_net", "peerkit_p2c",
+    "peerkit_peer", "peerkit_rng", "rd", "read_all", "setup", "wr"]
 
 [module."//lib/sim/simnet:simnet_seed_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "strlen"]
-exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
-    "hostn", "main", "rd", "read_all", "setup", "wr"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn",
+    "frame_bytes", "hostn", "main", "peerkit_c2p", "peerkit_clock", "peerkit_net", "peerkit_p2c",
+    "peerkit_peer", "peerkit_rng", "rd", "read_all", "setup", "wr"]
 
 [module."//lib/sim/simnet:simnet_stream_test"]
 allow = ["memcpy", "memmove", "memset", "strlen"]
-exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
-    "hostn", "main", "rd", "read_all", "setup", "wr"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn",
+    "frame_bytes", "hostn", "main", "peerkit_c2p", "peerkit_clock", "peerkit_net", "peerkit_p2c",
+    "peerkit_peer", "peerkit_rng", "rd", "read_all", "setup", "wr"]
 
 [module."//lib/sim/simnet:simnet_time_test"]
 allow = ["memcpy", "memmove", "memset", "strlen"]
-exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
-    "hostn", "main", "rd", "read_all", "setup", "wr"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn",
+    "frame_bytes", "hostn", "main", "peerkit_c2p", "peerkit_clock", "peerkit_net", "peerkit_p2c",
+    "peerkit_peer", "peerkit_rng", "rd", "read_all", "setup", "wr"]
 
 [module."//lib/sim/simnet:testkit"]
+level = "L1"
 allow = []
 exports = []
 
@@ -1668,109 +1830,122 @@ exports = ["main"]
 level = "L3"
 impl = ["lib/ui/a11y/src/**"]
 allow = []
-exports = []
+exports = ["a11y_encode", "a11y_parse_line"]
 
 [module."//lib/ui/a11y:a11y_args_test"]
 allow = []
 exports = ["main"]
 
 [module."//lib/ui/a11y:a11y_buf_test"]
-allow = []
+allow = ["memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/ui/a11y:a11y_escape_test"]
-allow = []
+allow = ["memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/ui/a11y:a11y_golden_test"]
-allow = []
+allow = ["memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/ui/a11y:a11y_parse_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/ui/a11y:a11y_text_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/ui/scene:scene"]
 level = "L3"
 impl = ["lib/ui/scene/src/**"]
 allow = []
-exports = []
+exports = ["sc_append", "sc_args_store", "sc_args_valid", "sc_dump_line", "sc_find_index",
+    "sc_fits", "sc_live", "sc_open", "sc_set_overflow", "sc_walk_next", "scene_add",
+    "scene_add_notice", "scene_arg", "scene_args_used", "scene_begin", "scene_check",
+    "scene_count", "scene_dump", "scene_end", "scene_find", "scene_init", "scene_node_at",
+    "scene_overflow"]
 
 [module."//lib/ui/scene:scene_args_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/ui/scene:scene_build_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/ui/scene:scene_check_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/ui/scene:scene_dump_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memset", "strcat", "strlen"]
 exports = ["main"]
 
 [module."//lib/ui/scene:scene_init_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/ui/scene:scene_notice_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/ui/scene:scene_overflow_test"]
-allow = []
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/ui/scenediff:scenediff"]
 level = "L3"
 impl = ["lib/ui/scenediff/src/**"]
-allow = []
-exports = []
+allow = ["memset"]
+exports = ["scenediff"]
 
 [module."//lib/ui/scenediff:sd_big_test"]
 allow = []
 exports = ["main"]
 
 [module."//lib/ui/scenediff:sd_edge_test"]
-allow = []
-exports = ["main"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["main", "sdk_apply", "sdk_base", "sdk_build", "sdk_empty", "sdk_exact", "sdk_expect",
+    "sdk_idx_buf", "sdk_int", "sdk_out_buf", "sdk_pair", "sdk_preorder", "sdk_spec", "sdk_str"]
 
 [module."//lib/ui/scenediff:sd_gap_test"]
-allow = []
-exports = ["main"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["main", "sdk_apply", "sdk_base", "sdk_build", "sdk_empty", "sdk_exact", "sdk_expect",
+    "sdk_idx_buf", "sdk_int", "sdk_out_buf", "sdk_pair", "sdk_preorder", "sdk_spec", "sdk_str"]
 
 [module."//lib/ui/scenediff:sd_notice_test"]
-allow = []
-exports = ["main"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["main", "sdk_apply", "sdk_base", "sdk_build", "sdk_empty", "sdk_exact", "sdk_expect",
+    "sdk_idx_buf", "sdk_int", "sdk_out_buf", "sdk_pair", "sdk_preorder", "sdk_spec", "sdk_str"]
 
 [module."//lib/ui/scenediff:sd_ops_test"]
-allow = []
-exports = ["main"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["main", "sdk_apply", "sdk_base", "sdk_build", "sdk_empty", "sdk_exact", "sdk_expect",
+    "sdk_idx_buf", "sdk_int", "sdk_out_buf", "sdk_pair", "sdk_preorder", "sdk_spec", "sdk_str"]
 
 [module."//lib/ui/scenediff:sd_order_test"]
-allow = []
-exports = ["main"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["main", "sdk_apply", "sdk_base", "sdk_build", "sdk_empty", "sdk_exact", "sdk_expect",
+    "sdk_idx_buf", "sdk_int", "sdk_out_buf", "sdk_pair", "sdk_preorder", "sdk_spec", "sdk_str"]
 
 [module."//lib/ui/scenediff:sd_prop_test"]
-allow = []
-exports = ["main"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "strlen"]
+exports = ["main", "sdk_apply", "sdk_base", "sdk_build", "sdk_empty", "sdk_exact", "sdk_expect",
+    "sdk_idx_buf", "sdk_int", "sdk_out_buf", "sdk_pair", "sdk_preorder", "sdk_spec", "sdk_str"]
 
 [module."//lib/ui/scenediff:sd_stale_test"]
-allow = []
-exports = ["main"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["main", "sdk_apply", "sdk_base", "sdk_build", "sdk_empty", "sdk_exact", "sdk_expect",
+    "sdk_idx_buf", "sdk_int", "sdk_out_buf", "sdk_pair", "sdk_preorder", "sdk_spec", "sdk_str"]
 
 [module."//lib/ui/scenediff:sd_struct_test"]
-allow = []
-exports = ["main"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "strlen"]
+exports = ["main", "sdk_apply", "sdk_base", "sdk_build", "sdk_empty", "sdk_exact", "sdk_expect",
+    "sdk_idx_buf", "sdk_int", "sdk_out_buf", "sdk_pair", "sdk_preorder", "sdk_spec", "sdk_str"]
 
 [module."//lib/ui/scenediff:testkit"]
+level = "L1"
 allow = []
 exports = []
 
