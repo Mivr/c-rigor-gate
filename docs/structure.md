@@ -36,14 +36,14 @@ the build. A header-only module (no sources) has nothing to compile and gets no 
    "files":[{"path","lines","bytes","longest_line"}],          // every file the compiler read, src included
    "functions":[{"name","key","static","file","line","end_line","body_lines","split","macro",
                  "params","nesting","cyclomatic","statements",
-                 "calls":[{"to","fp_args","line"}],             // direct calls, macros expanded
+                 "calls":[{"to","fp_args","line","lib"?,"passes"?,"opaque"?}],   // direct calls, macros expanded
                  "indirect":[{"file","line","type"?}],          // calls through a value, with the pointee's type
                  "refs":[{"to","file","line","type"?}],         // the function's address is taken here
                  "type"?, "conversions"?:[{"file","line","kind","types"}]}],
    "refs":[{"to","file","line","type"?}],                       // the same, outside every function (tables)
    "conversions"?:[...]}]}                                      // function-pointer conversions outside functions
 ```
-The keys marked `?` (T063) are optional so that older facts still read; see "Function types" below.
+The keys marked `?` (T063; `lib`, `passes`, `opaque` T106) are optional so that older facts still read; see "Function types" below.
 * `key` names a function: the link name for external linkage (`mangledName`: an `__asm__("x")` label is honoured,
   an `alias` attribute resolves to its aliasee); `static:FILE:NAME` for a static function.
 * `body_lines` runs from the line of `{` to the line of `}`, both included; `null` with `split: true` when the
@@ -97,7 +97,31 @@ incompatible type is undefined), unless the program converts a function pointer 
   function or unit lacks its `conversions` list. An address-taken function of unknown, unprototyped or variadic type
   may be reached through any pointer type. Each untyped call through a value is reported as info
   `indirect-untyped-fallback` with its `reason`. Facts with no conversion list anywhere (made before T063) are the
-  untyped rule everywhere, silently. Callbacks handed to outside code (`callback:qsort`) are always untyped.
+  untyped rule everywhere, silently. Callbacks handed to outside code (`callback:qsort`) are always untyped, except
+  those handed to a gate-owned vendored library (next section).
+
+### Callbacks into gate-owned vendored libraries (T106)
+Outside code such as libc may call back any address-taken function, so `qsort(.., cmp)` keeps the conservative
+rule. A **gate-owned vendored library** (`gate//third_party/<lib>`, e.g. mbedTLS) is different: it is pinned and
+reviewed by the gate, and the only product functions it can ever call are the function values the product handed
+to it. The mbedTLS API *requires* such registrations (`mbedtls_ssl_set_bio`, `mbedtls_ssl_conf_rng`,
+`mbedtls_platform_set_time`, `mbedtls_platform_set_calloc_free`), and the owner ruled (2026-11-08) that documented
+third-party API requirements are an allowed exception class, so these are decided precisely:
+* **Scanner.** A call whose callee the translation unit declares in a vendored library's header (a path under
+  `/art/<gate cell>/third_party/<lib>/`; a function the product declares itself is never a library's) carries three
+  more keys in `calls[]`: `lib` (the directory name `<lib>`), `passes` (the keys of every function named inside an
+  argument: bare, with `&`, cast, or inside a struct initialiser or compound literal; the callee of a nested call is
+  called, not handed over) and `opaque` (an argument of function-pointer type that is not a plain function name: a
+  variable, a table element, a call result; a null constant is not). The three keys come together or not at all.
+* **Rule.** For a library L, the possible call-backs are exactly the product functions in `passes` of **any** call into
+  L anywhere in the product (L may keep a pointer from one call and use it from a later one). A function C of that
+  set that reaches, by direct calls, any call into L (C itself included) is `indirect-cycle-possible`: L may call C
+  from that call. A callback that reaches no call into L, and a registrar that is address-taken and reaches the
+  registration, are no finding. The finding names `path`, and `sites` as `file:line callback:CALLEE (library L)`.
+  The level is that of the module(s) of C (L3 error, L2 info, L1 none).
+* **Fail closed.** A call with an `opaque` argument keeps the old rule for that call (the `callback:` site) and is
+  reported as info `indirect-untyped-fallback`. Older facts carry no `lib` keys: the old rule, silently. libc and any
+  other code outside the product keep the conservative rule.
 * Why no real cycle passes: a cycle through a value needs a call through a pointer holding F. In defined C that
   pointer's type is compatible with F's (typed edge, kept), or it was converted from F's type (a cast, union, copy or
   `va_arg`: recorded, both types untyped), or it passed through code the product does not define (callback, kept).
@@ -117,8 +141,8 @@ once, at the strictest level of the modules whose units contain it (a function i
 | Rule | When |
 |---|---|
 | `recursion` | a cycle in the direct call graph of the whole product (all modules, all translation units): self-recursion, mutual recursion across files and across modules. Names the cycle. **Every level**, L1 included. A callee the product does not define (libc, a dependency's export) is a leaf. Two programs (`c_binary`) may define the same names; each program has its own nodes, a library function is shared. |
-| `indirect-cycle-possible` | L3 (info at L2): module M takes the address of one of its own functions F, some function G of the product makes a call through a value *or passes a function pointer to code the product does not define* (`qsort(.., cmp)`: that code may call back), F reaches G by direct calls (F = G included), **and the call can reach F by type** (below). Stricter than the minimum reading: G may be in any module. The finding names `path`, the direct calls from F to G. |
-| `indirect-untyped-fallback` | info only: a call through a value that the type rule could not resolve, with the site and the `reason` (below). Not for a callback handed to outside code, which keeps the untyped rule by design. |
+| `indirect-cycle-possible` | L3 (info at L2): module M takes the address of one of its own functions F, some function G of the product makes a call through a value *or passes a function pointer to code the product does not define* (`qsort(.., cmp)`: that code may call back), F reaches G by direct calls (F = G included), **and the call can reach F by type** (below). Stricter than the minimum reading: G may be in any module. The finding names `path`, the direct calls from F to G. A callback handed to a gate-owned vendored library is decided by the library rule instead (above): C is a function passed to the library, G a call into it. |
+| `indirect-untyped-fallback` | info only: a call through a value that the type rule could not resolve, with the site and the `reason` (below), or a call into a vendored library with an argument of function-pointer type the scanner cannot name. Not for a callback handed to other outside code, which keeps the untyped rule by design. |
 | `function-length`, `parameter-count`, `nesting-depth`, `cyclomatic-complexity`, `statement-count` | over the limit of the level; the finding names the function, `value` and `limit` |
 | `file-length`, `line-length` | every file the compiler read (headers too) over the limit |
 | `split-function-body` | L2/L3: the body is not within one file (an `#include` inside the body) |
@@ -146,6 +170,7 @@ function (`file:line pointer` or `file:line callback:<callee>`), and the address
 | **Computed goto** `goto *p` | refused by `-Wpedantic` (GNU extension); counted as a decision anyway | scanner `DECISIONS` |
 | **Function pointers** | every call through a value is an `indirect` site; every non-callee mention of a function is an address-taken ref; the cycle rule above | red `fpcycle`; gate tests |
 | **Callback through libc** (`qsort`, `bsearch`, ...) | a direct call whose arguments include a function or function-pointer value, to code the product does not define, is a call site (`callback:<callee>`) | red `callbackcycle` |
+| **Callback through a vendored library** (`mbedtls_ssl_set_bio(.., send, ..)` whose `send` calls `mbedtls_ssl_write`) | a function passed to the library that reaches any call into the library is a finding (library rule above); a pointer the scanner cannot name keeps the conservative rule | red `tpcallback`, green `tpgreen` (`selftest/structure.sh`); gate tests `test_structure_vendor` |
 | **Recursion split across files/modules** | one graph for the whole product | red `mutual`, `xa`+`xb` |
 | **Same name, different `static`** to confuse the graph | static functions are keyed by their file | gate test |
 | **Pack a body or file into few long lines** | `statement-count` and `line-length` | red `packed`, `longline` |
@@ -154,6 +179,13 @@ function (`file:line pointer` or `file:line callback:<callee>`), and the address
 ## 4. Known limits (honest list)
 * A function pointer kept in a struct and passed to code outside the product is not seen as a callback (only values
   whose own type is a function pointer, and function names, are). The product's own indirect calls are all listed.
+  (For a gate-owned vendored library, function names inside a struct initialiser or compound literal argument are
+  seen. A vendored library could still keep a pointer the scanner does not see as passed: one the product stores into
+  a field of the library's own struct by assignment, or hands over in a struct variable filled elsewhere. That is
+  acceptable for this class only: the library is pinned by hash, reviewed and trusted (`semantic-suppressions` does not
+  scan it), its documented API takes callbacks as arguments (`mbedtls_ssl_set_bio`, `..._conf_rng`, ...), a struct
+  variable's members were named at the place they were filled, which is a reference the product's own address-taken
+  rule already lists, and an argument the scanner cannot name is `opaque`, so it falls back.)
 * `indirect-cycle-possible` is conservative: it knows the type of a pointer, not its value. It has no sanction; a
   module that needs a dispatch table must keep the table's functions from reaching a dispatcher of a compatible type.
 * Type punning that C itself calls undefined is not seen: reading a struct of function pointers through a pointer to
@@ -168,7 +200,8 @@ function (`file:line pointer` or `file:line callback:<callee>`), and the address
 * Recursion through `setjmp`/`longjmp`, signals or threads is not a call-graph cycle; those symbols are on the
   `rigor facts` deny list.
 * A function defined in a vendored library under `third_party/` is trusted, so a call from it back into the
-  product (a registered callback) is covered only through the `callback:` site on the registering call.
+  product (a registered callback) is covered only through the registering call: the library rule above (T106) or,
+  for an `opaque` argument, the `callback:` site.
 * Facts are release-mode only (like `rigor facts`); code under `#ifdef __SANITIZE_ADDRESS__` is not seen.
 * The scanner trusts clang's JSON dump. A forged `structure.json` is as trustworthy as the build that made it (the
   driver builds it freshly on RE, as for every other fact).

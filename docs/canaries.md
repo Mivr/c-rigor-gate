@@ -130,6 +130,17 @@ directory is under the canary's scratch dir makes that canary a miss.
 | `exports-missing-l3` | a new L3 module whose policy table has no `exports` list | `symbols`: exports-missing | none |
 
 Its `policy.toml` is the `_base` policy plus L3 tables for `//core:extra` (no `exports`) and `//core:extra_test`.
+## Canary added by T106
+| canary | bypass | expected |
+|---|---|---|
+| `structure-third-party-callback-cycle` (`tpcallback`, step "T106" of `selftest/structure.sh`) | a callback registered with a gate-owned vendored library (`mbedtls_ssl_set_bio(.., bio_send, ..)`) calls back into the library (`mbedtls_ssl_write`) | `structure`: `indirect-cycle-possible` (the only finding) |
+| `structure-third-party-callback-green` (`tpgreen`, same step) | the mbedTLS shape: registered callbacks that never call into the library, the registrar behind an ops table | no finding |
+
+Both are real Buck2 modules that depend on `gate//third_party/mbedtls:mbedtls` (the scanner marks the calls into it).
+They live in `selftest/structure_product` and are run by `selftest/structure.sh`, which is what the `structure` gate's
+canaries are (`callbackcycle` and `fpcycle`, the libc and pointer cases, stay red in the same script).
+Unit coverage: `gate/tests/test_structure_vendor.py`.
+
 ## Canaries replacing the rest of `selftest/grade.sh`'s red cases (T053)
 All 24 remaining red cases of `selftest/grade.sh` are canaries; the table is in `docs/grade.md`. Only one was missing:
 `ungraded-module` (the `extra/` directory the layout does not list, `buckfiles`: `ungraded-path`, NOT_RUN mutants).

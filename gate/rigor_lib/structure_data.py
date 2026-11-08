@@ -19,6 +19,7 @@ FUNCTION_KEYS = ("name", "key", "static", "file", "line", "end_line", "body_line
 # Type facts (T063). Optional so that facts made before them still read; their absence means "untyped": the
 # decision then falls back to the rule that needs no types (structure.py).
 FUNCTION_TYPE_KEYS = ("type", "conversions")
+VENDOR_CALL_KEYS = ("lib", "passes", "opaque")
 CONVERSION_KINDS = ("cast", "union", "copy", "vararg")
 
 
@@ -41,6 +42,7 @@ class Func:
     refs: tuple          # of (to, file, line, type of the referenced declaration or None): the address is taken
     type: object = None  # canonical function type of the definition, or None (unknown or absent)
     conversions: object = None   # tuple of Conversion, or None when the facts carry none
+    vendor: tuple = ()   # of (to, lib, passes, opaque, line): the calls into gate-owned vendored libraries (T106)
 
 
 @dataclass(frozen=True)
@@ -162,12 +164,20 @@ def _conversions(path, entries):
 
 
 def _calls(path, entries):
-    found = []
+    """-> (calls, vendor calls). The keys `lib`, `passes` and `opaque` (T106) come all together or not at all."""
+    found, vendor = [], []
     for entry in _list(path, entries, "calls"):
-        _exact(path, entry, ("to", "fp_args", "line"), "call")
-        found.append((_text(path, entry["to"], "call target"), _bool(path, entry["fp_args"], "fp_args")))
-        _int(path, entry["line"], "call line")
-    return tuple(found)
+        _optional(path, entry, ("to", "fp_args", "line"), VENDOR_CALL_KEYS, "call")
+        target = _text(path, entry["to"], "call target")
+        found.append((target, _bool(path, entry["fp_args"], "fp_args")))
+        line = _int(path, entry["line"], "call line")
+        extra = set(entry) & set(VENDOR_CALL_KEYS)
+        if extra and extra != set(VENDOR_CALL_KEYS):
+            _fail(path, "a call lists %s: lib, passes and opaque come together" % sorted(extra))
+        if extra:
+            passes = tuple(_text(path, p, "passed function") for p in _list(path, entry["passes"], "passes"))
+            vendor.append((target, _text(path, entry["lib"], "lib"), passes, _bool(path, entry["opaque"], "opaque"), line))
+    return tuple(found), tuple(vendor)
 
 
 def parse_function(path, entry):
@@ -177,15 +187,16 @@ def parse_function(path, entry):
     body = entry["body_lines"]
     if split != (body is None) or (not split and _int(path, body, "body_lines") < 1):
         _fail(path, "body_lines must be null exactly when the body is split")
+    calls, vendor = _calls(path, entry["calls"])
     return Func(
         name=_text(path, entry["name"], "function name"), key=_text(path, entry["key"], "function key"),
         file=_text(path, entry["file"], "function file"), line=_int(path, entry["line"], "line"),
         end_line=_int(path, entry["end_line"], "end_line"), body_lines=body, split=split,
         macro=_bool(path, entry["macro"], "macro"), params=_int(path, entry["params"], "params"),
         nesting=_int(path, entry["nesting"], "nesting"), cyclomatic=_int(path, entry["cyclomatic"], "cyclomatic"),
-        statements=_int(path, entry["statements"], "statements"), calls=_calls(path, entry["calls"]),
+        statements=_int(path, entry["statements"], "statements"), calls=calls,
         indirect=_sites(path, entry["indirect"], "indirect"), refs=_refs(path, entry["refs"], "refs"),
-        type=_type(path, entry.get("type"), "function type"), conversions=_conversions(path, entry.get("conversions")))
+        type=_type(path, entry.get("type"), "function type"), conversions=_conversions(path, entry.get("conversions")), vendor=vendor)
 
 
 def parse_file(path, entry):
