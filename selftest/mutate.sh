@@ -621,14 +621,15 @@ got="$(json '"\n".join(sorted("%s|%s|%s" % (f["function"], f["operator"], f["rep
 want='double_it|arithmetic|-
 double_it|function-body|{ (void)x; return 0; }
 find|condition|!(a[i] == v)
-find|increment|--
 find|integer-literal|1
 find|relational|<=
 find|return-value|((void)(0), (int *)1)
 store|function-body|{ (void)slot; (void)v; }'
 [ "$got" = "$want" ] || fail "$CUR: survivors differ from the expected list" <(printf 'got:\n%s\nwant:\n%s\n' "$got" "$want")
-[ "$(json '[f["rule"] for f in r["findings"]].count("survived-mutant")')" = 8 ] || fail "$CUR: not exactly 8 findings"
-echo "    8 survivors, exit 1, as expected"
+[ "$(json '[f["rule"] for f in r["findings"]].count("survived-mutant")')" = 7 ] || fail "$CUR: not exactly 7 findings"
+# T097: `find` with `i++` -> `i--` reads below the array; it used to survive by stack luck (the dead stack held a 5), and the
+# ctest runner now zeroes the dead stack before every test (determinism), so it walks off the stack and is killed.
+echo "    7 survivors, exit 1, as expected"
 echo "    $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
 
 begin "RED: a generator gone blind (no mutants although there are functions) fails the gate"
@@ -1115,8 +1116,8 @@ gate "$out/weak_after"
 [ "$GATE_CODE" = 1 ] || fail "$CUR: expected survivors to remain" "$out/gate.log"
 survivors="$(json '[f["function"] for f in r["findings"] if f["rule"] == "survived-mutant"].count("double_it")')"
 [ "$survivors" = 0 ] || fail "$CUR: the double_it survivor is still there"
-[ "$(json 'len([f for f in r["findings"] if f["rule"] == "survived-mutant"])')" = 6 ] || fail "$CUR: expected 6 survivors left"
-echo "    double_it body survivor killed; 6 survivors left"
+[ "$(json 'len([f for f in r["findings"] if f["rule"] == "survived-mutant"])')" = 5 ] || fail "$CUR: expected 5 survivors left"
+echo "    double_it body survivor killed; 5 survivors left"
 
 begin "WARM again"
 build_all "$out/build4.log" || fail "$CUR: buck2 build failed" "$out/build4.log"
@@ -1251,6 +1252,102 @@ print("    tce:", t, " verdicts:", {k: v for k, v in m["verdicts"].items() if v}
 PY
 echo "    the folded mutants ran at -O0: the INT_MAX check kills the ones that change the result, 1 -> 0 survives (it returns 3 like the optimised build); fold_unit stays equivalent"
 
+begin "RED/GREEN: a mutant that makes a real-directory test write forever is stopped by the resource limits and is killed (T097)"
+cat >> "$scratch/m/BUCK" <<'EOF'
+
+c_library(name = "runaway", srcs = ["runaway.c"], headers = ["runaway.h"])
+c_test(name = "runaway_test", srcs = ["runaway_test.c"], deps = [":runaway"])
+c_mutants(name = "runaway_mutants", module = ":runaway", tests = [":runaway_test"])
+EOF
+cat > "$scratch/m/runaway.h" <<'EOF'
+#ifndef RUNAWAY_H
+#define RUNAWAY_H
+typedef long (*runaway_sink)(void *ctx, const char *p, unsigned long n);
+int runaway_store(runaway_sink sink, void *ctx, const char *p, unsigned long n);
+#endif
+EOF
+# The write retry of the incident: `left -= w` -> `left += w` never finishes, and the sink writes the same bytes forever.
+cat > "$scratch/m/runaway.c" <<'EOF'
+#include "runaway.h"
+
+int runaway_store(runaway_sink sink, void *ctx, const char *p, unsigned long n)
+{
+    unsigned long left = n;
+    while (left > 0) {
+        long w = sink(ctx, p, left);
+        if (w <= 0) {
+            return -1;
+        }
+        left -= (unsigned long)w;
+    }
+    return 0;
+}
+EOF
+cat > "$scratch/m/runaway_test.c" <<'EOF'
+#include <fcntl.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include "ctest/ctest.h"
+#include "runaway.h"
+
+typedef struct { int fd; long total; } file_t;
+
+/* A real file under $TMPDIR. Its own bound (1 GiB) only matters if the harness had no limits. */
+static long file_sink(void *ctx, const char *p, unsigned long n)
+{
+    file_t *f = ctx;
+    long w;
+    if (f->total > (1L << 30)) {
+        return -1;
+    }
+    w = (long)write(f->fd, p, n > 4096 ? 4096 : n);
+    f->total += w > 0 ? w : 0;
+    return w;
+}
+
+static void t_store(ctest_t *t)
+{
+    static char buf[10000];
+    static char path[512];
+    const char *dir = getenv("TMPDIR");
+    file_t f;
+    (void)snprintf(path, sizeof path, "%s/runaway.dat", dir == NULL ? "/tmp" : dir);
+    f.fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    f.total = 0;
+    CHECK(t, f.fd >= 0);
+    CHECK_EQ_I64(t, runaway_store(file_sink, &f, buf, sizeof buf), 0);
+    CHECK_EQ_I64(t, f.total, (long)sizeof buf);
+    (void)close(f.fd);
+}
+
+CTEST_SUITE("runaway", { "store", t_store })
+EOF
+t0=$SECONDS
+run "$out/build_runaway.log" build "$pkg:runaway_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_runaway.log"
+echo "    built in $((SECONDS - t0)) s, executed $(executed "$out/build_runaway.log") actions"
+p="$(awk -v t="$pkg:runaway_mutants" 'index($1, t) {print $2}' "$out/build_runaway.log" | tail -1)"
+[ -f "$p" ] || fail "$CUR: no report for runaway"
+mkdir -p "$out/only_runaway"; cp "$p" "$out/only_runaway/runaway.json"
+"${PY[@]}" - "$out/only_runaway/runaway.json" <<'PY' || fail "$CUR: bad runaway report"
+import json, sys
+d = json.load(open(sys.argv[1]))
+m = [m for m in d["mutants"] if m["function"] == "runaway_store" and m["operator"] == "compound-assignment" and m["replacement"] == "+="]
+assert len(m) == 1, "the left -= w -> left += w mutant is missing"
+run = list(m[0]["runs"].values())[0]
+assert not run["timed_out"], "the runaway mutant hit the 180 s kill instead of a limit: %r" % run
+assert run["rc"] == 1, run
+lines = [json.loads(x) for x in run["results"].splitlines() if x]
+fails = [x for x in lines if x.get("status") == "fail"]
+assert fails and fails[0]["reason"].startswith("0 of 0 checks failed"), lines
+print("    runaway mutant: rc 1, not timed out, test failed by its own check (the write returned EFBIG at 64 MiB)")
+PY
+printf '[module."%s:runaway_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_runaway"
+[ "$GATE_CODE" = 0 ] || [ "$GATE_CODE" = 1 ] || fail "$CUR: the gate did not grade the module (exit $GATE_CODE)" "$out/gate.log"
+[ "$(json '[f["function"] for f in r["findings"] if f["rule"] == "survived-mutant" and f["function"] == "runaway_store" and f["replacement"] == "+="]')" = "[]" ] \
+    || fail "$CUR: the runaway mutant survived"
+echo "    graded: $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
 
 # --------------------------------------------------------------------------------------
 # T095: `system_libs = ["pthread"]`. A module that starts a real pthread links into its c_test (release and san), a

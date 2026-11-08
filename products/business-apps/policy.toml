@@ -121,6 +121,97 @@ allow = ["bcmp", "memcpy", "memset"]
 exports = ["fmap_capacity", "fmap_clear", "fmap_del", "fmap_get", "fmap_has", "fmap_init",
     "fmap_len", "fmap_max_probe", "fmap_put", "fmap_set"]
 
+# T096: fmap is O(1) expected per op, so n puts, 1.5n gets and n/2 deletes plus n gets are O(n) in total.
+[module."//lib/ds/fmap:fmap".perf.ops]
+class = "O(n)"
+sizes = [2000, 8000]
+seed = 11
+
+[module."//lib/ds/fmap:fmap".perf.ops.srcs]
+"ops.c" = '''
+#include <stddef.h>
+#include <stdint.h>
+
+#include "ctest/perf.h"
+#include "lib/ds/fmap/fmap.h"
+
+/* Gate-held generator and driver for fmap. Input: 2n 8-byte keys, the first n present, the last n absent; all
+ * distinct (the index is passed through a bijective 64-bit mixer, so the keys carry the policy seed only). */
+
+#define MAXN 8000u
+#define SLOTS 16384u
+#define KW 8u
+
+static uint16_t g_tags[SLOTS];
+static unsigned char g_keys[SLOTS * KW];
+static unsigned char g_vals[SLOTS * KW];
+
+static uint64_t mix(uint64_t x)
+{
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
+}
+
+size_t perf_gen(uint64_t seed, size_t n, char *out, size_t cap)
+{
+    size_t i;
+    size_t b;
+    if (n > MAXN || 2 * n * KW > cap) {
+        return 0;
+    }
+    for (i = 0; i < 2 * n; i++) {
+        uint64_t k = mix(seed * 0x100000001B3ULL + (uint64_t)i);
+        for (b = 0; b < KW; b++) {
+            out[i * KW + b] = (char)(k >> (8 * b));
+        }
+    }
+    return 2 * n * KW;
+}
+
+uint64_t perf_run(const char *in, size_t len)
+{
+    fmap_t m;
+    fmap_store_t st;
+    size_t n = len / (2 * KW);
+    uint32_t slots = 4096;
+    uint64_t acc = 0;
+    size_t i;
+    const unsigned char *k = (const unsigned char *)in;
+    if (n == 0 || n > MAXN || len != 2 * n * KW) {
+        return PERF_ERR;
+    }
+    while ((uint64_t)slots - slots / 8 < n) {
+        slots *= 2;
+    }
+    st.tags = g_tags;
+    st.keys = g_keys;
+    st.vals = g_vals;
+    if (!fmap_init(&m, st, slots, KW, KW, 0)) {
+        return PERF_ERR;
+    }
+    for (i = 0; i < n; i++) {
+        if (fmap_put(&m, k + i * KW, k + i * KW) != FMAP_OK) {
+            return PERF_ERR;
+        }
+    }
+    for (i = 0; i < n; i++) {
+        acc += fmap_get(&m, k + i * KW) != NULL ? 1u : 0u;
+    }
+    for (i = n; i < n + n / 2; i++) {
+        acc += fmap_has(&m, k + i * KW) ? 1000003u : 0u;
+    }
+    for (i = 0; i < n; i += 2) {
+        acc += fmap_del(&m, k + i * KW) ? 7u : 0u;
+    }
+    for (i = 0; i < n; i++) {
+        acc = acc * 31u + (fmap_has(&m, k + i * KW) ? 1u : 0u);
+    }
+    return acc * 1000003u + fmap_len(&m);
+}
+'''
+
 [module."//lib/ds/fmap:fmap_api_test"]
 allow = ["bcmp", "memset"]
 exports = ["main"]
@@ -173,6 +264,85 @@ allow = ["bcmp", "memcmp", "memcpy"]
 exports = ["sidx_append", "sidx_dup_key", "sidx_find", "sidx_init", "sidx_key_at", "sidx_len",
     "sidx_reset", "sidx_seal", "sidx_val_at"]
 
+# T096: sidx seal is O(n log n) and find O(log n); n appends, one seal and 1.5n finds are O(n log n) in total.
+[module."//lib/ds/sidx:sidx".perf.seal_find]
+class = "O(n log n)"
+sizes = [2000, 8000]
+seed = 13
+
+[module."//lib/ds/sidx:sidx".perf.seal_find.srcs]
+"seal_find.c" = '''
+#include <stddef.h>
+#include <stdint.h>
+
+#include "ctest/perf.h"
+#include "lib/ds/sidx/sidx.h"
+
+/* Gate-held generator and driver for sidx. Input: 2n 8-byte keys, the first n present (in pseudo-random order), the
+ * last n absent; all distinct (bijective mixer of the index and the policy seed). */
+
+#define MAXN 8000u
+#define KW 8u
+#define VW 4u
+
+static unsigned char g_rec[MAXN * (KW + VW)];
+
+static uint64_t mix(uint64_t x)
+{
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
+}
+
+size_t perf_gen(uint64_t seed, size_t n, char *out, size_t cap)
+{
+    size_t i;
+    size_t b;
+    if (n > MAXN || 2 * n * KW > cap) {
+        return 0;
+    }
+    for (i = 0; i < 2 * n; i++) {
+        uint64_t k = mix(seed * 0x100000001B3ULL + (uint64_t)i);
+        for (b = 0; b < KW; b++) {
+            out[i * KW + b] = (char)(k >> (8 * (KW - 1 - b)));
+        }
+    }
+    return 2 * n * KW;
+}
+
+uint64_t perf_run(const char *in, size_t len)
+{
+    sidx_t s;
+    size_t n = len / (2 * KW);
+    uint64_t acc = 0;
+    size_t i;
+    const unsigned char *k = (const unsigned char *)in;
+    unsigned char v[VW] = {1, 2, 3, 4};
+    if (n == 0 || n > MAXN || len != 2 * n * KW) {
+        return PERF_ERR;
+    }
+    if (!sidx_init(&s, g_rec, (uint32_t)n, KW, VW)) {
+        return PERF_ERR;
+    }
+    for (i = 0; i < n; i++) {
+        if (sidx_append(&s, k + i * KW, v) != SIDX_OK) {
+            return PERF_ERR;
+        }
+    }
+    if (sidx_seal(&s) != SIDX_OK) {
+        return PERF_ERR;
+    }
+    for (i = 0; i < n; i++) {
+        acc += sidx_find(&s, k + i * KW) != NULL ? 1u : 0u;
+    }
+    for (i = n; i < n + n / 2; i++) {
+        acc += sidx_find(&s, k + i * KW) != NULL ? 1000003u : 0u;
+    }
+    return acc;
+}
+'''
+
 [module."//lib/ds/sidx:sidx_dup_test"]
 allow = ["bcmp", "memset"]
 exports = ["main"]
@@ -221,6 +391,10 @@ impl = ["lib/fmt/httpchunk/src/**"]
 allow = []
 exports = ["http_chunk_size_line"]
 
+[module."//lib/fmt/httpchunk:httpchunk_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
 [module."//lib/fmt/httpdef:httpdef"]
 level = "L1"
 allow = []
@@ -266,8 +440,8 @@ exports = ["main"]
 level = "L3"
 impl = ["lib/fmt/httpresp/src/**"]
 allow = ["memchr", "memset"]
-exports = ["http_header_line", "http_headers_end", "http_is_redirect_status", "http_parser_eof",
-    "http_parser_init", "http_parser_next", "http_redirect_resolve", "http_status_line"]
+exports = ["http_header_line", "http_headers_end", "http_parser_eof",
+    "http_parser_init", "http_parser_next", "http_status_line"]
 
 [module."//lib/fmt/httpresp:parse_basic_test"]
 allow = ["bcmp", "memcpy", "snprintf", "strlen"]
@@ -315,6 +489,28 @@ exports = ["main"]
 
 [module."//lib/fmt/httpresp:survivor_head_test"]
 allow = ["memcpy", "snprintf"]
+exports = ["main"]
+
+[module."//lib/fmt/i18n:i18n"]
+level = "L3"
+impl = ["lib/fmt/i18n/src/**"]
+allow = []
+exports = ["i18n_format", "i18n_text"]
+
+[module."//lib/fmt/i18n:i18n_args_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/i18n:i18n_basic_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/i18n:i18n_buf_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/i18n:i18n_error_test"]
+allow = ["strlen"]
 exports = ["main"]
 
 [module."//lib/fmt/jdom:arena_test"]
@@ -377,11 +573,61 @@ exports = ["main"]
 allow = ["snprintf"]
 exports = ["main"]
 
+[module."//lib/fmt/jpull:chunk_test"]
+allow = ["memcpy", "snprintf", "strcmp", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:diff_corpus_a_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:diff_corpus_b_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:diff_corpus_c_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:diff_enum_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:errors_test"]
+allow = ["memcpy", "snprintf", "strcmp", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:jpull"]
+level = "L3"
+impl = ["lib/fmt/jpull/src/**"]
+allow = []
+exports = ["jpull_feed", "jpull_init", "jpull_limits_default", "jpull_next", "jpull_schema"]
+
+[module."//lib/fmt/jpull:limits_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:schema_diff_test"]
+allow = ["memcpy", "snprintf", "strcmp", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:schema_test"]
+allow = ["memcpy", "snprintf", "strcmp", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//lib/fmt/jpull:tokens_test"]
+allow = ["memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
 [module."//lib/fmt/jutf8:jutf8"]
 level = "L3"
 impl = ["lib/fmt/jutf8/src/**"]
 allow = []
 exports = ["json_utf8_seq_len"]
+
+[module."//lib/fmt/jutf8:jutf8_test"]
+allow = []
+exports = ["main"]
 
 [module."//lib/fmt/jw:jw"]
 level = "L3"
@@ -393,6 +639,28 @@ exports = ["json_w_begin_array", "json_w_begin_object", "json_w_bool", "json_w_d
 
 [module."//lib/fmt/jw:writer_test"]
 allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/kv:kv"]
+level = "L3"
+impl = ["lib/fmt/kv/src/**"]
+allow = ["strcmp"]
+exports = ["kv_parse"]
+
+[module."//lib/fmt/kv:kv_corpus_test"]
+allow = ["bcmp", "memset", "strcat", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/kv:kv_schema_test"]
+allow = ["memset", "snprintf", "strchr", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/kv:kv_syntax_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/fmt/kv:kv_types_test"]
+allow = ["bcmp", "memcpy", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//lib/fmt/lines:fields_test"]
@@ -464,6 +732,59 @@ allow = ["memchr", "memset"]
 exports = ["main"]
 
 [module."//lib/fmt/url:url_test"]
+allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/io/portfakes:pf_kfs_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/io/portfakes:pf_osal_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/io/portfakes:pf_script_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/io/portfakes:pf_shape_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/io/portfakes:pf_small_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/io/portfakes:pf_stream_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/io/portfakes:portfakes"]
+level = "L2"
+impl = ["lib/io/portfakes/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["pf_clock", "pf_consumed", "pf_finish", "pf_kfs", "pf_lock", "pf_osal", "pf_random",
+    "pf_script_init", "pf_stream", "pf_violations", "pf_wall", "pf_why"]
+
+[module."//lib/io/posix_clock:clock_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/io/posix_clock:posix_clock"]
+level = "L2"
+impl = ["lib/io/posix_clock/src/**"]
+allow = ["__errno_location"]
+deny_exempt = ["clock_gettime"]
+exports = ["posix_clock_faults", "posix_clock_init", "posix_clock_init_real", "posix_clock_port",
+    "posix_clock_set_wall_offset", "posix_clock_sys_libc", "posix_wall_port"]
+
+[module."//lib/io/posix_rand:posix_rand"]
+level = "L2"
+impl = ["lib/io/posix_rand/src/**"]
+allow = ["__errno_location", "getrandom", "memset"]
+exports = ["prand_init", "prand_port", "prand_port_over", "prand_sys_libc"]
+
+[module."//lib/io/posix_rand:rand_test"]
 allow = ["bcmp", "memset"]
 exports = ["main"]
 
@@ -556,6 +877,38 @@ exports = ["main"]
 allow = []
 exports = ["main"]
 
+[module."//lib/rt/mbox:mbox"]
+level = "L3"
+impl = ["lib/rt/mbox/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["mbox_close", "mbox_destroy", "mbox_init", "mbox_latest_destroy", "mbox_latest_init",
+    "mbox_latest_publish", "mbox_latest_read", "mbox_post", "mbox_take"]
+
+[module."//lib/rt/mbox:mbox_init_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["fk_fail_init", "fk_fail_lock", "fk_fail_wake", "fk_hook_at", "fk_n", "fk_port_nulled",
+    "fk_reset", "fk_wait_deadline", "fk_wait_step", "fk_watch", "main"]
+
+[module."//lib/rt/mbox:mbox_lane_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["fk_fail_init", "fk_fail_lock", "fk_fail_wake", "fk_hook_at", "fk_n", "fk_port_nulled",
+    "fk_reset", "fk_wait_deadline", "fk_wait_step", "fk_watch", "main"]
+
+[module."//lib/rt/mbox:mbox_latest_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["fk_fail_init", "fk_fail_lock", "fk_fail_wake", "fk_hook_at", "fk_n", "fk_port_nulled",
+    "fk_reset", "fk_wait_deadline", "fk_wait_step", "fk_watch", "main"]
+
+[module."//lib/rt/mbox:mbox_model_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset"]
+exports = ["fk_fail_init", "fk_fail_lock", "fk_fail_wake", "fk_hook_at", "fk_n", "fk_port_nulled",
+    "fk_reset", "fk_wait_deadline", "fk_wait_step", "fk_watch", "main"]
+
+[module."//lib/rt/mbox:mbox_wait_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["fk_fail_init", "fk_fail_lock", "fk_fail_wake", "fk_hook_at", "fk_n", "fk_port_nulled",
+    "fk_reset", "fk_wait_deadline", "fk_wait_step", "fk_watch", "main"]
+
 [module."//lib/rt/sel:sel"]
 level = "L3"
 impl = ["lib/rt/sel/src/**"]
@@ -586,4 +939,76 @@ exports = ["main"]
 
 [module."//lib/rt/tlog:tlog_format_test"]
 allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/sim/simclock:simclock"]
+level = "L3"
+impl = ["lib/sim/simclock/src/**"]
+allow = []
+exports = ["simclock_advance", "simclock_init", "simclock_port", "simclock_wall_port",
+    "simclock_wall_set"]
+
+[module."//lib/sim/simclock:simclock_mono_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simclock:simclock_port_shape_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simclock:simclock_wall_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simrng:simrng"]
+level = "L3"
+impl = ["lib/sim/simrng/src/**"]
+allow = []
+exports = ["simrng_below", "simrng_port", "simrng_seed", "simrng_split", "simrng_u64"]
+
+[module."//lib/sim/simrng:simrng_below_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simrng:simrng_port_shape_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simrng:simrng_port_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simrng:simrng_split_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/simrng:simrng_vectors_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/sim/trace:trace"]
+level = "L3"
+impl = ["lib/sim/trace/src/**"]
+allow = []
+exports = ["trace_effect", "trace_event", "trace_first_diff", "trace_hash", "trace_init",
+    "trace_lines", "trace_view"]
+
+[module."//lib/sim/trace:trace_args_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/sim/trace:trace_diff_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/sim/trace:trace_fail_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/sim/trace:trace_golden_test"]
+allow = ["memcpy", "memset", "strcat", "strlen"]
+exports = ["main"]
+
+[module."//lib/sim/trace:trace_hash_test"]
+allow = ["memcpy", "memset"]
 exports = ["main"]
