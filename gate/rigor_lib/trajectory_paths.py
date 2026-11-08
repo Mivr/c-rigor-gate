@@ -155,6 +155,11 @@ class PathPolicy:
     def is_own(self, path):
         return any(self._inside(base, path) for base in self.own)
 
+    @staticmethod
+    def is_sink(path):
+        """/dev/null and the like: writable on purpose, but never something to delete (T100)."""
+        return path in _SINKS or path.startswith("/dev/fd/")
+
     def write_ok(self, path):
         if path in _SINKS or path.startswith("/dev/fd/"):
             return True

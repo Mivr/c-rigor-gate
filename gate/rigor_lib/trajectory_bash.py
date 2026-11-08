@@ -9,6 +9,7 @@ from rigor_lib import trajectory_cmds as cmds
 from rigor_lib import trajectory_rules as rules
 from rigor_lib import trajectory_shell as shell
 from rigor_lib.trajectory_code import CodeMixin
+from rigor_lib.trajectory_env import filtered_by_grep
 from rigor_lib.trajectory_flow import FlowMixin
 from rigor_lib.trajectory_git import GitMixin
 from rigor_lib.trajectory_paths import expand_braces, is_url
@@ -124,6 +125,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         self.policy = policy
         self.task = task
         self.cwd = policy.worktree
+        self.cur_cmd = None   # the Command being analysed (T100)
         self.hits = []
         self.created = set()
         self.read_set = set()
@@ -146,6 +148,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         self.call_outputs = set()   # the same for canary keep runs, within the current call only
         self.cmd_env = {}     # the environment the command being analysed sees, as far as it is known (T057)
         self.binding = False  # expanding the values of a plain assignment (no command on the line, T074)
+        self.touched = set()  # every path a command of the transcript wrote or deleted (T100)
+        self.visible = set()  # unknown-content files whose whole text is written in the transcript itself (T100)
         self.dirs = set()     # directories the transcript made (mkdir, tar -C, unzip -d): copy targets (T061)
 
     # -- plumbing ----------------------------------------------------------------------------
@@ -518,8 +522,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         self.env_now = env
         self.prefix_words = [n for n, _ in command.assigns] + item.words[:len(item.words) - len(item.argv)]
         self.cwd = item.cwd
+        self.cur_cmd = command
         for rule in item.extra:
-            self.add(rule, raw, "")
+            self.add("env-filtered" if rule == "cmd-env-dump" and filtered_by_grep(command) else rule, raw, "")
         for redirect in [] if item.wrapped else command.redirects:
             self._redirect(command, redirect)
         argv = item.argv
@@ -673,7 +678,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if name == "git":
             self._note_git_add(argv)
             argv = self.effective_git_argv(argv, self.cmd_env)  # GIT_CONFIG_*, --config-env are `-c` (T057)
-            found = cmds.git_hits(argv)
+            found = self.merge_policy(argv, cmds.git_hits(argv))
             if "git-config-override" in found and self.local_submodule(argv):
                 found = [rule for rule in found if rule != "git-config-override"]  # T077
             self.git_taint(argv, found)
@@ -687,7 +692,8 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if cmds.install_hit(argv):
             self.add("cmd-install", raw, name)
         if cmds.env_dump(argv):
-            self.add("cmd-env-dump", raw, name)
+            self.add("env-filtered" if self.cur_cmd is not None and filtered_by_grep(self.cur_cmd) else "cmd-env-dump",
+                     raw, name)
         if cmds.network_hit(argv):
             self.add("cmd-network", raw, name)
 
@@ -1029,10 +1035,15 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if redirect.op == ">&" and (target.isdigit() or target == "-"):
             return
         op = "edit" if redirect.op in (">>", "&>>") else "rewrite"
+        normal = self.policy.normalize(target, self.cwd) if UNRESOLVED not in target else None
+        before = normal in self.visible
         self.write(target, op, command.raw)
         if redirect.fd not in (None, "1") or redirect.op not in (">", ">>", ">|"):
             return  # stderr only, or `&>`: what lands in the file is not (only) the text below
         name = cmds.name_of(command.words[0].text if command.words else "")
+        if normal is not None and command.heredocs and name == "cat" and (op == "rewrite" or before) and not any(
+                doc.body.count(mark) for doc in command.heredocs for mark in ("$(", "`")):
+            self.visible.add(normal)  # `cat > f <<EOF ... $X ...`: the text is all in the transcript (T100)
         if command.heredocs and name in ("cat", "tee") and known_body(command.heredocs[0]):
             self.keep_text(target, op, command.heredocs[0].body)
 
@@ -1058,6 +1069,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         if normal is None:
             self.add("write-unresolved", raw, text)
             return
+        self.touched.add(normal)
         self.git_touch(normal)
         self.forget_output(normal)
         self.known_before = normal if normal in self.files and normal not in self.dirty else None
@@ -1067,6 +1079,9 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
             self.policy.drop_links(normal)  # `rm LINK` removes the link, not what it points at
         if landed is None:  # through a link whose target the audit does not know (T061, R008 #18)
             self.add("write-unresolved", raw, text)
+            return
+        if op == "delete" and (self.policy.is_sink(normal) or self.policy.is_sink(landed)):
+            self.add("rm-outside", raw, text)  # writable for output, but removing it is not a write (T100)
             return
         if not self.policy.write_ok(landed):
             self.add("write-outside", raw, text)
@@ -1079,6 +1094,7 @@ class Analyzer(CodeMixin, FlowMixin, GitMixin, ProofMixin, writers.WritersMixin)
         a writer whose text is known records it right after (Write, literal `echo`/`printf >`, a quoted
         here-document). An edit of a known file makes it `dirty` (audited as written, reviewed); a deleted file
         is forgotten."""
+        self.visible.discard(normal)
         if op in ("delete", "build"):  # a compiler's output is a program, not a text to audit (T061)
             self.files.pop(normal, None)
             self.dirty.discard(normal)

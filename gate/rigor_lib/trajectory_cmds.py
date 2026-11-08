@@ -295,12 +295,15 @@ def clean_environment(assigns, clean):
 def kill_targets(argv):
     """The process ids/job specs a `kill` command names (options and signal names removed); None for
     `kill -l` (lists signal names) and `kill -0` (tests existence) signal nothing."""
-    found, i, plain = [], 1, False
+    found, i, plain, signal = [], 1, False, False
     while i < len(argv):
         arg = argv[i]
         if not plain and arg == "--":
             plain = True
+        elif not plain and signal and re.fullmatch(r"-\d+", arg) and arg not in ("-0",):
+            found.append(arg)  # `kill -9 -4242`: after the signal, a negative number is a process group (T100)
         elif not plain and arg in ("-s", "-n", "-q", "--signal", "--queue"):
+            signal = True
             i += 1
         elif not plain and arg in ("-l", "-L", "--list", "--table"):
             return None
@@ -308,6 +311,8 @@ def kill_targets(argv):
             return None  # signal 0 only tests whether the process exists
         elif plain or not arg.startswith("-"):
             found.append(arg)
+        else:
+            signal = True
         i += 1
     return found
 

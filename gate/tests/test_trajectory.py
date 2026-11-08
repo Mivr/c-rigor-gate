@@ -64,7 +64,8 @@ class FixtureRunTests(TrajectoryCase):
     def test_every_case_yields_exactly_its_rules_and_the_right_exit_code(self):
         for name, (expect, _) in sorted(cases.CASES.items()):
             with self.subTest(name=name):
-                outcome, result = self.audit(FIXTURES / cases.file_name(name), fast=True)
+                outcome, result = self.audit(FIXTURES / cases.file_name(name), fast=True,
+                                             task=cases.CASE_TASKS.get(name, TASK))
                 blocking = any(rules.severity(r) == rules.BLOCK for r in expect)
                 self.assertEqual(outcome.code, 1 if blocking else 0, msg=outcome.stdout + outcome.stderr)
                 self.assertEqual(tuple(sorted({f["rule"] for f in result["findings"]})), expect)

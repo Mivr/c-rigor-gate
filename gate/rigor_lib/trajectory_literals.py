@@ -51,6 +51,18 @@ def _inert_spans(text, comments=False):
     return spans
 
 
+def without_string_data(text):
+    """`text` with every string literal that is only data (not an f-string) and every comment emptied (T100): what is
+    left is the code that can run. A name that appears only in the dropped parts is documentation or source text that
+    the program writes, never a lookup."""
+    out, at = [], 0
+    for start, end in _inert_spans(text, comments=True):
+        out.append(text[at:start])
+        at = end
+    out.append(text[at:])
+    return " ".join(out)
+
+
 def _args(text, start):
     """The argument text of a call whose `(` precedes text[start], strings and nesting aware."""
     depth, i = 1, start

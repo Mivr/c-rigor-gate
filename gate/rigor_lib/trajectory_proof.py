@@ -39,7 +39,7 @@ CANARY_SCRIPT = "selftest/canaries.sh"
 
 class CallFacts:
     """What one Bash call could have printed, and which proofs it may carry."""
-    __slots__ = ("forge_text", "forge_digits", "background", "echo_bang", "jobs", "grade", "canary")
+    __slots__ = ("forge_text", "forge_digits", "background", "echo_bang", "jobs", "grade", "canary", "job_json")
 
     def __init__(self):
         self.forge_text = False
@@ -49,6 +49,7 @@ class CallFacts:
         self.jobs = {}          # NAME -> number of `tools/job run NAME` calls whose own output reaches the result
         self.grade = False      # a grade keep run, or a read of one's own output file, is in this call
         self.canary = False     # a canary keep run is in this call
+        self.job_json = False   # `cat .../job.json` of a file nothing in the transcript wrote (T100)
 
     def forge(self, text=True):
         self.forge_digits = True
@@ -141,6 +142,9 @@ class ProofMixin:
         if name == "git" and args[:1] == ["status"]:
             facts.forge(text=False)
             return
+        if name == "cat" and self._job_records(args, item.cwd):
+            facts.job_json = True  # tools/job's own record: its `pid` is a process the agent started (T100)
+            return
         if name in _FILTERS and not any(_BAD_FILTER_OPT.match(a) for a in args):
             files = self._filter_files(name, args, item.cwd)
             if files is None:
@@ -151,6 +155,14 @@ class ProofMixin:
                 facts.grade = facts.grade or any(f in self.grade_outputs for f in files)
             return
         facts.forge()
+
+    def _job_records(self, args, cwd):
+        """True when `cat` reads only `.../job.json` files that tools/job wrote: none of them was written, copied or
+        edited by anything in the transcript (T100)."""
+        if not args or any(a.startswith("-") or not a.endswith("/job.json") for a in args):
+            return False
+        normals = [self.policy.normalize(a, cwd) for a in args]
+        return all(n is not None and n not in self.touched for n in normals)
 
     def _filter_files(self, name, args, cwd):
         """The files a line filter reads ([] for stdin only), or None when one is not a keep run's output file."""

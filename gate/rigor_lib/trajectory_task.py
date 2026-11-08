@@ -7,17 +7,18 @@ from rigor_lib import globs, jsonio
 from rigor_lib import trajectory_rules as rules
 from rigor_lib.errors import InternalError
 
-_KNOWN_KEYS = {"id", "allowed", "protected", "max_files", "role", "test_globs"}
+_KNOWN_KEYS = {"id", "allowed", "protected", "max_files", "role", "test_globs", "may_merge"}
 ROLE_IMPLEMENTER = "implementer"
 
 
 class Task:
-    def __init__(self, task_id, allowed, protected, role, test_globs):
+    def __init__(self, task_id, allowed, protected, role, test_globs, may_merge=()):
         self.task_id = task_id
         self.allowed = allowed        # compiled globs
         self.protected = protected    # compiled globs
         self.role = role
         self.test_globs = test_globs  # compiled globs
+        self.may_merge = tuple(may_merge)  # refs the task lets the agent merge in its worktree (T100)
 
     def is_protected(self, rel):
         return any(globs.matches(g, rel) for g in self.protected)
@@ -61,7 +62,8 @@ def parse_task(text):
     test_globs = _string_list(table, "test_globs", False) or list(rules.DEFAULT_TEST_GLOBS)
     compile_all = lambda patterns: [globs.compile_glob(p) for p in patterns]  # noqa: E731
     return Task(task_id, compile_all(_string_list(table, "allowed", True)),
-                compile_all(_string_list(table, "protected", False)), role, compile_all(test_globs))
+                compile_all(_string_list(table, "protected", False)), role, compile_all(test_globs),
+                _string_list(table, "may_merge", False))
 
 
 def load_task(value):
