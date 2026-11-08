@@ -25,11 +25,11 @@ MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 MACRO_KEYWORDS = {"c_library": ("system_libs",)}
-# T105: `c_catalog` has keywords of its own and none of the source/dep ones. `pots`, `langs`, `source_lang` and `symbol`
+# T105: `c_catalog` has keywords of its own and no `srcs`/`headers`. `pots`, `langs`, `source_lang` and `symbol`
 # are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
-# is one string that is checked as a dep.
+# is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).
 CATALOG_MACRO = "c_catalog"
-CATALOG_KEYWORDS = ("name", "visibility", "pots", "po", "langs", "source_lang", "symbol", "runtime")
+CATALOG_KEYWORDS = ("name", "visibility", "deps", "pots", "po", "langs", "source_lang", "symbol", "runtime")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
 # (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the

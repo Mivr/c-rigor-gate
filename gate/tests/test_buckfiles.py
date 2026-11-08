@@ -420,6 +420,13 @@ class CatalogCase(TempDirTestCase):
     def test_a_same_package_runtime_is_accepted(self):
         self.assertEqual(self.check(CAT_LOAD + CAT.replace("//lib/fmt/i18n:i18n", ":i18n"), 0), [])
 
+    def test_deps_are_checked_like_any_dep(self):
+        self.assertEqual(self.check(CAT_LOAD + CAT.replace('visibility', 'deps = ["//lib/base/core:core", ":x"], visibility'), 0), [])
+        self.setUp()
+        self.bad(CAT_LOAD + CAT.replace('visibility', 'deps = ["gate//third_party/curl:curl"], visibility'), "dep")
+        self.setUp()
+        self.bad(CAT_LOAD + CAT.replace('visibility', 'deps = ":x", visibility'), "dep")
+
     def test_the_load_may_name_it(self):
         self.assertEqual(self.check('load("@gate//rules:c.bzl", "c_catalog")\n', 0), [])
 
@@ -462,7 +469,7 @@ class CatalogCase(TempDirTestCase):
         self.assertEqual(self.check(source, 1), [("bad-argument", "test-target")])
 
     def test_only_its_own_keywords(self):
-        for extra in ('srcs = ["a.c"]', 'headers = ["a.h"]', 'deps = [":x"]', 'compiler_flags = ["-w"]', "**{}", 'system_libs = ["pthread"]'):
+        for extra in ('srcs = ["a.c"]', 'headers = ["a.h"]', 'compiler_flags = ["-w"]', "**{}", 'system_libs = ["pthread"]'):
             with self.subTest(extra=extra):
                 self.setUp()
                 self.bad(CAT_LOAD + 'c_catalog(name = "cat", %s)\n' % extra, "keyword")

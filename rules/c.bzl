@@ -163,14 +163,16 @@ def _catalog_files(macro, attr, items, suffix):
         fail("{}: `{}` must be a non-empty list of plain file names, got {!r}".format(macro, attr, items))
     _plain_files(macro, attr, items, suffix)
 
-def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, visibility = []):
+def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, deps = [], visibility = []):
     """A const message catalog from gettext files (T105): a `c_library` `name` with the header `<package>/<name>.h`.
 
     `pots`: ordered `.pot` files of the package. `po`: {lang: [`.po` files, one per pot, same order]} for every
     language of `langs` but `source_lang`. `langs`: ordered language codes (the index is the runtime `lang`).
     `source_lang`: the language whose text is the msgid itself. `symbol`: the C identifier of the generated
     `const i18n_catalog_t`; the msgid enum is `<SYMBOL>_<WORDS>`. `runtime`: the i18n library (`//package:name`); its
-    header is `<package>/<name>.h`, a dep of the library. `gate/rigor_lib/po2c.py` fails the build on a bad translation.
+    header is `<package>/<name>.h`, a dep of the library. `deps`: the libraries the runtime header includes from (the generated
+    header includes it, and `deps` of a library are not exported), e.g. the core and fmt of the business-apps i18n.
+    `gate/rigor_lib/po2c.py` fails the build on a bad translation.
     The sources are generated in buck-out and are not mutated: a catalog is an L1 module.
     """
     _catalog_files("c_catalog", "pots", pots, ".pot")
@@ -199,12 +201,12 @@ def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, visibility = 
         srcs = [":" + name + "__gen[c]"],
         # A dict keeps the key under the package: the header is `<package>/<name>.h`, as a list of files would be.
         exported_headers = {name + ".h": ":" + name + "__gen[h]"},
-        deps = [runtime],
+        deps = [runtime] + deps,
         visibility = visibility,
         compiler_flags = _compile_flags(),
         link_style = "static",
     )
-    _facts(name, "c_library", [], [runtime], generated = [name + ".c"])
+    _facts(name, "c_library", [], [runtime] + deps, generated = [name + ".c"])
     mutsrc(name = name + "_mutsrc", srcs = [], headers = [], visibility = ["PUBLIC"])
 
 def c_binary(name, srcs = [], deps = []):
