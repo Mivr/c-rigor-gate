@@ -389,6 +389,25 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//lib/fmt/fp:edge_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/fmt/fp:fp"]
+level = "L3"
+impl = ["lib/fmt/fp/src/**"]
+allow = []
+third_party = ["gate//third_party/mbedtls:mbedtls"]
+exports = ["fp_hex", "fp_sha256"]
+
+[module."//lib/fmt/fp:hex_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/fp:vectors_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//lib/fmt/httpchunk:httpchunk"]
 level = "L3"
 impl = ["lib/fmt/httpchunk/src/**"]
@@ -537,10 +556,10 @@ exports = ["main"]
 [module."//lib/fmt/jdom:jdom"]
 level = "L3"
 impl = ["lib/fmt/jdom/src/**"]
-allow = ["memcmp", "memcpy"]
-exports = ["json_at", "json_byte_is", "json_get_bool", "json_get_i64", "json_get_str",
-    "json_get_u64", "json_key_at", "json_len", "json_limits_default", "json_num_scan",
-    "json_number_text", "json_obj_get", "json_parse", "json_str_decode", "json_type", "json_write"]
+allow = ["memcpy"]
+exports = ["json_at", "json_get_bool", "json_get_i64", "json_get_str", "json_get_u64", "json_key_at",
+    "json_len", "json_limits_default", "json_number_text", "json_obj_get", "json_parse", "json_type",
+    "json_write"]
 
 [module."//lib/fmt/jdom:limits_test"]
 allow = ["memset", "snprintf"]
@@ -580,6 +599,26 @@ exports = ["main"]
 
 [module."//lib/fmt/jdom:value_test"]
 allow = ["snprintf"]
+exports = ["main"]
+
+[module."//lib/fmt/jkidx:jkidx"]
+level = "L3"
+impl = ["lib/fmt/jkidx/src/**"]
+allow = ["memcmp"]
+exports = ["jkidx_insert"]
+
+[module."//lib/fmt/jkidx:jkidx_test"]
+allow = ["memcmp", "memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/jnum:jnum"]
+level = "L3"
+impl = ["lib/fmt/jnum/src/**"]
+allow = []
+exports = ["jnum_scan", "jnum_to_i64", "jnum_to_u64"]
+
+[module."//lib/fmt/jnum:jnum_test"]
+allow = ["memcpy", "memmove", "strlen"]
 exports = ["main"]
 
 [module."//lib/fmt/jpull:chunk_test"]
@@ -626,6 +665,26 @@ exports = ["main"]
 
 [module."//lib/fmt/jpull:tokens_test"]
 allow = ["memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/jstr:jstr"]
+level = "L3"
+impl = ["lib/fmt/jstr/src/**"]
+allow = []
+exports = ["jstr_decode"]
+
+[module."//lib/fmt/jstr:jstr_test"]
+allow = ["memcpy", "memset", "snprintf"]
+exports = ["main"]
+
+[module."//lib/fmt/jtok:jtok"]
+level = "L3"
+impl = ["lib/fmt/jtok/src/**"]
+allow = []
+exports = ["jtok_byte_is", "jtok_kind", "jtok_literal", "jtok_skip_ws"]
+
+[module."//lib/fmt/jtok:jtok_test"]
+allow = []
 exports = ["main"]
 
 [module."//lib/fmt/jutf8:jutf8"]
@@ -716,6 +775,16 @@ exports = ["fx", "fx_n", "main"]
 allow = ["memcpy", "memset"]
 exports = ["fx", "fx_n", "main"]
 
+[module."//lib/fmt/pct:pct"]
+level = "L3"
+impl = ["lib/fmt/pct/src/**"]
+allow = []
+exports = ["url_pct_decode", "url_pct_encode"]
+
+[module."//lib/fmt/pct:url_pct_test"]
+allow = ["memchr", "memset"]
+exports = ["main"]
+
 [module."//lib/fmt/url:survivor_url_test"]
 allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
@@ -725,7 +794,7 @@ level = "L3"
 impl = ["lib/fmt/url/src/**"]
 allow = ["memchr"]
 exports = ["http_authority_parse", "http_host_valid", "http_url_byte_bad", "http_url_split",
-    "url_base_is_valid", "url_base_normalize", "url_pct_decode", "url_pct_encode"]
+    "url_base_is_valid", "url_base_normalize"]
 
 [module."//lib/fmt/url:url_base_test"]
 allow = ["memset"]
@@ -736,12 +805,31 @@ allow = ["mmap", "sysconf"]
 deny_exempt = ["mmap", "mprotect"]
 exports = ["main"]
 
-[module."//lib/fmt/url:url_pct_test"]
-allow = ["memchr", "memset"]
-exports = ["main"]
-
 [module."//lib/fmt/url:url_test"]
 allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/io/osal:osal"]
+level = "L2"
+impl = ["lib/io/osal/src/**"]
+system_libs = ["pthread"]
+allow = ["__errno_location", "getpriority", "mlockall", "pthread_attr_destroy", "pthread_attr_getstack",
+    "pthread_attr_init", "pthread_attr_setstack", "pthread_cond_broadcast", "pthread_cond_destroy",
+    "pthread_cond_init", "pthread_cond_signal", "pthread_cond_timedwait", "pthread_cond_wait",
+    "pthread_condattr_destroy", "pthread_condattr_init", "pthread_condattr_setclock", "pthread_create",
+    "pthread_getattr_np", "pthread_getschedparam", "pthread_join", "pthread_mutex_destroy",
+    "pthread_mutex_init", "pthread_mutex_lock", "pthread_mutex_unlock", "pthread_mutexattr_destroy",
+    "pthread_mutexattr_init", "pthread_mutexattr_setprotocol", "pthread_self", "pthread_setschedparam",
+    "setpriority"]
+exports = ["osal_port", "osal_port_over", "osal_sys_libc"]
+
+[module."//lib/io/osal:osal_real_test"]
+allow = []
+deny_exempt = ["clock_gettime"]
+exports = ["main"]
+
+[module."//lib/io/osal:osal_test"]
+allow = ["memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/io/pfio:pf_kfs_test"]
@@ -798,6 +886,72 @@ deny_exempt = ["clock_gettime"]
 exports = ["posix_clock_faults", "posix_clock_init", "posix_clock_init_real", "posix_clock_port",
     "posix_clock_set_wall_offset", "posix_clock_sys_libc", "posix_wall_port"]
 
+[module."//lib/io/posix_fs:kfs_args_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp"]
+exports = ["kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2", "kf_find_dent", "kf_has",
+    "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino",
+    "kf_open_fds", "kf_override", "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+
+[module."//lib/io/posix_fs:kfs_fd0_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp"]
+exports = ["kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2", "kf_find_dent", "kf_has",
+    "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino",
+    "kf_open_fds", "kf_override", "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+
+[module."//lib/io/posix_fs:kfs_list_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+exports = ["kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2", "kf_find_dent", "kf_has",
+    "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino",
+    "kf_open_fds", "kf_override", "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+
+[module."//lib/io/posix_fs:kfs_open_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+exports = ["kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2", "kf_find_dent", "kf_has",
+    "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino",
+    "kf_open_fds", "kf_override", "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+
+[module."//lib/io/posix_fs:kfs_read_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp"]
+exports = ["kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2", "kf_find_dent", "kf_has",
+    "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino",
+    "kf_open_fds", "kf_override", "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+
+[module."//lib/io/posix_fs:kfs_real_test"]
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy", "memset",
+    "mkdir", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "statvfs", "strcmp", "umask"]
+deny_exempt = ["fopen", "getenv", "rename", "unlink"]
+exports = ["kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2", "kf_find_dent", "kf_has",
+    "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino",
+    "kf_open_fds", "kf_override", "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_dir_count",
+    "kit_dir_put", "kit_dir_read", "kit_fd_count", "kit_rig_open", "kit_tmpdir_make", "kit_tmpdir_remove",
+    "main"]
+
+[module."//lib/io/posix_fs:kfs_sweep_test"]
+allow = ["bcmp", "memcpy", "memset", "printf", "snprintf", "strcmp", "strlen"]
+exports = ["kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2", "kf_find_dent", "kf_has",
+    "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino",
+    "kf_open_fds", "kf_override", "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main",
+    "sw_count", "sw_map", "sw_run"]
+
+[module."//lib/io/posix_fs:kfs_write_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+exports = ["kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2", "kf_find_dent", "kf_has",
+    "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino",
+    "kf_open_fds", "kf_override", "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+
+[module."//lib/io/posix_fs:posix_fs"]
+level = "L2"
+impl = ["lib/io/posix_fs/src/**"]
+allow = ["__errno_location", "__fxstat", "__fxstatat", "close", "closedir", "fchmod", "fdopendir",
+    "fstatvfs", "fsync", "ftruncate", "memcpy", "mkdir", "read", "readdir", "renameat", "strlen",
+    "unlinkat", "write"]
+deny_exempt = ["open", "openat"]
+exports = ["posix_fs_close", "posix_fs_open", "posix_fs_port", "posix_fs_sys_libc"]
+
+[module."//lib/io/posix_fs:testkit"]
+allow = []
+exports = []
+
 [module."//lib/io/posix_lock:lock_test"]
 allow = ["__xstat", "bcmp", "getpid", "memcpy", "memset", "snprintf", "strlen"]
 deny_exempt = ["getenv", "unlink"]
@@ -809,6 +963,39 @@ impl = ["lib/io/posix_lock/src/**"]
 allow = ["__errno_location", "close", "flock", "memchr", "memcpy", "nanosleep"]
 deny_exempt = ["clock_gettime", "open"]
 exports = ["posix_lock_init", "posix_lock_init_real", "posix_lock_port", "posix_lock_sys_libc"]
+
+[module."//lib/io/posix_net:connect_test"]
+allow = ["bcmp", "memcpy", "memset", "strlen", "strncpy"]
+exports = ["K", "k_sys", "k_token", "kit_count", "kit_matches", "kit_nth", "kit_reset", "kit_set",
+    "kit_str", "kit_v4", "kit_v6_last", "main"]
+
+[module."//lib/io/posix_net:io_test"]
+allow = ["memcpy", "memset", "strncpy"]
+exports = ["K", "k_sys", "k_token", "kit_count", "kit_matches", "kit_nth", "kit_reset", "kit_set",
+    "kit_str", "kit_v4", "kit_v6_last", "main"]
+
+[module."//lib/io/posix_net:port_test"]
+allow = ["memcpy", "memset", "strncpy"]
+exports = ["K", "k_sys", "k_token", "kit_count", "kit_matches", "kit_nth", "kit_reset", "kit_set",
+    "kit_str", "kit_v4", "kit_v6_last", "main"]
+
+[module."//lib/io/posix_net:posix_net"]
+level = "L2"
+impl = ["lib/io/posix_net/src/**"]
+allow = ["__errno_location", "close", "freeaddrinfo", "getaddrinfo", "getsockopt", "poll", "recv", "send"]
+deny_exempt = ["clock_gettime", "connect", "socket"]
+exports = ["pnet_close", "pnet_connect", "pnet_drain", "pnet_fd", "pnet_init", "pnet_init_real",
+    "pnet_is_open", "pnet_recv", "pnet_send", "pnet_stream_port", "pnet_sys_libc"]
+
+[module."//lib/io/posix_net:real_test"]
+allow = ["accept", "alarm", "bind", "close", "fcntl", "getsockname", "in6addr_loopback", "listen", "poll",
+    "read", "setsockopt", "waitpid", "write"]
+deny_exempt = ["_exit", "fork", "signal", "socket"]
+exports = ["main"]
+
+[module."//lib/io/posix_net:testkit"]
+allow = []
+exports = []
 
 [module."//lib/io/posix_rand:posix_rand"]
 level = "L2"
@@ -941,11 +1128,85 @@ allow = ["bcmp", "memcpy", "memset"]
 exports = ["fk_fail_init", "fk_fail_lock", "fk_fail_wake", "fk_hook_at", "fk_n", "fk_port_nulled",
     "fk_reset", "fk_wait_deadline", "fk_wait_step", "fk_watch", "main"]
 
+[module."//lib/rt/rtprio:rtprio"]
+level = "L3"
+impl = ["lib/rt/rtprio/src/**"]
+allow = []
+exports = ["rtprio_apply", "rtprio_inherit", "rtprio_log", "rtprio_plan"]
+
+[module."//lib/rt/rtprio:rtprio_apply_test"]
+allow = []
+exports = ["fk_call", "fk_call_ctx", "fk_ncalls", "fk_nice", "fk_nice_calls", "fk_port_nulled", "fk_reset",
+    "fk_script", "fk_token", "fk_viol", "main", "model_itoa", "model_plan"]
+
+[module."//lib/rt/rtprio:rtprio_inherit_test"]
+allow = []
+exports = ["fk_call", "fk_call_ctx", "fk_ncalls", "fk_nice", "fk_nice_calls", "fk_port_nulled", "fk_reset",
+    "fk_script", "fk_token", "fk_viol", "main"]
+
+[module."//lib/rt/rtprio:rtprio_log_test"]
+allow = ["strlen"]
+exports = ["main", "model_itoa", "model_plan"]
+
+[module."//lib/rt/rtprio:rtprio_pipeline_test"]
+allow = []
+exports = ["fk_call", "fk_call_ctx", "fk_ncalls", "fk_nice", "fk_nice_calls", "fk_port_nulled", "fk_reset",
+    "fk_script", "fk_token", "fk_viol", "main", "model_itoa", "model_plan"]
+
+[module."//lib/rt/rtprio:rtprio_plan_test"]
+allow = []
+exports = ["main", "model_itoa", "model_plan"]
+
+[module."//lib/rt/rx:rx"]
+level = "L3"
+impl = ["lib/rt/rx/src/**"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["rx_emit", "rx_init", "rx_log", "rx_pending", "rx_push", "rx_push_front", "rx_step",
+    "rx_version", "rxq_pop"]
+
+[module."//lib/rt/rx:rx_effects_test"]
+allow = ["memset", "snprintf"]
+exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+
+[module."//lib/rt/rx:rx_fault_test"]
+allow = ["memset", "snprintf"]
+exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+
+[module."//lib/rt/rx:rx_init_test"]
+allow = ["memset"]
+exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+
+[module."//lib/rt/rx:rx_order_test"]
+allow = ["memset", "snprintf"]
+exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+
+[module."//lib/rt/rx:rx_shape_test"]
+allow = ["memset", "snprintf"]
+exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+
+[module."//lib/rt/rx:rx_trace_test"]
+allow = ["memset"]
+exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+
+[module."//lib/rt/rx:rx_version_test"]
+allow = ["memset"]
+exports = ["fx_build", "fx_cfg", "fx_ev", "fx_ntr", "fx_sl", "fx_tag", "fx_tr", "fx_types", "main"]
+
+[module."//lib/rt/rxindex:rxindex"]
+level = "L3"
+impl = ["lib/rt/rxindex/src/**"]
+allow = ["memset"]
+exports = ["rxwire_index", "rxwire_index_bytes", "rxwire_lookup"]
+
+[module."//lib/rt/rxindex:rxwire_index_test"]
+allow = ["abort", "memcpy", "memset"]
+exports = ["main"]
+
 [module."//lib/rt/rxwire:rxwire"]
 level = "L3"
 impl = ["lib/rt/rxwire/src/**"]
-allow = ["memset"]
-exports = ["rxwire_index", "rxwire_index_bytes", "rxwire_lookup", "rxwire_validate"]
+allow = []
+exports = ["rxwire_validate", "rxwire_well_formed"]
 
 [module."//lib/rt/rxwire:rxwire_args_test"]
 allow = ["abort", "memcpy", "memset"]
@@ -960,10 +1221,6 @@ allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//lib/rt/rxwire:rxwire_full_test"]
-allow = ["abort", "memcpy", "memset"]
-exports = ["main"]
-
-[module."//lib/rt/rxwire:rxwire_index_test"]
 allow = ["abort", "memcpy", "memset"]
 exports = ["main"]
 
@@ -1033,7 +1290,7 @@ exports = ["main"]
 [module."//lib/sim/simfs:simfs"]
 level = "L3"
 impl = ["lib/sim/simfs/src/**"]
-allow = ["bcmp", "memcmp", "memcpy", "memmove"]
+allow = ["memcpy"]
 exports = ["simfs_fault", "simfs_fsyncs", "simfs_init", "simfs_mode", "simfs_port", "simfs_steps", "simfs_storage_bytes"]
 
 [module."//lib/sim/simfs:simfs_args_test"]
@@ -1079,6 +1336,58 @@ exports = ["main"]
 [module."//lib/sim/simfs:simfs_store_test"]
 allow = ["memcpy", "strlen"]
 exports = ["main"]
+
+[module."//lib/sim/simfs_tab:simfs_tab"]
+level = "L3"
+impl = ["lib/sim/simfs_tab/src/**"]
+allow = ["bcmp", "memcmp", "memcpy", "memmove"]
+exports = ["simtab_erase", "simtab_first_ge", "simtab_init", "simtab_insert", "simtab_is_at",
+    "simtab_name_err", "simtab_off", "simtab_set_data", "simtab_str_bad", "simtab_used"]
+
+[module."//lib/sim/simnet:simnet"]
+level = "L3"
+impl = ["lib/sim/simnet/src/**"]
+allow = ["memset"]
+exports = ["simnet_arm", "simnet_arm_random", "simnet_armed", "simnet_init", "simnet_port", "simnet_stats"]
+
+[module."//lib/sim/simnet:simnet_api_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
+    "hostn", "main", "rd", "read_all", "setup", "wr"]
+
+[module."//lib/sim/simnet:simnet_edge_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
+    "hostn", "main", "rd", "read_all", "setup", "wr"]
+
+[module."//lib/sim/simnet:simnet_fault_conn_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
+    "hostn", "main", "rd", "read_all", "setup", "wr"]
+
+[module."//lib/sim/simnet:simnet_fault_rx_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
+    "hostn", "main", "rd", "read_all", "setup", "wr"]
+
+[module."//lib/sim/simnet:simnet_seed_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "strlen"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
+    "hostn", "main", "rd", "read_all", "setup", "wr"]
+
+[module."//lib/sim/simnet:simnet_stream_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
+    "hostn", "main", "rd", "read_all", "setup", "wr"]
+
+[module."//lib/sim/simnet:simnet_time_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+exports = ["C2P", "CK", "N", "P", "P2C", "PEER_OPS", "RG", "arm", "cl", "clk", "conn", "frame_bytes",
+    "hostn", "main", "rd", "read_all", "setup", "wr"]
+
+[module."//lib/sim/simnet:testkit"]
+allow = []
+exports = []
 
 [module."//lib/sim/simrng:simrng"]
 level = "L3"
