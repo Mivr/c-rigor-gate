@@ -226,7 +226,7 @@ Wiring into `rigor grade` is a later task.
 ## 3. `rigor buckfiles --root DIR [--out F]` (gate `buckfiles`)
 Each `BUCK` is parsed (never executed) with `ast`. Allowed: `load("@gate//rules:c.bzl", ...)` naming only
 `c_library`, `c_binary`, `c_test`, `c_fuzz`, and top-level calls to those with keyword arguments
-(`name`, `srcs`, `headers`, `deps`, `visibility`) whose values are string literals or lists of string
+(`name`, `srcs`, `headers`, `deps`, `visibility`; `c_library` also `system_libs` and `exported_deps`, T110, a `deps`-like list) whose values are string literals or lists of string
 literals. Rules: `bad-load`, `extra-load` (a second `load`), `bad-call` (`native.`, other rules, wrappers),
 `bad-argument` (positional, `**`, unknown keyword, non-literal value, a `deps` entry that is not a same-cell label `:name` or `//pkg:name` (why=`dep`: no cell prefix, so no raw rules or prelude targets; the macros add `gate//ctest:ctest` themselves), `glob`, `select`, concatenation,
 f-strings), `bad-statement` (assignment, `def`, `if`, `for`, import, bare expression), `parse-error`
