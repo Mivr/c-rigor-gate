@@ -5,7 +5,7 @@ gate/rigor grade --product-repo R --base B --head H --task TASK.toml --product p
                  [--approvals DIR] [--sign-key KEY] [--uncached] [--allow-dirty-gate] --work DIR --out verdict.json
 ```
 Exit 0 = overall PASS, 1 = FAIL, 2 = internal error (the verdict, if written, is FAIL). `--work` is
-emptied (`src`, `tree`, `results`, `test-results`, `facts`, `mutants-reports`) at the start; `R` must be a local directory.
+emptied (`src`, `tree`, `results`, `test-results`, `facts`, `mutants-reports`, `mutants-perf`) at the start, so re-grading into the same `--work` never reads or collides with a previous run's files; `R` must be a local directory.
 A stale `verdict.json` and `.sig` are removed first, so a crash can never leave an old PASS.
 
 ## The gate list
