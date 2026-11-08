@@ -60,6 +60,10 @@ selftests = ["product_checks", "grade", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/buckfiles.py"
 selftests = ["product_checks", "grade", "canaries"]
+# The byte-array generator of `c_embed` (T112): its selftest is selftest/embed.sh, run with the ctest group.
+[[rule]]
+glob = "gate/rigor_lib/bin2c.py"
+selftests = ["ctest", "product_checks", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/product_checks.py"
 selftests = ["product_checks", "grade", "canaries"]
@@ -160,6 +164,12 @@ selftests = ["toolchain"]
 [[rule]]
 glob = "selftest/ctest.sh"
 selftests = ["ctest"]
+[[rule]]
+glob = "selftest/embed.sh"
+selftests = ["ctest", "product_checks"]
+[[rule]]
+glob = "selftest/embed_product/**"
+selftests = ["ctest", "product_checks"]
 [[rule]]
 glob = "selftest/perf.sh"
 selftests = ["perf"]
