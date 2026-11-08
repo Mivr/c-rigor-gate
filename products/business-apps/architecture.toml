@@ -458,6 +458,16 @@ kind = "pure"
 
 [[edge]]
 from = "//lib/fmt/jlex:jlex"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jpull:jpull"
+to = "//lib/fmt/jpnum:jpnum"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jlex:jlex"
 to = "lib-base"
 kind = "pure"
 
