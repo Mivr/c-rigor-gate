@@ -5,12 +5,14 @@ The step decides three things the product must not be able to influence: which m
 depend on it directly, found by a query in the tree), and whether "nothing was mutated" passes (never).
 """
 
+import json
 import os
+import shutil
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import facts_policy, grade_context, grade_mutants, grade_pipeline, grade_policy, verdict
+from rigor_lib import facts_policy, grade_build, grade_context, grade_mutants, grade_pipeline, grade_policy, verdict
 from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase
 
@@ -353,6 +355,152 @@ class WorkDirectory(TempDirTestCase):
         out_dir.mkdir()
         with open(str(out_dir / "004.json"), "xb") as handle:   # what _copy_perf does: exclusive create
             handle.write(b"{}")
+
+
+class ChunkedBuild(TempDirTestCase):
+    """T115: `build_reports` builds the c_mutants targets in bounded chunks, with a fake `run_buck` and fake reports."""
+    N = grade_mutants.MUTANTS_CHUNK
+    PIPE = "error: h2 protocol error: error reading a body from connection: Broken pipe"
+
+    def setUp(self):
+        super().setUp()
+        self.work = self.sub("work")
+        self.tree = self.sub("work/tree")
+        self.sub("work/tree/buck-out")
+        self.calls = []
+        self.script = {}   # (chunk number, attempt) -> (exit code, stderr, labels that fail)
+
+    def modules(self, count, perf=()):
+        return [grade_mutants.Module("//m%d:m" % i, "L3", ("//m%d:t" % i,), (),
+                                     (("//m%d:p_perf" % i, "O(1)"),) if i in perf else ()) for i in range(count)]
+
+    def run_build(self, count, perf=()):
+        modules = self.modules(count, perf)
+        run = grade_build.TreeRun(self.tree, str(self.work), mutants_reports=str(self.work / "mutants-reports"))
+        attempts = {}
+
+        def fake_buck(tree, args):
+            self.assertEqual(args[0], "build")
+            report = args[args.index("--build-report") + 1]
+            targets = [a for a in args if a.startswith("//gate-mutants:")]
+            number = int(os.path.basename(report).split("-")[-1].split(".")[0])
+            attempt = attempts[number] = attempts.get(number, -1) + 1
+            self.calls.append((number, attempt, targets, os.path.exists(report)))
+            code, err, failing = self.script.get((number, attempt), (0, "", ()))
+            results = {}
+            for target in targets:
+                name = target.split(":")[1].split("[")[0]
+                if "[" in target or name in failing:
+                    continue
+                out = os.path.join(tree, "buck-out", name + ".json")
+                with open(out, "w") as handle:
+                    handle.write('{"label": "%s"}' % name)
+                outputs = {"DEFAULT": ["buck-out/%s.json" % name]}
+                if target + "[perf]" in args:
+                    pout = os.path.join(tree, "buck-out", name + ".perf.json")
+                    with open(pout, "w") as handle:
+                        handle.write('{"perf": "%s"}' % name)
+                    outputs["perf"] = ["buck-out/%s.perf.json" % name]
+                results["root" + target] = {"success": "SUCCESS", "outputs": outputs}
+            with open(report, "w") as handle:
+                handle.write(json.dumps({"results": results}))
+            return code, "", err
+        with mock.patch("rigor_lib.grade_build.run_buck", side_effect=fake_buck), \
+                mock.patch("rigor_lib.grade_build.action_counts", return_value=(3, 5)):
+            return modules, grade_mutants.build_reports(run, False, modules)
+
+    def reports(self):
+        return sorted(os.listdir(str(self.work / "mutants-reports")))
+
+    def test_chunk_boundaries(self):
+        n = self.N
+        for count, sizes in ((1, [1]), (n, [n]), (n + 1, [n, 1]), (2 * n + 1, [n, n, 1])):
+            self.calls = []
+            run_dir = self.work / "mutants-reports"
+            if run_dir.exists():
+                shutil.rmtree(str(run_dir))
+            _, (found, metadata, built) = self.run_build(count)
+            self.assertEqual([len(c[2]) for c in self.calls], sizes, count)
+            self.assertEqual(metadata["chunks"], len(sizes), count)
+            self.assertEqual((found, built), ([], list(range(count))), count)
+            self.assertEqual([r for r in self.reports()], ["%03d.json" % i for i in range(count)], count)
+
+    def test_chunk_size_is_in_the_documented_range(self):
+        self.assertTrue(8 <= self.N <= 16)
+
+    def test_report_names_keep_the_global_index_and_content(self):
+        n = self.N
+        self.run_build(n + 2)
+        for index in (0, n - 1, n, n + 1):
+            text = (self.work / "mutants-reports" / ("%03d.json" % index)).read_text()
+            self.assertIn("m%03d_" % index, text)
+        self.assertEqual([c[0] for c in self.calls], [0, 1])
+        self.assertEqual(self.calls[1][2][0], "//gate-mutants:" + grade_mutants.target_name(n, self.modules(n + 1)[n]))
+
+    def test_a_transient_failure_in_chunk_two_retried_gives_the_output_of_a_clean_run(self):
+        n = self.N
+        self.script = {(1, 0): (1, self.PIPE, ("m%03d_m%d_m" % (n, n),))}
+        _, (found, metadata, built) = self.run_build(2 * n)
+        self.assertEqual([(c[0], c[1]) for c in self.calls], [(0, 0), (1, 0), (1, 1)])
+        self.assertFalse(self.calls[2][3])   # the retry's report file was removed first
+        self.assertEqual((found, built), ([], list(range(2 * n))))
+        self.assertEqual(self.reports(), ["%03d.json" % i for i in range(2 * n)])
+        self.assertEqual((metadata["exit_code"], metadata["retried"], metadata["chunks"]), (0, [1], 2))
+        self.assertNotIn("stderr_tail", metadata)
+
+    def test_a_transient_failure_twice_fails_only_the_modules_of_that_chunk(self):
+        n = self.N
+        everything = tuple("m%03d_m%d_m" % (i, i) for i in range(n, 2 * n))
+        self.script = {(1, 0): (1, self.PIPE, everything), (1, 1): (1, "Broken pipe again", everything)}
+        _, (found, metadata, built) = self.run_build(3 * n)
+        self.assertEqual([(c[0], c[1]) for c in self.calls], [(0, 0), (1, 0), (1, 1), (2, 0)])
+        self.assertEqual(sorted(f["module"] for f in found), sorted("//m%d:m" % i for i in range(n, 2 * n)))
+        self.assertEqual({f["rule"] for f in found}, {"mutants-build-failed"})
+        self.assertEqual(built, list(range(n)) + list(range(2 * n, 3 * n)))   # the other chunks' verdicts stand
+        self.assertEqual((metadata["exit_code"], metadata["retried"]), (1, [1]))
+        self.assertEqual(metadata["stderr_tail"], "Broken pipe again")
+
+    def test_a_real_build_failure_is_not_retried(self):
+        self.script = {(0, 0): (1, "error: compilation of m.c failed", ("m000_m0_m",))}
+        _, (found, metadata, built) = self.run_build(2)
+        self.assertEqual([(c[0], c[1]) for c in self.calls], [(0, 0)])
+        self.assertEqual([f["module"] for f in found], ["//m0:m"])
+        self.assertEqual((built, metadata["retried"], metadata["exit_code"]), ([1], [], 1))
+
+    def test_a_transport_text_with_every_target_built_is_not_retried(self):
+        self.script = {(0, 0): (1, self.PIPE, ())}   # non-zero but every target built
+        self.run_build(1)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_a_transport_text_with_a_zero_exit_is_not_retried(self):
+        self.script = {(0, 0): (0, self.PIPE, ("m000_m0_m",))}   # exit zero, a target missing
+        self.run_build(1)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_the_metadata_sums_the_chunks_and_every_attempt_and_the_exit_is_the_first_failure(self):
+        n = self.N
+        self.script = {(0, 0): (1, self.PIPE, ("m000_m0_m",)), (1, 0): (2, "boom", ("m%03d_m%d_m" % (n, n),))}
+        _, (_, metadata, _) = self.run_build(2 * n)
+        # chunk 0 ran twice (retry), chunk 1 once: 3 builds of (3 executed, 5 cached)
+        self.assertEqual((metadata["executed_actions"], metadata["cached_actions"]), (9, 15))
+        self.assertEqual(metadata["exit_code"], 2)   # chunk 0 succeeded on retry, so chunk 1's is the first non-zero
+        self.assertEqual(metadata["stderr_tail"], "boom")
+        self.assertEqual(metadata["retried"], [0])
+
+    def test_perf_labels_are_built_in_their_own_chunk_and_copied_with_the_global_index(self):
+        n = self.N
+        self.run_build(n + 1, perf=(1, n))
+        self.assertEqual(sum(t.endswith("[perf]") for t in self.calls[0][2]), 1)
+        self.assertEqual(sum(t.endswith("[perf]") for t in self.calls[1][2]), 1)
+        perf = self.work / grade_mutants.PERF_DIR
+        self.assertEqual(sorted(os.listdir(str(perf))), ["001.json", "%03d.json" % n])
+        self.assertIn("m%03d_" % n, (perf / ("%03d.json" % n)).read_text())
+
+    def test_the_transport_classifier(self):
+        for text in ("h2 protocol error: broken", "write: Broken pipe", "Connection reset by peer", "transport error"):
+            self.assertTrue(grade_build.transport_failure(text), text)
+        for text in ("", "error: undefined reference to `x`", "FAILED: test t", "build failed"):
+            self.assertFalse(grade_build.transport_failure(text), text)
 
 
 class Gate(TempDirTestCase):

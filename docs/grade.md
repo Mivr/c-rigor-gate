@@ -199,8 +199,16 @@ so the gate reads the head's results of both modes and builds nothing.
   gate files: `buckfiles` ran before, the product may not carry a `PACKAGE`, and the step stops with exit 2 if
   either path already exists in the tree. A module that is not `visibility = ["PUBLIC"]` therefore fails to build
   its mutants (`mutants-build-failed`).
-- **Build and judge.** `buck2 build` of the `c_mutants` targets in the release platform (`--no-remote-cache` with
-  `--uncached`; the daemon is killed at the end), the reports are copied and `rigor mutants` runs in process over
+- **Build and judge.** `buck2 build` of the `c_mutants` targets in the release platform, in **chunks** of
+  `MUTANTS_CHUNK` (12) modules, one build per chunk with its own `build-report-mutants-<NNN>.json` and the chunk's
+  `[perf]` outputs (T115; one build of about 112 modules died of an h2 `BrokenPipe` and failed every pending target).
+  The daemon stays up between chunks (its cache is warm) and is killed at the end. A chunk whose build exits non-zero,
+  leaves a target without SUCCESS and whose stderr matches `grade_build.transport_failure` (`h2 protocol error`,
+  `broken pipe`, `connection reset`, ...) is retried once; a real compile or test failure is never retried. A chunk
+  that still fails gives `mutants-build-failed` for its missing modules only. Report names keep the global module
+  index; metadata sums the action counts over every attempt, `exit_code` is the first non-zero chunk exit, and
+  `chunks`, `retried` (chunk indexes) and `stderr_tail` (last failing chunk) are added. `--no-remote-cache` with
+  `--uncached`. The reports are copied and `rigor mutants` runs in process over
   a policy the gate writes. Findings and the per-module summary (`total`, `verdicts`, `operators`, `survivors`)
   are reported with the product's module labels; metadata also has the executed/cached action counts and the
   sha256 of the generated `BUCK`.
