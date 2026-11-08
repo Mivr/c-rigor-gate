@@ -224,6 +224,20 @@ FAIL gates with their error rules, and `N later gates` means a gate the bypass s
 | `weak-string` | tests check non-NULL, not the text | `mutants`: survived-mutant; `witness-tests`: witness-build-failed | mutants-witness |
 | `weak-symbol` | weak symbol | `semantic-suppressions`: forbidden-attribute; `symbols`: weak-symbol | none |
 
+## Canaries added by T105 (`c_catalog`)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `catalog-ok` (control) | two pots with one shared msgid, bg and en, a `c_test` formatting three ids in both languages; the catalog is an L1 module | none: PASS | none |
+| `catalog-empty-bg` | an untranslated phrase in the default language (empty `msgstr`) | `build`: build-failed (`no bg translation`) | semantic-suppressions, symbols, structure, mode-divergence, tests-release, tests-san, mutants |
+| `catalog-extra-msgid` | a `.po` msgid that its `.pot` does not have | `build`: build-failed (`not in cat/a.pot`) | same |
+| `catalog-placeholder` | a translation that drops the source's `{0}` | `build`: build-failed (`bg uses placeholders []`) | same |
+| `catalog-name-collision` | two msgids (`Hello`, `hello`) naming one enum constant | `build`: build-failed (`also the name of msgid`) | same |
+
+All five share `canaries/_catalog/files/` (a canary-local `i18n` runtime with the layout of the business-apps one, a two-pot
+`cat` package and its test), copied in by each `edit.sh`; the red ones then break one thing with a few lines. The product
+here is `i18n/`, `cat/` next to `core/`, `util/`. `expect.json` `contains` pins the exact `po2c` message in `build.json`, so a
+canary that fails for another reason is a miss.
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.

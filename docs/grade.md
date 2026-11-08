@@ -23,7 +23,7 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `contract`, `suppressions` | the existing gates, in process, against the clone, `--task` and `--approvals`. `suppressions` also scans **every file the layout grades at H** (the same file set `assemble` copies; T054, R001 R5) with the same patterns, line by line, so a suppression committed before B (an ungraded ancestor, e.g. under a sanitizer macro) is found. A hit that is in the diff is reported once, as `forbidden-pattern`; any other hit is `forbidden-pattern-in-tree` (error, with path, line, pattern). Approvals use the same scope text and cover both. |
 | `assemble` | builds `<work>/tree` from scratch (below). Findings: `bad-path`, `unsupported-entry` (symlink or gitlink that the layout would copy); info `ignored-by-gate` (a product path that matched `include` but is always excluded), info `product-manifest` (sha256 of the copied product files, so the verdict hash commits to them). An error here means no tree: `build` and `tests-*` are NOT_RUN. |
 | `toolchain` | grader integrity (T073, B33 a; below): is the toolchain the one `toolchains/*.manifest` pins? In an `--uncached` grade it verifies the cached LLVM and sysroot trees once, before anything compiles: PASS with info `toolchain-verified` (`manifests`: path and sha256 of each manifest), or FAIL with error `toolchain-mismatch`. A cached grade: PASS with info `toolchain-not-verified` (`reason: cached grade`). NOT_RUN in an uncached grade without a tree (`assemble` failed). Unless it passed, the gates that compile (`semantic-suppressions`, `symbols`, `build`, `structure`, `mode-divergence`, `mutants`, `witness-tests`, `mutants-witness`) are NOT_RUN (the log names the reason: `<gate> not run: gate toolchain is FAIL`). |
-| `buckfiles` | `rigor buckfiles` over a copy of the product files of the tree only (never the gate's own `BUCK` files). A macro keyword is a string or a list of strings; the only computed value (T102) is a package-local source glob, in `srcs` or `headers` of `c_library`, `c_binary` and `c_test`: (1) `glob(["<pat>", ...])`, or (2) one literal non-empty string list and one such glob joined by a single `+`, in either order (`["fp.h"] + glob(["src/*.h"])`). A pattern is `src/<stem>.c` or `src/<stem>.h` (the headers use `.h`), where the stem is a plain name or has exactly one `*` (`src/*.c`, `src/a.c`); no `..`, no leading `/`, no `**`, no other subdirectory. `glob` takes one list and nothing else (no `exclude`, no keyword). Everything else (a glob in `deps`, `tests/**`, `glob + glob`, a variable, a comprehension, any other `+`) stays `bad-argument` (why `value`). The layout check (below) needs nothing: a glob matches only `.c`/`.h` files, which are code by extension and so already covered, and a pattern is not a named file. |
+| `buckfiles` | `rigor buckfiles` over a copy of the product files of the tree only (never the gate's own `BUCK` files). A macro keyword is a string or a list of strings; `c_catalog` (T105, below) has keywords of its own and takes one dict, `po`, of language -> list of strings; its `runtime` is one string checked like a `deps` entry (same-cell label, or `bad-argument` why `dep`; a test or a test-derived target is `test-target`); the only computed value (T102) is a package-local source glob, in `srcs` or `headers` of `c_library`, `c_binary` and `c_test`: (1) `glob(["<pat>", ...])`, or (2) one literal non-empty string list and one such glob joined by a single `+`, in either order (`["fp.h"] + glob(["src/*.h"])`). A pattern is `src/<stem>.c` or `src/<stem>.h` (the headers use `.h`), where the stem is a plain name or has exactly one `*` (`src/*.c`, `src/a.c`); no `..`, no leading `/`, no `**`, no other subdirectory. `glob` takes one list and nothing else (no `exclude`, no keyword). Everything else (a glob in `deps`, `tests/**`, `glob + glob`, a variable, a comprehension, any other `+`) stays `bad-argument` (why `value`). The layout check (below) needs nothing: a glob matches only `.c`/`.h` files, which are code by extension and so already covered, and a pattern is not a named file. |
 | `semantic-suppressions`, `symbols` | one Buck2 build (release, `--no-remote-cache` with `--uncached`) of every `kind(c_facts, //...)` target, `gate//ctest:ctest_facts` and `toolchains//:libc_symbols`; then `rigor facts` logic with `products/<p>/policy.toml` (gate-owned, next to `product.toml`; trusted module is `gate//ctest:ctest`, and test targets need their own `[module]` entries). If the facts cannot be built (e.g. the product does not compile) both are NOT_RUN and `build` says why. Metadata has executed/cached action counts. |
 | `layering` | the architecture contract (T087, `docs/layering.md`): the facts of the `symbols` gate against `products/<p>/architecture.toml`. No such file: PASS with info `no-architecture`. Otherwise it runs only after `toolchain` and `assemble` passed. |
 | `build` | in the tree: `uquery 'kind(ctest_results, //...)'`, then `build --keep-going --build-report` of all of them in `release` and in `toolchains//:linux_san`. Findings: `build-failed` (target, mode), `missing-output`, `query-failed`, `no-results-targets`. Always ends with `buck2 kill` in the tree. Metadata: executed/cached action counts (from `buck2 log what-ran`, column 3 `cache` = hit), stderr tail. |
@@ -35,6 +35,40 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `mutants` | mutation testing of every product module the policy puts at L2 or above (below). NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. In role `test-author`: PASS with info `not-applicable` (mutating stubs only gives `baseline-red`). |
 | `witness-tests`, `mutants-witness` | the witness gates (T039; `docs/witness.md`, P002), below. |
 | verdict | `rigor verdict` over `gate/order.txt`, plus `inputs`; with `--sign-key` (and a clean gate), `ssh-keygen -Y sign -n c-rigor-gate-verdict` writes `verdict.json.sig`. |
+
+## `c_catalog`: translations as a const C catalog (T105, G9)
+```
+c_catalog(name = "catalog", pots = ["lockers.pot", "kit.pot"], po = {"bg": ["lockers.bg.po", "kit.bg.po"]},
+          langs = ["bg", "en"], source_lang = "en", symbol = "lk_catalog", runtime = "//lib/fmt/i18n:i18n",
+          visibility = ["PUBLIC"])
+```
+`pots`: ordered `.pot` files of the package; `po`: language -> `.po` files, one per pot, same order, for every language of `langs`
+but `source_lang` (whose text is the msgid itself); `langs`: ordered codes, the index is the runtime `lang`; `symbol`: the C
+identifier of the generated `const i18n_catalog_t`; `runtime`: the i18n library, a `//package:name` label whose header is derived as
+`<package>/<name>.h` (there is no separate header attribute). The macro makes a `c_library` `name` with the header
+`<package>/<name>.h` (the symbol, `typedef enum {...} <symbol>_msg_t` of msgids, `<SYMBOL>_<WORDS>` constants and `<SYMBOL>__COUNT`) and
+one generated `.c` (buck-out only, never checked in), plus `<name>__gen`, the rule `rules/catalog.bzl` that runs
+`gate/rigor_lib/po2c.py` (stdlib only, byte-identical output for identical inputs). The `.pot` and `.po` files are named in the
+`BUCK`, so the layout check requires them to be in `layout.include` (`ungraded-path` otherwise).
+- **Build errors, each naming file, line and msgid** (first one stops): PO subset only (`msgid`/`msgstr` and continuation lines;
+  escapes `\\ \" \n \t`; `msgctxt`, `msgid_plural`, `msgstr[n]`, `#, fuzzy`, other escapes, invalid UTF-8, a header charset other than
+  UTF-8, a msgid twice in one file, a `.po` msgid not in its `.pot`); an empty or missing `msgstr` in any non-source language;
+  a template that breaks the `i18n.h` grammar (`{0}`..`{9}`, `{{`, `}}`); source placeholder indices that are not exactly `0..n-1`
+  (`n_args` = their number); a translation using another set of indices. Count rule: an index the source uses once is used
+  exactly once by every translation, an index the source repeats is used at least once. A msgid in two pots is one id if
+  all its translations are byte-identical, otherwise an error.
+- **Enum names**: `<UPPER symbol>_<WORDS>`; WORDS is the msgid with every run of non-`[A-Za-z0-9]` bytes (of the UTF-8) turned into one
+  `_`, upper-cased, outer `_` dropped, cut to 48 characters (outer `_` dropped again after the cut), `N` before a leading digit. Two
+  different msgids with one name, or a msgid with no letter or digit, fail the build; there is no suffix or override.
+- **C text**: strings are literals with every byte outside printable ASCII, and `"` `\` `?` (trigraphs), as a 3-digit octal escape;
+  `str` is `n_msgs * n_langs` row-major, `n_args` a `static const uint8_t` array, nothing mutable, `_Static_assert` on the counts.
+- **How the other gate steps see it.** The `.c` is a generated source, so `c_facts` gets it in a new `generated` attribute (counted
+  against the compiled units, scanned and symbol-checked like any source: `cv_catalog` is a defined, exported, read-only symbol;
+  `rules/facts.bzl`). `rigor structure` reads the `srcs` attribute only: the catalog has none, so like a header-only module it gets
+  no `c_structure` target and no dependency edge (generated tables have no function to limit; a file-length limit would be
+  meaningless on them). `mutsrc` is empty, so a catalog needs `level = "L1"` in the policy (`exports = ["<symbol>"]`); at L2 or above it is
+  `no-mutants`. No test is needed at L1. A package that uses the catalog lists the runtime in its own `deps`
+  (`deps` is not exported, as for `c_library`). Canaries: `docs/canaries.md`, "T105".
 
 ## The perf bundle (`--perf DIR`, B13)
 `rigor grade --perf DIR` snapshots a hidden perf bundle (`docs/perf.md`, "The perf bundle") into `<work>/inputs/perf`
