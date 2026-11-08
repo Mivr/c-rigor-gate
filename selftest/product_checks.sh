@@ -29,7 +29,7 @@ must_pass() { local log="$out/$step.log"; run "$log" "$@" || fail "$CUR: buck2 $
 mkdir -p "$scratch/p"
 cd "$scratch/p"
 cat > BUCK <<'EOF'
-load("@gate//rules:c.bzl", "c_binary", "c_fuzz", "c_library", "c_test")
+load("@gate//rules:c.bzl", "c_binary", "c_embed", "c_fuzz", "c_library", "c_test")
 
 c_library(name = "clean", srcs = ["clean.c"], headers = ["clean.h"])
 c_test(name = "clean_test", srcs = ["clean_test.c"], deps = [":clean"])
@@ -71,9 +71,11 @@ c_library(name = "ex_c", srcs = ["ex_c.c"], headers = ["ex_c.h"])
 c_library(name = "ex_b", srcs = ["ex_b.c"], headers = ["ex_b.h"], exported_deps = [":ex_c"])
 c_library(name = "ex_a", srcs = ["ex_a.c"], deps = [":ex_b"])
 c_library(name = "ex_d", srcs = ["ex_d.c"], deps = [":ex_b"])
+c_embed(name = "emb", src = "emb.bin", symbol = "emb_blob")
 EOF
 
 # --- green ---
+printf '\000\377T\n\000' > emb.bin   # T112: c_embed asset
 cat > clean.h <<'EOF'
 #ifndef CLEAN_H
 #define CLEAN_H
@@ -494,7 +496,7 @@ done
 echo "  16 sources: line scan exit 0 on all"
 
 begin "facts actions build on RE for every target (release) and the libc export list exists"
-targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const sl_ok ex_a ex_b ex_c ex_d)
+targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const sl_ok ex_a ex_b ex_c ex_d emb)
 args=(); for t in "${targets[@]}"; do args+=("$pkg:${t}_facts"); done
 run "$out/facts.log" build "${args[@]}" //ctest:ctest_facts //examples/hello:lib_facts //examples/hello:hello_facts //examples/hello:hello_test_facts toolchains//:libc_symbols --show-output || fail "$CUR" "$out/facts.log"
 tool collect "$out/facts.log" "$out/facts" || fail "$CUR: collect"
@@ -574,6 +576,15 @@ tool policy "$out/p_ex_ok.toml" ex_c ex_b ex_a
 gate_case ex_ok $SYM 0 "$out/p_ex_ok.toml" ex_c ex_b ex_a --
 tool policy "$out/p_ex_d.toml" ex_c ex_b ex_d
 gate_case ex_d $SYM 1 "$out/p_ex_d.toml" ex_c ex_b ex_d -- undeclared-symbol:ex_c_fn
+
+begin "c_embed (T112): the generated const array and length are exactly its exports, a leaf library with no function and no dep"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["kind"]=="c_library" and d["deps"]==[] else 1)' "$out/facts/emb.json" \
+  || fail "$CUR: emb facts are not a dep-free c_library"
+tool policy "$out/p_emb.toml" "emb;level=L3;exports=emb_blob,emb_blob_len"
+gate_case emb $SYM 0 "$out/p_emb.toml" emb --
+gate_case emb $SEM 0 "$out/p_emb.toml" emb --
+tool policy "$out/p_emb_short.toml" "emb;level=L3;exports=emb_blob"
+gate_case emb_short $SYM 1 "$out/p_emb_short.toml" emb -- unexpected-export:emb_blob_len
 
 begin "exported_deps (T110): a label in both deps and exported_deps is a load error (the whole package fails to evaluate)"
 mkdir -p "$scratch/q"

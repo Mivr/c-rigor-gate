@@ -21,3 +21,9 @@ export_file(
     name = "po2c.py",
     visibility = ["PUBLIC"],
 )
+
+# The byte-array generator of `c_embed` (T112, rules/embed.bzl): a binary file -> a const C array and its length.
+export_file(
+    name = "bin2c.py",
+    visibility = ["PUBLIC"],
+)
