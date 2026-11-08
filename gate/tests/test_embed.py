@@ -66,6 +66,26 @@ class RenderCase(TempDirTestCase):
         for text in first:
             text.encode("ascii")
 
+    def test_nul_adds_one_zero_byte_inside_the_array_and_the_length_stays(self):
+        data = bytes([0, 255, 7])
+        _, plain = self.build(data)
+        _, with_nul = bin2c.build("blob", 1024, HEADER, str(self.tmp / "in.bin"), nul=True)
+        self.assertEqual(parse_bytes(plain), data)
+        self.assertEqual(parse_bytes(with_nul), data + b"\x00")
+        self.assertIn("const unsigned char blob[4] = {", with_nul)
+        self.assertIn("const size_t blob_len = 3;", with_nul)
+        self.assertIn("const unsigned char blob[3] = {", plain)
+
+    def test_nul_does_not_change_the_header_or_the_limit(self):
+        header, _ = self.build(b"abc")
+        header_nul, _ = bin2c.build("blob", 3, HEADER, str(self.tmp / "in.bin"), nul=True)
+        self.assertEqual(header, header_nul)
+
+    def test_nul_with_a_file_over_the_limit_is_still_refused(self):
+        (self.tmp / "big.bin").write_bytes(bytes(11))
+        with self.assertRaises(bin2c.EmbedError):
+            bin2c.build("blob", 10, HEADER, str(self.tmp / "big.bin"), nul=True)
+
     def test_a_file_exactly_at_the_limit_is_fine(self):
         _, source = self.build(bytes(10), limit=10)
         self.assertEqual(parse_bytes(source), bytes(10))
@@ -129,6 +149,13 @@ class CommandLineCase(TempDirTestCase):
                    "--src", str(src), "--out-h", str(self.tmp / "o.h"), "--out-c", str(self.tmp / "o.c"), *extra]
         return subprocess.run(command, capture_output=True, text=True, timeout=60)
 
+    def test_the_nul_flag_appends_one_zero_byte(self):
+        done = self.run_tool(b"ab", "--nul")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        source = (self.tmp / "o.c").read_text(encoding="ascii")
+        self.assertEqual(parse_bytes(source), b"ab\x00")
+        self.assertIn("const size_t blob_len = 2;", source)
+
     def test_writes_both_files(self):
         done = self.run_tool(b"\x00\x01")
         self.assertEqual(done.returncode, 0, done.stderr)
@@ -179,6 +206,14 @@ class BuckFilesCase(TempDirTestCase):
                 self.setUp()
                 self.bad(LOAD + 'c_embed(name = "f", src = "f.bin", symbol = "f", %s = %s)\n' % (key, value))
 
+    def test_nul_is_a_bool_literal(self):
+        self.assertEqual(self.check(LOAD + 'c_embed(name = "f", src = "f.bin", symbol = "f", nul = True)\n', 0), [])
+        self.assertEqual(self.check(LOAD + 'c_embed(name = "f", src = "f.bin", symbol = "f", nul = False)\n', 0), [])
+        for value in ("1", '"True"', "NUL", "not False", "[True]"):
+            with self.subTest(value=value):
+                self.setUp()
+                self.bad(LOAD + 'c_embed(name = "f", src = "f.bin", symbol = "f", nul = %s)\n' % value)
+
     def test_other_keywords_are_refused(self):
         for extra in ('srcs = ["a.c"]', 'headers = ["a.h"]', 'deps = [":x"]', 'compiler_flags = ["-w"]',
                       'system_libs = ["pthread"]', "**{}", 'pots = ["a.pot"]'):
@@ -190,7 +225,7 @@ class BuckFilesCase(TempDirTestCase):
         self.bad(LOAD + 'c_embed("f")\n', "positional")
 
     def test_its_keywords_are_not_the_others(self):
-        for key, value in (("src", '"x"'), ("symbol", '"x"'), ("max_bytes", "5")):
+        for key, value in (("src", '"x"'), ("symbol", '"x"'), ("max_bytes", "5"), ("nul", "True")):
             with self.subTest(key=key):
                 self.setUp()
                 self.bad(LOAD + 'c_library(name = "a", %s = %s)\n' % (key, value), "keyword")

@@ -34,8 +34,8 @@ c_library(name = "osal", srcs = ["osal.c"], headers = ["osal.h"], system_libs = 
 system_libs = ["pthread"]
 allow = ["pthread_create", "pthread_join"]    # the symbols it references are still checked as usual
 ```
-`system_libs` is an allow-list of bare sysroot library names in `rules/c.bzl`: `pthread` only until a product needs
-another. It becomes the exported post-link flag `-lpthread`, resolved in the pinned sysroot by the toolchain's own link
+`system_libs` is an allow-list of bare sysroot library names in `rules/c.bzl`: `pthread`, and `X11` (T117: libX11 and its
+link-time closure, [product-checks.md](product-checks.md#system-libraries-t095)); a new entry needs a product that needs it. It becomes the exported post-link flag `-lpthread`, resolved in the pinned sysroot by the toolchain's own link
 line (never a host path), so every binary, test and mutant binary that links the library gets it; `c_mutants` reads the
 flags from the library's link info (the module and its `deps`) and puts them after the objects and archives of its raw
 links. The facts record `system_libs` per module. Details and findings: [product-checks.md](product-checks.md#system-libraries-t095).

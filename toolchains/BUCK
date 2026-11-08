@@ -91,6 +91,7 @@ fetched_tree(
 # Chromium's Debian bullseye amd64 sysroot (glibc 2.31). Link-time stubs plus headers.
 _SR = "./usr/include/"
 _XH = _SR + "x86_64-linux-gnu/"
+_XI = _SR
 _GCC = "./usr/lib/gcc/x86_64-linux-gnu/10/"
 _UL = "./usr/lib/x86_64-linux-gnu/"
 _L = "./lib/x86_64-linux-gnu/"
@@ -160,6 +161,25 @@ fetched_tree(
         _GCC + "libgcc_s.so",
         _GCC + "libstdc++.so",
         _UL + "libstdc++.so.6*",
+        # X11 (T117): libX11 and its link-time closure (libxcb, libXau, libXdmcp, libbsd, libmd), and the headers a
+        # product that draws into an X11 window includes. Opt-in per target through `system_libs = ["X11"]`.
+        _XI + "X11/X.h",
+        _XI + "X11/Xdefs.h",
+        _XI + "X11/Xfuncproto.h",
+        _XI + "X11/Xlib.h",
+        _XI + "X11/Xosdefs.h",
+        _XI + "X11/Xutil.h",
+        _XI + "X11/XKBlib.h",
+        _XI + "X11/keysym.h",
+        _XI + "X11/keysymdef.h",
+        _XI + "X11/extensions/XKB.h",
+        _XI + "X11/extensions/XKBstr.h",
+        _UL + "libX11.so*",
+        _UL + "libxcb.so*",
+        _UL + "libXau.so*",
+        _UL + "libXdmcp.so*",
+        _UL + "libbsd.so.0*",
+        _UL + "libmd.so.0*",
     ],
     visibility = ["PUBLIC"],
 )

@@ -37,7 +37,41 @@ load("@gate//rules:c.bzl", "c_embed", "c_test")
 c_embed(name = "blob", src = "blob.bin", symbol = "fx_blob", max_bytes = 64)
 c_embed(name = "exact", src = "blob.bin", symbol = "fx_exact", max_bytes = 37)
 c_test(name = "blob_test", srcs = ["blob_test.c"], deps = [":blob", ":exact"])
+
+# nul = True (T117): one 0x00 after the data, the length constant unchanged
+c_embed(name = "text", src = "text.txt", symbol = "fx_text", max_bytes = 16, nul = True)
+c_embed(name = "textplain", src = "text.txt", symbol = "fx_plain", max_bytes = 16)
+c_embed(name = "nulblob", src = "blob.bin", symbol = "fx_nulblob", max_bytes = 37, nul = True)
+c_test(name = "nul_test", srcs = ["nul_test.c"], deps = [":text", ":textplain", ":nulblob"])
 B
+printf 'hello' > "$scratch/ok/text.txt"
+cat > "$scratch/ok/nul_test.c" <<'C'
+#include <stddef.h>
+#include <string.h>
+#include "ctest/ctest.h"
+#include "selftest/scratch_embed/ok/nulblob.h"
+#include "selftest/scratch_embed/ok/text.h"
+#include "selftest/scratch_embed/ok/textplain.h"
+
+static const unsigned char want[37] = {
+    0x00, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x0A, 0x22, 0x5C, 0x3F, 0x3F, 0x2F, 0x80, 0x7F, 0x01, 0xFE,
+    0x54, 0x54, 0x43, 0x46, 0x00, 0x01, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0xFF,
+    0x10, 0x20, 0x30, 0x40, 0x50};
+
+static void t_len_excludes_nul(ctest_t *t) { CHECK_EQ_U64(t, (unsigned long long)fx_text_len, 5ULL); }
+static void t_terminated(ctest_t *t) { CHECK_EQ_U64(t, fx_text[fx_text_len], 0x00ULL); }
+static void t_c_string(ctest_t *t) { CHECK_EQ_U64(t, (unsigned long long)strlen((const char *)fx_text), 5ULL); }
+static void t_data_intact(ctest_t *t) { CHECK_EQ_MEM(t, fx_text, fx_text_len, "hello", 5U); }
+static void t_binary_terminated(ctest_t *t) {
+    CHECK_EQ_MEM(t, fx_nulblob, fx_nulblob_len, want, sizeof(want));
+    CHECK_EQ_U64(t, (unsigned long long)fx_nulblob_len, 37ULL);
+    CHECK_EQ_U64(t, fx_nulblob[fx_nulblob_len], 0x00ULL);
+}
+static void t_default_len(ctest_t *t) { CHECK_EQ_U64(t, (unsigned long long)fx_plain_len, 5ULL); }
+
+CTEST_SUITE("nul", { "len_excludes_nul", t_len_excludes_nul }, { "terminated", t_terminated }, { "c_string", t_c_string },
+            { "data_intact", t_data_intact }, { "binary_terminated", t_binary_terminated }, { "default_len", t_default_len })
+C
 cat > "$scratch/ok/blob_test.c" <<'C'
 #include <stddef.h>
 #include "ctest/ctest.h"
@@ -107,6 +141,32 @@ assert summary == {"total": 4, "passed": 4}, summary
 ' "$res" || fail "$CUR: results are not four passing tests"
   echo "  $mode: 4 tests pass"
 done
+
+for mode in release san; do
+  begin "nul = True: the array holds the data plus one 0x00, the length excludes it ($mode)"
+  must_pass build --target-platforms "${PLAT}$mode" "$pkg/ok:nul_test_results" --show-output
+  res="$(awk '/nul_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+  [ -f "$res" ] || fail "$CUR: no results file" "$out/$step.log"
+  python3 -I -c '
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1])]
+tests, summary = rows[:-1], rows[-1]["summary"]
+ids = sorted(r["id"] for r in tests)
+assert ids == ["nul/binary_terminated", "nul/c_string", "nul/data_intact", "nul/default_len", "nul/len_excludes_nul", "nul/terminated"], ids
+assert all(r["status"] == "pass" and r["asserts"] > 0 for r in tests), tests
+assert summary == {"total": 6, "passed": 6}, summary
+' "$res" || fail "$CUR: results are not six passing tests"
+  echo "  $mode: 6 tests pass"
+done
+
+begin "the generated source: the default array is the file size, nul = True adds exactly one byte, the length constant is the same"
+must_pass build --target-platforms "${PLAT}release" "$pkg/ok:text__gen[c]" "$pkg/ok:textplain__gen[c]" --show-output
+src_nul="$(awk '/text__gen/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+src_plain="$(awk '/textplain__gen/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+grep -q 'const unsigned char fx_text\[6\] = {' "$src_nul" || fail "$CUR: nul array is not 6 bytes" "$src_nul"
+grep -q 'const unsigned char fx_plain\[5\] = {' "$src_plain" || fail "$CUR: default array is not 5 bytes" "$src_plain"
+grep -qx 'const size_t fx_text_len = 5;' "$src_nul" || fail "$CUR: nul length constant" "$src_nul"
+grep -qx 'const size_t fx_plain_len = 5;' "$src_plain" || fail "$CUR: default length constant" "$src_plain"
 
 begin "the generated header declares the extern const array and length "
 must_pass build --target-platforms "${PLAT}release" "$pkg/ok:blob__gen[h]" --show-output
