@@ -81,6 +81,29 @@ The same symbolizer and fatal options (one shared helper, `sanitizer_env_lines`)
 `log_path` (the report stays on stderr and is filtered). Outputs `report.txt` (`<name>[report]`) and `crash`
 (`<name>[crash]`) are declared; see `docs/toolchain.md`, "Fuzz runs".
 
+## Resource limits (T097)
+A mutant of a write retry once made a real-directory test write the same bytes forever and filled the RE worker's CAS
+temp disk, which broke every lane's builds for hours. Tests may write small real files under `$TMPDIR`, so the
+harness bounds what any one test can consume. The limits are set in `ctest_run` (`ctest/ctest.c`) before any test runs, the
+same in release, san, cov and every mutant run (a mutant run is the same binary), and `ctest/perf.c` sets the same:
+
+| Limit | Value | Effect |
+|---|---|---|
+| `RLIMIT_FSIZE` | 64 MiB per file | a write past it fails with `EFBIG` (`SIGXFSZ` is ignored), so the test's own check fails |
+| `RLIMIT_CPU` | 20 s per test process (the runner itself: 600 s) | an infinite loop dies by `SIGXCPU` (`killed by signal 24`); twice the 10 s wall timeout, so two busy threads still pass |
+| `RLIMIT_NOFILE` | 256 | a leaking loop of opens fails with `EMFILE` |
+| `RLIMIT_CORE` | 0 | no core file |
+| scratch quota | 256 MiB (apparent size) and 4096 entries per test | many files, each under 64 MiB, cannot add up |
+
+The scratch quota: the runner makes a private directory `$TMPDIR/ctest.XXXXXX` (`/tmp` if `$TMPDIR` is unset) for each test and
+sets `$TMPDIR` to it in the test process; while it waits it measures the directory every 20 ms (`nftw`), kills the test's process
+group when it is over the quota (result `fail`, reason `scratch quota exceeded (limit 256 MiB, 4096 entries under $TMPDIR)`), and always
+removes the directory afterwards, so a test also starts with an empty `$TMPDIR` and leaves nothing behind. A test that writes
+elsewhere (a hard-coded path) is bounded by `RLIMIT_FSIZE` alone. The overshoot is what the disk writes in 20 ms.
+A test killed by a limit is a failed test, so a mutant that hits one is `killed-assert` (the check failed) or `killed-crash` (signal or quota), never `unrun`
+or an action error. Selftest: `selftest/ctest.sh` package `limits` (write-forever, many files, many entries, descriptors, the limits
+themselves) in release and san; `selftest/mutate.sh` module `runaway` (the `left -= w` -> `left += w` mutant).
+
 ## Known limits
 - A hostile test can still run arbitrary code in its child; the nonce only stops accidental or naive
   forgery of the report, not an attacker who reads the process image. The suppression scan and review

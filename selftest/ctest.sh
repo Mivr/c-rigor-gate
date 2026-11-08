@@ -35,8 +35,8 @@ build_out() {
 # --------------------------------------------------------------------------------------
 # Test sources. Each package is one c_test with one suite.
 # --------------------------------------------------------------------------------------
-mkdir -p "$scratch"/{basic,checks,order,badname,dup,san,fds}
-for d in basic checks order badname dup san fds; do
+mkdir -p "$scratch"/{basic,checks,order,badname,dup,san,fds,limits}
+for d in basic checks order badname dup san fds limits; do
   printf 'load("@gate//rules:c.bzl", "c_test")\nc_test(name = "t", srcs = ["t.c"])\n' > "$scratch/$d/BUCK"
 done
 
@@ -215,6 +215,124 @@ static void t_after(ctest_t *t) { CHECK(t, 1); }
 CTEST_SUITE("fds", { "scan_fds", t_scan_fds }, { "fails", t_fails }, { "after", t_after })
 C
 
+# T097: runaway tests. Every loop is bounded by the test itself (1 GiB, 16 x 60 MiB, 1000 opens), so even a
+# harness without the limits would stop; with them each runaway ends in seconds.
+cat > "$scratch/limits/t.c" <<'C'
+#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include "ctest/ctest.h"
+
+static char g_buf[1 << 20];
+
+static int open_in_tmp(const char *name) {
+    static char path[512];
+    const char *d = getenv("TMPDIR");
+    (void)snprintf(path, sizeof path, "%s/%s", d == NULL ? "/tmp" : d, name);
+    return open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+}
+
+/* The incident: the same bytes written forever. The bound is 1 GiB; RLIMIT_FSIZE stops it at 64 MiB with EFBIG. */
+static void t_write_forever(ctest_t *t) {
+    int fd = open_in_tmp("forever");
+    int all_written = 1;
+    CHECK(t, fd >= 0);
+    for (int i = 0; i < 1024 && all_written; i++) {
+        all_written = write(fd, g_buf, sizeof g_buf) == (ssize_t)sizeof g_buf;
+    }
+    CHECK(t, all_written); /* fails: the write that crossed 64 MiB returned -1 */
+}
+
+static void t_efbig_is_reported(ctest_t *t) {
+    int fd = open_in_tmp("efbig");
+    long n = 0;
+    ssize_t w = 0;
+    CHECK(t, fd >= 0);
+    for (int i = 0; i < 1024 && w >= 0; i++) {
+        w = write(fd, g_buf, sizeof g_buf);
+        n += w > 0 ? (long)w : 0;
+    }
+    CHECK_EQ_I64(t, n, 64L << 20);
+    CHECK_EQ_I64(t, errno, EFBIG);
+}
+
+/* Many files, each under the per-file limit: the scratch quota ends it (256 MiB; the bound here is 960 MiB). */
+static void t_many_files(ctest_t *t) {
+    static char name[32];
+    CHECK(t, 1);
+    for (int f = 0; f < 16; f++) {
+        int fd;
+        (void)snprintf(name, sizeof name, "many%d", f);
+        fd = open_in_tmp(name);
+        for (int i = 0; fd >= 0 && i < 60; i++) {
+            (void)!write(fd, g_buf, sizeof g_buf);
+        }
+        if (fd >= 0) { (void)close(fd); }
+    }
+}
+
+static void t_many_entries(ctest_t *t) {
+    static char name[32];
+    CHECK(t, 1);
+    for (int f = 0; f < 20000; f++) {
+        (void)snprintf(name, sizeof name, "e%d", f);
+        (void)close(open_in_tmp(name));
+    }
+}
+
+static void t_nofile(ctest_t *t) {
+    static int fds[1000];
+    int opened = 0, last_errno = 0;
+    for (int i = 0; i < 1000; i++) {
+        fds[i] = open("/dev/null", O_RDONLY);
+        if (fds[i] < 0) { last_errno = errno; break; }
+        opened++;
+    }
+    for (int i = 0; i < opened; i++) { (void)close(fds[i]); } /* the sanitizer runtime needs descriptors at exit */
+    CHECK_EQ_I64(t, last_errno, EMFILE);
+    CHECK(t, opened > 200 && opened < 256);
+}
+
+static void t_core_and_cpu(ctest_t *t) {
+    char b[64];
+    FILE *f = fopen("/proc/self/limits", "r");
+    int core_ok = 0, cpu_ok = 0;
+    CHECK(t, f != NULL);
+    while (f != NULL && fgets(b, sizeof b, f) != NULL) {
+        core_ok |= strncmp(b, "Max core file size", 18) == 0 && strstr(b, " 0 ") != NULL;
+        cpu_ok |= strncmp(b, "Max cpu time", 12) == 0 && strstr(b, " 20 ") != NULL;
+    }
+    CHECK(t, core_ok);
+    CHECK(t, cpu_ok);
+}
+
+/* The private $TMPDIR of the previous runaways is gone: this one starts empty. */
+static void t_scratch_is_private_and_empty(ctest_t *t) {
+    const char *d = getenv("TMPDIR");
+    static char cmd[600];
+    FILE *p;
+    char line[16];
+    CHECK(t, d != NULL && strstr(d, "/ctest.") != NULL);
+    (void)snprintf(cmd, sizeof cmd, "ls -A '%s' | wc -l", d);
+    p = popen(cmd, "r");
+    CHECK(t, p != NULL && fgets(line, sizeof line, p) != NULL && atoi(line) == 0);
+    if (p != NULL) { (void)pclose(p); }
+}
+
+CTEST_SUITE("limits",
+    { "write_forever", t_write_forever },
+    { "efbig_is_reported", t_efbig_is_reported },
+    { "many_files", t_many_files },
+    { "many_entries", t_many_entries },
+    { "nofile", t_nofile },
+    { "core_and_cpu", t_core_and_cpu },
+    { "scratch_is_private_and_empty", t_scratch_is_private_and_empty })
+C
+
 # --------------------------------------------------------------------------------------
 # Expectations, checked by one Python program. Each case: id -> (status, asserts, reason regex)
 # --------------------------------------------------------------------------------------
@@ -254,6 +372,15 @@ EXPECT = {
     "scan_fds": ("pass", 1, r""),
     "fails": ("fail", 1, r"1 of 1 checks failed; first: .*t\.c:\d+: CHECK\(0\)"),
     "after": ("pass", 1, r""),
+  },
+  "limits": {
+    "write_forever": ("fail", 2, r"1 of 2 checks failed; first: .*t\.c:\d+: CHECK\(all_written\)"),
+    "efbig_is_reported": ("pass", 3, r""),
+    "many_files": ("fail", 0, r"scratch quota exceeded \(limit 256 MiB, 4096 entries under \$TMPDIR\)"),
+    "many_entries": ("fail", 0, r"scratch quota exceeded \(limit 256 MiB, 4096 entries under \$TMPDIR\)"),
+    "nofile": ("pass", 2, r""),
+    "core_and_cpu": ("pass", 3, r""),
+    "scratch_is_private_and_empty": ("pass", 2, r""),
   },
   "order": None,   # checked separately
   "san": None,     # checked separately: reasons must name file:line function
@@ -365,6 +492,27 @@ chk suite basic "$basic_res" || fail "$CUR"
 chk suite checks "$checks_res" || fail "$CUR"
 build_out fds_res release "$pkg/fds:t_results"
 chk suite fds "$fds_res" || fail "$CUR: a test altered the results file or leaked a descriptor"
+
+begin "limits (T097): a test that writes forever, floods $TMPDIR, leaks descriptors fails fast in release and san; the limits are set"
+for mode in release san; do
+  t0=$SECONDS
+  build_out lim_res "$mode" "$pkg/limits:t_results"
+  echo "  $mode: results in $((SECONDS - t0)) s"
+  chk suite limits "$lim_res" || fail "$CUR: $mode"
+  grep -o '"id":"limits/[a-z_]*","status":"[a-z]*"' "$lim_res" | sed 's/^/    /'
+done
+# a quota overrun ends within seconds even from a cold run of the binary (wall time of the hostile tests alone)
+run "$out/bin.log" build --target-platforms ${PLAT}release "$pkg/limits:t" --show-output || fail "$CUR" "$out/bin.log"
+lim_bin="$root/$(out_of "$out/bin.log" t)"
+limdir="$(mktemp -d)"
+t0=$(date +%s.%N)
+( cd "$limdir" && "$lim_bin" --seed 1 --out "$out/lim.local.jsonl" >/dev/null 2>&1 )
+t1=$(date +%s.%N)
+echo "  local run of the whole limits suite (all seven tests): $(python3 -c "print(round($t1-$t0,2))") s"
+python3 -c "import sys; sys.exit(0 if $t1-$t0 < 20 else 1)" || fail "$CUR: the limits suite took 20 s or more"
+leftover="$(ls -A "${TMPDIR:-/tmp}" | grep -c '^ctest\.' || true)"
+[ "$leftover" = 0 ] || fail "$CUR: $leftover ctest.* scratch directories left in ${TMPDIR:-/tmp}"
+rm -rf "$limdir"
 
 begin "san: heap overflow, use-after-free, UBSan overflow, leak and SIGSEGV are fails naming file:line function (RE, hermetic llvm-symbolizer)"
 build_out san_res san "$pkg/san:t_results"

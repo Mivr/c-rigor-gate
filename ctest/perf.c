@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/resource.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -168,9 +169,18 @@ static void measure(rec_t *r, uint64_t seed, size_t n) {
     r->wall_median = v[REPS / 2];
 }
 
+/* Hard limits (T097), the same as ctest's: FSIZE 64 MiB, CPU 20 s, NOFILE 256, CORE 0. */
+static int set_limit(__rlimit_resource_t what, rlim_t v) {
+    struct rlimit rl;
+    rl.rlim_cur = v;
+    rl.rlim_max = v;
+    return setrlimit(what, &rl);
+}
+
 static int child_main(int wfd, uint64_t seed, size_t n) {
     rec_t r;
     (void)memset(&r, 0, sizeof r);
+    if (set_limit(RLIMIT_CPU, 20) != 0) { return 4; }
     (void)alarm(TIMEOUT_S);
     measure(&r, seed, n);
     return write(wfd, &r, sizeof r) == (ssize_t)sizeof r ? 0 : 3;
@@ -231,6 +241,8 @@ static int parse_sizes(const char *s, size_t *v) {
 
 int main(int argc, char **argv) {
     ctx_t c = {NULL, 0, NULL};
+    if (signal(SIGXFSZ, SIG_IGN) == SIG_ERR || set_limit(RLIMIT_FSIZE, 64 << 20) != 0 || set_limit(RLIMIT_CPU, 600) != 0 ||
+        set_limit(RLIMIT_NOFILE, 256) != 0 || set_limit(RLIMIT_CORE, 0) != 0) { return 2; }
     const char *out = NULL;
     size_t sizes[MAX_SIZES];
     int k = 0;
