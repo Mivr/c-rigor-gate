@@ -1,0 +1,21 @@
+{
+  "bypass": "an untranslated phrase in the default language",
+  "contains": {
+    "build": "no bg translation"
+  },
+  "description": "c_catalog: an empty msgstr in the bg .po is a build error naming the file, the line and the msgid (T105).",
+  "fail": {
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "structure",
+    "mode-divergence",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

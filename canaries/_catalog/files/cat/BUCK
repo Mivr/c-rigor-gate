@@ -1,0 +1,15 @@
+load("@gate//rules:c.bzl", "c_catalog", "c_test")
+
+c_catalog(
+    name = "catalog",
+    pots = ["a.pot", "b.pot"],
+    po = {"bg": ["a.bg.po", "b.bg.po"]},
+    langs = ["bg", "en"],
+    source_lang = "en",
+    symbol = "cv_catalog",
+    runtime = "//i18n:i18n",
+    names = {"hello!": "HELLO_BANG"},
+    visibility = ["PUBLIC"],
+)
+
+c_test(name = "catalog_test", srcs = ["catalog_test.c"], deps = [":catalog", "//i18n:i18n"])

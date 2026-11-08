@@ -1,0 +1,4 @@
+{
+  "control": true,
+  "description": "c_catalog: two pots with one shared msgid, one needed `names` override, bg and en, and a c_test that formats three ids in both languages: PASS, the catalog is an L1 module (T105)"
+}

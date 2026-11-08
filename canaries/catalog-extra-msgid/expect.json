@@ -1,0 +1,21 @@
+{
+  "bypass": "a translation of a phrase the template does not have",
+  "contains": {
+    "build": "not in cat/a.pot"
+  },
+  "description": "c_catalog: a .po msgid that is not in its .pot is a build error (T105).",
+  "fail": {
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "structure",
+    "mode-divergence",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

@@ -6,6 +6,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 
 
+load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
 load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
@@ -103,7 +104,7 @@ _RELEASE_OR_SAN = select({
     "DEFAULT": ["toolchains//:never"],
 })
 
-def _facts(name, kind, srcs, deps, unit = None, system_libs = []):
+def _facts(name, kind, srcs, deps, unit = None, system_libs = [], generated = []):
     for suffix, mode, rule in (("_facts", _RELEASE_ONLY, c_facts), ("_facts_san", _SAN_ONLY, c_san_facts)):
         rule(
             name = name + suffix,
@@ -113,6 +114,7 @@ def _facts(name, kind, srcs, deps, unit = None, system_libs = []):
             srcs = srcs,
             facts_deps = deps,
             system_libs = system_libs,
+            generated = generated,
             target_compatible_with = mode,
         )
 
@@ -151,6 +153,65 @@ def c_library(name, srcs = [], headers = [], deps = [], visibility = [], system_
 
     # What `c_mutants` needs to know about this module: its source files.
     mutsrc(name = name + "_mutsrc", srcs = srcs, headers = headers, visibility = ["PUBLIC"])
+
+def _catalog_label(macro, attr, label):
+    if type(label) != "string" or not label.startswith("//") or label.count(":") != 1:
+        fail("{}: `{}` must be a `//package:name` label string, got {!r}".format(macro, attr, label))
+
+def _catalog_files(macro, attr, items, suffix):
+    if type(items) != "list" or len(items) == 0:
+        fail("{}: `{}` must be a non-empty list of plain file names, got {!r}".format(macro, attr, items))
+    _plain_files(macro, attr, items, suffix)
+
+def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, deps = [], names = {}, visibility = []):
+    """A const message catalog from gettext files (T105): a `c_library` `name` with the header `<package>/<name>.h`.
+
+    `pots`: ordered `.pot` files of the package. `po`: {lang: [`.po` files, one per pot, same order]} for every
+    language of `langs` but `source_lang`. `langs`: ordered language codes (the index is the runtime `lang`).
+    `source_lang`: the language whose text is the msgid itself. `symbol`: the C identifier of the generated
+    `const i18n_catalog_t`; the msgid enum is `<SYMBOL>_<WORDS>`. `runtime`: the i18n library (`//package:name`); its
+    header is `<package>/<name>.h`, a dep of the library. `deps`: the libraries the runtime header includes from (the generated
+    header includes it, and `deps` of a library are not exported), e.g. the core and fmt of the business-apps i18n.
+    `names`: {msgid: WORDS} overrides of the enum name, each only to resolve a real collision (po2c checks).
+    `gate/rigor_lib/po2c.py` fails the build on a bad translation.
+    The sources are generated in buck-out and are not mutated: a catalog is an L1 module.
+    """
+    _catalog_files("c_catalog", "pots", pots, ".pot")
+    _catalog_label("c_catalog", "runtime", runtime)
+    if type(po) != "dict":
+        fail("c_catalog: `po` must be a dict of language -> list of .po files, got {}".format(type(po)))
+    for lang in po:
+        _catalog_files("c_catalog", "po[{}]".format(lang), po[lang], ".po")
+    package = native.package_name()
+    header = (package + "/" if package else "") + name + ".h"
+    runtime_package, _, runtime_name = runtime[2:].partition(":")
+    runtime_header = (runtime_package + "/" if runtime_package else "") + runtime_name + ".h"
+    if type(names) != "dict":
+        fail("c_catalog: `names` must be a dict of msgid -> enum words, got {}".format(type(names)))
+    c_catalog_gen(
+        name = name + "__gen",
+        names = names,
+        stem = name,
+        pots = pots,
+        po = po,
+        langs = langs,
+        source_lang = source_lang,
+        symbol = symbol,
+        header = header,
+        runtime_header = runtime_header,
+    )
+    native.cxx_library(
+        name = name,
+        srcs = [":" + name + "__gen[c]"],
+        # A dict keeps the key under the package: the header is `<package>/<name>.h`, as a list of files would be.
+        exported_headers = {name + ".h": ":" + name + "__gen[h]"},
+        deps = [runtime] + deps,
+        visibility = visibility,
+        compiler_flags = _compile_flags(),
+        link_style = "static",
+    )
+    _facts(name, "c_library", [], [runtime] + deps, generated = [name + ".c"])
+    mutsrc(name = name + "_mutsrc", srcs = [], headers = [], visibility = ["PUBLIC"])
 
 def c_binary(name, srcs = [], deps = []):
     _check("c_binary", srcs, [])

@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Locker {0}"
+msgstr ""
+
+msgid "Open {0} of {1}"
+msgstr ""

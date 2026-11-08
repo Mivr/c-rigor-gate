@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Hello"
+msgstr ""
+
+msgid "Locker {0}"
+msgstr ""
+
+msgid "hello!"
+msgstr ""

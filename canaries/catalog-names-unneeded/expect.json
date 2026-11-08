@@ -1,0 +1,21 @@
+{
+  "bypass": "an enum-name override that renames a msgid whose name collides with nothing",
+  "contains": {
+    "build": "names: entry not needed"
+  },
+  "description": "c_catalog: a `names` entry must resolve a real collision; a free-form rename is a build error (T105).",
+  "fail": {
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "structure",
+    "mode-divergence",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

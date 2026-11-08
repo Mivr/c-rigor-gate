@@ -1,7 +1,7 @@
 """`rigor buckfiles`: a product's build files may only declare targets through the gate macros.
 
 Each `BUCK` is parsed (never run) with Python's `ast`; the Starlark subset used is a Python
-subset. Allowed: one `load("@gate//rules:c.bzl", ...)` naming only the four macros, and top-level
+subset. Allowed: one `load("@gate//rules:c.bzl", ...)` naming only the gate macros, and top-level
 calls to those macros with keyword arguments whose values are string literals or lists of string
 literals. T102: `srcs` and `headers` of `c_library`, `c_binary` and `c_test` may also be `glob([...])`
 (package-local `src/*.c`, `src/*.h`, `src/<name>.c|.h` patterns only) or one string list joined to one such glob by a
@@ -21,10 +21,15 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz")
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 MACRO_KEYWORDS = {"c_library": ("system_libs",)}
+# T105: `c_catalog` has keywords of its own and no `srcs`/`headers`. `pots`, `langs`, `source_lang` and `symbol`
+# are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
+# is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).
+CATALOG_MACRO = "c_catalog"
+CATALOG_KEYWORDS = ("name", "visibility", "deps", "pots", "po", "langs", "source_lang", "symbol", "runtime", "names")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
 # (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the
@@ -57,6 +62,22 @@ def _is_string(node):
 
 def _is_value(node):
     return _is_string(node) or (isinstance(node, ast.List) and all(_is_string(e) for e in node.elts))
+
+
+def _is_string_list(node):
+    return isinstance(node, ast.List) and all(_is_string(e) for e in node.elts)
+
+
+def _is_string_dict(node):
+    """`{"msgid": "WORDS", ...}`: literal string keys and values."""
+    return (isinstance(node, ast.Dict) and all(k is not None and _is_string(k) for k in node.keys)
+            and all(_is_string(v) for v in node.values))
+
+
+def _is_po_dict(node):
+    """`{"bg": ["a.po", ...], ...}`: literal string keys (no `**`), literal lists of strings as values."""
+    return (isinstance(node, ast.Dict) and all(k is not None and _is_string(k) for k in node.keys)
+            and all(_is_string_list(v) for v in node.values))
 
 
 # T102: the one package-local source glob form, only as `srcs` or `headers` of these macros. The pattern is
@@ -116,19 +137,31 @@ def call_findings(path, node, allowed, test_allowed):
     if not isinstance(call.func, ast.Name) or call.func.id not in MACROS:
         return [finding("bad-call", path=path, line=node.lineno)]
     found = []
+    macro = call.func.id
+    known = CATALOG_KEYWORDS if macro == CATALOG_MACRO else KEYWORDS + MACRO_KEYWORDS.get(macro, ())
     if call.args:
         found.append(finding("bad-argument", path=path, line=node.lineno, why="positional"))
     for keyword in call.keywords:
-        if keyword.arg is None or keyword.arg not in KEYWORDS + MACRO_KEYWORDS.get(call.func.id, ()):
+        if keyword.arg is None or keyword.arg not in known:
             found.append(finding("bad-argument", path=path, line=node.lineno, why="keyword"))
-        elif not (_is_value(keyword.value) or (
-                call.func.id in GLOB_MACROS and keyword.arg in GLOB_KEYWORDS and _is_glob_value(keyword.value))):
+        elif not (_is_po_dict(keyword.value) if macro == CATALOG_MACRO and keyword.arg == "po" else
+                  _is_string_dict(keyword.value) if macro == CATALOG_MACRO and keyword.arg == "names" else (
+                _is_value(keyword.value) or (
+                    macro in GLOB_MACROS and keyword.arg in GLOB_KEYWORDS and _is_glob_value(keyword.value)))):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
-        elif keyword.arg == "deps":
-            why = _dep_problem(keyword.value, allowed, test_allowed, call.func.id)
+        elif keyword.arg == "runtime" and not _is_string(keyword.value):
+            found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
+        elif keyword.arg in ("deps", "runtime"):
+            value = keyword.value if keyword.arg == "deps" else ast.List(elts=[keyword.value])
+            why = _dep_problem(value, allowed, test_allowed, macro)
             if why is not None:
                 found.append(finding("bad-argument", path=path, line=node.lineno, why=why))
     return found
+
+
+def _dep_strings(call):
+    """The labels a macro call depends on: `deps`, and the `runtime` of a `c_catalog`."""
+    return _keyword_strings(call, "deps") + (_keyword_strings(call, "runtime") if call.func.id == CATALOG_MACRO else [])
 
 
 def _keyword_strings(call, name):
@@ -178,7 +211,7 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
                 directory = os.path.dirname(path)
                 if node.value.func.id == TEST_MACRO:
                     tests.extend((directory, n) for n in _keyword_strings(node.value, "name"))
-                calls.extend((path, node.lineno, d) for d in _keyword_strings(node.value, "deps")
+                calls.extend((path, node.lineno, d) for d in _dep_strings(node.value)
                              if DEP_LABEL.fullmatch(d))
         else:
             found.append(finding("bad-statement", path=path, line=node.lineno,
