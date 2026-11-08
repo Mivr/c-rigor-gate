@@ -1,0 +1,3 @@
+box.ttf and mkttf.py (T114): written for the c-rigor-gate self-test, no third-party font data.
+Dedicated to the public domain under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/).
+box.ttf is the output of: python3 -I -B mkttf.py box.ttf

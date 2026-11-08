@@ -112,6 +112,8 @@ _MODE_FLAGS = {
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
 }
 
+_SAN_MODES = ["toolchains//:san", "toolchains//:fuzz"]
+
 # The self-test's private copy of the library is never instrumented: two instrumented copies of the
 # same code in one process are an ASan "odr-violation" by construction.
 _MODE_FLAGS_PLAIN = {
@@ -140,7 +142,8 @@ def c_third_party(
         symbols_in_every_mode = False,
         instrument = True,
         public_header_map = None,
-        tree_input = False):
+        tree_input = False,
+        no_sanitize = []):
     """A static library from a pinned tarball.
 
     `files`: the manifest (every `.c`/`.h` below `dirs`). `srcs`, `private_headers`, `public_headers`:
@@ -155,6 +158,9 @@ def c_third_party(
     `tree_input`: the compile actions of the library get the whole unpacked tree as input and `-I` it, for
     sources that include siblings by relative path (`../misc/x.h`). The default (a sub-target per file,
     flat private headers) is what mbedTLS uses.
+    `no_sanitize`: sanitizer checks switched off for THIS library's own objects in the san and fuzz modes, as
+    `-fno-sanitize=<check>` (T114: LVGL gets `["function"]`, see docs/third-party.md). Nothing else is affected:
+    every other check stays on for the library, and the flags never reach a user (they are not exported).
     `config_header`: the gate-owned configuration file in this package, exported as its own name and
     forced through `-D<config_macro>=<name>` on the library and on every user.
     """
@@ -177,6 +183,10 @@ def c_third_party(
     exported[config_header] = config_header
     exported.update(extra_headers)
     flags = ["-D{}=<{}>".format(config_macro, config_header)] + defines
+    mode_flags = _MODE_FLAGS if instrument else _MODE_FLAGS_PLAIN
+    if no_sanitize:
+        off = ["-fno-sanitize={}".format(c) for c in no_sanitize]
+        mode_flags = {m: f + off if m in _SAN_MODES and instrument else f for m, f in mode_flags.items()}
 
     # `<name>_headers`: the public headers and the forced configuration, nothing to link.
     native.cxx_library(
@@ -192,7 +202,7 @@ def c_third_party(
         srcs = [ref(p) for p in srcs] + own_srcs,
         headers = {p.split("/")[-1]: ref(p) for p in private_headers},
         exported_deps = [":" + name + "_headers"],
-        compiler_flags = select(_MODE_FLAGS if instrument else _MODE_FLAGS_PLAIN) + ["-std=c17", "-w"] +
+        compiler_flags = select(mode_flags) + ["-std=c17", "-w"] +
                          (["-I$(location :{})".format(src)] if tree_input else []),
         link_style = "static",
         visibility = ["PUBLIC"],

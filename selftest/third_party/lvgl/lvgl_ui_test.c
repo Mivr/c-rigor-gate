@@ -6,6 +6,7 @@
 #include "ctest/ctest.h"
 #include "lvgl.h"
 #include "lvgl_gate.h"
+#include "selftest/scratch_tp/lv/box.h"
 
 enum { W = 320, H = 240, BTN_X = 20, BTN_Y = 120, BTN_W = 120, BTN_H = 60 };
 
@@ -257,9 +258,48 @@ static void t_tiny_ttf_refuses_garbage_without_leaking(ctest_t *t)
     lv_deinit();
 }
 
+/* T114: a TTF from memory (c_embed of font/box.ttf: three glyphs, public domain) through Tiny TTF's glyph cache,
+ * which calls its create / free / compare callbacks through lv_cache_ops_t, then a label drawn with it. */
+static void t_tiny_ttf_glyphs_and_label_from_memory(ctest_t *t)
+{
+    static const uint32_t known[3] = {0x41u, 0x42u, 0x411u};
+    lv_font_glyph_dsc_t dsc;
+    lv_font_t *font;
+    lv_obj_t *label;
+    size_t i;
+    lv_display_t *disp = start();
+    CHECK(t, disp != NULL);
+    if (disp == NULL) {
+        return;
+    }
+    font = lv_tiny_ttf_create_data(box_ttf, box_ttf_len, 32);
+    CHECK(t, font != NULL);
+    if (font == NULL) {
+        lv_display_delete(disp);
+        lv_deinit();
+        return;
+    }
+    for (i = 0; i < 3; i++) {
+        CHECK(t, lv_font_get_glyph_dsc(font, &dsc, known[i], 0));
+        CHECK(t, dsc.adv_w > 0);
+    }
+    CHECK(t, !lv_font_get_glyph_dsc(font, &dsc, 0x5Au, 0));
+    label = lv_label_create(lv_screen_active());
+    lv_obj_set_style_text_font(label, font, 0);
+    lv_label_set_text(label, "AB\xD0\x91");
+    lv_obj_set_pos(label, 10, 10);
+    lv_test_wait(400);
+    CHECK(t, count_not_white(10, 10, 120, 50) > 100);
+    lv_obj_delete(label);
+    lv_tiny_ttf_destroy(font);
+    lv_display_delete(disp);
+    lv_deinit();
+}
+
 CTEST_SUITE("lvgl", { "draws_a_label_and_a_button", t_draws_a_label_and_a_button },
             { "the_render_is_deterministic", t_the_render_is_deterministic },
             { "a_click_reaches_the_event_callback", t_a_click_reaches_the_event_callback },
             { "everything_deleted_gives_the_memory_back", t_everything_deleted_gives_the_memory_back },
             { "allocation_past_the_pool_fails_cleanly", t_allocation_past_the_pool_fails_cleanly },
-            { "tiny_ttf_refuses_garbage_without_leaking", t_tiny_ttf_refuses_garbage_without_leaking })
+            { "tiny_ttf_refuses_garbage_without_leaking", t_tiny_ttf_refuses_garbage_without_leaking },
+            { "tiny_ttf_glyphs_and_label_from_memory", t_tiny_ttf_glyphs_and_label_from_memory })
