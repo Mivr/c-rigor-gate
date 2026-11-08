@@ -27,6 +27,7 @@ _CLONE_REFUSED = ("--origin", "--separate-git-dir", "--template", "--config", "-
 # `git submodule update` flags that cannot widen what it fetches (T077); anything else (`--remote`, `--recursive`,
 # `--depth N`, `--reference`, ...) keeps the command networked
 _SUBMODULE_FLAGS = ("--init", "--checkout", "-f", "--force", "-q", "--quiet", "--no-fetch")
+_MERGE_VALUE_OPTS = ("-m", "--message", "-F", "--file", "-s", "--strategy", "-X", "--strategy-option")
 LOCAL_SOURCE_ROOT = "/var/tmp/src/"
 _TAINTING = ("cmd-git-config-write", "git-config-override", "cmd-no-verify")
 
@@ -254,6 +255,23 @@ class GitMixin:
                 self.bash(value[1:] if value.startswith("!") else "git " + value, depth + 1, env)
             elif key in _COMMAND_KEYS or key.startswith("pager."):
                 self.bash(value, depth + 1, env)
+
+    def merge_policy(self, argv, found):
+        """T100: a task with `may_merge = ["main"]` may merge exactly those refs in its own worktree: `git merge main`
+        is then the review finding `git-merge-allowed`, not `cmd-git-main`. A merge with an operand the task does not
+        list stays (or becomes) `cmd-git-main`; a task without the key is judged as before."""
+        allowed = self.task.may_merge
+        _, sub, sub_args = cmds.git_parts(argv)
+        if sub != "merge" or not allowed:
+            return found
+        operands = [sub_args[i] for i in cmds.positionals(sub_args, _MERGE_VALUE_OPTS)]
+        operands = [op[len("refs/heads/"):] if op.startswith("refs/heads/") else op for op in operands]
+        rest = [rule for rule in found if rule != "cmd-git-main"]
+        directory = self.git_dir_of(argv)
+        here = directory is not None and self.policy.relative_to_worktree(directory) is not None
+        if operands and here and all(op in allowed for op in operands):
+            return rest + ["git-merge-allowed"]
+        return rest + ["cmd-git-main"] if operands else found
 
     def git_dir_of(self, argv):
         """The directory a git command acts in (cwd plus `-C`), or None when it cannot be known."""

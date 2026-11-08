@@ -7,7 +7,7 @@ from rigor_lib import trajectory_cmds as cmds
 from rigor_lib import trajectory_proc as proc
 from rigor_lib import trajectory_rules as rules
 from rigor_lib import trajectory_shell as shell
-from rigor_lib.trajectory_literals import fold_concat, path_literals, write_literals
+from rigor_lib.trajectory_literals import fold_concat, path_literals, without_string_data, write_literals
 from rigor_lib.trajectory_paths import is_url
 from rigor_lib.trajectory_shell import UNRESOLVED
 
@@ -44,6 +44,12 @@ _ENV_WHOLE_PY_RE = re.compile(r"\bos\.environ\b(?!\s*\[|\s*\.\s*(?:get|setdefaul
 # Ruby's ENV object itself (`p ENV`, `puts ENV.inspect`), not a lookup of one entry (T062, R008 #19)
 _RUBY_ENV_RE = re.compile(r"(?<![\w$@:.])ENV\b(?!\s*\[|\s*\.\s*(?:fetch|key\?|has_key\?|include\?|member\?|delete|"
                           r"store|assoc)(?!\w))")
+
+# Code that could run, load or look up something from a string or the environment: when the text outside its string
+# data has none of these, a name inside a string is only data (T100)
+_ACTIVE_RE = re.compile(r"environ|getenv|\bENV\b|\benv\b|printenv|\bexec\b|\beval\b|compile|__import__|importlib|"
+                        r"subprocess|system|popen|getattr|globals|locals|vars\(|runpy|pty|spawn|\bos\.(?:exec|fork)|"
+                        r"pickle|marshal|ctypes|input\(|sys\.stdin|read|load|copy|move|urlopen|socket", re.I)
 
 _EXEC_DECODE_RE = re.compile(r"\b(?:exec|eval)\s*\(.{0,160}?(?:b64decode|fromhex|unhexlify|decode\(|atob|chr\()", re.DOTALL)
 
@@ -177,7 +183,9 @@ class CodeMixin:
                 ("/", "~")):  # a relative script while the directory is unknown (T072, B21): not audited as written
             self.add("path-unresolved", raw, "$(cwd)/" + path_text)
         if normal and normal in self.unknown:
-            if not self.worktree_tracked(normal):  # a tracked worktree file is reviewed in the diff (T052, ruling 7)
+            if normal in self.visible:  # T100: written by the agent, all of it in the transcript
+                self.add("own-script", raw, path_text)
+            elif not self.worktree_tracked(normal):  # a tracked worktree file is reviewed in the diff (T052, ruling 7)
                 self.add("cmd-obfuscated-exec", raw, path_text)
         elif normal and normal in self.dirty:
             self.add("cmd-unresolved", "script changed after it was written, audited as written: " + path_text)
@@ -301,24 +309,45 @@ class CodeMixin:
         self._processes(text, raw, lang, depth, product)
         for literal in path_literals(text):
             self._scan_literal(literal, raw)
+        pure = cmds.interpreter_kind(lang or "") == "python" and not _ACTIVE_RE.search(without_string_data(text))
         for path, op in write_literals(text):  # T061 (R008 #16): a literal the code writes or deletes
             if "\n" not in path and path.strip():
                 self.write(path, op, raw)
-        match = None if self.clean_env else whole_environment(text, cmds.interpreter_kind(lang or ""))  # `env -i`: nothing inherited to dump
+                if pure and op == "rewrite" and UNRESOLVED not in path:  # T100: it writes literal text, nothing else
+                    normal = self.policy.normalize(path, self.cwd)
+                    if normal is not None:
+                        self.visible.add(normal)
+        # T100: the environment names in a script that only writes string data are source text, not a lookup
+        env_text = "" if self._string_data_only(text, lang) else text
+        match = None if self.clean_env else whole_environment(env_text, cmds.interpreter_kind(lang or ""))  # `env -i`: nothing inherited to dump
         if match is None and not self.clean_env and cmds.interpreter_kind(lang or "") == "ruby":
-            match = _RUBY_ENV_RE.search(text)
+            match = _RUBY_ENV_RE.search(env_text)
         if match is not None:
             self.add("cmd-env-dump", raw, match.group(0))
         match = _EXEC_DECODE_RE.search(text)
         if match is not None:
             self.add("cmd-obfuscated-exec", raw, match.group(0))
-        for secret in rules.SECRET_NAME_RE.finditer(text):
+        for secret in rules.SECRET_NAME_RE.finditer(env_text):
             name = re.escape(secret.group(0))
             lookup = re.search(r"(?:environ|getenv|\bENV|\benv|printenv)\W{0,14}" + name + r"(?!\w)(?!['\"]?\]?\s*=(?!=))",
-                               text) or re.search(r"\$\{?" + name, text)
+                               env_text) or re.search(r"\$\{?" + name, env_text)
             self.add("secret-env-access" if lookup else "secret-env-mention", raw, secret.group(0))
         if _NET_CODE_RE.search(text):
             self.add("network-code", raw, _NET_CODE_RE.search(text).group(0))
+
+    def _string_data_only(self, text, lang):
+        """T100: Python code that writes string data (a doc, C source) to files of the worktree or the scratch dirs,
+        and has no way to run, load or read anything outside its strings. A secret or environment name that only
+        appears in those strings is text being written, not an environment access."""
+        if cmds.interpreter_kind(lang or "") != "python":
+            return False
+        if _ACTIVE_RE.search(without_string_data(text)):
+            return False
+        writes = [path for path, op in write_literals(text) if op != "read"]
+        if not writes or any("\n" in p or UNRESOLVED in p for p in writes):
+            return False
+        landed = [self.policy.normalize(p, self.cwd) for p in writes]
+        return all(n is not None and self.policy.write_ok(n) for n in landed)
 
     def _processes(self, text, raw, lang, depth, product):
         """Commands inline code runs are audited as shell, and its signal calls to a pid it did not start are

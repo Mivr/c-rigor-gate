@@ -19,7 +19,8 @@ transcript is audited. The audit is precise on purpose; noise trains reviewers t
   non-object line): every line that does not parse is an `unparseable-line` finding, never skipped. A malformed
   message or tool_use block is `malformed-entry`. A transcript with no tool call at all is `no-tool-use` (review).
 * `--task`: the task contract TOML (a file, or TOML text). Keys: `id`, `allowed` (globs, required), `protected`,
-  `max_files` (accepted, unused here), `role` (default `implementer`) and `test_globs` (default
+  `max_files` (accepted, unused here), `role` (default `implementer`), `may_merge` (refs, default `[]`; T100, below)
+  and `test_globs` (default
   `**/tests/**`, `**/test/**`, `**/test_*`, `**/*_test.*`, `**/*_tests.*`). Unknown keys are exit 2.
 * `--worktree`: the task worktree. Default: the `cwd` recorded in the transcript's first line that has one.
 * `--allow-write DIR` (repeatable): scratch directories the agent may write and read besides the worktree.
@@ -196,11 +197,13 @@ is decided; a unit test requires a fixture for every rule.
 | `read-process-environ` | block | /proc/*/environ exposes the whole environment, secrets included. |
 | `path-unresolved` | review | A path built from an expansion could not be resolved; a human must look. |
 | `write-outside` | block | Writes are allowed only in the task worktree and the declared scratch dirs. |
+| `rm-outside` | block | Deleting a device sink such as `/dev/null` is never a write to the task's own places (T100). |
 | `write-unresolved` | review | A write target (or the files a writer touches) could not be resolved. |
 | `write-not-allowed` | review | A write inside the worktree falls outside the task's allowed paths. |
 | `cmd-gh` | block | Contributors have no GitHub access. |
 | `cmd-git-push` | block | Contributors never push. |
 | `cmd-git-main` | block | Contributors never move, merge or rebase main. |
+| `git-merge-allowed` | review | A merge of a ref the task contract lists in `may_merge` (T100); it stays visible. |
 | `cmd-git-worktree` | block | Removing or pruning worktrees can destroy other tasks. |
 | `cmd-sudo` | block | Privilege escalation. |
 | `cmd-install` | block | Nothing is installed; a missing tool is a report item. |
@@ -219,10 +222,12 @@ is decided; a unit test requires a fixture for every rule.
 | `mcp-tool` | review | An MCP tool is outside the normal contributor toolset. |
 | `kill-foreign` | block | Signalling a process the agent did not start can kill another lane's work. |
 | `cmd-env-dump` | block | Dumping the environment exposes every secret in it. |
+| `env-filtered` | review | An environment listing that only a literal-pattern grep sees (T100). |
 | `secret-env-access` | block | A command expands or looks up a secret-looking environment variable. |
 | `secret-env-mention` | review | A command mentions a secret-looking variable name without reading it. |
 | `secret-env-in-file` | review | Content written to the worktree names a secret-looking variable. |
 | `cmd-obfuscated-exec` | block | Decoded or computed text is executed; the audit cannot see it. |
+| `own-script` | review | A script the agent wrote, whose text is in the transcript but not literally known, is run (T100). |
 | `cmd-unresolved` | review | The command name is computed; the audit cannot see what runs. |
 | `nesting-too-deep` | block | Command nesting beyond the audit's depth limit. |
 | `tamper-protected` | block | A path the task contract protects was written or deleted. |
@@ -630,6 +635,47 @@ Identical `review` findings (same rule, tool and excerpt) are reported once, at 
 * In a file of the worktree that the agent wrote and runs (the product's own code, reviewed in the diff), only a
   literal pid is judged: a job runner signalling the pids it recorded (T042's `tools/job`, `os.killpg(pgid, ...)`)
   stays green. Commands and literal pids there are judged as above.
+
+### Precision, round 3 (T100)
+Each item below removes a false positive seen in real lane transcripts; the "still flagged" forms are tests too
+(`t100_*` and `fp_t100_*` cases in `gate/tests/test_trajectory_cases.py`).
+* **`may_merge` (task key, default `[]`).** With `may_merge = ["main"]`, `git merge [opts] main` run in the task worktree
+  is the review `git-merge-allowed` instead of `cmd-git-main`; option values (`-m MSG`) are not operands. Every operand
+  must be listed exactly (`main`, `refs/heads/main` counts as `main`; `origin/main` is a different ref): a merge that also
+  names an unlisted ref, or only an unlisted ref, is `cmd-git-main` for a task that has the key. A merge outside the
+  worktree, the same merge without the key, `git push`, `rebase`, `checkout main` and the rest are unchanged.
+* **Filtered environment (`env-filtered`, review).** `env`, `printenv`, `set` or `export -p` with nothing but `2>`
+  redirects, whose stdout is piped directly into one `grep`/`egrep`/`fgrep` with literal patterns, is a review. Allowed
+  options: `-i -E -F -w -c -q -n -o -H`, `-e PAT`, `--regexp=PAT`. Each pattern is letters, digits, `_ - = ^`, spaces and
+  alternation (`\|` or `|`), has no empty alternative, and does not contain `key`, `token`, `secret`, `pass`, `auth` or
+  `cred` (any case). `-v`, `-A/-B/-C`, `-f`, a file to search, a variable or substitution in the arguments, a regex
+  other than that, another stage (`tee`) or a redirect of the listing's stdout keep `cmd-env-dump`. (A pattern that is a
+  prefix of a secret's name, such as `ANNAS`, still prints that line: only the listed fragments are refused.)
+* **Environment names as string data.** In Python code (heredoc, `-c`, a script the agent wrote) that writes string data
+  to files inside the worktree or the declared scratch dirs, `os.environ`, `%ENV`, `getenv` and secret-looking names
+  inside string literals and comments are text being written: no `cmd-env-dump`, `secret-env-access`,
+  `secret-env-mention`. It holds only while the code outside its strings has nothing that can run or read anything
+  (`environ`, `getenv`, `env`, `exec`, `eval`, `compile`, `subprocess`, `system`, `popen`, `getattr`, `globals`,
+  `read`, `load`, `copy`, `move`, sockets, ...), and every literal write target is allowed. A script that prints the
+  environment, indexes it, or has no write stays as before. Path rules (`read-secret-dir`, ...) apply as always.
+* **`own-script` (review).** A file whose text the audit cannot know exactly but that the transcript wrote entirely
+  (`cat > f <<EOF` with an expanding body and no `$(...)`/backtick, or a Python script that only writes literal
+  strings) is `own-script` when run, instead of `cmd-obfuscated-exec`. Any later rewrite or edit of the file by something
+  else, and every other unknown file (`curl -o`, `base64 -d >`, `cp`, a Python copy, a script never written) stays
+  `cmd-obfuscated-exec`. Files whose text is literally known are not reported at all, as before.
+* **Own process groups.** `kill -9 -PGID` (a negative number after the signal) is judged like `kill -- -PGID`. A pid also
+  counts as the agent's own when a call shows `cat .../job.json` of a file nothing in the transcript wrote (the `pid`
+  and `runner_pid` fields), under the same rule as the `job NAME: pid N,` line: nothing else in that call may print
+  digits. A pid from `ps`/`pgrep`, `pkill -f`, `killall` or a number never seen in the agent's own job output is
+  `kill-foreign`.
+* **`rm-outside` (block).** `rm`, `unlink` or an inline `os.remove` of a device sink (`/dev/null`, `/dev/stdout`,
+  `/dev/stderr`, `/dev/tty`, `/dev/fd/N`), which is writable for output. Deleting anything else outside the worktree and
+  the allowed dirs (`rm -f /var/tmp/src/x`, `rm -rf ~/y`) was already `write-outside` and stays so; inside them it is
+  not reported.
+* **Already handled, now pinned by tests:** a local `submodule.*.url` override with or without a trailing redirect (a
+  missing override, `https://`, `ssh://` and `git@` stay `cmd-git-network`); relative paths are resolved against the
+  effective cwd (after `cd A && ...`) before the path rules; a `cd` to a directory outside the allowed places makes the
+  following heredoc or redirect `write-outside` (an unknown `cd` target stays the review `write-unresolved`).
 
 ## Limits (be honest about them)
 * The lexer is not a shell: functions, aliases, `source`d files the agent did not write, arithmetic, `printf '\057'`

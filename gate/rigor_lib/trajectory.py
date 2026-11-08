@@ -29,6 +29,7 @@ _KEPT_RE = re.compile(r"^kept (/var/tmp/rigor-grade\.[A-Za-z0-9]{6})$", re.M)
 # `tools/job run` prints `job NAME: pid N, deadline ...`; `echo $!` prints N; the shell's job line is `[1] N`
 _JOB_PID_RE = re.compile(r"^job (\S+): pid (\d+),", re.M)
 _ECHO_PID_RE = re.compile(r"^(\d+)\s*$", re.M)
+_JOB_JSON_RE = re.compile(r'"(?:runner_)?pid": (\d+)')  # tools/job's job.json (T100)
 _JOB_LINE_RE = re.compile(r"^\[\d+\]\s+(\d+)\s*$", re.M)
 # the canary runner's own last line (canaries/runner.py): `SUMMARY: N canaries (...), ..., wall Ns, jobs N, scratch DIR`
 _CANARY_DIR_RE = re.compile(
@@ -172,6 +173,8 @@ class Audit:
             self.analyzer.own_pids.update(_ECHO_PID_RE.findall(text))
         if facts.background:
             self.analyzer.own_pids.update(_JOB_LINE_RE.findall(text))
+        if facts.job_json:
+            self.analyzer.own_pids.update(_JOB_JSON_RE.findall(text))
 
     def tool_use(self, number, block):
         name, inp = block.get("name"), block.get("input")
