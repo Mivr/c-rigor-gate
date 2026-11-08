@@ -770,3 +770,20 @@ kind = "pure"
 from = "app-root"
 to = "app-ui"
 kind = "pure"
+
+# Lockers rules for the modules merged after T113 (T116), by the dependency column of design.md section 4.2.
+# uikit opens the embedded font (fontdata, the asset module); lvrender patches the scene onto LVGL through scenediff and uikit.
+[[edge]]
+from = "//lib/ui/uikit:uikit"
+to = "//lib/ui/fontdata:liberation_sans"
+kind = "pure"
+
+[[edge]]
+from = "//lib/ui/lvrender:lvrender"
+to = "//lib/ui/scenediff:scenediff"
+kind = "pure"
+
+[[edge]]
+from = "//lib/ui/lvrender:lvrender"
+to = "//lib/ui/uikit:uikit"
+kind = "pure"
