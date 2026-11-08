@@ -4192,3 +4192,205 @@ allow = ["memset"]
 exports = ["kf_click", "kf_click_at", "kf_close", "kf_h", "kf_need", "kf_odd_tokens", "kf_open",
     "kf_open_bare", "kf_open_with", "kf_pixel", "kf_pool", "kf_rgb", "kf_screen", "kf_settle",
     "kf_w", "kf_watch", "kf_x1", "kf_x2", "kf_y1", "kf_y2", "main"]
+
+[module."//apps/lockers/lkadp/synchttp:two_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:audit_map_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:core_log_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:guard_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:net_edge_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:opener_edge_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:scene_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:snapshot_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:args_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:boot_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:bootfail_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:bootmisc_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:e2e_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:e2emap_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:host_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:layout_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:loops_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:net_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:relaywrap_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:snapedge_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:snapshot_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkapp/wire:visit_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:wallclk_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:watch_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:wire"]
+level = "L2"
+impl = ["apps/lockers/lkapp/wire/src/**"]
+allow = []
+
+[module."//apps/lockers/lkrx/boot:boot_refresh_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/boot:boot_round3_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/fold_status:fs_boot3_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/fold_status:fs_refresh_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/fold_status:fs_sync2_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/sync:sy_two_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/fontdata:liberation_sans"]
+level = "L1"
+allow = []
+exports = ["fontdata_liberation_sans", "fontdata_liberation_sans_len"]
+
+[module."//lib/ui/lvrender:lvr_init_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_input_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_leak_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_map_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_notice_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_ops_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_prop_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_surv_map_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_surv_notice_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvr_text_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvrender:lvrender"]
+level = "L2"
+impl = ["lib/ui/lvrender/src/**"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+
+[module."//lib/ui/lvrender:testkit"]
+level = "L1"
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = []
+
+[module."//lib/ui/uikit:uikit_font_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
