@@ -17,7 +17,7 @@ modules = ["//lib/ds/**"]
 modules = ["//lib/rt/**"]
 
 [layer."lib-fmt"]
-modules = ["//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*", "//lib/fmt/httpresp:*",
+modules = ["//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httphdr:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*", "//lib/fmt/httpresp:*",
            "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jpull:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*",
            "//lib/fmt/kv:*", "//lib/fmt/lines:*", "//lib/fmt/mbrtu:*", "//lib/fmt/url:*"]
 
@@ -152,6 +152,17 @@ from = "//lib/fmt/httpresp:httpresp"
 to = "//lib/fmt/httpchunk:httpchunk"
 kind = "pure"
 
+# httphdr holds the header-line and framing logic that httpresp calls.
+[[edge]]
+from = "//lib/fmt/httphdr:httphdr"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpresp:httpresp"
+to = "//lib/fmt/httphdr:httphdr"
+kind = "pure"
+
 # httpdef is header-only (types and constants): every http module in lib-fmt may read it, none may call it.
 [[edge]]
 from = "lib-fmt"
@@ -192,6 +203,28 @@ kind = "pure"
 [[edge]]
 from = "//lib/rt/mbox:mbox"
 to = "//lib/rt/ev:ev"
+kind = "pure"
+
+# rxwire validates and indexes ev's wiring tables (same tier): it reads ev's header types only.
+[[edge]]
+from = "//lib/rt/rxwire:rxwire"
+to = "//lib/rt/ev:ev"
+kind = "data"
+
+# The port fakes are layered on the script engine (pfscript) and the stream/kfs fakes (pfio), all in lib-io.
+[[edge]]
+from = "//lib/io/pfio:pfio"
+to = "//lib/io/pfscript:pfscript"
+kind = "pure"
+
+[[edge]]
+from = "//lib/io/portfakes:portfakes"
+to = "//lib/io/pfscript:pfscript"
+kind = "pure"
+
+[[edge]]
+from = "//lib/io/portfakes:portfakes"
+to = "//lib/io/pfio:pfio"
 kind = "pure"
 
 # lib-io adapters and fakes use core and the port types; lib-sim cores the same.
