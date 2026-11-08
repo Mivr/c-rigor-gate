@@ -923,6 +923,10 @@ exports = ["COMMISSION_NO_ERROR", "COMMISSION_OPEN_FAILED", "commission_abort_me
     "commission_usage_line", "commission_utc_date"]
 
 [module."//apps/lockers/lkapp/commission:commission_main"]
+level = "L1"
+# The commissioning tool owns its arena in the main translation unit (static storage handed to the libraries; design.md 4.1
+# lkapp/commission, L1). Reviewed line: the writable bytes are the whole arena.
+allow_mutable_data = true
 allow = ["__errno_location", "__xstat", "memcpy", "nanosleep", "read", "write"]
 exports = ["main"]
 
