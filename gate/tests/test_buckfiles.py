@@ -68,6 +68,50 @@ class BuckFilesCase(TempDirTestCase):
     def test_comprehension_value(self):
         self.red(LOAD + 'c_library(name = "a", srcs = [x for x in ["a.c"]])\n', "bad-argument")
 
+    def lib(self, **kw):
+        return LOAD + "c_library(name = \"a\", %s)\n" % ", ".join("%s = %s" % i for i in kw.items())
+
+    def test_glob_forms_are_green(self):
+        for value in ('glob(["src/*.c"])', 'glob(["src/*.c", "src/a.c"])', '["a.c"] + glob(["src/*.c"])',
+                      'glob(["src/*.c"]) + ["a.c"]', 'glob(["src/scene_*.c"])'):
+            with self.subTest(value=value):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": self.lib(srcs=value)}, 0), [])
+        self.setUp()
+        self.assertEqual(self.check({"BUCK": self.lib(srcs='glob(["src/*.c"])', headers='["a.h"] + glob(["src/*.h"])')}, 0), [])
+        self.setUp()
+        self.assertEqual(self.check({"BUCK": LOAD + 'c_test(name = "t", srcs = glob(["src/t.c"]))\n'}, 0), [])
+
+    def test_glob_forms_that_stay_red(self):
+        for value in ('glob(["**/*.c"])', 'glob(["src/**/*.c"])', 'glob(["../src/*.c"])', 'glob(["/src/*.c"])',
+                      'glob(["tests/**"])', 'glob(["src/*/*.c"])', 'glob(["src/**.c"])', 'glob(["src/*.cc"])',
+                      'glob(["*.c"])', 'glob(["src/a*b*.c"])', 'glob(["src/.c"])', 'glob(["src/..c"])',
+                      'glob([])', 'glob(["src/*.c"], exclude = ["src/x.c"])', 'glob(include = ["src/*.c"])',
+                      'glob("src/*.c")', 'glob(["src/*.c"], [])', 'glob(PATTERNS)', 'glob(["src/*.c", X])',
+                      'glob(["src/*.c"]) + glob(["src/*.h"])', 'glob(["src/*.c"]) + ["a.c"] + ["b.c"]',
+                      'glob(["src/*.c"]) + X', 'X + glob(["src/*.c"])', '["a.c"] + ["b.c"]',
+                      'glob(["src/*.c"]) + glob(["src/*.c"]) + ["a.c"]', 'glob(["src/*.c"]) * 2', 'glob(["src/*.c"]) + []',
+                      'glob(["src/*.c"]) - ["a.c"]', 'native.glob(["src/*.c"])',
+                      '[f for f in glob(["src/*.c"])]', 'glob(["src/*.c"]) if X else []'):
+            with self.subTest(value=value):
+                self.setUp()
+                self.red(self.lib(srcs=value), "bad-argument")
+
+    def test_glob_only_in_srcs_and_headers_of_the_three_macros(self):
+        for text in (self.lib(deps='glob(["src/*.c"])'), self.lib(name='glob(["src/*.c"])'),
+                     self.lib(visibility='glob(["src/*.c"])'), self.lib(system_libs='glob(["src/*.c"])'),
+                     LOAD + 'c_test(name = "t", deps = glob(["src/*.c"]))\n',
+                     LOADS + 'c_fuzz(name = "f", srcs = glob(["src/*.c"]))\n',
+                     LOAD + 'c_library(name = "a", srcs = glob(["tests/**"]))\n'):
+            with self.subTest(text=text):
+                self.setUp()
+                self.red(text, "bad-argument")
+
+    def test_glob_pattern_files_are_not_named_files_of_the_layout(self):
+        from rigor_lib import product_layout
+        text = self.lib(srcs='glob(["src/*.c"])', headers='["a.h"] + glob(["src/*.h"])')
+        self.assertEqual(product_layout.named_files([("BUCK", text)], {"src/a.c", "a.h", "x"}), {"a.h"})
+
     def test_concatenation_value(self):
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"] + ["b.c"])\n', "bad-argument")
 

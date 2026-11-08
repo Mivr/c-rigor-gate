@@ -172,6 +172,8 @@ FAIL gates with their error rules, and `N later gates` means a gate the bypass s
 | `bool-function` (control) | R002 F3: a tested `bool` function is mutated, not skipped as macro-made | none: PASS | none |
 | `buck-assign` | BUCK assignment | `buckfiles`: bad-statement | mutants, witness-tests, mutants-witness |
 | `buck-concat` | BUCK concatenation | `buckfiles`: bad-argument | mutants, witness-tests, mutants-witness |
+| `buck-glob-bad` | glob beyond the accepted forms (`**`, `..`, `exclude`, glob in deps, a test glob, glob + glob) | `buckfiles`: bad-argument; `build`: query-failed | 9 later gates |
+| `buck-glob-ok` (control) | T102: the two accepted `src/` glob forms (`srcs = glob(["src/*.c"])`, `headers = ["core.h"] + glob(["src/*.h"])`) | none: PASS | none |
 | `buck-v2` | hidden build file | `buckfiles`: forbidden-file; `build`: build-failed | 9 later gates |
 | `buckconfig-nested` | hidden .buckconfig | `build`: build-failed | 7 later gates |
 | `buckconfig-plain` | hidden .buckconfig | `build`: build-failed; `suppressions`: forbidden-pattern | 7 later gates |

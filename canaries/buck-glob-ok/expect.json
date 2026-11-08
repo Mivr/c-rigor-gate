@@ -1,0 +1,4 @@
+{
+  "control": true,
+  "description": "T102 green control: `srcs = glob([\"src/*.c\"])` and `headers = [\"core.h\"] + glob([\"src/*.h\"])` are the two accepted package-local glob forms; the module builds, tests, mutates and takes the witness."
+}
