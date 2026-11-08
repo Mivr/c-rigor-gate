@@ -21,7 +21,7 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog")
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog", "c_embed")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps")}
@@ -30,6 +30,10 @@ MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps")}
 # is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).
 CATALOG_MACRO = "c_catalog"
 CATALOG_KEYWORDS = ("name", "visibility", "deps", "pots", "po", "langs", "source_lang", "symbol", "runtime", "names")
+# T112: `c_embed` has keywords of its own and no `srcs`/`headers`/`deps`: `src` and `symbol` are strings, `max_bytes` is an
+# int literal (the only int a macro takes; no bool, no expression), `visibility` the usual list.
+EMBED_MACRO = "c_embed"
+EMBED_KEYWORDS = ("name", "visibility", "src", "symbol", "max_bytes")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
 # (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the
@@ -66,6 +70,10 @@ def _is_value(node):
 
 def _is_string_list(node):
     return isinstance(node, ast.List) and all(_is_string(e) for e in node.elts)
+
+
+def _is_int(node):
+    return isinstance(node, ast.Constant) and type(node.value) is int
 
 
 def _is_string_dict(node):
@@ -132,22 +140,41 @@ def load_findings(path, node):
     return [finding("bad-load", path=path, line=node.lineno)]
 
 
+def _known_keywords(macro):
+    if macro == CATALOG_MACRO:
+        return CATALOG_KEYWORDS
+    if macro == EMBED_MACRO:
+        return EMBED_KEYWORDS
+    return KEYWORDS + MACRO_KEYWORDS.get(macro, ())
+
+
+def _value_ok(macro, keyword):
+    """Is the literal form of this keyword's value one the macro takes?"""
+    arg, node = keyword.arg, keyword.value
+    if macro == CATALOG_MACRO and arg == "po":
+        return _is_po_dict(node)
+    if macro == CATALOG_MACRO and arg == "names":
+        return _is_string_dict(node)
+    if macro == EMBED_MACRO and arg == "max_bytes":
+        return _is_int(node)
+    if macro == EMBED_MACRO and arg in ("src", "symbol"):
+        return _is_string(node)
+    return _is_value(node) or (macro in GLOB_MACROS and arg in GLOB_KEYWORDS and _is_glob_value(node))
+
+
 def call_findings(path, node, allowed, test_allowed):
     call = node.value
     if not isinstance(call.func, ast.Name) or call.func.id not in MACROS:
         return [finding("bad-call", path=path, line=node.lineno)]
     found = []
     macro = call.func.id
-    known = CATALOG_KEYWORDS if macro == CATALOG_MACRO else KEYWORDS + MACRO_KEYWORDS.get(macro, ())
+    known = _known_keywords(macro)
     if call.args:
         found.append(finding("bad-argument", path=path, line=node.lineno, why="positional"))
     for keyword in call.keywords:
         if keyword.arg is None or keyword.arg not in known:
             found.append(finding("bad-argument", path=path, line=node.lineno, why="keyword"))
-        elif not (_is_po_dict(keyword.value) if macro == CATALOG_MACRO and keyword.arg == "po" else
-                  _is_string_dict(keyword.value) if macro == CATALOG_MACRO and keyword.arg == "names" else (
-                _is_value(keyword.value) or (
-                    macro in GLOB_MACROS and keyword.arg in GLOB_KEYWORDS and _is_glob_value(keyword.value)))):
+        elif not _value_ok(macro, keyword):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
         elif keyword.arg == "runtime" and not _is_string(keyword.value):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))

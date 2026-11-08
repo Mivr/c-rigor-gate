@@ -8,6 +8,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
+load("@gate//rules:embed.bzl", "c_embed_gen")
 load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
 load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
@@ -228,6 +229,50 @@ def c_catalog(name, pots, po, langs, source_lang, symbol, runtime, deps = [], na
         link_style = "static",
     )
     _facts(name, "c_library", [], [runtime] + deps, generated = [name + ".c"])
+    mutsrc(name = name + "_mutsrc", srcs = [], headers = [], visibility = ["PUBLIC"])
+
+_EMBED_MAX = 16 * 1024 * 1024
+_EMBED_SYMBOL_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+
+def _embed_check(src, symbol, max_bytes):
+    if type(symbol) != "string" or symbol == "" or symbol[0] == "_" or symbol[0].isdigit() or any([c not in _EMBED_SYMBOL_CHARS for c in symbol.elems()]):
+        fail("c_embed: `symbol` must be a C identifier ([A-Za-z][A-Za-z0-9_]*), got {!r}".format(symbol))
+    if type(src) != "string":
+        fail("c_embed: `src` must be one file name of the package, got {}: {!r}".format(type(src), src))
+    if src == "" or src.startswith("/") or src.startswith("@") or ":" in src or src.endswith("/") or ".." in src.split("/") or "*" in src:
+        fail("c_embed: `src` must be one plain file of the package (no label, glob, `..` or absolute path), got {!r}".format(src))
+    if type(max_bytes) != "int" or max_bytes < 1 or max_bytes > _EMBED_MAX:
+        fail("c_embed: `max_bytes` must be an int from 1 to {} (16 MiB), got {!r}".format(_EMBED_MAX, max_bytes))
+
+def c_embed(name, src, symbol, max_bytes = 1048576, visibility = []):
+    """A binary file as a const byte array (T112): a `c_library` `name` with the header `<package>/<name>.h`.
+
+    The header declares `extern const unsigned char <symbol>[];` and `extern const size_t <symbol>_len;`. The bytes are
+    exactly the file (no terminator) and `<symbol>_len` is its size. `src`: one checked-in file of the package, 1 to
+    `max_bytes` bytes (at most 16 MiB). The C text is generated at build time by `gate/rigor_lib/bin2c.py`; nothing
+    generated is checked in. A bad `symbol`, `src` or `max_bytes` is an analysis error, an empty or oversized file a
+    build error. Licensing: an embedded asset needs its license file next to it in the package.
+    """
+    _embed_check(src, symbol, max_bytes)
+    package = native.package_name()
+    header = (package + "/" if package else "") + name + ".h"
+    c_embed_gen(
+        name = name + "__gen",
+        stem = name,
+        src = src,
+        symbol = symbol,
+        max_bytes = max_bytes,
+        header = header,
+    )
+    native.cxx_library(
+        name = name,
+        srcs = [":" + name + "__gen[c]"],
+        exported_headers = {name + ".h": ":" + name + "__gen[h]"},
+        visibility = visibility,
+        compiler_flags = _compile_flags(),
+        link_style = "static",
+    )
+    _facts(name, "c_library", [], [], generated = [name + ".c"])
     mutsrc(name = name + "_mutsrc", srcs = [], headers = [], visibility = ["PUBLIC"])
 
 def c_binary(name, srcs = [], deps = []):
