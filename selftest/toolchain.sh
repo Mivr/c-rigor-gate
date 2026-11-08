@@ -9,7 +9,7 @@ B=(tools/buck2)
 PLAT=toolchains//:linux_
 scratch="selftest/scratch"
 out="$(mktemp -d)"
-cleanup() { rm -rf "$scratch" "$out"; }
+cleanup() { rm -rf "$scratch" "selftest/scratch_x11" "$out"; }
 trap cleanup EXIT
 
 step=0
@@ -105,6 +105,44 @@ reject "must be a list of plain file names, got dict" c_library 'srcs = ["a.c"],
 reject "entries must be plain strings, got tuple" c_library 'srcs = ["a.c"], headers = [("a.h", ["-Wno-error"])]'
 reject "must be plain file names ending in .h" c_library 'srcs = ["a.c"], headers = ["a.hpp"]'
 rm -rf "$scratch"
+
+begin "X11 from the pinned sysroot (T117): system_libs = [\"X11\"] links libX11 and a test calls XOpenDisplay(\":99999\") in release and san"
+xs="selftest/scratch_x11"
+mkdir -p "$xs/ok" "$xs/bare"
+cp selftest/x11_product/xlink.h selftest/x11_product/xlink.c selftest/x11_product/xlink_test.c "$xs/ok/"
+cp selftest/x11_product/xlink.h selftest/x11_product/xlink.c selftest/x11_product/xlink_test.c "$xs/bare/"
+sed -i 's|scratch_x11/ok|scratch_x11/bare|' "$xs/bare/xlink_test.c"
+cat > "$xs/ok/BUCK" <<'BUCK'
+load("@gate//rules:c.bzl", "c_library", "c_test")
+c_library(name = "xlink", srcs = ["xlink.c"], headers = ["xlink.h"], system_libs = ["X11"])
+c_test(name = "xlink_test", srcs = ["xlink_test.c"], deps = [":xlink"])
+BUCK
+cat > "$xs/bare/BUCK" <<'BUCK'
+load("@gate//rules:c.bzl", "c_library", "c_test")
+c_library(name = "xlink", srcs = ["xlink.c"], headers = ["xlink.h"])
+c_test(name = "xlink_test", srcs = ["xlink_test.c"], deps = [":xlink"])
+BUCK
+for m in release san; do
+  must_pass build --target-platforms ${PLAT}$m //selftest/scratch_x11/ok:xlink_test_results --show-output
+  res="$(awk '/xlink_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+  [ -f "$res" ] || fail "$CUR: no results file ($m)" "$out/$step.log"
+  python3 -I -c '
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1])]
+tests, summary = rows[:-1], rows[-1]["summary"]
+assert sorted(r["id"] for r in tests) == ["x11/keysym", "x11/no_display"], tests
+assert all(r["status"] == "pass" and r["asserts"] > 0 for r in tests), tests
+assert summary == {"total": 2, "passed": 2}, summary
+' "$res" || fail "$CUR: results are not two passing tests ($m)"
+  echo "  $m: x11/no_display and x11/keysym pass"
+done
+
+begin "X11 is opt-in: the same code without system_libs does not link (undefined XOpenDisplay), in release and san"
+for m in release san; do
+  must_fail_with "undefined symbol: XOpenDisplay" build --target-platforms ${PLAT}$m //selftest/scratch_x11/bare:xlink_test
+  echo "  $m: bare link fails on XOpenDisplay"
+done
+rm -rf "$xs"
 
 begin "remote: compile, link and test all execute on RE (fresh, uncached sources)"
 mkdir -p "$scratch"

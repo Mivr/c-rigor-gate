@@ -31,9 +31,9 @@ MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps")}
 CATALOG_MACRO = "c_catalog"
 CATALOG_KEYWORDS = ("name", "visibility", "deps", "pots", "po", "langs", "source_lang", "symbol", "runtime", "names")
 # T112: `c_embed` has keywords of its own and no `srcs`/`headers`/`deps`: `src` and `symbol` are strings, `max_bytes` is an
-# int literal (the only int a macro takes; no bool, no expression), `visibility` the usual list.
+# int literal (the only int a macro takes; no bool, no expression) and `nul` a True/False literal (the only bool), `visibility` the usual list.
 EMBED_MACRO = "c_embed"
-EMBED_KEYWORDS = ("name", "visibility", "src", "symbol", "max_bytes")
+EMBED_KEYWORDS = ("name", "visibility", "src", "symbol", "max_bytes", "nul")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
 # (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the
@@ -74,6 +74,10 @@ def _is_string_list(node):
 
 def _is_int(node):
     return isinstance(node, ast.Constant) and type(node.value) is int
+
+
+def _is_bool(node):
+    return isinstance(node, ast.Constant) and type(node.value) is bool
 
 
 def _is_string_dict(node):
@@ -157,6 +161,8 @@ def _value_ok(macro, keyword):
         return _is_string_dict(node)
     if macro == EMBED_MACRO and arg == "max_bytes":
         return _is_int(node)
+    if macro == EMBED_MACRO and arg == "nul":
+        return _is_bool(node)
     if macro == EMBED_MACRO and arg in ("src", "symbol"):
         return _is_string(node)
     return _is_value(node) or (macro in GLOB_MACROS and arg in GLOB_KEYWORDS and _is_glob_value(node))

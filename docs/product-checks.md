@@ -104,7 +104,7 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 ### System libraries (T095)
 `c_library(..., system_libs = ["pthread"])` is the only way for a product to link a sysroot library (a
 `#pragma comment(lib, ...)` is a `pragma` finding, correctly). The rules accept bare names from an allow-list, `pthread`
-only, and the macro fails analysis for any other name, a duplicate, or a non-list. A `c_test`, `c_binary` and `c_fuzz`
+and `X11` (T117, below), and the macro fails analysis for any other name, a duplicate, or a non-list. A `c_test`, `c_binary` and `c_fuzz`
 take no such argument (`rigor buckfiles`: `bad-argument`). The cross-check is the symbols gate's: `cscan.py` writes the
 facts key `system_libs` (sorted; empty for every kind but `c_library`; required in every product facts file, absent
 only from gate-owned third-party facts), the policy lists the same set under the module's table, and **both
@@ -113,6 +113,20 @@ library outside the allow-list is exit 2. `facts_data.SYSTEM_LIBS` and `rules/c.
 unit test pins it. The module still needs `allow = ["pthread_create", ...]` for the symbols it references (libpthread
 symbols are not in the libc export list of the pinned glibc 2.31 sysroot), and the global deny list still applies.
 Canaries `system-lib-not-allowed` and `system-lib-not-declared` pin both directions end to end.
+
+**`X11` (T117).** `system_libs = ["X11"]` links libX11 and its link-time closure from the pinned sysroot: the exported
+post-link flags are `-lX11 -lxcb -lXau -lXdmcp`, in that order (the sysroot also holds libbsd and libmd, libXdmcp's
+runtime dependencies, as members; nothing links them explicitly). The same flags apply in every mode of the platform
+set (release, san, cov and fuzz are all `linux_*`; `selftest/mutate.sh` and the new fixtures exercise release and san);
+there is no other platform. It is opt-in per target: a library without `system_libs = ["X11"]` gets no X flag, so
+calling an X symbol fails at link time (`undefined symbol: XOpenDisplay`; canary step in `selftest/mutate.sh`). The
+policy rules are the pthread ones: the module's policy table repeats `system_libs = ["X11"]` and lists every X symbol it
+references in `allow` (X symbols are not in the glibc export list), e.g. `allow = ["XOpenDisplay", "XCloseDisplay"]`.
+The headers `X11/Xlib.h`, `X11/Xutil.h`, `X11/keysym.h`, `X11/keysymdef.h`, `X11/XKBlib.h`, `X11/X.h`, `X11/Xdefs.h`,
+`X11/Xfuncproto.h`, `X11/Xosdefs.h` and `X11/extensions/{XKB,XKBstr}.h` are in the sysroot; any other X header is not.
+libX11 allocates internally (it calls malloc): the product rules (S2, no `malloc` outside the arena module) apply to
+product code only, never to a sysroot library, so a product's code must not call `malloc` for X either, and X objects
+(`Display *`, `XImage`) are owned by the library.
 
 ### Exports policy (T033, R003 G7, backlog B32)
 `exports` is the gate-owned allowed set of **defined external symbols** of a module, all units together (a test or

@@ -119,10 +119,14 @@ def _facts(name, kind, srcs, deps, unit = None, system_libs = [], generated = []
             target_compatible_with = mode,
         )
 
-# The sysroot libraries a `c_library` may name (T095). `pthread` only: glibc 2.31 keeps pthread_create and
-# friends in libpthread. A new entry needs a product that needs it, and `facts_data.SYSTEM_LIBS` (the same list,
-# checked against this one by a test) so the policy gate knows it.
-_SYSTEM_LIBS = ["pthread"]
+# The sysroot libraries a `c_library` may name (T095). `pthread`: glibc 2.31 keeps pthread_create and friends in
+# libpthread. `X11` (T117): libX11 for a Linux X11 shell. A new entry needs a product that needs it, and
+# `facts_data.SYSTEM_LIBS` (the same list, checked against this one by a test) so the policy gate knows it.
+_SYSTEM_LIBS = ["pthread", "X11"]
+
+# What a name links, in link order. libX11 is a shared object whose own dependencies (libxcb, then libXau and
+# libXdmcp) must follow it on the line; all of them are members of the pinned sysroot (toolchains/BUCK).
+_SYSTEM_LIB_FLAGS = {"X11": ["-lX11", "-lxcb", "-lXau", "-lXdmcp"]}
 
 def _system_libs(macro, libs):
     if type(libs) != "list":
@@ -132,7 +136,10 @@ def _system_libs(macro, libs):
             fail("{}: `system_libs` entries must be one of {}, got {!r}".format(macro, _SYSTEM_LIBS, lib))
     if len(set(libs)) != len(libs):
         fail("{}: `system_libs` has duplicates: {}".format(macro, libs))
-    return ["-l" + lib for lib in libs]
+    flags = []
+    for lib in libs:
+        flags += _SYSTEM_LIB_FLAGS.get(lib, ["-l" + lib])
+    return flags
 
 def _exported_deps(deps, exported_deps):
     if type(exported_deps) != "list":
@@ -244,16 +251,20 @@ def _embed_check(src, symbol, max_bytes):
     if type(max_bytes) != "int" or max_bytes < 1 or max_bytes > _EMBED_MAX:
         fail("c_embed: `max_bytes` must be an int from 1 to {} (16 MiB), got {!r}".format(_EMBED_MAX, max_bytes))
 
-def c_embed(name, src, symbol, max_bytes = 1048576, visibility = []):
+def c_embed(name, src, symbol, max_bytes = 1048576, nul = False, visibility = []):
     """A binary file as a const byte array (T112): a `c_library` `name` with the header `<package>/<name>.h`.
 
     The header declares `extern const unsigned char <symbol>[];` and `extern const size_t <symbol>_len;`. The bytes are
-    exactly the file (no terminator) and `<symbol>_len` is its size. `src`: one checked-in file of the package, 1 to
+    exactly the file and `<symbol>_len` is its size. By default there is no terminator; with `nul = True` one 0x00 byte
+    follows the data inside the array (`<symbol>[<symbol>_len] == 0`, so it is a C string) and `<symbol>_len` still does
+    NOT count it. `src`: one checked-in file of the package, 1 to
     `max_bytes` bytes (at most 16 MiB). The C text is generated at build time by `gate/rigor_lib/bin2c.py`; nothing
     generated is checked in. A bad `symbol`, `src` or `max_bytes` is an analysis error, an empty or oversized file a
     build error. Licensing: an embedded asset needs its license file next to it in the package.
     """
     _embed_check(src, symbol, max_bytes)
+    if type(nul) != "bool":
+        fail("c_embed: `nul` must be True or False, got {!r}".format(nul))
     package = native.package_name()
     header = (package + "/" if package else "") + name + ".h"
     c_embed_gen(
@@ -262,6 +273,7 @@ def c_embed(name, src, symbol, max_bytes = 1048576, visibility = []):
         src = src,
         symbol = symbol,
         max_bytes = max_bytes,
+        nul = nul,
         header = header,
     )
     native.cxx_library(

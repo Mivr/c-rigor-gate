@@ -27,6 +27,8 @@ def _embed_impl(ctx: AnalysisContext) -> list[Provider]:
         "--out-c",
         source.as_output(),
     )
+    if ctx.attrs.nul:
+        cmd.add("--nul")
     ctx.actions.run(cmd, category = "bin2c")
     return [DefaultInfo(
         default_output = source,
@@ -41,6 +43,7 @@ c_embed_gen = rule(
     attrs = {
         "header": attrs.string(),
         "max_bytes": attrs.int(),
+        "nul": attrs.bool(default = False),
         "src": attrs.source(),
         "stem": attrs.string(),
         "symbol": attrs.string(),

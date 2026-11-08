@@ -162,6 +162,9 @@ selftests = ["product_checks"]
 glob = "selftest/toolchain.sh"
 selftests = ["toolchain"]
 [[rule]]
+glob = "selftest/x11_product/**"
+selftests = ["toolchain"]
+[[rule]]
 glob = "selftest/ctest.sh"
 selftests = ["ctest"]
 [[rule]]

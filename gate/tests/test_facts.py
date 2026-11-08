@@ -326,6 +326,11 @@ class SystemLibsCase(TempDirTestCase):
     def test_declared_and_allowed_is_green(self):
         self.assertEqual(self.sym(["pthread"], 'system_libs = ["pthread"]\n', 0), [])
 
+    def test_x11_is_an_allow_listed_library(self):
+        self.assertEqual(self.sym(["X11"], 'system_libs = ["X11"]\n', 0), [])
+        self.assertEqual(self.sym(["X11"], "", 1), [("system-lib-not-allowed", "X11")])
+        self.assertEqual(self.sym([], 'system_libs = ["X11"]\n', 1), [("system-lib-not-declared", "X11")])
+
     def test_neither_is_green(self):
         self.assertEqual(self.sym([], "", 0), [])
 
