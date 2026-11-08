@@ -17,9 +17,14 @@ modules = ["//lib/ds/**"]
 modules = ["//lib/rt/**"]
 
 [layer."lib-fmt"]
-modules = ["//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httphdr:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*", "//lib/fmt/httpresp:*",
-           "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jpull:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*",
-           "//lib/fmt/kv:*", "//lib/fmt/lines:*", "//lib/fmt/mbrtu:*", "//lib/fmt/url:*"]
+modules = ["//lib/fmt/fp:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httphdr:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*",
+           "//lib/fmt/httpresp:*", "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jkidx:*", "//lib/fmt/jnum:*", "//lib/fmt/jpull:*",
+           "//lib/fmt/jstr:*", "//lib/fmt/jtok:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*", "//lib/fmt/kv:*", "//lib/fmt/lines:*",
+           "//lib/fmt/mbrtu:*", "//lib/fmt/pct:*", "//lib/fmt/url:*"]
+
+# Non-test libraries only tests may use (test kits over a module's fake or real seam).
+[testkit]
+modules = ["//lib/io/posix_fs:testkit", "//lib/io/posix_net:testkit", "//lib/sim/simnet:testkit"]
 
 [layer."lib-io"]
 modules = ["//lib/io/**"]
@@ -248,3 +253,108 @@ kind = "pure"
 from = "//lib/sim/trace:trace"
 to = "//lib/rt/ev:ev"
 kind = "data"
+
+# jdom (the DOM) is built on the four scanners split out of it (number, string, key index, tokens).
+[[edge]]
+from = "//lib/fmt/jdom:jdom"
+to = "//lib/fmt/jnum:jnum"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jdom:jdom"
+to = "//lib/fmt/jstr:jstr"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jdom:jdom"
+to = "//lib/fmt/jkidx:jkidx"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jdom:jdom"
+to = "//lib/fmt/jtok:jtok"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jnum:jnum"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jkidx:jkidx"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jstr:jstr"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jstr:jstr"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+# pct is url's percent coding, split out of it (core types and url's constants).
+[[edge]]
+from = "//lib/fmt/pct:pct"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/pct:pct"
+to = "//lib/fmt/url:url"
+kind = "pure"
+
+# rx is the reactor: it drives ev and elog, and the wiring (rxwire validates, rxindex indexes) with a ring for its queue.
+[[edge]]
+from = "//lib/rt/rx:rx"
+to = "//lib/rt/ev:ev"
+kind = "pure"
+
+[[edge]]
+from = "//lib/rt/rx:rx"
+to = "//lib/rt/elog:elog"
+kind = "pure"
+
+[[edge]]
+from = "//lib/rt/rx:rx"
+to = "//lib/rt/rxwire:rxwire"
+kind = "pure"
+
+[[edge]]
+from = "//lib/rt/rx:rx"
+to = "//lib/rt/rxindex:rxindex"
+kind = "pure"
+
+[[edge]]
+from = "//lib/rt/rxindex:rxindex"
+to = "//lib/rt/rxwire:rxwire"
+kind = "pure"
+
+[[edge]]
+from = "//lib/rt/rxindex:rxindex"
+to = "//lib/rt/ev:ev"
+kind = "data"
+
+# simnet runs on the sim clock and rng and keeps its stream buffers in rings.
+[[edge]]
+from = "//lib/sim/simnet:simnet"
+to = "//lib/sim/simclock:simclock"
+kind = "pure"
+
+[[edge]]
+from = "//lib/sim/simnet:simnet"
+to = "//lib/sim/simrng:simrng"
+kind = "pure"
+
+[[edge]]
+from = "//lib/sim/simnet:simnet"
+to = "//lib/ds/ring:ring"
+kind = "pure"
+
+# simfs keeps its entry table in simfs_tab.
+[[edge]]
+from = "//lib/sim/simfs:simfs"
+to = "//lib/sim/simfs_tab:simfs_tab"
+kind = "pure"
