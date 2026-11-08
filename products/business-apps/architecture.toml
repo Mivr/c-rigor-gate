@@ -3,7 +3,7 @@
 # Layers with no module yet are empty; they are listed so the order is fixed before the first module lands.
 [layers]
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
-         "app-domain", "app-safety", "app-reactors", "app-adapters", "app-ui", "app-root"]
+         "app-domain", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -18,14 +18,30 @@ modules = ["//lib/rt/**"]
 
 [layer."lib-fmt"]
 modules = ["//lib/fmt/fp:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httphdr:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*",
-           "//lib/fmt/httpresp:*", "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jkidx:*", "//lib/fmt/jnum:*", "//lib/fmt/jpull:*",
+           "//lib/fmt/httpresp:*", "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jkidx:*", "//lib/fmt/jlex:*", "//lib/fmt/jnum:*", "//lib/fmt/jpnum:*", "//lib/fmt/jpull:*",
            "//lib/fmt/jstr:*", "//lib/fmt/jtok:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*", "//lib/fmt/kv:*", "//lib/fmt/lines:*",
            "//lib/fmt/mbrtu:*", "//lib/fmt/pct:*", "//lib/fmt/url:*"]
 
 # Non-test libraries only tests may use (test kits over a module's fake or real seam).
 [testkit]
 modules = ["//lib/io/posix_fs:testkit", "//lib/io/posix_net:testkit", "//lib/io/tls_stream:testkit", "//lib/sim/simnet:testkit",
-           "//lib/ui/scenediff:testkit"]
+           "//lib/ui/scenediff:testkit",
+           "//apps/lockers/lk/auditplan:testkit",
+           "//apps/lockers/lk/book:testkit",
+           "//apps/lockers/lk/booktext:testkit",
+           "//apps/lockers/lk/codesfile:testkit",
+           "//apps/lockers/lk/inventory:testkit",
+           "//apps/lockers/lk/report:testkit",
+           "//apps/lockers/lk/selftest:testkit",
+           "//apps/lockers/lk/syncbody:testkit",
+           "//apps/lockers/lkadp/auditfile:testkit",
+           "//apps/lockers/lkadp/bookfile:testkit",
+           "//apps/lockers/lkadp/inventoryfile:testkit",
+           "//apps/lockers/lkapp/winpolicy:testkit",
+           "//apps/lockers/lkrx/catalog:testkit",
+           "//apps/lockers/lkrx/vstate:testkit",
+           "//apps/lockers/lksim/board:testkit",
+           "//apps/lockers/relay/opener_sm:testkit"]
 
 [layer."lib-io"]
 modules = ["//lib/io/**"]
@@ -36,23 +52,29 @@ modules = ["//lib/ui/**"]
 [layer."lib-sim"]
 modules = ["//lib/sim/**"]
 
+# Lockers layers (T104), bottom to top, one directory family each (design.md section 4.1): lk = domain, relay = safety
+# core, lkrx = folds, reactors and view, lkadp = adapters, lksim = their simulation, lkui = scene builders and
+# catalogs, lkapp = composition root and shells. A dependency on a higher layer is an upward-edge whatever the edges say.
 [layer."app-domain"]
 modules = ["//apps/lockers/lk/**"]
 
 [layer."app-safety"]
-modules = []
+modules = ["//apps/lockers/relay/**"]
 
 [layer."app-reactors"]
-modules = []
+modules = ["//apps/lockers/lkrx/**"]
 
 [layer."app-adapters"]
-modules = []
+modules = ["//apps/lockers/lkadp/**"]
+
+[layer."app-sim"]
+modules = ["//apps/lockers/lksim/**"]
 
 [layer."app-ui"]
-modules = []
+modules = ["//apps/lockers/lkui/**"]
 
 [layer."app-root"]
-modules = []
+modules = ["//apps/lockers/lkapp/**"]
 
 # Library edges. The most permissive matching edge wins, so the layer edges below are the whole story for their kinds.
 [[edge]]
@@ -421,4 +443,194 @@ kind = "pure"
 [[edge]]
 from = "app-domain"
 to = "//apps/lockers/lk/types:types"
+kind = "pure"
+
+# jlex (the JSON lexer) is split out of jpull and uses jpnum, the number scanner split out of it (same tier).
+[[edge]]
+from = "//lib/fmt/jpull:jpull"
+to = "//lib/fmt/jlex:jlex"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jlex:jlex"
+to = "//lib/fmt/jpnum:jpnum"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jlex:jlex"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jpull:jpull"
+to = "//lib/fmt/jpnum:jpnum"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jlex:jlex"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jpnum:jpnum"
+to = "lib-base"
+kind = "pure"
+
+# Lockers layer rules (T104), by the dependency column of design.md section 4.1. Rules between layers, so a new module in
+# a layer is judged without a new edge; only a library the design names for one module is an edge of that module.
+# Direction: lk (domain) < relay (safety core) < lkrx (reactors) < lkadp (adapters) < lksim < lkui < lkapp (root), above
+# every lib layer in `order`, so lib/** can never depend on apps/** (an upward-edge, declared or not).
+# Inside a layer every module may use every other: the graph is acyclic by Buck2, and the column is checked per
+# module against the BUCK deps by review, not by this file.
+[[edge]]
+from = "app-domain"
+to = "app-domain"
+kind = "pure"
+
+# lk/outcome is a dtab table (the one domain module that reaches lib-rt).
+[[edge]]
+from = "//apps/lockers/lk/outcome:outcome"
+to = "//lib/rt/dtab:dtab"
+kind = "pure"
+
+# The safety core: pulse, frame, frame_is_safe, opener_sm. Frames are built over mbrtu; the types are lk/types.
+[[edge]]
+from = "app-safety"
+to = "app-safety"
+kind = "pure"
+
+[[edge]]
+from = "app-safety"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "app-safety"
+to = "//apps/lockers/lk/types:types"
+kind = "pure"
+
+[[edge]]
+from = "app-safety"
+to = "//lib/fmt/mbrtu:mbrtu"
+kind = "pure"
+
+# Reactors and view: the domain, the event/wiring runtime (lib-rt) and the JSON writer for the canonical ViewState.
+[[edge]]
+from = "app-reactors"
+to = "app-reactors"
+kind = "pure"
+
+[[edge]]
+from = "app-reactors"
+to = "app-domain"
+kind = "pure"
+
+[[edge]]
+from = "app-reactors"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "app-reactors"
+to = "lib-ds"
+kind = "pure"
+
+[[edge]]
+from = "app-reactors"
+to = "lib-rt"
+kind = "pure"
+
+[[edge]]
+from = "app-reactors"
+to = "//lib/fmt/jw:jw"
+kind = "pure"
+
+# Adapters implement the ports (lib/base/ports, header-only data) over the domain; the file adapters need no other lib.
+[[edge]]
+from = "app-adapters"
+to = "app-adapters"
+kind = "pure"
+
+[[edge]]
+from = "app-adapters"
+to = "app-domain"
+kind = "pure"
+
+[[edge]]
+from = "app-adapters"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "app-adapters"
+to = "lib-ds"
+kind = "pure"
+
+# The board simulation runs on the simulation libs, mbrtu and the port types; it uses no lockers module.
+[[edge]]
+from = "app-sim"
+to = "app-sim"
+kind = "pure"
+
+[[edge]]
+from = "app-sim"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "app-sim"
+to = "lib-sim"
+kind = "pure"
+
+[[edge]]
+from = "app-sim"
+to = "//lib/fmt/mbrtu:mbrtu"
+kind = "pure"
+
+# UI: scene builders and generated catalogs read the view state (reactors), the domain types, the scene library and the
+# i18n runtime and formatter.
+[[edge]]
+from = "app-ui"
+to = "app-ui"
+kind = "pure"
+
+[[edge]]
+from = "app-ui"
+to = "app-reactors"
+kind = "pure"
+
+[[edge]]
+from = "app-ui"
+to = "app-domain"
+kind = "pure"
+
+[[edge]]
+from = "app-ui"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "app-ui"
+to = "lib-ui"
+kind = "pure"
+
+[[edge]]
+from = "app-ui"
+to = "//lib/fmt/i18n:i18n"
+kind = "pure"
+
+# Composition root and shells: pure decisions over the domain types so far; wiring edges are added with the modules.
+[[edge]]
+from = "app-root"
+to = "app-root"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "app-domain"
+kind = "pure"
+
+[[edge]]
+from = "app-root"
+to = "lib-base"
 kind = "pure"
