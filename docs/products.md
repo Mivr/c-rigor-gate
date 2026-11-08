@@ -25,7 +25,7 @@ another. It becomes the exported post-link flag `-lpthread`, resolved in the pin
 line (never a host path), so every binary, test and mutant binary that links the library gets it; `c_mutants` reads the
 flags from the library's link info (the module and its `deps`) and puts them after the objects and archives of its raw
 links. The facts record `system_libs` per module. Details and findings: [product-checks.md](product-checks.md#system-libraries-t095).
-Self-test: `selftest/system_libs.sh` (a real pthread in release and san, a binary, and the mutants of two modules).
+Self-test: the last steps of `selftest/mutate.sh` (a real pthread in release and san, a binary, and the mutants of two modules).
 
 ## G25: the allocation deny list (P002)
 `business-apps` adds, to annas-c's standard `[global]` deny list, every way to get memory outside a caller-supplied arena
