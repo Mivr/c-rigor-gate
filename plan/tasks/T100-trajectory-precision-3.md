@@ -34,7 +34,7 @@ true positive next to it (listed per item). The audit's point is no noise withou
 ```sh
 python3 -I -B gate/tests/run_parallel.py
 selftest/product_checks.sh
-selftest/trajectory_real.sh
+gate/tests/trajectory_real.sh   # unset TRAJECTORY_REAL_DIR skips; the orchestrator runs it on staged real transcripts
 ```
 
 ## Rules
