@@ -13,6 +13,9 @@ def _label_text(label: Label, name: str | None = None) -> str:
     return "{}//{}:{}".format(cell, label.package, name if name else label.name)
 
 def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
+    # Headers of the gate's own third-party libraries are not the product's text (T108), like the toolchain's:
+    # their materialised tree is `.../art/<gate cell>/third_party/...` (the same fragment `c_structure` uses).
+    vendor = "/art/{}/third_party/".format(ctx.attrs._ctest.label.cell)
     subs = ctx.attrs.unit[DefaultInfo].sub_targets
     every = subs["objects"][DefaultInfo].sub_targets if "objects" in subs else {}
 
@@ -37,6 +40,8 @@ def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
         "--nm",
         ctx.attrs._nm[RunInfo],
         ctx.attrs._roots[RunInfo],
+        "--vendor-marker",
+        vendor,
         "--out",
         facts.as_output(),
     )
@@ -68,6 +73,8 @@ def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
         "--cscan",
         ctx.attrs._scanner,
         ctx.attrs._roots[RunInfo],
+        "--vendor-marker",
+        vendor,
         "--out",
         calls.as_output(),
     )
@@ -86,6 +93,7 @@ _ATTRS = {
     "srcs": attrs.list(attrs.string(), default = []),
     "system_libs": attrs.list(attrs.string(), default = []),
     "unit": attrs.dep(),
+    "_ctest": attrs.dep(default = "gate//ctest:ctest"),
     "_modes_scanner": attrs.source(default = "gate//gate/rigor_lib:facts_modes.py"),
     "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
     "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
