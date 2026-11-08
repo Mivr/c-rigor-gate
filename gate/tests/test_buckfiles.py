@@ -387,3 +387,97 @@ class TestOnlyLabelCase(TempDirTestCase):
         self.assertExit(outcome, 1)
         self.assertEqual([(f["rule"], f["why"], f["line"]) for f in read_json(self.tmp / "o.json")["findings"]],
                          [("bad-argument", "test-only-dep", 3)])
+
+
+CAT_LOAD = 'load("@gate//rules:c.bzl", "c_catalog", "c_library", "c_test")\n'
+CAT = ('c_catalog(name = "cat", pots = ["a.pot", "b.pot"], po = {"bg": ["a.bg.po", "b.bg.po"]}, langs = ["bg", "en"],\n'
+       '          source_lang = "en", symbol = "lk_cat", runtime = "//lib/fmt/i18n:i18n", visibility = ["PUBLIC"])\n')
+
+
+class CatalogCase(TempDirTestCase):
+    """T105: `c_catalog` takes literal strings, lists of strings and one dict of lists of strings, nothing else."""
+
+    def check(self, source, code, files=None):
+        root = self.sub("product")
+        (root / "BUCK").write_text(source, encoding="utf-8")
+        for rel, data in (files or {}).items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(data, encoding="utf-8")
+        self.assertExit(run_rigor(["buckfiles", "--root", root, "--out", self.tmp / "out.json"]), code)
+        return sorted((f["rule"], f.get("why")) for f in read_json(self.tmp / "out.json")["findings"])
+
+    def bad(self, source, why="value"):
+        self.assertEqual(self.check(source, 1), [("bad-argument", why)])
+
+    def test_the_literal_call_is_accepted(self):
+        self.assertEqual(self.check(CAT_LOAD + CAT, 0), [])
+
+    def test_more_languages_and_an_empty_dict_are_literal_too(self):
+        self.assertEqual(self.check(CAT_LOAD + CAT.replace('{"bg": ["a.bg.po", "b.bg.po"]}', '{"bg": ["a"], "de": []}'), 0), [])
+        self.setUp()
+        self.assertEqual(self.check(CAT_LOAD + CAT.replace('{"bg": ["a.bg.po", "b.bg.po"]}', "{}"), 0), [])
+
+    def test_a_same_package_runtime_is_accepted(self):
+        self.assertEqual(self.check(CAT_LOAD + CAT.replace("//lib/fmt/i18n:i18n", ":i18n"), 0), [])
+
+    def test_the_load_may_name_it(self):
+        self.assertEqual(self.check('load("@gate//rules:c.bzl", "c_catalog")\n', 0), [])
+
+    def test_a_computed_po_is_refused(self):
+        for po in ('{"bg": glob(["*.po"])}', '{"bg": ["a"] + ["b"]}', '{k: ["a"]}', '{"bg": "a.po"}', '{**x}',
+                   '{"bg": [x]}', '{"bg": ["a"], "bg" + "x": []}', 'dict(bg = ["a"])', '["a"]', '"a"'):
+            with self.subTest(po=po):
+                self.setUp()
+                self.bad(CAT_LOAD + CAT.replace('{"bg": ["a.bg.po", "b.bg.po"]}', po))
+
+    def test_a_dict_is_refused_anywhere_else(self):
+        for key in ("pots", "langs", "symbol"):
+            with self.subTest(key=key):
+                self.setUp()
+                self.bad(CAT_LOAD + 'c_catalog(name = "cat", %s = {"a": ["b"]})\n' % key)
+        self.setUp()
+        self.bad(CAT_LOAD + 'c_library(name = "a", srcs = {"a": ["b"]})\n')
+
+    def test_computed_strings_are_refused(self):
+        for key, value in (("pots", 'glob(["*.pot"])'), ("pots", '["a"] + ["b"]'), ("langs", "x"), ("symbol", '"a" + "b"'),
+                           ("source_lang", "None"), ("symbol", "1"), ("pots", "[1]")):
+            with self.subTest(key=key, value=value):
+                self.setUp()
+                self.bad(CAT_LOAD + 'c_catalog(name = "cat", %s = %s)\n' % (key, value))
+
+    def test_runtime_must_be_one_string(self):
+        for value in ('["//a:b"]', "x", '"a" + "b"'):
+            with self.subTest(value=value):
+                self.setUp()
+                self.bad(CAT_LOAD + CAT.replace('"//lib/fmt/i18n:i18n"', value))
+
+    def test_runtime_is_a_dep(self):
+        for label in ("gate//third_party/curl:curl", "//a:b:c", "root//a:b", "@x//a:b", ""):
+            with self.subTest(label=label):
+                self.setUp()
+                self.bad(CAT_LOAD + CAT.replace("//lib/fmt/i18n:i18n", label), "dep")
+
+    def test_runtime_may_not_be_a_test(self):
+        source = CAT_LOAD + CAT.replace("//lib/fmt/i18n:i18n", ":t") + 'c_test(name = "t", srcs = ["t.c"])\n'
+        self.assertEqual(self.check(source, 1), [("bad-argument", "test-target")])
+
+    def test_only_its_own_keywords(self):
+        for extra in ('srcs = ["a.c"]', 'headers = ["a.h"]', 'deps = [":x"]', 'compiler_flags = ["-w"]', "**{}", 'system_libs = ["pthread"]'):
+            with self.subTest(extra=extra):
+                self.setUp()
+                self.bad(CAT_LOAD + 'c_catalog(name = "cat", %s)\n' % extra, "keyword")
+
+    def test_its_keywords_are_not_the_others(self):
+        for key in ("pots", "po", "langs", "source_lang", "symbol", "runtime"):
+            with self.subTest(key=key):
+                self.setUp()
+                self.bad(CAT_LOAD + 'c_library(name = "a", %s = ["x"])\n' % key, "keyword")
+
+    def test_positional_is_refused(self):
+        self.bad(CAT_LOAD + 'c_catalog("cat")\n', "positional")
+
+    def test_native_and_raw_calls_are_still_refused(self):
+        self.assertEqual(self.check(CAT_LOAD + 'native.cxx_library(name = "a")\n', 1), [("bad-call", None)])
+
+    def test_named_catalog_files_are_not_a_finding_here(self):
+        self.assertEqual(self.check(CAT_LOAD + CAT, 0, files={"a.pot": "", "a.bg.po": ""}), [])

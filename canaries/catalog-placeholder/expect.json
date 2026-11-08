@@ -1,0 +1,21 @@
+{
+  "bypass": "a translation that loses a placeholder",
+  "contains": {
+    "build": "bg uses placeholders []"
+  },
+  "description": "c_catalog: a bg template without the source's {0} is a build error (T105).",
+  "fail": {
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "structure",
+    "mode-divergence",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

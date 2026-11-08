@@ -1,0 +1,2 @@
+id = "canary"
+allowed = ["core/**", "util/**", "i18n/**", "cat/**"]

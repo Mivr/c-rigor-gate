@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Locker {0}"
+msgstr "Shkafche {0}"
+
+msgid "Open {0} of {1}"
+msgstr "Otvoreno {1} ot {0}"

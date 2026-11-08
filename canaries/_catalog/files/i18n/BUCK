@@ -1,0 +1,8 @@
+load("@gate//rules:c.bzl", "c_library")
+
+c_library(
+    name = "i18n",
+    srcs = ["i18n.c"],
+    headers = ["i18n.h"],
+    visibility = ["PUBLIC"],
+)

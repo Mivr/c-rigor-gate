@@ -1,0 +1,21 @@
+{
+  "bypass": "two phrases that would share one enum constant",
+  "contains": {
+    "build": "also the name of msgid"
+  },
+  "description": "c_catalog: msgids that differ only in case or punctuation collide on the enum name: a build error, no silent suffix (T105).",
+  "fail": {
+    "build": [
+      "build-failed"
+    ]
+  },
+  "not_run": [
+    "semantic-suppressions",
+    "symbols",
+    "structure",
+    "mode-divergence",
+    "tests-release",
+    "tests-san",
+    "mutants"
+  ]
+}

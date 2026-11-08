@@ -15,3 +15,9 @@ export_file(
     name = "structure_scan.py",
     visibility = ["PUBLIC"],
 )
+
+# The catalog generator of `c_catalog` (T105, rules/catalog.bzl): gettext files -> a const C catalog.
+export_file(
+    name = "po2c.py",
+    visibility = ["PUBLIC"],
+)
