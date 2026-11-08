@@ -105,6 +105,12 @@ What role `test-author` changes in `rigor grade` (T041):
   implementer task may write and a witness replaces. `impl_map(policy, levels)` returns them with an
   `impl-missing` finding for every L2+ module without them (error at L3 to L5, info at L2). A value that
   is not a non-empty list of distinct valid globs is exit 2.
+  A product's BUCK files are test surface and are not replaced, so a witness that chooses its own file names
+  (`src/dump.c` where the head has `src/scene_dump.c`) would be built against an explicit `srcs` list naming files
+  that do not exist. That is why `buckfiles` accepts the package-local source glob (`srcs = glob(["src/*.c"])`,
+  `headers = ["fp.h"] + glob(["src/*.h"])`, exact forms in `docs/grade.md`): the BUCK file stays
+  witness-agnostic, and the impl globs of `policy.toml` cover whatever the witness writes under `src/`. The
+  structure, mutants and witness steps read sources with `uquery` (which expands the glob), not from BUCK text.
 - **test surface** of module m: every product path in m's package, and in the package of every `c_test`
   that lists m directly in `deps`, that is in no module's impl paths (the header, the BUCK file, the tests
   and the kits). The packages are the directories of the layout's targets; a path belongs to the deepest

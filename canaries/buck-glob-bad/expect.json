@@ -1,0 +1,14 @@
+{
+  "bypass": "BUCK glob beyond the accepted forms",
+  "description": "`**`, `..`, `exclude`, a glob in deps, a test glob and glob + glob: only the two package-local `src/` forms are accepted.",
+  "fail": {
+    "buckfiles": [
+      "bad-argument"
+    ]
+  },
+  "not_run": [
+    "mutants",
+    "witness-tests",
+    "mutants-witness"
+  ]
+}

@@ -3,7 +3,9 @@
 Each `BUCK` is parsed (never run) with Python's `ast`; the Starlark subset used is a Python
 subset. Allowed: one `load("@gate//rules:c.bzl", ...)` naming only the four macros, and top-level
 calls to those macros with keyword arguments whose values are string literals or lists of string
-literals. Everything else is a finding, and so is any other file that Buck2 would read as build
+literals. T102: `srcs` and `headers` of `c_library`, `c_binary` and `c_test` may also be `glob([...])`
+(package-local `src/*.c`, `src/*.h`, `src/<name>.c|.h` patterns only) or one string list joined to one such glob by a
+single `+`. Everything else is a finding, and so is any other file that Buck2 would read as build
 configuration (`.bzl`, `BUCK.v2` which takes priority over `BUCK`, `PACKAGE`, `.buckconfig`, ...).
 """
 
@@ -57,6 +59,32 @@ def _is_value(node):
     return _is_string(node) or (isinstance(node, ast.List) and all(_is_string(e) for e in node.elts))
 
 
+# T102: the one package-local source glob form, only as `srcs` or `headers` of these macros. The pattern is
+# `src/<stem>.c|.h` where the stem is a plain name or has exactly one `*` (`src/*.c`, `src/scene_*.c`, `src/a.c`).
+GLOB_MACROS = ("c_library", "c_binary", "c_test")
+GLOB_KEYWORDS = ("srcs", "headers")
+GLOB_PATTERN = re.compile(r"src/(?=[^*]*\*?[^*]*\.[ch]\Z)[A-Za-z0-9_+*-]+\.[ch]")
+
+
+def _is_glob(node):
+    """`glob([<patterns>])`: a literal non-empty list of allowed patterns, no other argument."""
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "glob"
+            and not node.keywords and len(node.args) == 1 and isinstance(node.args[0], ast.List)
+            and len(node.args[0].elts) >= 1
+            and all(_is_string(e) and GLOB_PATTERN.fullmatch(e.value) for e in node.args[0].elts))
+
+
+def _is_glob_value(node):
+    """`glob([...])`, or one literal string list and one glob joined by a single `+`, in either order."""
+    if _is_glob(node):
+        return True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        pair = (node.left, node.right)
+        return (any(isinstance(n, ast.List) and n.elts and all(_is_string(e) for e in n.elts) for n in pair)
+                and any(_is_glob(n) for n in pair))
+    return False
+
+
 def _dep_problem(node, allowed, test_allowed, macro):
     """None, or the `why` of the finding for a `deps` value."""
     if not isinstance(node, ast.List):
@@ -93,7 +121,8 @@ def call_findings(path, node, allowed, test_allowed):
     for keyword in call.keywords:
         if keyword.arg is None or keyword.arg not in KEYWORDS + MACRO_KEYWORDS.get(call.func.id, ()):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="keyword"))
-        elif not _is_value(keyword.value):
+        elif not (_is_value(keyword.value) or (
+                call.func.id in GLOB_MACROS and keyword.arg in GLOB_KEYWORDS and _is_glob_value(keyword.value))):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
         elif keyword.arg == "deps":
             why = _dep_problem(keyword.value, allowed, test_allowed, call.func.id)
