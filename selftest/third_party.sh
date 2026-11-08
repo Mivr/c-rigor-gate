@@ -191,6 +191,21 @@ def lvresults(path, expected):
         print("  not all passed: %s" % (failed or summary)); sys.exit(1)
     print("  %d tests passed" % len(want))
 
+def fncanary(path, mode):
+    """T114: the product canary. mode `pass`: the mismatched call runs in release; `caught`: san aborts it."""
+    rows = [json.loads(l) for l in open(path)]
+    tests = {r["id"]: r for r in rows if "id" in r}
+    if set(tests) != {"fnc/mismatched_call_is_caught"}:
+        print("  tests differ: %s" % sorted(tests)); sys.exit(1)
+    r = tests["fnc/mismatched_call_is_caught"]
+    if mode == "pass":
+        ok = r["status"] == "pass" and r["asserts"] >= 1
+    else:
+        ok = (r["status"] != "pass" and "incorrect function type" in r["reason"] and "fnc_twice" in r["reason"])
+    if not ok:
+        print("  canary (%s) wrong: %s" % (mode, r)); sys.exit(1)
+    print("  canary %s: %s" % (mode, r["status"]))
+
 def results(path, expected):
     rows = [json.loads(l) for l in open(path)]
     summary = [r for r in rows if "summary" in r]
@@ -212,7 +227,8 @@ def bfrules(result, expected):
 COMMANDS = {"bfrules": lambda a: bfrules(a[0], a[1:]), "collect": lambda a: collect(*a), "policy": lambda a: policy(a[0], a[1:]),
             "mkfd": lambda a: mkfd(a[0], a[1], a[2:]), "check": lambda a: check(a[0], a[1:]),
             "exports": lambda a: exports(a[0]), "results": lambda a: results(a[0], a[1:]),
-            "lvexports": lambda a: lvexports(a[0]), "lvresults": lambda a: lvresults(a[0], a[1:])}
+            "lvexports": lambda a: lvexports(a[0]), "lvresults": lambda a: lvresults(a[0], a[1:]),
+            "fncanary": lambda a: fncanary(a[0], a[1])}
 COMMANDS[sys.argv[1]](sys.argv[2:])
 PY
 tool() { python3 -I "$out/tool.py" "$@"; }
@@ -294,12 +310,14 @@ EOF
 
 # T107: the LVGL throwaway package. Product build files only call the gate macros.
 mkdir -p "$scratch/lv"
-cp selftest/third_party/lvgl/lvgl_ui_test.c "$scratch/lv/"
+cp selftest/third_party/lvgl/lvgl_ui_test.c selftest/third_party/lvgl/fn_canary.c selftest/third_party/lvgl/font/box.ttf "$scratch/lv/"
 LVGL='gate//third_party/lvgl:lvgl'
 cat > "$scratch/lv/BUCK" <<EOF
-load("@gate//rules:c.bzl", "c_library", "c_test")
+load("@gate//rules:c.bzl", "c_embed", "c_library", "c_test")
 
-c_test(name = "lvgl_ui_test", srcs = ["lvgl_ui_test.c"], deps = ["$LVGL"])
+c_embed(name = "box", src = "box.ttf", symbol = "box_ttf", max_bytes = 4096)
+c_test(name = "fn_canary", srcs = ["fn_canary.c"])
+c_test(name = "lvgl_ui_test", srcs = ["lvgl_ui_test.c"], deps = ["$LVGL", ":box"])
 c_library(name = "lvt_ok", srcs = ["lvt_ok.c"], deps = ["$LVGL"])
 c_library(name = "lvt_noperm", srcs = ["lvt_noperm.c"], deps = ["$LVGL"])
 c_library(name = "lvt_collide", srcs = ["lvt_collide.c"], deps = ["$LVGL"])
@@ -569,7 +587,7 @@ begin "build (release): LVGL, its computed exports, and the facts of the LVGL th
 must_pass build //third_party/lvgl:lvgl //third_party/lvgl:lvgl_symbols \
   //selftest/scratch_tp/lv:lvt_ok_facts //selftest/scratch_tp/lv:lvt_noperm_facts //selftest/scratch_tp/lv:lvt_collide_facts \
   //selftest/scratch_tp/lv:lvt_prefix_facts //selftest/scratch_tp/lv:lvgl_ui_test_facts \
-  //selftest/scratch_tp/lv:lvt_undef_facts //selftest/scratch_tp/lv:lvt_redef_facts //ctest:ctest_facts --show-output
+  //selftest/scratch_tp/lv:box_facts //selftest/scratch_tp/lv:lvt_undef_facts //selftest/scratch_tp/lv:lvt_redef_facts //ctest:ctest_facts --show-output
 tool collect "$out/$step.log" "$out/facts" || fail "$CUR: collect"
 lvlib="$(awk '/third_party\/lvgl:lvgl / && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
 echo "  library: $lvlib ($(stat -c %s "$lvlib") bytes)"
@@ -591,13 +609,13 @@ tool policy "$out/lv_ok.toml" "lv/lvt_ok;lvgl=1"
 gate_case lv_nolib $SYM 1 "$out/lv_ok.toml" lvt_ok -- "missing-dep-facts://third_party/lvgl:lvgl" "undeclared-symbol:lv_init"
 begin "green (LVGL): a permitted module and the throwaway test pass the symbols gate"
 gate_case lv_ok $SYM 0 "$out/lv_ok.toml" lvt_ok lvgl --
-tool policy "$out/lv_test.toml" "lv/lvgl_ui_test;lvgl=1"
-gate_case lv_test $SYM 0 "$out/lv_test.toml" lvgl_ui_test lvgl --
+tool policy "$out/lv_test.toml" "lv/lvgl_ui_test;lvgl=1" "lv/box"
+gate_case lv_test $SYM 0 "$out/lv_test.toml" lvgl_ui_test lvgl box --
 # T108: the headers of a gate-owned third-party library are not the product's text, like the toolchain's: the
 # macros and include guards lvgl.h defines (_LV_CONCAT, _PARA, _LV_EVENT_LAST, __LV_UEFI_*_H__, ...) are no findings.
 begin "green (LVGL): a product unit including lvgl.h, and the throwaway test, pass semantic-suppressions"
 gate_case lv_ok $SEM 0 "$out/lv_ok.toml" lvt_ok lvgl --
-gate_case lv_test $SEM 0 "$out/lv_test.toml" lvgl_ui_test lvgl --
+gate_case lv_test $SEM 0 "$out/lv_test.toml" lvgl_ui_test lvgl box --
 # ... but a product cannot undefine or redefine what the library defines, or a reserved name, behind its back.
 begin "red (LVGL): a product #undef LV_COLOR_DEPTH, or #undef + #define _LV_CONCAT, after lvgl.h is reserved-macro"
 tool policy "$out/lv_undef.toml" "lv/lvt_undef;lvgl=1"
@@ -607,7 +625,7 @@ gate_case lv_redef $SEM 1 "$out/lv_redef.toml" lvt_redef lvgl -- reserved-macro 
 
 LV_TESTS=(draws_a_label_and_a_button the_render_is_deterministic a_click_reaches_the_event_callback
           everything_deleted_gives_the_memory_back allocation_past_the_pool_fails_cleanly
-          tiny_ttf_refuses_garbage_without_leaking)
+          tiny_ttf_refuses_garbage_without_leaking tiny_ttf_glyphs_and_label_from_memory)
 begin "LVGL: a pool handed in, a memory display, a click, no leak, clean failure past the pool (release)"
 must_pass build //selftest/scratch_tp/lv:lvgl_ui_test_results --show-output
 res="$(awk '/lvgl_ui_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
@@ -619,6 +637,17 @@ must_pass build --target-platforms toolchains//:linux_san //selftest/scratch_tp/
 res="$(awk '/lvgl_ui_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
 tool lvresults "$res" "${LV_TESTS[@]}" || fail "$CUR: results" "$res"
 took
+
+# T114: LVGL is built with -fno-sanitize=function (its callbacks are cast to void*-typed pointers); product code is
+# not. A product that calls through a pointer of the wrong function type is still caught in san.
+begin "LVGL canary: product code calling through a mismatched function pointer type runs in release (valid test)"
+must_pass build //selftest/scratch_tp/lv:fn_canary_results --show-output
+res="$(awk '/fn_canary_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+tool fncanary "$res" pass || fail "$CUR: results" "$res"
+begin "LVGL canary: ... and is still caught by -fsanitize=function in san (product code is not exempt)"
+must_pass build --target-platforms toolchains//:linux_san //selftest/scratch_tp/lv:fn_canary_results --show-output
+res="$(awk '/fn_canary_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+tool fncanary "$res" caught || fail "$CUR: results" "$res"
 
 # Actions executed (not cached) by this run. A warm second run executes 0 in every build that succeeds; the
 # builds that must fail (wrong sha256, manifest mismatch, a header that is not visible) are never cached.

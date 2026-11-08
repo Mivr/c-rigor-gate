@@ -146,6 +146,9 @@ c_third_party(
     public_headers = [],
     public_header_map = _PUBLIC,
     tree_input = True,
+    # T114: LVGL calls its own typed callbacks through `void *`-typed pointers (lv_cache.c:179, installed at
+    # lv_tiny_ttf.c:444); the clang function-type check cannot pass them. Only that check, only this library.
+    no_sanitize = ["function"],
     config_header = "gate_lv_conf.h",
     config_macro = "LV_CONF_PATH",
     extra_headers = {"lvgl_gate.h": "lvgl_gate.h"},
