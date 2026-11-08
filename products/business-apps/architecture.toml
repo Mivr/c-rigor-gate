@@ -24,19 +24,20 @@ modules = ["//lib/fmt/fp:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//
 
 # Non-test libraries only tests may use (test kits over a module's fake or real seam).
 [testkit]
-modules = ["//lib/io/posix_fs:testkit", "//lib/io/posix_net:testkit", "//lib/sim/simnet:testkit"]
+modules = ["//lib/io/posix_fs:testkit", "//lib/io/posix_net:testkit", "//lib/io/tls_stream:testkit", "//lib/sim/simnet:testkit",
+           "//lib/ui/scenediff:testkit"]
 
 [layer."lib-io"]
 modules = ["//lib/io/**"]
 
 [layer."lib-ui"]
-modules = []
+modules = ["//lib/ui/**"]
 
 [layer."lib-sim"]
 modules = ["//lib/sim/**"]
 
 [layer."app-domain"]
-modules = []
+modules = ["//apps/lockers/lk/**"]
 
 [layer."app-safety"]
 modules = []
@@ -357,4 +358,67 @@ kind = "pure"
 [[edge]]
 from = "//lib/sim/simfs:simfs"
 to = "//lib/sim/simfs_tab:simfs_tab"
+kind = "pure"
+
+# tls_stream runs its transport over posix_net's public API (same tier).
+[[edge]]
+from = "//lib/io/tls_stream:tls_stream"
+to = "//lib/io/posix_net:posix_net"
+kind = "pure"
+
+# simhost schedules tasks in a dset and runs on the sim clock and rng (same tier).
+[[edge]]
+from = "//lib/sim/simhost:simhost"
+to = "//lib/ds/dset:dset"
+kind = "pure"
+
+[[edge]]
+from = "//lib/sim/simhost:simhost"
+to = "//lib/sim/simclock:simclock"
+kind = "pure"
+
+[[edge]]
+from = "//lib/sim/simhost:simhost"
+to = "//lib/sim/simrng:simrng"
+kind = "pure"
+
+# lib-ui: scene is the base of the tier (a11y and scenediff read and diff scenes); the tier uses core, fmt and i18n only.
+[[edge]]
+from = "lib-ui"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "lib-ui"
+to = "//lib/fmt/i18n:i18n"
+kind = "pure"
+
+[[edge]]
+from = "lib-ui"
+to = "//lib/ui/scene:scene"
+kind = "pure"
+
+# Lockers domain (apps/lockers/lk/**) rules, not one-off edges. A domain module may use the base, data-structure and
+# format libraries and lk/types, the shared types of the layer. Nothing else is declared, so a domain module that
+# reaches lib-rt, lib-io, lib-ui or lib-sim (or another lk module before the design's dependency column is added
+# here) is an undeclared-edge. lib/** can never depend on apps/**: app-domain is above every lib layer in `order`
+# (an upward-edge, declared or not).
+[[edge]]
+from = "app-domain"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "app-domain"
+to = "lib-ds"
+kind = "pure"
+
+[[edge]]
+from = "app-domain"
+to = "lib-fmt"
+kind = "pure"
+
+[[edge]]
+from = "app-domain"
+to = "//apps/lockers/lk/types:types"
 kind = "pure"
