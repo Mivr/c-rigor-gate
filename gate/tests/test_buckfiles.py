@@ -303,9 +303,9 @@ class ThirdPartyLabelCase(TempDirTestCase):
         (root / "BUCK").write_text(LOAD + 'c_library(name = "a")\n', encoding="utf-8")
         self.assertExit(run_rigor(["buckfiles", "--root", root, "--allowed-labels", link]), 2)
 
-    def test_the_default_list_is_the_gate_s_own_and_names_mbedtls_only(self):
+    def test_the_default_list_is_the_gate_s_own_and_names_mbedtls_and_lvgl_only(self):
         with open(os.path.join(REPO, "third_party", "ALLOWED_LABELS"), encoding="utf-8") as handle:
-            self.assertEqual(handle.read(), MBED + "\n")
+            self.assertEqual(handle.read(), MBED + "\ngate//third_party/lvgl:lvgl\n")
         found = self.check(LOAD + 'c_library(name = "a", deps = ["%s"])\n' % MBED, 0, allowed=None)
         self.assertEqual(found, [])
         self.setUp()

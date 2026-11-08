@@ -1,0 +1,158 @@
+load("@gate//rules:third_party.bzl", "c_third_party")
+load(":files.bzl", "LVGL_FILES")
+
+# LVGL 9.6.0, release tarball pinned by sha256. See docs/third-party.md.
+#
+# Compiled: the core, the software renderer, the label / button / image widgets, flex and grid layouts, the
+# default theme, the Montserrat 14 font, Tiny TTF (fonts from memory), the builtin allocator and string
+# functions, the OS-less port, the test inputs and the init. Each directory below says what is NOT compiled.
+_CORE = [
+    "src/lv_init.c",
+    "src/core/lv_group.c",
+    "src/core/lv_obj.c",
+    "src/core/lv_obj_class.c",
+    "src/core/lv_obj_draw.c",
+    "src/core/lv_obj_event.c",
+    "src/core/lv_obj_pos.c",
+    "src/core/lv_obj_scroll.c",
+    "src/core/lv_obj_style.c",
+    "src/core/lv_obj_style_gen.c",
+    "src/core/lv_obj_tree.c",
+    "src/core/lv_refr.c",
+    "src/display/lv_display.c",
+    "src/indev/lv_indev.c",
+    "src/indev/lv_indev_scroll.c",
+    "src/tick/lv_tick.c",
+    "src/themes/lv_theme.c",
+    "src/themes/default/lv_theme_default.c",
+    "src/layouts/lv_layout.c",
+    "src/layouts/flex/lv_flex.c",
+    "src/layouts/grid/lv_grid.c",
+]
+
+_DRAW = [
+    "src/draw/lv_draw.c",
+    "src/draw/lv_draw_arc.c",
+    "src/draw/lv_draw_blur.c",
+    "src/draw/lv_draw_buf.c",
+    "src/draw/lv_draw_image.c",
+    "src/draw/lv_draw_label.c",
+    "src/draw/lv_draw_line.c",
+    "src/draw/lv_draw_mask.c",
+    "src/draw/lv_draw_rect.c",
+    "src/draw/lv_draw_triangle.c",
+    "src/draw/lv_draw_utils.c",
+    "src/draw/sw/lv_draw_sw.c",
+    "src/draw/sw/lv_draw_sw_arc.c",
+    "src/draw/sw/lv_draw_sw_blur.c",
+    "src/draw/sw/lv_draw_sw_border.c",
+    "src/draw/sw/lv_draw_sw_box_shadow.c",
+    "src/draw/sw/lv_draw_sw_fill.c",
+    "src/draw/sw/lv_draw_sw_grad.c",
+    "src/draw/sw/lv_draw_sw_img.c",
+    "src/draw/sw/lv_draw_sw_letter.c",
+    "src/draw/sw/lv_draw_sw_line.c",
+    "src/draw/sw/lv_draw_sw_mask.c",
+    "src/draw/sw/lv_draw_sw_mask_rect.c",
+    "src/draw/sw/lv_draw_sw_transform.c",
+    "src/draw/sw/lv_draw_sw_triangle.c",
+    "src/draw/sw/blend/lv_draw_sw_blend.c",
+    "src/draw/sw/blend/lv_draw_sw_blend_to_a8.c",
+    "src/draw/sw/blend/lv_draw_sw_blend_to_argb8888.c",
+    "src/draw/sw/blend/lv_draw_sw_blend_to_rgb888.c",
+    "src/draw/convert/lv_draw_buf_convert.c",
+    "src/image/lv_image_decoder.c",
+    "src/image/lv_bin_decoder.c",
+]
+
+_FONT = [
+    "src/font/lv_font.c",
+    "src/font/lv_font_montserrat_14.c",
+    "src/font/fmt_txt/lv_font_fmt_txt.c",
+    "src/font/tiny_ttf/lv_tiny_ttf.c",
+]
+
+_MISC = [
+    "src/misc/lv_anim.c",
+    "src/misc/lv_anim_timeline.c",
+    "src/misc/lv_area.c",
+    "src/misc/lv_array.c",
+    "src/misc/lv_async.c",
+    "src/misc/lv_bidi_common.c",
+    "src/misc/lv_circle_buf.c",
+    "src/misc/lv_color.c",
+    "src/misc/lv_color_op.c",
+    "src/misc/lv_event.c",
+    "src/misc/lv_grad.c",
+    "src/misc/lv_iter.c",
+    "src/misc/lv_ll.c",
+    "src/misc/lv_lru.c",
+    "src/misc/lv_math.c",
+    "src/misc/lv_palette.c",
+    "src/misc/lv_pending.c",
+    "src/misc/lv_rb.c",
+    "src/misc/lv_style.c",
+    "src/misc/lv_style_gen.c",
+    "src/misc/lv_text.c",
+    "src/misc/lv_timer.c",
+    "src/misc/lv_utils.c",
+    "src/misc/cache/lv_cache.c",
+    "src/misc/cache/lv_cache_entry.c",
+    "src/misc/cache/class/lv_cache_lru_rb.c",
+    "src/misc/cache/instance/lv_image_cache.c",
+    "src/misc/cache/instance/lv_image_header_cache.c",
+    "src/fs/lv_fs.c",
+]
+
+_PLATFORM = [
+    "src/osal/lv_os.c",
+    "src/osal/lv_os_none.c",
+    "src/stdlib/lv_mem.c",
+    "src/stdlib/builtin/lv_mem_core_builtin.c",
+    "src/stdlib/builtin/lv_sprintf_builtin.c",
+    "src/stdlib/builtin/lv_string_builtin.c",
+    "src/stdlib/builtin/lv_tlsf.c",
+]
+
+_WIDGETS_AND_TEST = [
+    "src/widgets/button/lv_button.c",
+    "src/widgets/image/lv_image.c",
+    "src/widgets/label/lv_label.c",
+    "src/debugging/test/lv_test_helpers.c",
+    "src/debugging/test/lv_test_indev.c",
+]
+
+_SRCS = _CORE + _DRAW + _FONT + _MISC + _PLATFORM + _WIDGETS_AND_TEST
+
+# Public headers keep their layout: `#include "lvgl.h"` (the top header includes include/lvgl/lvgl.h).
+_PUBLIC = {
+    "lvgl.h": "lvgl.h",
+    "lvgl_private.h": "lvgl_private.h",
+    "lv_version.h": "lv_version.h",
+}
+_PUBLIC.update({f: f for f in LVGL_FILES if f.startswith("include/")})
+
+c_third_party(
+    name = "lvgl",
+    url = "https://github.com/lvgl/lvgl/archive/refs/tags/v9.6.0.tar.gz",
+    sha256 = "b20ee3acc1bba13c62d854f9ebd62e4c51e0b443b1e0225892e86442defa84df",
+    size_bytes = 111467067,
+    top = "lvgl-9.6.0",
+    dirs = ["src", "include", "lvgl.h", "lvgl_private.h", "lv_version.h"],
+    files = LVGL_FILES,
+    srcs = _SRCS,
+    own_srcs = ["lvgl_gate.c"],
+    private_headers = [],
+    public_headers = [],
+    public_header_map = _PUBLIC,
+    tree_input = True,
+    config_header = "gate_lv_conf.h",
+    config_macro = "LV_CONF_PATH",
+    extra_headers = {"lvgl_gate.h": "lvgl_gate.h"},
+)
+
+export_file(name = "gate_lv_conf.h", visibility = ["//third_party/..."])
+
+export_file(name = "lvgl_gate.h", visibility = ["//third_party/..."])
+
+export_file(name = "lvgl_gate.c", visibility = ["//third_party/..."])
