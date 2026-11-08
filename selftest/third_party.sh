@@ -15,6 +15,10 @@
 #    its label or of its internals, a dep on a test or on what a test derives, an alias, a transitive
 #    route through a test, a product defining srv_*/tls_peer_* names, a product calling the peer
 #    without the dependency, and a header-only include are all refused.
+#  * T107: LVGL 9.6.0 (gate//third_party/lvgl:lvgl): the allowlist spellings, the computed exports and the reviewed libc
+#    imports, a throwaway test (selftest/third_party/lvgl) that hands LVGL its pool, renders into memory, clicks a
+#    button, deletes everything and checks the memory comes back, in `release` and in `san`, and the same
+#    permission / collision gates as for mbedTLS.
 # Needs bash, python3 (stdlib), tools/buck2 and the RE farm. Run it twice: the second run is warm.
 set -uo pipefail
 
@@ -67,7 +71,8 @@ def policy(dest, specs):
         pkg, _, name = name.rpartition("/")
         text += '[module."//selftest/scratch_tp/%s:%s"]\n' % (pkg or "p", name)
         labels = (["gate//third_party/mbedtls:mbedtls"] if "third=1" in opts else []) + \
-                 (["gate//third_party/tls_peer:tls_peer"] if "peer=1" in opts else [])
+                 (["gate//third_party/tls_peer:tls_peer"] if "peer=1" in opts else []) + \
+                 (["gate//third_party/lvgl:lvgl"] if "lvgl=1" in opts else [])
         if labels:
             text += "third_party = [%s]\n" % ", ".join('"%s"' % l for l in labels)
         if "mutdata=1" in opts:
@@ -131,6 +136,61 @@ def exports(path):
     print("  %d exported symbols, %d imports" % (len(defined), len(undefined)))
     sys.exit(1 if bad else 0)
 
+# LVGL (T107). The libc imports of the compiled objects: a struct copy or zeroing the compiler lowers to a call
+# (memcpy, memset), and assert() in the vendored stb_truetype (__assert_fail: prints and aborts on a corrupt font).
+# Nothing else: no malloc/calloc/realloc/free, no pthread, no file, socket or clock call.
+LV_REVIEWED_IMPORTS = {"__assert_fail", "memcpy", "memset"}
+LV_MUST_EXPORT = {"lv_init", "lv_deinit", "lv_malloc", "lv_free", "lv_mem_monitor", "lv_display_create",
+                  "lv_display_delete", "lv_obj_create", "lv_button_create", "lv_label_create", "lv_image_create",
+                  "lv_obj_set_flex_flow", "lv_obj_set_grid_dsc_array", "lv_theme_default_init", "lv_tiny_ttf_create_data",
+                  "lv_font_montserrat_14", "lv_draw_sw_init", "lv_timer_handler", "lv_tick_inc", "lv_test_wait",
+                  "lv_test_indev_create_all", "lv_test_mouse_click_at", "lvgl_gate_set_pool", "lvgl_gate_pool_take",
+                  "lvgl_gate_test_display_create", "lvgl_gate_test_display_pixel"}
+LV_MUST_NOT_EXPORT = {"lv_test_display_create", "lv_test_screenshot_compare", "lv_tiny_ttf_create_file_ex",
+                      "lv_fs_stdio_init", "lv_fs_posix_init", "lv_fs_memfs_init", "lv_thread_init", "lv_mutex_init",
+                      "lv_thread_sync_init", "lv_log_add", "lv_sdl_window_create", "lv_linux_fbdev_create",
+                      "lv_evdev_create", "lv_lodepng_init", "lv_libpng_init", "lv_bmp_init", "lv_tjpgd_init",
+                      "lv_draw_vg_lite_init", "lv_draw_dma2d_init", "lv_canvas_create", "lv_slider_create",
+                      "lv_chart_create", "lv_textarea_create", "lv_keyboard_create", "lv_observer_get_target",
+                      "lv_freetype_init", "lv_svg_decoder_init", "lv_malloc_core_clib"}
+
+def lvexports(path):
+    doc = json.load(open(path))
+    if doc["kind"] != "c_third_party" or doc["label"] != "//third_party/lvgl:lvgl":
+        print("  unexpected kind/label %s %s" % (doc["kind"], doc["label"])); sys.exit(1)
+    defined = {s for u in doc["units"] for s in u["defined"]}
+    undefined = {s for u in doc["units"] for s in u["undefined"]} - defined
+    bad = False
+    if len(defined) < 1000:
+        print("  only %d exported symbols" % len(defined)); bad = True
+    odd = sorted(s for s in defined if not s.startswith(("lv_", "lvgl_")))
+    if odd:
+        print("  exports outside the reserved prefixes: %s" % odd[:10]); bad = True
+    if LV_MUST_EXPORT - defined:
+        print("  missing exports: %s" % sorted(LV_MUST_EXPORT - defined)); bad = True
+    if LV_MUST_NOT_EXPORT & defined:
+        print("  exports that the configuration must not build: %s" % sorted(LV_MUST_NOT_EXPORT & defined)); bad = True
+    if undefined != LV_REVIEWED_IMPORTS:
+        print("  imports differ from the reviewed set: new %s, gone %s"
+              % (sorted(undefined - LV_REVIEWED_IMPORTS), sorted(LV_REVIEWED_IMPORTS - undefined))); bad = True
+    if any(u["weak"] for u in doc["units"]):
+        print("  weak symbols in the library"); bad = True
+    print("  %d compiled units, %d exported symbols, %d imports (%s)"
+          % (len(doc["units"]), len(defined), len(undefined), ", ".join(sorted(undefined))))
+    sys.exit(1 if bad else 0)
+
+def lvresults(path, expected):
+    rows = [json.loads(l) for l in open(path)]
+    summary = [r for r in rows if "summary" in r]
+    tests = {r["id"]: r for r in rows if "id" in r}
+    want = {"lvgl/" + n for n in expected}
+    if set(tests) != want:
+        print("  tests differ: missing %s, extra %s" % (sorted(want - set(tests)), sorted(set(tests) - want))); sys.exit(1)
+    failed = sorted(k for k, r in tests.items() if r["status"] != "pass" or r["asserts"] < 1)
+    if failed or len(summary) != 1 or summary[0]["summary"]["passed"] != len(want):
+        print("  not all passed: %s" % (failed or summary)); sys.exit(1)
+    print("  %d tests passed" % len(want))
+
 def results(path, expected):
     rows = [json.loads(l) for l in open(path)]
     summary = [r for r in rows if "summary" in r]
@@ -151,7 +211,8 @@ def bfrules(result, expected):
 
 COMMANDS = {"bfrules": lambda a: bfrules(a[0], a[1:]), "collect": lambda a: collect(*a), "policy": lambda a: policy(a[0], a[1:]),
             "mkfd": lambda a: mkfd(a[0], a[1], a[2:]), "check": lambda a: check(a[0], a[1:]),
-            "exports": lambda a: exports(a[0]), "results": lambda a: results(a[0], a[1:])}
+            "exports": lambda a: exports(a[0]), "results": lambda a: results(a[0], a[1:]),
+            "lvexports": lambda a: lvexports(a[0]), "lvresults": lambda a: lvresults(a[0], a[1:])}
 COMMANDS[sys.argv[1]](sys.argv[2:])
 PY
 tool() { python3 -I "$out/tool.py" "$@"; }
@@ -231,6 +292,32 @@ cat > "$scratch/red/r_header.c" <<'EOF'
 int r_header(void) { return TLS_PEER_ERR_FULL; }
 EOF
 
+# T107: the LVGL throwaway package. Product build files only call the gate macros.
+mkdir -p "$scratch/lv"
+cp selftest/third_party/lvgl/lvgl_ui_test.c "$scratch/lv/"
+LVGL='gate//third_party/lvgl:lvgl'
+cat > "$scratch/lv/BUCK" <<EOF
+load("@gate//rules:c.bzl", "c_library", "c_test")
+
+c_test(name = "lvgl_ui_test", srcs = ["lvgl_ui_test.c"], deps = ["$LVGL"])
+c_library(name = "lvt_ok", srcs = ["lvt_ok.c"], deps = ["$LVGL"])
+c_library(name = "lvt_noperm", srcs = ["lvt_noperm.c"], deps = ["$LVGL"])
+c_library(name = "lvt_collide", srcs = ["lvt_collide.c"], deps = ["$LVGL"])
+c_library(name = "lvt_prefix", srcs = ["lvt_prefix.c"])
+EOF
+cat > "$scratch/lv/lvt_ok.c" <<'EOF'
+#include "lvgl.h"
+void lvt_ok_start(void) { lv_init(); }
+EOF
+sed 's/lvt_ok_start/lvt_noperm_start/' "$scratch/lv/lvt_ok.c" > "$scratch/lv/lvt_noperm.c"
+cat > "$scratch/lv/lvt_collide.c" <<'EOF'
+#include <stddef.h>
+void *lv_malloc(size_t size) { (void)size; return 0; }
+EOF
+cat > "$scratch/lv/lvt_prefix.c" <<'EOF'
+int lv_fake_helper(void) { return 1; }
+EOF
+
 # --------------------------------------------------------------------------------------
 begin "buckfiles: only the allowlisted label may be named; every other cell-prefixed dep is refused"
 bf() { # <name> <want-exit> <want-why|-> <dep>
@@ -251,7 +338,14 @@ bf ctest       1 dep 'gate//ctest:ctest'
 bf prelude     1 dep 'prelude//cxx:cxx'
 bf at_label    1 dep '@gate//third_party/mbedtls:mbedtls'
 bf allowed     0 -   "$LIB"
+bf lvgl_allowed 0 -  "$LVGL"
+bf lvgl_symbols 1 dep 'gate//third_party/lvgl:lvgl_symbols'
+bf lvgl_src     1 dep 'gate//third_party/lvgl:lvgl_src'
+bf lvgl_headers 1 dep 'gate//third_party/lvgl:lvgl_headers'
+bf lvgl_samecell 1 dep '//third_party/lvgl:lvgl'
+bf lvgl_near    1 dep 'gate//third_party/lvgl:lvgl_facts'
 "${RIGOR[@]}" buckfiles --root "$scratch/p" > "$out/bf_scratch.txt" 2>&1 || fail "$CUR: the throwaway product's own BUCK" "$out/bf_scratch.txt"
+"${RIGOR[@]}" buckfiles --root "$scratch/lv" > "$out/bf_scratch_lv.txt" 2>&1 || fail "$CUR: the LVGL throwaway product's own BUCK" "$out/bf_scratch_lv.txt"
 
 # --- T012: the peer is test-only ---------------------------------------------------------------------
 bfx() { # <name> <want-exit> <expected rule:why...>  (the BUCK file text on stdin)
@@ -453,6 +547,63 @@ begin "TLS 1.3 / 1.2 sessions against the in-memory peer, san (ASan + UBSan on t
 must_pass build --target-platforms toolchains//:linux_san //selftest/scratch_tp/p:tls_client_test_results --show-output
 res="$(awk '/tls_client_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
 tool results "$res" "${T_LIST[@]}" || fail "$CUR: results" "$res"
+took
+
+# --------------------------------------------------------------------------------------
+# T107: LVGL 9.6.0. Built in release and in san; exports and imports computed by the build and reviewed.
+LV_PERM="third-party-not-permitted://third_party/lvgl:lvgl"
+begin "build (release): LVGL, its computed exports, and the facts of the LVGL throwaway modules"
+must_pass build //third_party/lvgl:lvgl //third_party/lvgl:lvgl_symbols \
+  //selftest/scratch_tp/lv:lvt_ok_facts //selftest/scratch_tp/lv:lvt_noperm_facts //selftest/scratch_tp/lv:lvt_collide_facts \
+  //selftest/scratch_tp/lv:lvt_prefix_facts //selftest/scratch_tp/lv:lvgl_ui_test_facts //ctest:ctest_facts --show-output
+tool collect "$out/$step.log" "$out/facts" || fail "$CUR: collect"
+lvlib="$(awk '/third_party\/lvgl:lvgl / && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+echo "  library: $lvlib ($(stat -c %s "$lvlib") bytes)"
+took
+tool lvexports "$out/facts/lvgl.json" || fail "$CUR: LVGL exports"
+
+begin "red (LVGL): using the library without the policy's permission fails symbols"
+tool policy "$out/lv_noperm.toml" "lv/lvt_noperm"
+gate_case lv_noperm $SYM 1 "$out/lv_noperm.toml" lvt_noperm lvgl -- "$LV_PERM" "undeclared-symbol:lv_init"
+begin "red (LVGL): defining a symbol the library exports, or any lv_ name, is a collision"
+tool policy "$out/lv_collide.toml" "lv/lvt_collide;lvgl=1"
+gate_case lv_collide $SYM 1 "$out/lv_collide.toml" lvt_collide lvgl -- "symbol-collision:lv_malloc"
+tool policy "$out/lv_prefix.toml" "lv/lvt_prefix"
+gate_case lv_prefix $SYM 1 "$out/lv_prefix.toml" lvt_prefix -- "symbol-collision:lv_fake_helper"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(1 if any("lv_fake_helper" in u["defined"] for u in d["units"]) else 0)' "$out/facts/lvgl.json" \
+  || fail "$CUR: lv_fake_helper is exported by the library after all"
+begin "red (LVGL): the library's facts missing from the facts directory is a finding, not a pass"
+tool policy "$out/lv_ok.toml" "lv/lvt_ok;lvgl=1"
+gate_case lv_nolib $SYM 1 "$out/lv_ok.toml" lvt_ok -- "missing-dep-facts://third_party/lvgl:lvgl" "undeclared-symbol:lv_init"
+begin "green (LVGL): a permitted module and the throwaway test pass the symbols gate"
+gate_case lv_ok $SYM 0 "$out/lv_ok.toml" lvt_ok lvgl --
+tool policy "$out/lv_test.toml" "lv/lvgl_ui_test;lvgl=1"
+gate_case lv_test $SYM 0 "$out/lv_test.toml" lvgl_ui_test lvgl --
+# KNOWN GAP (T107 report, needs a gate change outside this task): `semantic-suppressions` scans the text of the
+# library's headers that ends up in a product unit, and the LVGL headers define identifiers the scan reserves
+# (_LV_CONCAT, _PARA, _LV_EVENT_LAST, ..., and the __LV_UEFI_*_H__ include guards that lvgl.h pulls in). Until the
+# scanner treats the headers of an allowlisted third-party library like toolchain headers (a --system-root), no
+# product can include lvgl.h and pass. This step pins the exact set; when the gate is fixed it must become `0`.
+begin "known gap (LVGL): semantic-suppressions reports the reserved macros of the LVGL headers"
+LV_GAP=(reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro
+        reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro reserved-macro
+        reserved-macro)
+gate_case lv_ok $SEM 1 "$out/lv_ok.toml" lvt_ok lvgl -- "${LV_GAP[@]}"
+gate_case lv_test $SEM 1 "$out/lv_test.toml" lvgl_ui_test lvgl -- "${LV_GAP[@]}"
+
+LV_TESTS=(draws_a_label_and_a_button the_render_is_deterministic a_click_reaches_the_event_callback
+          everything_deleted_gives_the_memory_back allocation_past_the_pool_fails_cleanly
+          tiny_ttf_refuses_garbage_without_leaking)
+begin "LVGL: a pool handed in, a memory display, a click, no leak, clean failure past the pool (release)"
+must_pass build //selftest/scratch_tp/lv:lvgl_ui_test_results --show-output
+res="$(awk '/lvgl_ui_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+tool lvresults "$res" "${LV_TESTS[@]}" || fail "$CUR: results" "$res"
+took
+
+begin "LVGL: the same tests in san (ASan + UBSan on the library)"
+must_pass build --target-platforms toolchains//:linux_san //selftest/scratch_tp/lv:lvgl_ui_test_results --show-output
+res="$(awk '/lvgl_ui_test_results/ && /buck-out/ {print $2}' "$out/$step.log" | tail -1)"
+tool lvresults "$res" "${LV_TESTS[@]}" || fail "$CUR: results" "$res"
 took
 
 # Actions executed (not cached) by this run. A warm second run executes 0 in every build that succeeds; the

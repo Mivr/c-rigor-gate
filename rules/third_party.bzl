@@ -138,7 +138,9 @@ def c_third_party(
         extra_headers = {},
         defines = [],
         symbols_in_every_mode = False,
-        instrument = True):
+        instrument = True,
+        public_header_map = None,
+        tree_input = False):
     """A static library from a pinned tarball.
 
     `files`: the manifest (every `.c`/`.h` below `dirs`). `srcs`, `private_headers`, `public_headers`:
@@ -148,6 +150,11 @@ def c_third_party(
     the self-test's private copy needs it in each mode.
     `instrument`: False builds the sanitizer modes without instrumentation (self-test copy only).
     `extra_headers`: further gate-owned exported headers (name -> source).
+    `public_header_map`: exported header name -> path in the manifest, instead of the `include/` prefix
+    strip (a library whose public headers keep their directory layout, like LVGL's `include/lvgl/...`).
+    `tree_input`: the compile actions of the library get the whole unpacked tree as input and `-I` it, for
+    sources that include siblings by relative path (`../misc/x.h`). The default (a sub-target per file,
+    flat private headers) is what mbedTLS uses.
     `config_header`: the gate-owned configuration file in this package, exported as its own name and
     forced through `-D<config_macro>=<name>` on the library and on every user.
     """
@@ -160,7 +167,13 @@ def c_third_party(
     def ref(path):
         return ":{}[{}]".format(src, path)
 
-    exported = {p[len("include/"):]: ref(p) for p in public_headers}
+    if public_header_map:
+        for path in public_header_map.values():
+            if path not in files:
+                fail("{}: {} is not in the manifest".format(name, path))
+        exported = {n: ref(p) for n, p in public_header_map.items()}
+    else:
+        exported = {p[len("include/"):]: ref(p) for p in public_headers}
     exported[config_header] = config_header
     exported.update(extra_headers)
     flags = ["-D{}=<{}>".format(config_macro, config_header)] + defines
@@ -179,7 +192,8 @@ def c_third_party(
         srcs = [ref(p) for p in srcs] + own_srcs,
         headers = {p.split("/")[-1]: ref(p) for p in private_headers},
         exported_deps = [":" + name + "_headers"],
-        compiler_flags = select(_MODE_FLAGS if instrument else _MODE_FLAGS_PLAIN) + ["-std=c17", "-w"],
+        compiler_flags = select(_MODE_FLAGS if instrument else _MODE_FLAGS_PLAIN) + ["-std=c17", "-w"] +
+                         (["-I$(location :{})".format(src)] if tree_input else []),
         link_style = "static",
         visibility = ["PUBLIC"],
     )

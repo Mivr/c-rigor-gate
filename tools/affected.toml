@@ -172,6 +172,9 @@ selftests = ["fuzz"]
 [[rule]]
 glob = "selftest/third_party.sh"
 selftests = ["third_party"]
+[[rule]]
+glob = "selftest/third_party/**"
+selftests = ["third_party"]
 
 # ---- 6. Nothing the selftests read ---------------------------------------------------------------------------------
 [[rule]]

@@ -2,3 +2,6 @@ mbedtls_
 psa_
 srv_
 tls_peer_
+lv_
+LV_
+lvgl_

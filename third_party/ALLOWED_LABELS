@@ -1,1 +1,2 @@
 gate//third_party/mbedtls:mbedtls
+gate//third_party/lvgl:lvgl

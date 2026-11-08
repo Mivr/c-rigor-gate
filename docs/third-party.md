@@ -3,7 +3,7 @@
 Third-party code cannot meet the product rules (C17 sealed flags, no `malloc`, small files) and must not be
 editable by product agents. It lives in the gate under `third_party/`, is pinned by sha256, is built
 hermetically on RE with its own flag set, and is reachable from a product only through an exact label.
-The first library is mbedTLS 3.6 LTS (TLS for annas-c).
+The first library is mbedTLS 3.6 LTS (TLS for annas-c); the second is LVGL 9.6.0 (the lockers/stock UI, see "LVGL" below).
 
 ## The pin
 
@@ -67,10 +67,11 @@ A change to this file, to the pin, or to the allowlist is an owner-approved gate
 
 ## Trust: what the gate does with it
 
-Files: `third_party/ALLOWED_LABELS` (one exact label per line, currently `gate//third_party/mbedtls:mbedtls`),
+Files: `third_party/ALLOWED_LABELS` (one exact label per line, currently `gate//third_party/mbedtls:mbedtls` and
+`gate//third_party/lvgl:lvgl`),
 `third_party/ALLOWED_TEST_LABELS` (the same, for libraries only a `c_test` may use: currently
 `gate//third_party/tls_peer:tls_peer`, see "The TLS test peer" below) and `third_party/RESERVED_PREFIXES`
-(`mbedtls_`, `psa_`, `srv_`, `tls_peer_`). All three are strict: no comments, no blank lines, no duplicates,
+(`mbedtls_`, `psa_`, `srv_`, `tls_peer_`, `lv_`, `LV_`, `lvgl_`). All three are strict: no comments, no blank lines, no duplicates,
 final newline, regular file; any defect is exit 2. A label may not be on both label lists.
 
 1. **`buckfiles`.** A product `deps` entry is a same-cell label (`:x`, `//pkg:x`) **or an exact string of
@@ -279,7 +280,7 @@ cd /
 rm -rf "$W"
 ```
 
-## How to bump (owner-approved task only)
+## How to bump mbedTLS (owner-approved task only)
 
 1. Download the new release tarball from `github.com/Mbed-TLS/mbedtls/releases`, compute its sha256 and size.
 2. `python3 -I -B third_party/extract.py --archive T.tar.bz2 --top mbedtls-X.Y.Z --dirs include,library --list`
@@ -295,3 +296,154 @@ rm -rf "$W"
 
 Adding another library: a `third_party/<name>/BUCK` with `c_third_party(...)`, its label in `ALLOWED_LABELS`, its
 prefixes in `RESERVED_PREFIXES`, the same self-test shape, and the same owner sign-off.
+
+## LVGL 9.6.0 (T107)
+
+The UI library of business-apps (lockers kiosk, later stock; design D7). Only `lib/ui/uikit` and `lib/ui/lvrender`
+may include it. Software renderer, a pool the product owns, no OS, no libc allocation.
+
+### The pin
+
+| What | Value |
+|---|---|
+| Release | LVGL **9.6.0** |
+| URL | `https://github.com/lvgl/lvgl/archive/refs/tags/v9.6.0.tar.gz` |
+| sha256 | `b20ee3acc1bba13c62d854f9ebd62e4c51e0b443b1e0225892e86442defa84df` |
+| size | 111467067 bytes |
+| top | `lvgl-9.6.0` |
+
+Unpacked like mbedTLS (`third_party/extract.py`, no change to it): `--dirs src,include,lvgl.h,lvgl_private.h,lv_version.h`
+(a directory entry matches by prefix, a file entry by equality). The `*.c` / `*.h` set of those must equal
+`third_party/lvgl/files.bzl` (1291 files) exactly.
+
+### Targets (`third_party/lvgl/BUCK`)
+
+Same four as mbedTLS: `gate//third_party/lvgl:lvgl` (the only label a product may name), `:lvgl_headers` (exported
+`-isystem`, with `-DLV_CONF_PATH=<gate_lv_conf.h>`), `:lvgl_src`, `:lvgl_symbols` (facts, computed by `llvm-nm`).
+A product writes `#include "lvgl.h"` and `#include "lvgl_gate.h"` (the gate's pool and test-display glue). The public
+headers keep their layout (`include/lvgl/...`, plus the three top-level headers); `rules/third_party.bzl` gained two
+optional arguments for this, `public_header_map` and `tree_input`, which default to the mbedTLS behaviour.
+
+Why `tree_input`: LVGL's sources include each other by relative path (`../misc/lv_event_private.h`), so a compile
+action cannot get single files as input. Every LVGL compile action gets the whole unpacked tree (`-I$(location
+:lvgl_src)`); the tree is one cached artifact, and a change of the pin invalidates everything anyway.
+
+### Configuration (`third_party/lvgl/gate_lv_conf.h`)
+
+Every option that must be off is set to 0 in the file; the rest takes the library's defaults.
+
+* **Memory.** `LV_USE_STDLIB_MALLOC = LV_STDLIB_BUILTIN` (LVGL's TLSF allocator), builtin string and sprintf. No pool
+  inside the library: `LV_MEM_POOL_ALLOC` / `LV_MEM_POOL_INCLUDE` make `lv_init()` take its pool from
+  `lvgl_gate_pool_take()`. The product hands it in with **`lvgl_gate_set_pool(mem, LV_MEM_SIZE)` before `lv_init()`**
+  (again before every later `lv_init()`): `mem` 8-byte aligned, exactly `LV_MEM_SIZE` bytes = 512 KiB. A missing,
+  misaligned or wrong-sized pool traps. 512 KiB is the allocator's compile-time ceiling (`TLSF_MAX_POOL_SIZE` is
+  `LV_MEM_SIZE`), so it is both the size handed in and the maximum; `lv_mem_add_pool()` stays available for more.
+  Allocation past the pool: `lv_malloc()` returns NULL (self-test). An internal allocation that fails is
+  `LV_ASSERT_MALLOC` and traps instead of dereferencing NULL. No libc `malloc`, `calloc`, `realloc` or
+  `free` appears in the compiled objects (the self-test checks the import set).
+* **No OS.** `LV_USE_OS = LV_OS_NONE`: LVGL runs only on the product's UI thread; no threads, no `pthread`, no locks.
+* **Rendering.** `LV_USE_DRAW_SW` only, `LV_COLOR_FORMAT_DEFAULT = LV_COLOR_FORMAT_XRGB8888` (32 bit; the 9.6.0 name
+  for `LV_COLOR_DEPTH 32`). Blend targets compiled: XRGB8888 / ARGB8888 (one file `blend_to_rgb888.c` serves
+  XRGB8888) and A8. Off: RGB565 and its swapped form, RGB888, L8, AL88, I1, premultiplied ARGB, vector graphics,
+  ThorVG, matrices, float, snapshots, assembler / Helium / Neon paths, and every GPU or other draw unit (VG-Lite,
+  Dave2D, PXP, PPA, DMA2D, EVE, SIFLI, G2D, NEMA, NanoVG, OpenGL ES, SDL).
+* **No logging, assertions that stop.** `LV_USE_LOG 0`. `LV_ASSERT_HANDLER` is `__builtin_trap();` (the process
+  dies at once; the stock handler `while(1);` would spin forever). Enabled: malloc and NULL asserts; off: style,
+  object and memory-integrity asserts.
+* **No files.** All `LV_USE_FS_*` 0 (`src/fs/lv_fs.c`, the driver-less abstraction, is compiled because the image
+  decoder links it; it opens nothing), no PNG / BMP / JPEG / WebP / GIF / SVG / FFmpeg / lottie decoders, no
+  screenshot compare (needs a file system and PNG). `lv_tiny_ttf_create_file*` is not built
+  (`LV_TINY_TTF_FILE_SUPPORT 0`).
+* **Widgets.** obj (core), label, button, image, plus flex and grid layouts and the default theme. Off: every other
+  widget (animimg, arc, arclabel, bar, buttonmatrix, calendar, canvas, chart, checkbox, dropdown, imagebutton, keyboard,
+  led, line, list, menu, msgbox, roller, scale, slider, span, spinbox, spinner, switch, textarea, table, tabview,
+  tileview, win), the simple and mono themes, observers, object properties / names / ids, translations,
+  gridnav, gestures, BiDi and Arabic shaping, the font manager, imgfont, FreeType, compressed fonts.
+* **Fonts.** Built-in: Montserrat 14 only (Latin, digits, symbols; it has no Cyrillic). The kiosk is Bulgarian by
+  default, so **Tiny TTF is on** (`LV_USE_TINY_TTF 1`, `LV_TINY_TTF_CACHE_GLYPH_CNT 128`, kerning cache 256): a
+  product ships a TTF and loads it from memory with `lv_tiny_ttf_create_data()`; its glyph cache and rasteriser
+  allocate from the pool. **No font is vendored in this task** (follow-up: choose and pin a Cyrillic TTF, with its
+  licence, for business-apps). stb_truetype's `floor` / `ceil` would call `floorf` / `ceilf` of libm, which products
+  do not link; the config defines integer `STBTT_ifloor` / `STBTT_iceil` instead.
+* **Test display and test input.** `LV_USE_TEST 1`: `lv_test_indev_*` (simulated mouse, keypad, encoder: press,
+  release, `lv_test_mouse_click_at`) and `lv_test_wait` / `lv_test_fast_forward` (advance the LVGL tick and run timers,
+  no clock involved). `lv_test_display_create()` is **not compiled**: it calls libc `malloc` / `free`. The gate's
+  `lvgl_gate_test_display_create(w, h, buf, bytes, draw_buf)` replaces it: a full-frame XRGB8888 display on a buffer
+  the test owns (`LVGL_GATE_TEST_BUF_BYTES(w, h)` bytes) and a flush that completes at once;
+  `lvgl_gate_test_display_pixel(draw_buf, x, y)` reads a pixel as `0x00RRGGBB`. Products compare pixels or a CRC
+  they compute themselves; the object tree is walked with `lv_obj_get_child_count()` / `lv_obj_get_child()`.
+  Also not compiled: `lv_test_fs`, `lv_test_screenshot_compare`, the EGL test display.
+
+Not compiled, per directory of `src/` (its files are in the manifest and so unpacked, but never built):
+
+| Directory | Why not |
+|---|---|
+| `drivers/` | display, input and window-system ports (SDL, X11, Wayland, evdev, libinput, fbdev, DRM, NuttX, QNX, UEFI, Windows, OpenGL ES); the product supplies its own flush and input callbacks |
+| `draw/{vg_lite,nxp,renesas,espressif,sifli,nema_gfx,eve,nanovg,dma2d,opengles,sdl}`, `libs/vg_lite_driver`, `libs/nanovg` | other draw backends and GPU drivers |
+| `draw/sw/lv_draw_sw_vector.c`, `draw/lv_draw_vector.c`, `draw/lv_draw_3d.c`, `draw/snapshot`, `libs/thorvg`, `libs/gltf`, `image/svg` | vector graphics, 3D, SVG, snapshots |
+| `draw/sw/blend/{rgb565*,l8,al88,i1,argb8888_premultiplied}`, `blend/{neon,helium,riscv_v,sve2,arm2d}` | colour formats and assembler paths that are off |
+| `osal/` (all but `lv_os.c`, `lv_os_none.c`) | pthread, FreeRTOS, CMSIS, RT-Thread, Windows, SDL2, Linux, MQX ports |
+| `stdlib/{clib,micropython,rtthread,uefi}` | other allocators and string libraries |
+| `fs`, `libs/{fsdrv,frogfs}` (all but `lv_fs.c`) | file system drivers |
+| `libs/` (png, jpeg, webp, bmp, gif, lodepng, tjpgd, ffmpeg, gstreamer, freetype, barcode, qrcode, rlottie, lz4, rle) | file-based or third-party decoders and codecs |
+| `font/{freetype,imgfont,font_manager,binfont_loader}`, the other built-in fonts | not needed or needing files |
+| `widgets/*` except label, button, image; `others/`; `themes/{simple,mono}`; `debugging/{sysmon,profiler,monkey,vg_lite_tvg}`; `logging/` | features that are off |
+| `misc/{lv_templ,lv_tree,lv_bidi,lv_text_ap,lv_matrix}.c`, `core/{lv_observer,lv_obj_property,lv_obj_id_builtin}.c`, `indev/{lv_gridnav,lv_indev_gesture}.c` | features that are off |
+
+### Self-test
+
+`selftest/third_party.sh` gained the LVGL steps (the same shape as mbedTLS): the allowlist spellings (`:lvgl` accepted,
+`:lvgl_symbols`, `:lvgl_src`, `:lvgl_headers`, `:lvgl_facts`, the same-cell spelling refused), the computed exports (all
+`lv_` / `lvgl_`, the must-export and must-not-export lists, no weak symbols), **exactly three libc imports**
+(`memcpy`, `memset`: struct copies the compiler lowers to calls; `__assert_fail`: `assert()` in stb_truetype on a corrupt
+font; no `malloc` / `calloc` / `realloc` / `free`, no `pthread_*`, no file, socket or clock call), the permission,
+collision (`lv_malloc`, `lv_fake_helper`) and missing-facts red cases, and a throwaway c_test
+(`selftest/third_party/lvgl/lvgl_ui_test.c`) built in `release` and in `san` (ASan + UBSan on the library). The test
+hands in a 512 KiB pool, creates a 320x240 memory display, draws a label and a button (pixel checks, a frame CRC that
+is stable across redraws and changes with the text), clicks the button with the simulated mouse and sees its
+`LV_EVENT_CLICKED` callback (a click outside does nothing), deletes the scene repeatedly and checks that the bytes
+in use and the number of live allocations return to the same values, checks that `lv_malloc()` of 512 KiB, of 1 TiB
+and of the 5th 64 KiB chunk return NULL without aborting and that the pool works again after `lv_free`, and that
+`lv_tiny_ttf_create_data()` refuses garbage without leaking.
+
+`san` finding: `lv_deinit()` with a display still alive trips `-fsanitize=function` (LVGL deletes displays through a
+`void (*)(void *)` pointer to `lv_display_delete`). Delete displays and input devices first, then `lv_deinit()`; the
+self-test does.
+
+**Known gap, needs a gate change (not in T107's paths).** `semantic-suppressions` scans the text of a library's
+headers that ends up in a product unit, and the LVGL headers define identifiers it reserves (`_LV_CONCAT`,
+`_LV_CONCAT3`, `_PARA`, `_LV_EVENT_LAST`, `_LV_STYLE_LAST_BUILT_IN_PROP`, `_LV_FLEX_*`, `_LV_LL_READ*` and the
+`__LV_UEFI_*_H__` include guards that `lvgl.h` pulls in): 15 `reserved-macro` findings for any product unit that
+includes `lvgl.h`. Until the scanner treats the headers of an allowlisted library like toolchain headers (a
+`--system-root` for the library's header tree), no product can pass that gate with LVGL. The self-test pins the
+current set (steps "known gap"); it must become a green case when the gate is fixed. The `symbols` gate is green.
+`RESERVED_PREFIXES` has `lv_`, `LV_`, `lvgl_`; `_lv_` (the task listed it) does not match the loader's prefix
+pattern (`[A-Za-z]...`), and no exported symbol starts with it.
+
+Note for later: LVGL event callbacks (`lv_obj_add_event_cb`) are callback registrations into third-party code; T106
+makes `indirect-cycle-possible` precise for gate-owned libraries.
+
+### Numbers (release, measured by the self-test)
+
+| What | Value |
+|---|---|
+| Files in the manifest | 1291 (`src/` + `include/` + 3 top-level headers) |
+| Compiled units | 99 (98 LVGL sources + `lvgl_gate.c`) |
+| Library (`liblvgl.a`, release) | about 1.0 MB (1021350 bytes) |
+| Exported symbols | 1700 (`lv_` and `lvgl_`) |
+| libc imports | 3 (`__assert_fail`, `memcpy`, `memset`) |
+| Pool peak of the self-test scene (`lv_mem_monitor`, `max_used`) | 9288 bytes of 524288 |
+| Pool in use after the scene is built, rendered, clicked and deleted | 6136 bytes (state LVGL keeps: timers, caches) |
+| Cold build of the library and its facts on RE | about 86 s (97 actions) |
+
+### How to bump (owner-approved task only)
+
+1. Download the new release tarball, compute sha256 and size; read the release notes for removed or renamed options.
+2. `python3 -I -B third_party/extract.py --archive T.tar.gz --top lvgl-X.Y.Z --dirs src,include,lvgl.h,lvgl_private.h,lv_version.h --list`
+   and regenerate `third_party/lvgl/files.bzl`; diff the manifests (new files are code the gate now trusts).
+3. Change `url`, `sha256`, `size_bytes`, `top` in `third_party/lvgl/BUCK`; adjust the `srcs` lists for renamed files.
+4. Compare `lv_conf_template.h` of the new release with `gate_lv_conf.h`; a new option that defaults to on and
+   pulls in files, drivers or libc calls must be set to 0 explicitly. `lv_conf_internal.h` shows the defaults.
+5. Run `selftest/third_party.sh`; a changed libc import set fails it, each new import needs a reviewed reason before
+   `LV_REVIEWED_IMPORTS` changes. Record the new numbers above.
+6. Merge only with the owner's sign-off.
