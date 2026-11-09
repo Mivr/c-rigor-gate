@@ -265,7 +265,8 @@ def _link_run_batch(cfg, actions, batch, run_objs, group, priors, ident):
     """One action links and runs every mutant of BATCH against the tests of GROUP, in that order, each run in its
     own process; returns {(rel, id): record file}. A record holds {"runs": {test: run}}. `priors` (item -> the record
     of the group before, or None) lets the tool skip a mutant that an earlier group already killed (T121); inside the
-    action it stops at the first run that fails a check. The skipped runs say which test killed the mutant."""
+    action it stops at the first run that fails a check. The skipped runs say which test killed the mutant. The
+    baseline objects let the tool derive each binary's kill limit from its unmutated run (T122)."""
     outs = {}
     items = []
     for item in batch:
@@ -285,6 +286,7 @@ def _link_run_batch(cfg, actions, batch, run_objs, group, priors, ident):
             "linkrun-batch",
             "--stop-on",
             _STOP_ON,
+            cmd_args("--baseline", str(len(cfg.rels)), [cfg.base_obj[r] for r in cfg.rels]),
             tests,
             items,
             "--",

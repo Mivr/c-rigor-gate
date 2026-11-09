@@ -1349,6 +1349,68 @@ gate "$out/only_runaway"
     || fail "$CUR: the runaway mutant survived"
 echo "    graded: $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
 
+begin "RED/GREEN: a mutant that hangs in a test is killed at the adaptive limit (20 x the baseline run, at least 5 s), not at 180 s (T122)"
+cat >> "$scratch/m/BUCK" <<'EOF'
+
+c_library(name = "hang", srcs = ["hang.c"], headers = ["hang.h"])
+c_test(name = "hang_test", srcs = ["hang_test.c"], deps = [":hang"])
+c_mutants(name = "hang_mutants", module = ":hang", tests = [":hang_test"])
+EOF
+cat > "$scratch/m/hang.h" <<'EOF'
+#ifndef HANG_H
+#define HANG_H
+unsigned long hang_count_down(unsigned long n);
+#endif
+EOF
+# `left -= 1` -> `left += 1` never reaches 0 (2^64 steps): the test binary hangs.
+cat > "$scratch/m/hang.c" <<'EOF'
+#include "hang.h"
+
+unsigned long hang_count_down(unsigned long n)
+{
+    volatile unsigned long left = n;
+    while (left != 0) {
+        left -= 1;
+    }
+    return left;
+}
+EOF
+cat > "$scratch/m/hang_test.c" <<'EOF'
+#include "ctest/ctest.h"
+#include "hang.h"
+
+static void t_down(ctest_t *t)
+{
+    CHECK_EQ_I64(t, (long)hang_count_down(5), 0);
+}
+
+CTEST_SUITE("hang", { "down", t_down })
+EOF
+t0=$SECONDS
+run "$out/build_hang.log" build "$pkg:hang_mutants" --show-full-output || fail "$CUR: buck2 build failed" "$out/build_hang.log"
+echo "    built in $((SECONDS - t0)) s, executed $(executed "$out/build_hang.log") actions"
+p="$(awk -v t="$pkg:hang_mutants" 'index($1, t) {print $2}' "$out/build_hang.log" | tail -1)"
+[ -f "$p" ] || fail "$CUR: no report for hang"
+mkdir -p "$out/only_hang"; cp "$p" "$out/only_hang/hang.json"
+"${PY[@]}" - "$out/only_hang/hang.json" "$((SECONDS - t0))" <<'PY' || fail "$CUR: bad hang report"
+import json, sys
+d = json.load(open(sys.argv[1]))
+m = [m for m in d["mutants"] if m["function"] == "hang_count_down" and m["operator"] == "compound-assignment" and m["replacement"] == "+="]
+assert len(m) == 1, "the left -= 1 -> left += 1 mutant is missing"
+run = list(m[0]["runs"].values())[0]
+assert run["timed_out"] and run["rc"] == -9, "the hanging mutant must be a timeout record: %r" % run
+base = list(d["baseline_runs"].values())[0]
+assert base["rc"] == 0 and not base["timed_out"], base
+assert int(sys.argv[2]) < 150, "the build took %s s: the hang was not stopped by the adaptive limit (180 s)" % sys.argv[2]
+print("    hanging mutant: timed out (rc -9), whole build in %s s (the fixed limit was 180 s per run)" % sys.argv[2])
+PY
+printf '[module."%s:hang_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
+gate "$out/only_hang"
+[ "$GATE_CODE" = 0 ] || [ "$GATE_CODE" = 1 ] || fail "$CUR: the gate did not grade the module (exit $GATE_CODE)" "$out/gate.log"
+[ "$(json '[f["function"] for f in r["findings"] if f["rule"] == "survived-mutant" and f["function"] == "hang_count_down" and f["replacement"] == "+="]')" = "[]" ] \
+    || fail "$CUR: the hanging mutant survived"
+echo "    graded: $(json 'r["metadata"]["modules"].popitem()[1]["verdicts"]')"
+
 # --------------------------------------------------------------------------------------
 # T095: `system_libs = ["pthread"]`. A module that starts a real pthread links into its c_test (release and san), a
 # c_binary and every mutant binary of its c_mutants; the same code without the declaration does not link.
