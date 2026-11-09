@@ -76,8 +76,8 @@ The compile flags (`-fno-sanitize-recover=all`) and these options keep every san
 The second output is `san_report.txt`, available as the sub-target `<name>_results[san_report]` (and materialized
 beside `results.jsonl`). It holds no PIDs, addresses or worker paths, so two cold runs are byte-identical.
 
-## `c_fuzz` runs (rules/ctest.bzl, `fuzz_run`)
-The same symbolizer and fatal options (one shared helper, `sanitizer_env_lines`) apply to the fuzz action, minus
+## `c_fuzz` runs (rules/fuzz.bzl, `fuzz_run`)
+The same symbolizer and fatal options (one shared helper, `sanitizer_env_lines` of rules/ctest.bzl) apply to the fuzz action, minus
 `log_path` (the report stays on stderr and is filtered). Outputs `report.txt` (`<name>[report]`) and `crash`
 (`<name>[crash]`) are declared; see `docs/toolchain.md`, "Fuzz runs".
 

@@ -250,6 +250,20 @@ All five share `canaries/_catalog/files/` (a canary-local `i18n` runtime with th
 here is `i18n/`, `cat/` next to `core/`, `util/`. `expect.json` `contains` pins the exact `po2c` message in `build.json`, so a
 canary that fails for another reason is a miss.
 
+## Canaries added by T129 (the `fuzz` gate)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `fuzz-crash` | a parser (profile `parser`) whose `parse_run` reads `buf[data[4] % 8]` from a 4-byte buffer behind the magic `PA`; the fixed seed and budget of the `c_fuzz` run reach it | `fuzz`: fuzz-crash | none |
+| `fuzz-missing` | the policy gives `//parse:parse` the `parser` profile and the product has the library and no `c_fuzz` target | `fuzz`: fuzz-missing | none |
+| `fuzz-vacuous-harness` | the `c_fuzz` target lists the parser in `deps`, runs clean, and its harness never calls it | `fuzz`: fuzz-harness-no-call | none |
+| `fuzz-regression-dropped` | `fuzz-regressions.json` (gate-owned, beside `policy.toml`) names the sha256 of an input that once crashed `//parse:fz`; it is not among the replayed corpus files (a graded `c_fuzz` cannot name a corpus yet, so none) | `fuzz`: fuzz-regression-missing | none |
+| `fuzz-green` (control) | the same shape with the fixed parser and a harness that calls it | none: PASS | none |
+
+They share `canaries/_fuzz/files/` (the parser in two variants, the two harnesses, the BUCK files), copied in by each `edit.sh`; the
+policy of each adds an L1 `//parse:parse` (`profile = ["parser"]`, `allow = ["malloc", "free"]`) and, where there is a target, a
+`//parse:fz` entry that exports `LLVMFuzzerTestOneInput`. `fuzz` is also a NOT_RUN gate wherever `mutants` is (they need the same
+gates to have passed): every `not_run` list that named `mutants` names `fuzz` now, in the canaries and the tripwires.
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.

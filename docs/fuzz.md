@@ -1,6 +1,7 @@
 # Fuzzing: `c_fuzz` with a corpus, and the judge `rigor fuzz` (T126, P003 §7.2, G23)
 
-Landed, not wired: `rigor grade` does not run the judge yet (`GATES`, `gate/order.txt` and the canaries are the next task).
+`rigor grade` runs the judge as the gate `fuzz` (T129; `docs/grade.md`, "Fuzz in the pipeline"): it builds every `c_fuzz` target in
+`toolchains//:linux_fuzz`, collects the outputs into the results directory below and judges them in process.
 
 ## The rule: `c_fuzz`
 
@@ -57,14 +58,16 @@ fuzz = true            # some c_fuzz target must list the module in `deps`
 fuzz_runs = 200000     # optional: the runs a target must complete (default 200000, at most 2000000)
 ```
 
-A required target is a `c_fuzz` target that lists a `fuzz = true` module in `deps`; its budget is the largest `fuzz_runs`
+A module is required when it has `fuzz = true` **or** its `profile` list contains `parser` (T127; `profile` is a name or a list of
+names, and `fuzz_runs` is then allowed without `fuzz = true`). A required target is a `c_fuzz` target that lists a required module in `deps`; its budget is the largest `fuzz_runs`
 of those modules. The budget comes from the policy, not from the product, so a product cannot lower it with `runs`.
 
 **Results directory** (flat, nothing else in it): `index.json` = `{"<target label>": "<id>"}`, and per id `<id>.stats.json`,
 `<id>.verdict`, `<id>.report`, `<id>.replayed`, and optionally `<id>.crash` (its sha256 must equal `reproducer_sha256`).
-These are the outputs of the run action; the caller (the later wiring) collects them.
+These are the outputs of the run action; `rigor grade` collects them (`grade_fuzz.collect`).
 
-**Regressions** `R.json` is gate-owned: `{"<target label>": ["<sha256>", ...]}`, the inputs that once crashed.
+**Regressions** `R.json` is gate-owned: `{"<target label>": ["<sha256>", ...]}`, the inputs that once crashed. In a grade it is
+`products/<p>/fuzz-regressions.json`, bound into the verdict (`inputs.fuzz_regressions_sha256`).
 
 | Finding | Severity | When |
 |---|---|---|
@@ -96,6 +99,9 @@ deletion, so the entry is part of the fix.
 - `fuzz-harness-no-call` checks that the harness references an exported symbol of the module, not that the call is
   meaningful or reachable from the input.
 - Long campaigns on idle farm capacity, a corpus store bound into the verdict by hash, and differential harnesses are a
-  later nightly task, as is wiring this judge into `rigor grade`.
-- `docs/toolchain.md` and `docs/ctest.md` still say `fuzz_run` lives in `rules/ctest.bzl` and runs a fixed 200000: it moved
-  to `rules/fuzz.bzl` (the paths of this task did not include those two docs).
+  later nightly task.
+- A graded product cannot name a `corpus` or `runs` in its `c_fuzz` yet: `buckfiles` accepts only `name`, `srcs`, `headers`, `deps`
+  and `visibility` for the macros. Until it does, a graded target replays no corpus (`fuzz-empty-corpus`, info) and a regression
+  input in `fuzz-regressions.json` can only be reported as `fuzz-regression-missing`.
+- The canaries of this gate are `fuzz-crash`, `fuzz-missing`, `fuzz-vacuous-harness` (`fuzz-harness-no-call`) and
+  `fuzz-regression-dropped`, with the control `fuzz-green` (`docs/canaries.md`).

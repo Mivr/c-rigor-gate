@@ -98,10 +98,10 @@ fatal settings `halt_on_error=1`, `abort_on_error=0`, `detect_leaks=1` (the comp
 
 ## Fuzz runs
 
-`c_fuzz(name = "fz")` defines `fz__bin` (the libFuzzer binary) and `fz` (rule `fuzz_run`, rules/ctest.bzl). `fz` is a
+`c_fuzz(name = "fz")` defines `fz__bin` (the libFuzzer binary) and `fz` (rule `fuzz_run`, rules/fuzz.bzl). `fz` is a
 build action on RE with the same hermetic symbolizer and the same fatal sanitizer options as `<name>_results`
-(`sanitizer_env_lines`, no `log_path`; reports stay on stderr), running `fz__bin -seed=1 -runs=200000
--artifact_prefix=<scratch>/`. It always produces its outputs; `buck2 test` of `fz` only reads the verdict.
+(`sanitizer_env_lines`, no `log_path`; reports stay on stderr), running `fz__bin -seed=1 -runs=N
+-artifact_prefix=<scratch>/` (N: the `runs` of the target, default 200000; first it replays the corpus, see `docs/fuzz.md`). It always produces its outputs; `buck2 test` of `fz` only reads the verdict.
 
 | Output | Command | Content |
 |---|---|---|
