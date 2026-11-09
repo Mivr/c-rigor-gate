@@ -96,6 +96,13 @@ selftests = ["product_checks", "profiles"]
 [[rule]]
 glob = "gate/rigor_lib/policy_check.py"
 selftests = ["product_checks", "profiles"]
+# T132: the ledger library and the signer roles file; only `rigor ledger` and the optional approvals arguments use them.
+[[rule]]
+glob = "gate/rigor_lib/ledger.py"
+selftests = ["grade"]
+[[rule]]
+glob = "gate/signer_roles.toml"
+selftests = ["grade", "canaries"]
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
