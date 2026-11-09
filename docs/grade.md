@@ -216,6 +216,11 @@ so the gate reads the head's results of both modes and builds nothing.
   index; metadata sums the action counts over every attempt, `exit_code` is the first non-zero chunk exit, and
   `chunks`, `retried` (chunk indexes) and `stderr_tail` (last failing chunk) are added. `--no-remote-cache` with
   `--uncached`.
+  **Stop at the first kill (T121).** A mutant's tests run in a fixed order (the tests of the module's own package, then the
+  others, each sorted by label) and its runs stop at the first test that fails a check; the rest are recorded as skipped
+  (`killed_by`), never as passes (`rigor mutants`: `bad-skip` unless an earlier run of that mutant fails a check). A crash
+  does not stop the runs: the verdict is killed-assert if any test fails a check, so every verdict stays what it was. See
+  `docs/mutate.md`.
   **Reuse (T121).** Each `mutant_run` is a Buck2 action: for a module whose sources, tests, link deps, operator set,
   toolchain and gate rules are unchanged its key is the same in every grade, so the RE action cache answers and a repeat
   grade executes none. The key holds no work dir, time or nonce; the one per-grade thing that was in it, the target
