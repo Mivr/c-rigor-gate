@@ -1,0 +1,30 @@
+# The schema mutation engine's runtime and tools as Buck2 inputs (T124). A package of their own: mutate/BUCK is not
+# part of this prototype's contract.
+load("@gate//rules:c.bzl", "c_library")
+
+c_library(
+    name = "schema_rt",
+    srcs = ["schema_rt.c"],
+    headers = ["schema_rt.h"],
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "schema.py",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "schema_compare.py",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "schema_run.py",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "schema_rt.h",
+    visibility = ["PUBLIC"],
+)

@@ -9,6 +9,12 @@
 # Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf
 # "all" is shorthand for every one of them.
 
+# ---- 0. The schema mutation engine prototype (T124): nothing in the grade uses it. `affected.py` has no selftest name of
+# its own for it yet, so it selects `mutate`; run `selftest/mutate_schema.sh` for it by hand. Listed before `rules/**`.
+[[rule]]
+glob = "rules/mutate_schema.bzl"
+selftests = ["mutate"]
+
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"
@@ -105,6 +111,9 @@ selftests = []
 
 # ---- 4. Frameworks and the throwaway products of each selftest ------------------------------------------------
 [[rule]]
+glob = "mutate/schema/**"
+selftests = ["mutate"]
+[[rule]]
 glob = "mutate/**"
 selftests = ["mutate", "grade", "canaries"]
 [[rule]]
@@ -157,6 +166,12 @@ glob = "selftest/grade_product/**"
 selftests = ["grade"]
 [[rule]]
 glob = "selftest/mutate.sh"
+selftests = ["mutate"]
+[[rule]]
+glob = "selftest/mutate_schema.sh"
+selftests = ["mutate"]
+[[rule]]
+glob = "selftest/mutate_schema/**"
 selftests = ["mutate"]
 [[rule]]
 glob = "selftest/structure.sh"

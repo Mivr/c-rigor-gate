@@ -1,0 +1,36 @@
+load("@gate//rules:c.bzl", "c_library", "c_mutants", "c_test")
+load("@gate//rules:mutate_schema.bzl", "c_mutants_schema")
+
+# One module of every kind of site (selftest/mutate_schema.sh builds each with both engines and compares them).
+c_library(name = "elig", srcs = ["elig.c"], headers = ["elig.h"])
+c_test(name = "elig_test", srcs = ["elig_test.c"], deps = [":elig"])
+c_library(name = "pinned", srcs = ["pinned.c"], headers = ["pinned.h"])
+c_test(name = "pinned_test", srcs = ["pinned_test.c"], deps = [":pinned"])
+c_library(name = "weak", srcs = ["weak.c"], headers = ["weak.h"])
+c_test(name = "weak_test", srcs = ["weak_test.c"], deps = [":weak"])
+c_library(name = "equiv", srcs = ["equiv.c"], headers = ["equiv.h"])
+c_test(name = "equiv_test", srcs = ["equiv_test.c"], deps = [":equiv"])
+c_library(name = "multi", srcs = ["multi_a.c", "sub/multi_b.c"], headers = ["multi.h", "sub/multi_b.h"])
+c_test(name = "multi_test", srcs = ["multi_test.c"], deps = [":multi"])
+c_library(name = "macro", srcs = ["macro.c"], headers = ["macro.h"])
+c_test(name = "macro_test", srcs = ["macro_test.c"], deps = [":macro"])
+c_library(name = "attr", srcs = ["attr.c"], headers = ["attr.h"])
+c_test(name = "attr_test", srcs = ["attr_test.c"], deps = [":attr"])
+c_library(name = "lit", srcs = ["lit.c"], headers = ["lit.h"])
+c_test(name = "lit_test", srcs = ["lit_test.c"], deps = [":lit"])
+c_library(name = "rec", srcs = ["rec.c"], headers = ["rec.h"])
+c_test(name = "rec_test", srcs = ["rec_test.c"], deps = [":rec"])
+c_library(name = "fold", srcs = ["fold.c"], headers = ["fold.h"])
+c_test(name = "fold_test", srcs = ["fold_test.c"], deps = [":fold"])
+c_library(name = "hang", srcs = ["hang.c"], headers = ["hang.h"])
+c_test(name = "hang_test", srcs = ["hang_test.c"], deps = [":hang"])
+
+[
+    c_mutants(name = m + "_v1", module = ":" + m, tests = [":" + m + "_test"])
+    for m in ["elig", "pinned", "weak", "equiv", "multi", "macro", "attr", "lit", "rec", "fold", "hang"]
+]
+
+[
+    c_mutants_schema(name = m + "_schema", module = ":" + m, tests = [":" + m + "_test"])
+    for m in ["elig", "pinned", "weak", "equiv", "multi", "macro", "attr", "lit", "rec", "fold", "hang"]
+]

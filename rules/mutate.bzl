@@ -664,3 +664,23 @@ c_mutants_rule = rule(
         "_tool": attrs.source(default = "gate//mutate:tool.py"),
     },
 )
+
+# The helpers of the pipeline above that `rules/mutate_schema.bzl` (the schema mutation engine prototype, T124) shares.
+# A name starting with `_` cannot be loaded, so they are exported by appending this struct; nothing above changed.
+mutate_helpers = struct(
+    batch_order = _batch_order,
+    batches = _batches,
+    compile_batch = _compile_batch,
+    compile_prefix = _compile_prefix,
+    compile_variant = _compile_variant,
+    DEFAULT_BATCH = _DEFAULT_BATCH,
+    label_text = _label_text,
+    link_inputs = _link_inputs,
+    link_run = _link_run,
+    objects = _objects,
+    python = _python,
+    run_compile = _run_compile,
+    system_lib_flags = _system_lib_flags,
+    test_key = _test_key,
+    test_order = _test_order,
+)
