@@ -1,0 +1,20 @@
+load("@gate//rules:c.bzl", "c_binary", "c_library", "c_mutants", "c_test")
+load("@gate//rules:structure.bzl", "c_structure")
+
+# A module with a guard (rigor_require before an array read), the tests that must pass, the tests that must fail,
+# and a binary that uses the guard directly. The only gate target any of them names is gate//rt:require.
+c_library(name = "table", srcs = ["table.c"], headers = ["table.h"], deps = ["gate//rt:require"])
+c_structure(name = "table_s", module = ":table", srcs = ["table.c"], headers = ["table.h"], deps = ["gate//rt:require"])
+c_test(name = "table_test", srcs = ["table_test.c"], deps = [":table"])
+c_test(name = "table_bad", srcs = ["table_bad.c"], deps = [":table"])
+c_binary(name = "table_bin", srcs = ["table_bin.c"], deps = [":table", "gate//rt:require"])
+c_structure(name = "table_bin_s", module = ":table_bin", srcs = ["table_bin.c"], deps = [":table", "gate//rt:require"], kind = "c_binary")
+c_mutants(name = "table_mutants", module = ":table", tests = [":table_test"])
+
+# The tests without CHECK_TRAPS: what the zero-survivors rule says about a guard no test can make fire.
+c_test(name = "table_weak", srcs = ["table_weak.c"], deps = [":table"])
+c_mutants(name = "weak_mutants", module = ":table", tests = [":table_weak"])
+
+# Red: a library that traps by itself (judged as before), and one that depends on another gate target.
+c_library(name = "own_trap", srcs = ["own_trap.c"], deps = ["gate//rt:require"])
+c_library(name = "bad_dep", srcs = ["bad_dep.c"], deps = ["gate//ctest:perf"])

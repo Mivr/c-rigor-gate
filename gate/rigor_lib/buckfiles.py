@@ -13,7 +13,7 @@ import ast
 import os
 import re
 
-from rigor_lib import facts_third_party, jsonio
+from rigor_lib import facts_rt, facts_third_party, jsonio
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
 from rigor_lib.runner import gate_handler
@@ -43,6 +43,8 @@ BUILD_FILE = "BUCK"
 DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+)")
 GATE_THIRD_PARTY = re.compile(r"//third_party[/:]")
 TEST_MACRO = "c_test"
+# T128: `gate//rt:require` (facts_rt) is the one more gate label, for a library, a binary or a test only.
+REQUIRE_MACROS = ("c_library", "c_binary", TEST_MACRO)
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
 TEST_DERIVED = ("", "_facts", "_facts_san", "_results", "_coverage")
 
@@ -125,6 +127,8 @@ def _dep_problem(node, allowed, test_allowed, macro):
     problem = None
     for element in node.elts:
         label = element.value
+        if label == facts_rt.LABEL and macro in REQUIRE_MACROS:
+            continue
         if label in allowed or (macro == TEST_MACRO and label in test_allowed):
             continue
         if label in test_allowed:

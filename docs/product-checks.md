@@ -237,6 +237,13 @@ clang 19 does not define under `-fsanitize=address`, so code under it is dead in
 code under `#ifndef NDEBUG` or `#ifdef __OPTIMIZE__` is the same text in both (and visible to the release scan).
 Wiring into `rigor grade` is a later task.
 
+### `gate//rt:require` (T128)
+The one gate library besides `ctest` and the third-party libraries that a product `c_library`, `c_binary` or `c_test`
+may list in `deps` (and a `c_library` in `exported_deps`): `buckfiles` accepts exactly that label, `symbols` and `layering`
+treat it as gate code (no facts needed, no policy entry, never a module), `structure` needs no facts for it, and the
+semantic scan accepts the `__builtin_trap` that sits in `rt/require.h` in a unit of a target that depends on it, with no
+`allow_builtins`. A `__builtin_trap` anywhere else is judged as before. See docs/require.md.
+
 ## 3. `rigor buckfiles --root DIR [--out F]` (gate `buckfiles`)
 Each `BUCK` is parsed (never executed) with `ast`. Allowed: `load("@gate//rules:c.bzl", ...)` naming only
 `c_library`, `c_binary`, `c_test`, `c_fuzz`, `c_catalog`, `c_embed` (T112: `name`, `visibility`, `src` and `symbol` strings, `max_bytes` one int literal; docs/grade.md, "`c_embed`"), and top-level calls to those with keyword arguments
