@@ -13,6 +13,7 @@
     system_libs = ["pthread"]       # sysroot libraries the module's c_library declares (`system_libs`, T095); exact match
     allow_mutable_data = false      # true: the module may define writable static data (data/bss/tls), T089
     impl = ["core/core.c"]          # the witness gates' implementation paths (T039); validated there, ignored here
+    profile = ["pure", "parser"]    # the module's profiles (T127); accepted and ignored here, `rigor policy-check` reads it
     [module."//core:core".perf.lookup]   # a perf target and its class (T090); validated by perf_policy, used by the perf gate
 
 `ram-budget.toml` next to the policy file is read with it (`ram_budget.py`).
@@ -65,7 +66,7 @@ def _only(where, table, allowed):
 def _module(label, table, deny):
     where = "module %s" % label
     _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl",
-                           "allow_mutable_data", "perf", "system_libs"))
+                           "allow_mutable_data", "perf", "system_libs", "profile"))
     perf_policy.parse_module(label, table)
     mutable_data = table.get("allow_mutable_data", False)
     if type(mutable_data) is not bool:
