@@ -13,6 +13,7 @@ The reports are built in release mode (cached like any build; `--uncached` appli
 In role test-author it is PASS with info `not-applicable`: the head is the stub commit (P002 Q2).
 """
 
+import hashlib
 import os
 import re
 from argparse import Namespace
@@ -240,12 +241,17 @@ def plan(layout, levels, perf=None):
     return Plan(modules, found)
 
 
-def target_name(index, module):
-    return "m%03d_%s" % (index, re.sub(r"[^A-Za-z0-9_]", "_", module.label.lstrip("/")))
+def target_name(module):
+    """The `c_mutants` target of a module. Derived from the module's label alone, never from its position in the
+    grading: the name is part of every output path of the target's actions, so a position in it would change the
+    action keys (and miss the cache) whenever a module is added or removed before it (T121). The hash keeps two
+    labels that sanitise to the same text apart."""
+    digest = hashlib.sha256(module.label.encode("utf-8")).hexdigest()[:8]
+    return "m_%s_%s" % (re.sub(r"[^A-Za-z0-9_]", "_", module.label.lstrip("/")), digest)
 
 
-def target_label(index, module):
-    return "//%s:%s" % (PACKAGE_DIR, target_name(index, module))
+def target_label(module):
+    return "//%s:%s" % (PACKAGE_DIR, target_name(module))
 
 
 def _list(items):
@@ -257,19 +263,18 @@ def build_file_text(modules):
     for i, m in enumerate(modules):
         if m.perf:  # T090: the module's perf targets run for the survivors
             calls.append('c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    perf = %s,\n    deps = %s,\n)\n'
-                         % (target_name(i, m), m.label, _list(m.tests), _list([t for t, _ in m.perf]), _list(m.deps)))
+                         % (target_name(m), m.label, _list(m.tests), _list([t for t, _ in m.perf]), _list(m.deps)))
         else:
             calls.append('c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    deps = %s,\n)\n'
-                         % (target_name(i, m), m.label, _list(m.tests), _list(m.deps)))
+                         % (target_name(m), m.label, _list(m.tests), _list(m.deps)))
     return 'load("@gate//rules:c.bzl", "c_mutants")\n\n' + "\n".join(calls)
 
 
-def policy_text(modules, indexes=None):
-    """The `rigor mutants` policy; `indexes` are the package positions of `modules` (default: all)."""
-    indexes = range(len(modules)) if indexes is None else indexes
-    return "\n".join('[module."%s"]\nlevel = "%s"\n' % (target_label(i, m), m.level)
-                     + "".join('[module."%s".perf."%s"]\nclass = "%s"\n' % (target_label(i, m), t, c) for t, c in m.perf)
-                     for i, m in zip(indexes, modules))
+def policy_text(modules):
+    """The `rigor mutants` policy of MODULES."""
+    return "\n".join('[module."%s"]\nlevel = "%s"\n' % (target_label(m), m.level)
+                     + "".join('[module."%s".perf."%s"]\nclass = "%s"\n' % (target_label(m), t, c) for t, c in m.perf)
+                     for m in modules)
 
 
 def write_shared_package_file(tree):
@@ -334,8 +339,8 @@ def build_reports(run, uncached, modules):
     (findings, metadata, built indexes). One build of every module died of a dropped stream and took every
     pending target with it (T115); a chunk that dies that way is retried once, and a chunk that still fails
     costs only its own modules. The daemon stays up between the chunks."""
-    labels = [target_label(i, m) for i, m in enumerate(modules)]
-    perf_labels = {i: target_label(i, m) + "[perf]" for i, m in enumerate(modules) if m.perf}
+    labels = [target_label(m) for m in modules]
+    perf_labels = {i: target_label(m) + "[perf]" for i, m in enumerate(modules) if m.perf}
     flags = ["--no-remote-cache"] if uncached else []
     out_dir = run.mutants_reports
     os.makedirs(out_dir)
@@ -402,12 +407,12 @@ def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT
     policy = os.path.join(run.work, "tmp", "mutants-policy.toml")
     os.makedirs(os.path.dirname(policy), exist_ok=True)
     with open(policy, "xb") as handle:
-        handle.write(policy_text([modules[i] for i in built], built).encode("utf-8"))
+        handle.write(policy_text([modules[i] for i in built]).encode("utf-8"))
     perf_dir = os.path.join(os.path.dirname(run.mutants_reports), PERF_DIR)
     result = rigor_mutants.run(Namespace(
         results=run.mutants_reports, policy=policy, perf_results=perf_dir, approvals=g.args.approvals,
         repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind)
-    names = {target_label(i, modules[i]): modules[i].label for i in built}
+    names = {target_label(modules[i]): modules[i].label for i in built}
     summaries = {names.get(label, label): summary for label, summary in result.metadata["modules"].items()}
     found = [dict(item, rule=renames.get(item["rule"], item["rule"])) for item in
              _relabel(result.findings, names)] if renames else _relabel(result.findings, names)
@@ -444,7 +449,7 @@ def _run(g, run):
     build_found, metadata, built = build_reports(run, g.args.uncached, chosen.modules)
     found.extend(build_found)
     metadata["package_sha256"] = package_sha
-    metadata["targets"] = {m.label: target_label(i, m) for i, m in enumerate(chosen.modules)}
+    metadata["targets"] = {m.label: target_label(m) for m in chosen.modules}
     metadata["modules"], metadata["approvals_used"] = {}, []
     if built:
         # The policy names only the modules that built: a missing one already has its own finding.
