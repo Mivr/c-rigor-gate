@@ -6,7 +6,7 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require
 # "all" is shorthand for every one of them.
 
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
@@ -56,10 +56,10 @@ selftests = ["trajectory_real"]
 # ---- 3. The kernel library, by family ---------------------------------------------------------------------------------
 [[rule]]
 glob = "gate/rigor_lib/facts*"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/buckfiles.py"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 # The byte-array generator of `c_embed` (T112): its selftest is selftest/embed.sh, run with the ctest group.
 [[rule]]
 glob = "gate/rigor_lib/bin2c.py"
@@ -69,10 +69,14 @@ glob = "gate/rigor_lib/product_checks.py"
 selftests = ["product_checks", "grade", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/semantic_table.py"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/structure*"
-selftests = ["structure", "grade", "canaries"]
+selftests = ["structure", "grade", "canaries", "require"]
+# T128: layering reads the same facts and must accept gate//rt:require; the rest of the library is below.
+[[rule]]
+glob = "gate/rigor_lib/layering*"
+selftests = ["grade", "product_checks", "structure", "mutate", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/mutants*"
 selftests = ["mutate", "grade", "canaries"]
@@ -119,7 +123,11 @@ glob = "mutate/**"
 selftests = ["mutate", "grade", "canaries"]
 [[rule]]
 glob = "ctest/**"
-selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure"]
+selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure", "require"]
+# T128: the gate-owned header `gate//rt:require`; every gate that reads dependencies and headers meets it.
+[[rule]]
+glob = "rt/**"
+selftests = ["require", "product_checks", "structure", "mutate", "grade", "canaries"]
 [[rule]]
 glob = "examples/**"
 selftests = ["toolchain", "ctest", "product_checks"]
@@ -201,6 +209,12 @@ selftests = ["ctest", "product_checks"]
 [[rule]]
 glob = "selftest/perf.sh"
 selftests = ["perf"]
+[[rule]]
+glob = "selftest/require.sh"
+selftests = ["require"]
+[[rule]]
+glob = "selftest/require_product/**"
+selftests = ["require"]
 [[rule]]
 glob = "selftest/fuzz.sh"
 selftests = ["fuzz"]
