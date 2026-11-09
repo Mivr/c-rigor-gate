@@ -470,17 +470,23 @@ def mutants_gate(g):
         grade_context.kill_daemon(run.tree)
 
 
-def _run(g, run):
+def build_plan(g, run):
+    """(Plan, perf shared) of the product in `run.tree`: what the grade measures, and what the lane command
+    (`lane_mutants`) measures for the modules it is asked about, comes from this one function."""
     levels = grade_policy.load_levels(grade_policy.policy_path(g))
     targets = perf_policy.load(grade_policy.policy_path(g), getattr(g, "perf", None))
     if targets:   # the perf binaries must be in the tree before the layout is read
         write_shared_package_file(run.tree)
         perf_package.write(run.tree, targets)
-    chosen = plan(read_layout(run), levels, perf_policy.by_module(targets))
+    return plan(read_layout(run), levels, perf_policy.by_module(targets)), bool(targets)
+
+
+def _run(g, run):
+    chosen, shared = build_plan(g, run)
     found = list(chosen.findings)
     if not chosen.modules:
         return GateResult(rigor_mutants.GATE_ID, found, {"modules": {}})
-    package_sha = write_package(run, chosen.modules, bool(targets))
+    package_sha = write_package(run, chosen.modules, shared)
     build_found, metadata, built = build_reports(run, g.args.uncached, chosen.modules)
     found.extend(build_found)
     metadata["package_sha256"] = package_sha
