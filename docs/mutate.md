@@ -4,7 +4,7 @@ Coverage says a line ran, not that a test would notice if the line were wrong. A
 one small, deliberate defect; if every test still passes, the tests do not constrain that behaviour. The rule
 for L3 modules is **zero surviving mutants**; the only way past one is a signed `equivalent-mutant` approval.
 
-Everything runs on RE in the `release` mode (a grading builds the `c_mutants` targets in chunks of 12, T115; `docs/grade.md`): `buck2 build //pkg:<name>` of a `c_mutants` target yields
+Everything runs on RE in the `release` mode (a grading builds the `c_mutants` targets in chunks of 12, three at a time, T115/T121; the target name derives from the module label, so action keys do not depend on the module's position; `docs/grade.md`): `buck2 build //pkg:<name>` of a `c_mutants` target yields
 `report.json`, `rigor mutants` decides. Self-test: `selftest/mutate.sh`.
 
 ```
