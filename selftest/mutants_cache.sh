@@ -4,7 +4,7 @@
 # chunking; and a cache hit must give the same verdict as the run that filled it (the verdict is read from the cached
 # action OUTPUT).
 #   (a) the same head graded twice in two work dirs: ZERO mutant_run actions execute, every digest is identical;
-#   (b) a head that changes one module (util): only that module's mutant_run actions execute;
+#   (b) a head that changes one module (an independent one): only that module's mutant_run actions execute;
 #   (c) a head with a surviving mutant, graded twice: the second grade executes nothing and reports the same survivors.
 # Needs bash, git, python3 (stdlib) and tools/buck2. Scratch lives under $TMPDIR (default /var/tmp), removed on exit
 # (RIGOR_GRADE_KEEP=1 keeps it).
@@ -15,7 +15,6 @@ cd "$root"
 export TMPDIR="${TMPDIR:-/var/tmp}"
 work="$(mktemp -d "$TMPDIR/rigor-mcache.XXXXXX")"
 repo="$work/repo"
-product=products/selftest/product.toml
 
 cleanup() {
   local t
@@ -33,6 +32,25 @@ export GIT_COMMITTER_NAME=selftest GIT_COMMITTER_EMAIL=selftest@example.invalid
 
 mkdir -p "$repo"
 cp -r selftest/grade_product/. "$repo/"
+# core and util are coupled (util's tests link core and core's mutants link what util's test links), so a third module
+# that nothing else links is added: the canary `new-module` has exactly that (//core:extra) and the policy gets its entry.
+(cd "$repo" && bash "$root/canaries/new-module/edit.sh")
+mkdir -p "$work/product"
+cp products/selftest/product.toml products/selftest/policy.toml "$work/product/"
+cp canaries/new-module/expected-tests.json "$work/product/expected-tests.json"
+cat >> "$work/product/policy.toml" <<'EOT'
+
+[module."//core:extra"]
+level = "L2"
+impl = ["core/extra.c"]
+allow = []
+exports = ["extra_twice"]
+
+[module."//core:extra_test"]
+allow = []
+exports = ["main"]
+EOT
+product="$work/product/product.toml"
 printf '\n/* selftest nonce %s-%s */\n' "$(date +%s%N)" "$$" >> "$repo/core/core.c"   # the first grade really executes
 git -C "$repo" init -q -b main
 git -C "$repo" add -A
@@ -89,22 +107,22 @@ print("  %d mutant_run actions, 0 executed in the repeat, digests identical" % l
 PY
 
 # (b) one module changes: only its mutant_run actions execute
-echo "[b] a change to util only"
-# a change of the object code (swapped operands of a commutative call), not of a comment: a comment would give the
-# same objects and every action would stay cached
-h_util="$(head_of util "sed -i 's/core_add(total, values\[i\])/core_add(values[i], total)/' util/util.c")"
-git -C "$repo" diff --quiet "$base" "$h_util" -- util/util.c && fail "(b) the util edit changed nothing"
-grade b "$h_util"
+echo "[b] a change to the independent module only"
+# a change of the object code, not of a comment: a comment would give the same objects and every action would stay cached
+h_extra="$(head_of extra "sed -i 's/return a + a;/return 2 * a;/' core/extra.c")"
+git -C "$repo" diff --quiet "$base" "$h_extra" -- core/extra.c && fail "(b) the edit changed nothing"
+grade b "$h_extra"
 ran b > "$work/b.ran"
-python3 -I - "$work/b.ran" <<'PY' || fail "(b) a mutant_run action of an unchanged module executed, or util's did not"
+python3 -I - "$work/b.ran" <<'PY' || fail "(b) a mutant_run action of an unchanged module executed, or the changed module's did not"
 import json, sys
 b = json.load(open(sys.argv[1]))
 executed = {k for k, v in b.items() if v[0] != "Cache"}
-modules = {"core": [k for k in b if "_core_core_" in k], "util": [k for k in b if "_util_util_" in k]}
-assert modules["core"] and modules["util"], {m: len(v) for m, v in modules.items()}
-assert not executed & set(modules["core"]), sorted(executed & set(modules["core"]))
-assert executed and executed <= set(modules["util"]), sorted(executed)
-print("  executed %d of %d util mutant_run actions, 0 of %d core ones" % (len(executed), len(modules["util"]), len(modules["core"])))
+own = [k for k in b if "_core_extra_" in k]
+others = [k for k in b if "_core_extra_" not in k]
+assert own and others, (len(own), len(others))
+assert not executed & set(others), sorted(executed & set(others))
+assert executed and executed <= set(own), sorted(executed)
+print("  executed %d of %d mutant_run actions of the changed module, 0 of %d of the others" % (len(executed), len(own), len(others)))
 PY
 
 # (c) a surviving mutant stays a survivor on a cache hit
