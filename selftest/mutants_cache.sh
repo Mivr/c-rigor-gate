@@ -109,7 +109,10 @@ PY
 # (b) one module changes: only its mutant_run actions execute
 echo "[b] a change to the independent module only"
 # a change of the object code, not of a comment: a comment would give the same objects and every action would stay cached
-h_extra="$(head_of extra "sed -i 's/return a + a;/return 2 * a;/' core/extra.c")"
+# (a constant that is new every run, on a path the test does not take: without it a second run of this script would
+# find the head's actions in the cache from the first run)
+salt=$((RANDOM * 32768 + RANDOM))
+h_extra="$(head_of extra "sed -i 's/return a + a;/return a + a + (a > 1000000 ? $salt : 0);/' core/extra.c")"
 git -C "$repo" diff --quiet "$base" "$h_extra" -- core/extra.c && fail "(b) the edit changed nothing"
 grade b "$h_extra"
 ran b > "$work/b.ran"
