@@ -61,7 +61,7 @@ latter), each with its own `--out` like every other gate.
 | `forbidden-attribute` | an attribute (`__x__` spelling normalised) in `FORBIDDEN_ATTRIBUTES`: `optnone`, `no_instrument_function`, `no_profile_instrument_function`, `disable_sanitizer_instrumentation`, `no_sanitize`, `no_sanitize_address/memory/thread`, `no_address_safety_analysis`, `no_stack_protector`, `weak`, `weakref`, `alias`, `ifunc`, `constructor`, `destructor`, `section`, `used`, `visibility`, `naked`. `noreturn` is allowed. |
 | `line-directive` | a line marker the compiler did not write: a flag-less marker that names another file, or goes back in the same file (a user `#line`), or a return marker that does not name the file it returns to. Markers are never believed: the file stays the one the compiler is really reading, so a `#line` naming a system header cannot hide the text after it |
 | `banned-builtin` | `alloca`, `__alloca`, `_alloca`, and every `__builtin_alloca*` (`_with_align`, `_uninitialized`, ...). No policy can allow it (`allow_builtins` naming one is exit 2) |
-| `forbidden-builtin` | any other builtin (a watched prefix, or a measured prefix-less builtin) that is not in `ALLOWED_BUILTINS`; except `__builtin_trap`/`__builtin_unreachable`/`__builtin_debugtrap` where the module's `allow_builtins` lists it, and `__builtin_setjmp`/`__builtin_longjmp` where the module may reference `setjmp`/`longjmp` (`deny_exempt`, or `allow` when the symbol is not denied) |
+| `forbidden-builtin` | any other builtin (a watched prefix, or a measured prefix-less builtin) that is not in `ALLOWED_BUILTINS`; except `__builtin_trap`/`__builtin_unreachable`/`__builtin_debugtrap`/`__atomic_load_n`/`__atomic_store_n` (the lock-free flag primitive; no other `__atomic_*`, `__sync_*` or `__c11_atomic_*`; the memory-order argument is not checked, the facts carry identifier names only) where the module's `allow_builtins` lists it, and `__builtin_setjmp`/`__builtin_longjmp` where the module may reference `setjmp`/`longjmp` (`deny_exempt`, or `allow` when the symbol is not denied) |
 | `reserved-macro` | a product `#define`/`#undef` of a reserved identifier (`__x`, `_X`), a C keyword, or a name a toolchain or gate-owned third-party header (or `<built-in>`/`<command line>`) also defines or undefines in that unit. Feature-test macros (`semantic_table.FEATURE_TEST_MACROS`: `_GNU_SOURCE`, `_POSIX_C_SOURCE`, ...; not `_FORTIFY_SOURCE`) are fine |
 | `block-scope-include` | a toolchain header entered while a product brace is open (inside a function body or a struct) |
 
@@ -76,7 +76,7 @@ trusted = ["//ctest:ctest"]  # gate-owned modules: only their exports count; not
 [module."//core:core"]
 allow = ["memcpy"]           # external symbols beyond what its direct deps define
 deny_exempt = []             # entries of global.deny this module may use (this also allows them)
-allow_builtins = []          # guarded builtins (trap/unreachable/debugtrap) this module may use
+allow_builtins = []          # guarded builtins (trap/unreachable/debugtrap, __atomic_load_n/__atomic_store_n) this module may use
 level = "L3"                 # L1..L5; read by the exports check (below)
 exports = ["core_add"]       # every external symbol the module may define (T033)
 system_libs = ["pthread"]    # sysroot libraries its c_library declares, exactly (T095; below)
@@ -280,7 +280,7 @@ and to nothing else of a builtin family.
 `__builtin_expect` is **not** allowed: nothing measured needs it. Measured but not needed by annas-c, and so
 denied until a product needs them: `<math.h>` (`HUGE_VAL`, `NAN`, `INFINITY`, `isnan`, `isinf`, `signbit`
 expand to `__builtin_huge_val`, `__builtin_nanf`, `__builtin_inff`, `__builtin_isnan`, ...), glibc's
-`tolower`/`toupper` at `-O2` (`__builtin_constant_p`), `<stdatomic.h>` (`__c11_atomic_*`).
+`tolower`/`toupper` at `-O2` (`__builtin_constant_p`), `<stdatomic.h>` (`__c11_atomic_*`; it stays out: it expands to the forbidden `__c11_atomic_*` family, and the two guarded `__atomic_load_n`/`__atomic_store_n` builtins cover the lock-free flag need of a module that owns threads, opt-in per module via `allow_builtins`; their memory-order argument is not checked by the gate, review it).
 
 **Every spelling that reaches a builtin**, and what covers it (red fixtures in `selftest/product_checks.sh`
 step "builtins ...", unit tests in `gate/tests/test_cscan_builtins.py` and `test_facts_builtins.py`):
