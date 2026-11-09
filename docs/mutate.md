@@ -38,7 +38,7 @@ Now `c_mutants` has an attribute `batch` (default 16):
 | What | One action per |
 |---|---|
 | `mutant_compile` (`-O2`) and `mutant_compile_o0` | batch of at most `batch` mutants (of one or more sources); `tool.py compile-batch` compiles each mutant on its own, in its own scratch directory, and writes its object and its record. A mutant the compiler rejects is `unviable`, the others still compile. A compiler crash or a stale spec fails the batch (as it failed the single action) |
-| `mutant_run` | batch and test (resource limits: every mutant binary runs under the ctest harness limits, 64 MiB per file, 20 s CPU per test, 256 descriptors, no core, a 256 MiB scratch quota per test, see "Runaway tests" below); `tool.py linkrun-batch` links and runs each mutant in a fresh process and scratch directory, one after another, with the timeouts of before (10 s per test inside ctest, 180 s per binary). A crash or timeout is that mutant's record only; a failed link fails the batch. **Stop at the first kill (T121):** the action is per batch and *group* of tests (the module's own package's tests first, then the others, in groups of 16, every order fixed by the labels). A mutant's runs stop at the first one that fails a check; the later runs of that mutant, in the group and in every later group (each group action reads the previous group's record of the mutant), are not made and are recorded as `{"killed_by": <test>}`. A surviving mutant, or one that only crashes, runs every test. The report's `tests` is this order; `runs` holds every test, the skipped ones as `killed_by` records. Measured on business-apps (lk/audit): 78,126 of about 86,800 test runs ran after the mutant was already dead |
+| `mutant_run` | batch and test (resource limits: every mutant binary runs under the ctest harness limits, 64 MiB per file, 20 s CPU per test, 256 descriptors, no core, a 256 MiB scratch quota per test, see "Runaway tests" below); `tool.py linkrun-batch` links and runs each mutant in a fresh process and scratch directory, one after another, with the timeouts of before (10 s per test inside ctest) and an adaptive limit per binary instead of a fixed 180 s (T122, "Adaptive run limit" below). A crash or timeout is that mutant's record only; a failed link fails the batch. **Stop at the first kill (T121):** the action is per batch and *group* of tests (the module's own package's tests first, then the others, in groups of 16, every order fixed by the labels). A mutant's runs stop at the first one that fails a check; the later runs of that mutant, in the group and in every later group (each group action reads the previous group's record of the mutant), are not made and are recorded as `{"killed_by": <test>}`. A surviving mutant, or one that only crashes, runs every test. The report's `tests` is this order; `runs` holds every test, the skipped ones as `killed_by` records. Measured on business-apps (lk/audit): 78,126 of about 86,800 test runs ran after the mutant was already dead |
 
 The records are the same files as before (`obj/.../<id>.json`, `run/.../<id>.json`), one per mutant (and test), so
 `collect` and `rigor mutants` are unchanged; a missing record fails the build (exit 2, never a pass). A batch that fails
@@ -299,7 +299,7 @@ leaves the map correct and makes every operation O(n). The module's complexity i
 | `equivalent` | object byte-identical to the unmutated object at `-O2` and at `-O0` (trivial compiler equivalence, TCE) |
 | `duplicate` | object identical to an earlier mutant's in the same file at `-O2` and at `-O0`; that mutant's verdict stands |
 | `killed-assert` | some test failed with a check failure (`N of M checks failed; first: ...`) |
-| `killed-crash` | no check failure, but a test crashed, was killed, timed out (ctest 10 s per test, 180 s per binary), tripped a sanitizer exit, or the binary died |
+| `killed-crash` | no check failure, but a test crashed, was killed, timed out (ctest 10 s per test, the adaptive per-binary limit of at most 180 s), tripped a sanitizer exit, or the binary died |
 | `killed-perf` | every test passed, but a perf target of the module (`perf = [...]`) left its declared complexity class with this mutant (T090, below). Counted as killed, reported separately |
 | `survived` | every test passed |
 | `unrun` | a live mutant has no usable run (a `missing-run`, `bad-results` or `bad-skip` finding says why) |
@@ -337,7 +337,7 @@ Approvals never cover anything but a survivor.
   macro writes is a finding (`macro-hidden-code`), not a silent skip. `rigor mutants` reads `hidden` in the report; a report without it is exit 2.
 - Pointer arithmetic is not mutated. Complex-valued and function-pointer-valued returns get no `function-body` mutant. File-scope initializers (constant tables)
   are not mutated; only function bodies are.
-- The 10 s per-test and 180 s per-binary limits are wall-clock, as in ctest.
+- The 10 s per-test limit (ctest, unchanged) and the per-binary limit (adaptive, at most 180 s, see "Adaptive run limit") are wall-clock.
 - Mull cross-check: not done. A Mull release for LLVM 19 would have to be fetched by a sha256 that is not
   known in advance, and the sandbox has no network apart from Buck2's pinned archives.
 - Report integrity rests on the build: `rigor mutants` re-derives every verdict from the raw facts, but a
@@ -347,3 +347,31 @@ Approvals never cover anything but a survivor.
   hidden tests and the red team (B7, B8) are the answer.
 - In `c_mutants` a test is named `<package>__<name>` in the report (every character outside `[a-z0-9_]` becomes
   `_`), because two packages may each have a test called `arena_test` and both can depend on the same module.
+
+## Adaptive run limit (T122)
+
+A mutant can make a test loop forever, and every test binary that depends on the module then ran until the fixed 180 s
+kill (about 175 binaries x 180 s = 8.7 h for one mutant on business-apps lk/inventory). The kill limit is now per test
+binary and derived from that binary's own unmutated run:
+
+    limit = clamp(20 x baseline_wall, 5 s, 180 s)        a baseline that itself timed out: 180 s
+
+- The `mutant_run` action (batch and group of tests) runs each test binary unmutated once (`tool.py linkrun-batch
+  --baseline`, the objects of the baseline link), the first time a mutant of the action needs that binary (a group whose
+  mutants are all skipped by a kill runs nothing extra), on the machine and at the load of the mutant runs. Its wall
+  time is never stored, so every record stays a function of the verdict and cache hits are unchanged. The one extra run
+  per binary and action is small next to the mutant runs of a batch.
+- K = 20 and MIN = 5 s: the fixture's baseline binaries run in a few milliseconds, so MIN decides, and 5 s is 500 times
+  that, far beyond load jitter, yet a hanging binary costs 5 s instead of 180 s. K = 20 leaves a mutant that is
+  legitimately slower (more iterations, a slower path) a margin of twenty times before it is called a hang. The ctest
+  per-test limit (10 s, in the harness, not set by the tool) is unchanged; with several hanging tests it already
+  bounded a binary by 10 s x tests, now also by the limit.
+- A timeout is the same record as before (`timed_out`, rc -9, reason words unchanged), so verdict classes do not change.
+  The only run whose record changes is one that took between the new limit and 180 s: it was a pass (or a check
+  failure) and is now a timeout. For a deterministic test a run over 20 times its unmutated time is a behaviour change
+  of the mutant (a livelock or a runaway loop), which is what `killed-crash` already says for a timeout; it cannot make a
+  failed-check kill out of anything, and a survivor can only become `killed-crash` (never `killed-assert`), and only when
+  a run was slower than 20x its baseline. A mutant that fails a check still is `killed-assert`, whatever else timed out.
+- Not done (optional step): giving later runs of a mutant the limit MIN after one of its runs timed out. Verdicts are
+  not the same: a later test that needs 6 s but fails a check would be cut at 5 s and `killed-assert` would become
+  `killed-crash`, so a hang in one binary is not allowed to shorten the others.

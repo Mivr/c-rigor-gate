@@ -8,6 +8,7 @@ import json
 import os
 import stat
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -313,6 +314,85 @@ class StopAtFirstKillTest(Base):
         rest = self.run_group(["t3", "t4"], {"a": "#kill-t2"}, priors={"a": self.path("g1.json")})["a"]
         split = dict(json.loads(self.read("g1.json"))["runs"], **rest)
         self.assertEqual(split, whole)
+
+
+class AdaptiveLimitTest(Base):
+    """T122: a mutant's run of a test binary is killed after clamp(20 x the unmutated run's wall time, 5 s, 180 s)."""
+
+    linker = StopAtFirstKillTest.linker
+
+    def object_of(self, name):
+        """Sleeps for the seconds in a `#sleep-<n>` line of the linked objects (the mutant's or the baseline's)."""
+        script = ("#!/bin/sh\n"
+                  "n=$(sed -n 's/^#sleep-//p' \"$0\" | head -n 1)\n"
+                  "[ -n \"$n\" ] && sleep \"$n\"\n"
+                  "printf '%%s\\n' '{\"id\":\"t/a\",\"status\":\"pass\",\"asserts\":2,\"reason\":\"\"}' > \"$4\"\n")
+        return self.write("t_" + name, script)
+
+    def run_with_baseline(self, baseline, mutants, tests=("t1", "t2")):
+        argv = ["--baseline", "1", self.write("o_base", "#id-base\n%s\n" % baseline)]
+        for t in tests:
+            argv += ["--test", t, "1", self.object_of(t)]
+        for name, text in mutants.items():
+            argv += ["--item", "1", self.path("m_%s.json" % name), self.write("o_" + name, "#id-%s\n%s\n" % (name, text))]
+        code, err = quiet(tool.cmd_linkrun_batch, argv + ["--", self.linker(), tool.TEST_SLOT, tool.OBJECT_SLOT])
+        self.assertIsNone(code, err)
+        return {name: json.loads(self.read("m_%s.json" % name))["runs"] for name in mutants}
+
+    def setLimits(self, factor, minimum, maximum):
+        for name, value in (("TIMEOUT_FACTOR", factor), ("TIMEOUT_MIN_SECONDS", minimum), ("RUN_TIMEOUT_SECONDS", maximum)):
+            old = getattr(tool, name)
+            setattr(tool, name, value)
+            self.addCleanup(setattr, tool, name, old)
+
+    def test_the_limit_is_the_factor_times_the_baseline_clamped(self):
+        self.assertEqual(tool.adaptive_limit(0.01, False), 5)
+        self.assertEqual(tool.adaptive_limit(1.0, False), 20)
+        self.assertEqual(tool.adaptive_limit(100.0, False), 180)
+        self.assertEqual(tool.adaptive_limit(0.01, True), 180)
+        self.assertEqual(tool.adaptive_limit(100.0, True), 180)
+
+    def test_a_hanging_mutant_is_killed_at_the_limit_not_at_the_old_one(self):
+        self.setLimits(20, 1, 60)
+        started = time.monotonic()
+        runs = self.run_with_baseline("#nothing", {"h": "#sleep-30"}, tests=("t1",))["h"]
+        self.assertLess(time.monotonic() - started, 15)
+        self.assertEqual(runs["t1"]["timed_out"], True)
+        self.assertEqual(runs["t1"]["rc"], -9)
+
+    def test_a_slow_but_finishing_mutant_within_the_factor_passes(self):
+        self.setLimits(20, 1, 60)
+        runs = self.run_with_baseline("#sleep-0.2", {"s": "#sleep-1"}, tests=("t1",))["s"]   # limit 4 s
+        self.assertEqual((runs["t1"]["rc"], runs["t1"]["timed_out"]), (0, False))
+
+    def test_a_baseline_that_timed_out_keeps_the_old_limit(self):
+        self.setLimits(20, 1, 2)
+        runs = self.run_with_baseline("#sleep-30", {"s": "#sleep-1", "h": "#sleep-30"}, tests=("t1",))
+        self.assertEqual(runs["s"]["t1"]["timed_out"], False)    # limit 2 s, not clamp(20 x 2) below it
+        self.assertEqual(runs["h"]["t1"]["timed_out"], True)
+
+    def test_the_records_are_the_same_with_and_without_a_baseline(self):
+        with_base = self.run_with_baseline("#nothing", {"a": "#nothing", "b": "#sleep-0.1"})
+        argv = []
+        for t in ("t1", "t2"):
+            argv += ["--test", t, "1", self.object_of(t)]
+        for name, text in (("a", "#nothing"), ("b", "#sleep-0.1")):
+            argv += ["--item", "1", self.path("m_%s.json" % name), self.write("o_" + name, "#id-%s\n%s\n" % (name, text))]
+        self.assertIsNone(quiet(tool.cmd_linkrun_batch, argv + ["--", self.linker(), tool.TEST_SLOT, tool.OBJECT_SLOT])[0])
+        without = {name: json.loads(self.read("m_%s.json" % name))["runs"] for name in ("a", "b")}
+        self.assertEqual(with_base, without)
+
+    def test_without_baseline_objects_the_limit_is_the_old_one_and_nothing_is_run(self):
+        limits = tool.Limits([self.linker(), tool.TEST_SLOT, tool.OBJECT_SLOT], None)
+        self.assertEqual(limits.of("t1", [self.object_of("t1")]), tool.RUN_TIMEOUT_SECONDS)
+        self.assertEqual(limits.known, {})
+
+    def test_a_limit_is_measured_once_per_test(self):
+        limits = tool.Limits([self.linker(), tool.TEST_SLOT, tool.OBJECT_SLOT], [self.write("o_base", "#id-base\n")])
+        first = limits.of("t1", [self.object_of("t1")])
+        self.assertEqual(limits.of("t1", [self.object_of("t1")]), first)
+        self.assertEqual(first, tool.TIMEOUT_MIN_SECONDS)    # a baseline of a few ms
+        self.assertEqual(list(limits.known), ["t1"])
 
 
 if __name__ == "__main__":
