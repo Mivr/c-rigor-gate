@@ -9,8 +9,9 @@ platform's mode constraint; the sealed warning profile is appended last.
 load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:embed.bzl", "c_embed_gen")
-load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
+load("@gate//rules:ctest.bzl", "ctest_results")
 load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
+load("@gate//rules:fuzz.bzl", "fuzz_corpus", "fuzz_run", "fuzz_runs")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
 
@@ -361,12 +362,15 @@ def c_perf(name, module, srcs = [], deps = [], sizes = [1000, 4000], seed = 1):
         target_compatible_with = _RELEASE_ONLY,
     )
 
-def c_fuzz(name, srcs = [], deps = []):
+def c_fuzz(name, srcs = [], deps = [], corpus = [], runs = None):
+    """A libFuzzer target. `corpus`: files of the product (a `glob`) replayed first; `runs`: the budget (docs/fuzz.md)."""
     _check("c_fuzz", srcs, [])
+    corpus = fuzz_corpus("c_fuzz", corpus)
+    runs = fuzz_runs("c_fuzz", runs)
 
-    # `<name>__bin` is the libFuzzer binary; `<name>` runs it (-seed=1 -runs=200000) as a cacheable
-    # action with declared outputs and is the test: `<name>[crash]` is the reproducer, `<name>[report]`
-    # the symbolized report.
+    # `<name>__bin` is the libFuzzer binary; `<name>` replays the corpus, then runs it (-seed=1 -runs=N) as a
+    # cacheable action with declared outputs and is the test: `<name>[crash]` is the reproducer, `<name>[report]`
+    # the symbolized report, `<name>[stats]` the numbers `rigor fuzz` judges.
     native.cxx_binary(
         name = name + "__bin",
         srcs = srcs,
@@ -378,6 +382,8 @@ def c_fuzz(name, srcs = [], deps = []):
     fuzz_run(
         name = name,
         binary = ":" + name + "__bin",
+        corpus = corpus,
+        runs = runs,
         target_compatible_with = _ONLY_FUZZ,
     )
 

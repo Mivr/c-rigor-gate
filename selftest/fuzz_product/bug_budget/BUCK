@@ -1,0 +1,3 @@
+load("@gate//rules:c.bzl", "c_fuzz")
+
+c_fuzz(name = "fz", srcs = ["fz_fuzz.c"], deps = ["//selftest/scratch_fuzz/lib:parse"])
