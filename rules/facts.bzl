@@ -14,7 +14,8 @@ def _label_text(label: Label, name: str | None = None) -> str:
 
 def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
     # Headers of the gate's own third-party libraries are not the product's text (T108), like the toolchain's:
-    # their materialised tree is `.../art/<gate cell>/third_party/...` (the same fragment `c_structure` uses).
+    # their materialised tree is `buck-out/<version>/art/<gate cell>/third_party/...`; the scanners match this marker
+    # only right after `buck-out/<version>` (T133), never as a fragment deeper in a path.
     vendor = "/art/{}/third_party/".format(ctx.attrs._ctest.label.cell)
     subs = ctx.attrs.unit[DefaultInfo].sub_targets
     every = subs["objects"][DefaultInfo].sub_targets if "objects" in subs else {}

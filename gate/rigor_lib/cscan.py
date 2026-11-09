@@ -91,6 +91,34 @@ _DIGRAPHS = {"<%": "{", "%>": "}", "<:": "[", ":>": "]", "%:": "#", "%:%:": "##"
 _VOLATILE_SEGMENT = re.compile(r"^[0-9a-f]{16}$")
 
 
+def output_tail(path):
+    """`/<kind>/<cell>/...` of a file the compiler read from Buck2's output tree: what follows the first
+    `buck-out/<version>` of the path (relative, or absolute below the project root). None for any other layout."""
+    norm = os.path.normpath(path)
+    if norm.startswith("buck-out/"):
+        rest = norm[len("buck-out/"):]
+    elif "/buck-out/" in norm:
+        rest = norm.split("/buck-out/", 1)[1]
+    else:
+        return None
+    _, slash, tail = rest.partition("/")
+    return "/" + tail if slash else None
+
+
+def vendor_tail(path, markers):
+    """The part of `path` after the vendor marker (`mbedtls/ssl.h` for `/art/gate/third_party/`), or None. A file
+    is gate third-party code only when its path is `buck-out/<version>` + marker: right after the output kind. A
+    fragment anywhere deeper (a product directory `x/art/gate/third_party/`) is the product's."""
+    tail = output_tail(path)
+    if tail is None:
+        return None
+    tail += "/"
+    for marker in markers:
+        if tail.startswith(marker):
+            return tail[len(marker):]
+    return None
+
+
 def display_file(path):
     """A path with Buck's configuration hashes removed, so findings do not depend on them."""
     if "/buck-headers/" in path:
@@ -306,8 +334,8 @@ class ToolchainCode:
 class Collector:
     def __init__(self, system_roots, vendor_markers=()):
         self.roots = [os.path.normpath(root) + "/" for root in system_roots]
-        # Path fragments of the gate-owned third-party header trees (`/art/<gate cell>/third_party/`, T108): text
-        # there is not the product's either. No marker (or one that matches nothing) keeps today's behaviour.
+        # Gate-owned third-party header trees (`/art/<gate cell>/third_party/`, T108): text there is not the
+        # product's either. A marker counts only right after `buck-out/<version>` (T133, `vendor_tail`).
         self.vendor = [marker for marker in vendor_markers if marker]
         self.pragmas = set()
         self.attributes = set()
@@ -326,7 +354,8 @@ class Collector:
         if path.startswith("<"):   # "<built-in>" and "<command line>": the compiler's own text
             return True
         norm = os.path.normpath(path) + "/"
-        return any(norm.startswith(root) for root in self.roots) or any(m in norm for m in self.vendor)
+        return any(norm.startswith(root) for root in self.roots) \
+            or vendor_tail(path, self.vendor) is not None
 
     def header_name(self, path):
         norm = os.path.normpath(path)

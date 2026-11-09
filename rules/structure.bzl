@@ -5,7 +5,7 @@ command (the argsfile Buck2 itself uses) and `-Xclang -ast-dump=json -fsyntax-on
 AST to facts: functions with their extents, parameters, nesting, cyclomatic count and calls; files with their
 line counts. One more action joins the units into `structure.json`. The file is data; `rigor structure` decides.
 
-Headers of the gate's own third-party libraries (`/art/<gate cell>/third_party/`) and of the toolchain are not the
+Headers of the gate's own third-party libraries (`buck-out/<version>/art/<gate cell>/third_party/`, T133) and of the toolchain are not the
 product's: neither their files nor their functions are reported.
 
 Only the source being scanned and the module's headers are inputs of its action, as in the real compile, so an

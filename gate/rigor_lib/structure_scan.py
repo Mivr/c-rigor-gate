@@ -251,6 +251,34 @@ class ScanError(Exception):
     """The scan cannot be trusted; the action fails."""
 
 
+def output_tail(path):
+    """`/<kind>/<cell>/...` of a file the compiler read from Buck2's output tree: what follows the first
+    `buck-out/<version>` of the path (relative, or absolute below the project root). None for any other layout."""
+    norm = os.path.normpath(path)
+    if norm.startswith("buck-out/"):
+        rest = norm[len("buck-out/"):]
+    elif "/buck-out/" in norm:
+        rest = norm.split("/buck-out/", 1)[1]
+    else:
+        return None
+    _, slash, tail = rest.partition("/")
+    return "/" + tail if slash else None
+
+
+def vendor_tail(path, markers):
+    """The part of `path` after the vendor marker (`mbedtls/ssl.h` for `/art/gate/third_party/`), or None. A file
+    is gate third-party code only when its path is `buck-out/<version>` + marker: right after the output kind. A
+    fragment anywhere deeper (a product directory `x/art/gate/third_party/`) is the product's."""
+    tail = output_tail(path)
+    if tail is None:
+        return None
+    tail += "/"
+    for marker in markers:
+        if tail.startswith(marker):
+            return tail[len(marker):]
+    return None
+
+
 def display_file(path):
     """A path with Buck's configuration hashes removed, so facts do not depend on them."""
     if "/buck-headers/" in path:
@@ -276,8 +304,8 @@ class SourceFile:
 
 
 class Files:
-    """`system_roots` are the toolchain's own header directories; `vendor_markers` are path fragments of
-    gate-owned third-party libraries (`/art/<gate cell>/third_party/`). Code in either is not the product's."""
+    """`system_roots` are the toolchain's own header directories; `vendor_markers` are path prefixes (after
+    `buck-out/<version>`, see `vendor_tail`) of gate-owned third-party libraries (`/art/<gate cell>/third_party/`). Code in either is not the product's."""
 
     def __init__(self, system_roots, vendor_markers=()):
         self.roots = [os.path.normpath(root) + "/" for root in system_roots]
@@ -288,17 +316,14 @@ class Files:
         if name.startswith("<"):
             return True
         norm = os.path.normpath(name) + "/"
-        return any(norm.startswith(root) for root in self.roots) or any(m in norm for m in self.vendor)
+        return any(norm.startswith(root) for root in self.roots) \
+            or vendor_tail(name, self.vendor) is not None
 
     def vendor_lib(self, name):
         """The directory name of the gate-owned third-party library a file belongs to (`mbedtls` for
         `.../art/<cell>/third_party/mbedtls/...`), or None."""
-        norm = os.path.normpath(name) + "/"
-        for marker in self.vendor:
-            if marker in norm:
-                lib = norm.split(marker, 1)[1].split("/")[0]
-                return lib or None
-        return None
+        lib = vendor_tail(name, self.vendor)
+        return (lib.split("/")[0] or None) if lib is not None else None
 
     def get(self, name):
         """SourceFile of a real file, or None for `<scratch space>`, `<built-in>` and the like."""
