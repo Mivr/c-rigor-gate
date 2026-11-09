@@ -1,0 +1,10 @@
+{
+  "bypass": "product header in a directory named like the gate's third-party tree",
+  "description": "core/art/gate/third_party/spoof.h carries a diagnostic pragma and a no_sanitize attribute; the directory name must not make it pass as gate third-party code (T133).",
+  "fail": {
+    "semantic-suppressions": [
+      "forbidden-attribute",
+      "pragma"
+    ]
+  }
+}
