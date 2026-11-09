@@ -75,11 +75,11 @@ got = {g["id"]: g["status"] for g in core["gates"]}
 bad = {g for g, s in got.items() if s == "FAIL"}
 not_run = {g for g, s in got.items() if s == "NOT_RUN"}
 # A failed build means there are no results or facts to judge: those gates are NOT_RUN (still a failure).
-# Mutation testing needs a clean tree and green tests: it is NOT_RUN after any of these failed.
+# Mutation testing and fuzzing need a clean tree and green tests: they are NOT_RUN after any of these failed.
 want_not_run = ({"tests-release", "tests-san", "semantic-suppressions", "symbols", "structure", "mode-divergence"}
                 if "build" in expected else set())
 if expected & {"assemble", "buckfiles", "build", "tests-release", "tests-san"}:
-    want_not_run.add("mutants")
+    want_not_run.update(("mutants", "fuzz"))
 want_code = 1 if expected else 0
 print("  " + " ".join("%s=%s" % (g, s) for g, s in got.items()) + "  overall=" + core["overall"])
 ok = bad == expected and not_run == want_not_run and code == want_code and (core["overall"] == "PASS") == (not expected)
@@ -582,11 +582,97 @@ EOF10
   [ -z "$(find_daemons "$work/extra-export")" ] || fail "extra-export: a process is still running"
 }
 
-names=(warm hostile uncached internal witness_na witness_strong witness_equal extra_export
+# ---------------------------------------------------------------------------------------
+# The fuzz gate (T129). `products/selftest/` has no fuzz target and `products/**` is not ours to extend, so the step
+# below grades a product of its own: the selftest product plus `fz/` (a c_fuzz harness that calls //core:core), a
+# gate-owned input directory made from the selftest one (layout, task contract and policy gain `fz`; `//core:core`
+# must be fuzzed, with a budget of 5000 runs). The harness depends on core.c, which carries the run's nonce, so the
+# cold grade really runs the fuzz action and the repeat grade must execute none.
+# ---------------------------------------------------------------------------------------
+fuzz_in="$work/fuzz-inputs"
+mkdir -p "$fuzz_in"
+cp products/selftest/product.toml products/selftest/policy.toml products/selftest/expected-tests.json "$fuzz_in/"
+sed -i 's|include = \["core/\*\*",|include = ["core/**", "fz/**",|' "$fuzz_in/product.toml"
+sed -i '/^exports = \["core_add", "core_sign"\]$/a fuzz = true\nfuzz_runs = 5000' "$fuzz_in/policy.toml"
+sed 's|"core/\*\*",|"core/**", "fz/**",|' "$work/task.toml" > "$work/task-fuzz.toml"
+cat >> "$fuzz_in/policy.toml" <<'EOF'
+
+[module."//fz:core_fuzz"]
+allow = []
+exports = ["LLVMFuzzerTestOneInput"]
+EOF
+grep -q '"fz/\*\*"' "$fuzz_in/product.toml" && grep -q '^fuzz_runs = 5000$' "$fuzz_in/policy.toml" && grep -q '"fz/\*\*"' "$work/task-fuzz.toml" \
+  || fail "fuzz: the gate-owned inputs were not prepared"
+git -C "$repo" checkout -q -f -B case-fuzz "$base"
+git -C "$repo" clean -q -fdx
+mkdir -p "$repo/fz"
+cat > "$repo/fz/BUCK" <<'EOF'
+load("@gate//rules:c.bzl", "c_fuzz")
+
+c_fuzz(name = "core_fuzz", srcs = ["core_fuzz.c"], deps = ["//core:core"])
+EOF
+cat > "$repo/fz/core_fuzz.c" <<'EOF'
+#include <stddef.h>
+#include <stdint.h>
+
+#include "core/core.h"
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
+
+/* Adds the input bytes in pairs; the sum is only kept so that the calls stay. */
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+{
+    size_t i;
+    int total = 0;
+    for (i = 0; i + 1U < size; i += 2U) {
+        total += core_add(data[i], data[i + 1U]);
+    }
+    return total == -1 ? -1 : 0;
+}
+EOF
+git -C "$repo" add -A
+git -C "$repo" commit -q -m "fuzz target"
+fuzz_head="$(git -C "$repo" rev-parse HEAD)"
+
+grade_fuzz() {  # grade_fuzz <work name>: the fuzz product at $fuzz_head; sets $code
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$fuzz_head" --task "$work/task-fuzz.toml" \
+      --product "$fuzz_in/product.toml" --work "$work/$1" --out "$work/$1.verdict.json" > "$work/$1.log" 2>&1
+  code=$?
+  check_verdict "$work/$1.verdict.json" "" "$code" "$work/$1" || { tail -n 30 "$work/$1.log" >&2; return 1; }
+  [ -z "$(find_daemons "$work/$1")" ] || { echo "$1: a process is still running" >&2; return 1; }
+}
+
+step_fuzz() {  # a clean fuzz target: the gate passes and runs it; the same head again executes no fuzz action
+  grade_fuzz fuzz-cold || fail "fuzz (cold)"
+  python3 -I - "$work/fuzz-cold/results/fuzz.json" <<'EOF11' || fail "fuzz: wrong result of the cold grade"
+import json, sys
+r = json.load(open(sys.argv[1]))
+m = r["metadata"]
+t = m["targets"]["//fz:core_fuzz"]
+print("  fuzz: %s, executed %d, cached %d, runs_done %d, corpus %d" % (r["status"], m["executed_actions"], m["cached_actions"], t["runs_done"], t["corpus_files"]))
+assert r["status"] == "PASS" and m["required_modules"] == ["//core:core"], r
+assert sorted(m["targets"]) == ["//fz:core_fuzz"] and t["runs_done"] >= 5000 and t["phase"] == "budget", m
+assert m["executed_actions"] > 0, "the nonce did not reach the fuzz action"
+assert [f["rule"] for f in r["findings"]] == ["fuzz-empty-corpus"] and r["findings"][0]["severity"] == "info", r["findings"]
+EOF11
+  grade_fuzz fuzz-warm || fail "fuzz (warm)"
+  python3 -I - "$work/fuzz-cold.verdict.json" "$work/fuzz-warm.verdict.json" <<'EOF12' || fail "fuzz: the repeat grade ran fuzz actions"
+import json, sys
+c, w = (json.load(open(p)) for p in sys.argv[1:])
+m = w["metadata"]["gate_metadata"]["fuzz"]
+print("  fuzz repeat grade: executed %d, cached %d" % (m["executed_actions"], m["cached_actions"]))
+assert m["executed_actions"] == 0 and m["cached_actions"] > 0, m
+assert m["targets"] == c["metadata"]["gate_metadata"]["fuzz"]["targets"], m
+assert c["core_sha256"] == w["core_sha256"], "core_sha256 differs between two runs of the same inputs"
+EOF12
+}
+
+names=(warm hostile uncached internal witness_na witness_strong witness_equal extra_export fuzz
        ta_green ta_release_pass ta_san_pass ta_timeout ta_no_new ta_a018 ta_no_previous)
 labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error"
         "pure impl change with a witness bundle (witness gates not applicable)" "test-surface change with a strong witness" "test-surface change with a witness identical to the head (cold, warm)"
         "clean module plus an unlisted exported function (unexpected-export)"
+        "a clean c_fuzz target (the fuzz gate runs it), the same head again (no fuzz action)"
         "test-author: a stub head with a correct witness" "test-author: a new test passes on the stub in release" "test-author: a new test passes on the stub in san only"
         "test-author: a stub that times out (info stub-timeout)" "test-author: no new ids" "test-author: old tests fail on a stubbed function, the witness passes them (A018)"
         "test-author without expected-tests.previous.json (exit 2)")
@@ -686,7 +772,7 @@ result = json.load(open(sys.argv[2]))
 code, flipped = int(sys.argv[3]), sys.argv[4]
 got = {g["id"]: g["status"] for g in core["gates"]}
 print("  " + " ".join("%s=%s" % kv for kv in got.items()) + "  overall=" + core["overall"])
-compiling = {"semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "mutants",
+compiling = {"semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "fuzz", "mutants",
              "witness-tests", "mutants-witness"}
 assert code == 1 and core["overall"] == "FAIL" and core["uncached"] is True, (code, core["overall"])
 assert {g for g, s in got.items() if s == "FAIL"} == {"toolchain"}, got
@@ -707,5 +793,5 @@ echo "[mutants-cache] repeat grade, one-module change, survivor on a cache hit (
 bash selftest/mutants_cache.sh > "$work/mutants_cache.log" 2>&1 || { tail -n 30 "$work/mutants_cache.log" >&2; fail "mutants cache"; }
 cat "$work/mutants_cache.log"
 
-echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, 7 test-author) ${parallel_secs}s"
+echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, fuzz, 7 test-author) ${parallel_secs}s"
 echo "selftest/grade.sh: all $step steps passed"
