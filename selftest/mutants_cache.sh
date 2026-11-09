@@ -90,7 +90,10 @@ PY
 
 # (b) one module changes: only its mutant_run actions execute
 echo "[b] a change to util only"
-h_util="$(head_of util "printf '\n/* util change %s */\n' $$ >> util/util.c")"
+# a change of the object code (swapped operands of a commutative call), not of a comment: a comment would give the
+# same objects and every action would stay cached
+h_util="$(head_of util "sed -i 's/core_add(total, values\[i\])/core_add(values[i], total)/' util/util.c")"
+git -C "$repo" diff --quiet "$base" "$h_util" -- util/util.c && fail "(b) the util edit changed nothing"
 grade b "$h_util"
 ran b > "$work/b.ran"
 python3 -I - "$work/b.ran" <<'PY' || fail "(b) a mutant_run action of an unchanged module executed, or util's did not"
