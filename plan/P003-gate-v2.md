@@ -5,6 +5,10 @@ Design only: no gate code, no product change, no farm run. Read against gate `ea
 lockers source, lockers tests). It implements, for C, what `ai-code-rigor/docs/rigor-levels.md` already specifies
 (P5, P9, P10, §3.5, §4.1–4.4), and it delivers the planned items G12, G16, G23, G27, G28 and G29 of the lockers plans.
 
+> **Status 2026-11-10.** T124 measured the mutation engine of §5 on five business-apps modules and the result is
+> **no-go** (§5.6): the schema engine is not faster than v1 as v1 stands after T121–T123. §5.2–§5.4 are kept as the
+> record of what was tried, not as the plan. Everything else stands; §13 and §14 are re-ordered accordingly.
+
 **Evidence tags.** **[M]** measured in our own repos (path given). **[E]** published evidence (see References; ✓ =
 re-checked by search on 2026-11-09, † = taken from the `ai-code-rigor` research corpus and not re-checked here).
 **[P]** a proposal or a starting number, to be re-derived from data by the rule in §14. Nothing tagged [P] is a finding.
@@ -13,7 +17,7 @@ re-checked by search on 2026-11-09, † = taken from the `ai-code-rigor` researc
 
 | # | Change | Why | Tag |
 |---|---|---|---|
-| 1 | **Mutation engine v2**: keep per-mutant compile (cheap in C) for TCE; run mutants from **one schema object per source**, linked **once per test**, selected at run time, forked per mutant, only for the tests that **reach** the mutant | Mutation is 49% of agent wall time and waiting on gate jobs another 23%; the run stage relinks per mutant | [M] [E] |
+| 1 | ~~**Mutation engine v2** (one schema object per source, linked once per test, forked per mutant, reach-filtered)~~ **Rejected by measurement** (T124, §5.6): keep the v1 engine. The cost lever is the scoped merge tier (row 9) and running report-level mutation nightly only | Mutation was 49% of agent wall time before T121–T123; the prototype was slower on 2 of 5 modules and on build wall time on 4 of 5 | [M] |
 | 2 | **Profiles**: a module declares *what kind of code it is* (pure, parser, adapter, concurrent, wiring, ui, safety); the profile picks the techniques, the level picks how much | v1 levels only tune mutation; the bugs found sit in code kinds mutation does not fit | [M] [E] |
 | 3 | **`rigor_require`** (gate-owned guard) with a ratcheted guard budget | The zero-survivors rule deleted a bounds check (`2975620`) | [M] |
 | 4 | **Sanitizer matrix**: add `msan` and `tsan` modes; a hardened release profile | Uninitialised state and the one cross-thread primitive are untested; extra modes are cheap in C | [M] |
@@ -155,7 +159,7 @@ check (TCE), `unviable-ratio`, `crash-kill-ratio`, the per-function assert-kill 
 mutants as equivalent and 21% as duplicates on large C programs (Papadakis et al. 2015 ✓); in C that pass costs one
 small compile per mutant, so it runs **first**, not on survivors as the Rust-oriented §3.5 of the ladder suggests.
 
-### 5.2 What changes: the run stage
+### 5.2 What was proposed for the run stage (not adopted, see §5.6)
 
 | Step | v1 | v2 |
 |---|---|---|
@@ -186,7 +190,7 @@ initializer of a `static` local), a string literal that initialises an array, an
   (`reach-forged`), a mutant only killable in the standalone build (`schema-only-survivor`), and the existing
   `batch = 1` byte-identity selftest extended to `engine = v1` versus `engine = v2` on the selftest modules.
 
-### 5.4 Expected cost
+### 5.4 Expected cost (the expectation §5.6 refutes)
 
 Run actions fall from one per (mutant batch × test group) to three per test (link, reach, kill) plus the confirm runs
 of survivors, which a zero-survivor module does not have. Published speed-ups for schemata in C and C++ are 2× to 30×
@@ -202,6 +206,36 @@ number is promised here: W1 measures it on five modules before anything else is 
   to the best selection (Gopinath et al. 2016 †).
 - **Nightly:** every mutant of every mutated module, uncached on the grader.
 - Table initialisers (G29) become mutable in v2 through the v1 path, since they are constant expressions.
+
+### 5.6 What W1 measured (T124, 2026-11-10): no-go
+
+`plan/metrics/schema-engine-proto-2026-11.md`; the prototype is kept on branch `park/T124-schema-engine`. Five
+business-apps modules, cold builds without the remote cache, one build per cell on the shared farm.
+
+| Module | v1 exec s | schema exec s | v1 build wall s | schema build wall s |
+|---|---:|---:|---:|---:|
+| `lib/ds/fmap` | 456 | 1377 | 30 | 677 |
+| `lib/fmt/jpull` | 387 | 859 | 58 | 236 |
+| `relay/frame` | 92 | 62 | 26 | 36 |
+| `lk/audit` | 214 | 144 | 47 | 52 |
+| `lib/io/posix_fs` | 3828 | 3203 | 739 | 1130 |
+
+- **The mechanism works**: 1,780 eligible mutants, every baseline reproduced, no mutant lost, 1,776 agree with v1 on
+  the kill class and the other four are kill against kill.
+- **It is not faster.** My premise in §1.1 and §5.4 was that the per-mutant relink dominates. It does not: the
+  **test run time** does, and v1 already batches 16 mutants per action, stops at the first kill (T121) and spreads
+  the work over the farm. The prototype has neither the stop rule nor sharding; the lane estimates that with both it
+  would reach 1.5× to 2× on some modules and stay worse on `fmap`. That estimate is unmeasured.
+- **It would also change verdicts at the edge.** Four mutants flip between `killed-assert` and `killed-crash`, which
+  the per-function assert-kill rule and `crash-kill-ratio` read.
+- **Reach filtering saves less than hoped.** Before the stop rule, the tests that reach a mutant are 31% to 88% of
+  the (mutant, test) pairs v1 would run (`frame` 398 of 1,284; `fmap` 585 of 664).
+
+**Decision.** W2 is cancelled. v1 stays the only engine. What remains from §5: the scope per tier (§5.5), a
+sanitizer run for **surviving** mutants only (cheap, because there are few), and `equivalent-proved` (§7.3). The
+cost work moves to what the data now points at: the scoped merge tier (W10), report-level mutation in the nightly
+tier only (`posix_fs`, an adapter, costs ten times the other four modules for mutants that only inform), and a new
+lead-time snapshot, since the 49% figure predates T121–T123.
 
 ## 6. Guards: `rigor_require` and the guard budget
 
@@ -359,6 +393,8 @@ symbols, the stub-must-fail check, per-function assert kills, and zero unexplain
 - A nightly FAIL on `main` blocks every merge except its fix. That is the price of not grading the whole repository on
   every merge, and it is why the nightly budget is a hard budget.
 - A timeout at any tier is a FAIL, never a skip.
+- Techniques that only **report** for a profile (`○` in §4.1, for example mutation of adapters) run in the nightly
+  tier, never at merge: they cannot change a merge verdict, so they should not cost merge time.
 - The B4 problem (a client-writable action cache) is solved for the tier that decides releases: nightly and release
   run on a grader instance whose cache clients can only read (G21). Merge-tier verdicts are advisory against a forged
   cache until then, which the nightly run bounds to one day.
@@ -478,16 +514,16 @@ In dependency order. Each is one or more ordinary gate tasks (Sonnet builds, Opu
 | # | Package | Acceptance | Depends on |
 |---|---|---|---|
 | W1 | **Measure first.** Prototype steps 4a–4d by hand on five modules (`fmap`, `jpull`, `relay/frame`, `lk/audit`, `posix_fs`): actions, CPU-s and wall, v1 against v2; count mutants that are not schema-eligible | A table in `plan/metrics/`; go or no-go on §5 | — |
-| W2 | Mutation engine v2 behind `engine = "v2"`, v1 kept as reference | Kill matrices of v1 and v2 identical on the selftest modules and on five product modules; the four new canaries red | W1 |
+| W2 | ~~Mutation engine v2~~ **Cancelled by W1** (§5.6). Replaced by: surviving mutants run once in `san` (`killed-sanitizer`) on the v1 engine | The verdict of the selftest modules is unchanged except for sanitizer kills of former survivors | W1 |
 | W3 | `profile` key with computed floors, level floors, technique matrix, `policy-ratchet` | business-apps policy migrated; a parser declared `adapter` and a level below its floor each reproduce as a FAIL | — |
 | W3b | Arbiter and refuter roles, debt cap, ledger, previous-gate rule, tighten-only mode | The orchestrator key no longer verifies; a refuted claim is revoked in a selftest; a ledger edit fails `rigor verify` | W3, W7 for proof-based equivalence |
-| W4 | `rigor_require`, `CHECK_TRAPS`, `guards` gate | `durable()` restored with its check; canary `guard-hides-logic` red | W2 |
+| W4 | `rigor_require`, `CHECK_TRAPS` (T128), then the `guards` gate: guard count and density cap, every guard executed (from the `cov` build), trap allowance bound to the gate cell, `rigor_require` a reserved name | `durable()` restored with its check; canary `guard-hides-logic` red | — |
 | W5 | `msan`, `tsan` modes; hardened release profile behind a flag | `rx_init` and `mbox` reported; `c_perf` deltas recorded | — |
 | W6 | `fuzz` gate and corpus store | A target for each of the 8 parsers of G23; a seeded-crash canary red | — |
 | W7 | `c_proof` with vacuity probes; equivalence and guard discharge | Proofs for the five relay modules; canaries `vacuous-assume` and `unwind-too-small` red | W4 |
 | W8 | `c_sim`, invariants, soak; `oracle` replay | The pool retirement and GAP-V2 reproduce as FAILs on the commits that had them | club-apps trace dump task |
 | W9 | `ui-fit`, `limits` (limit tests, alloc trap, dead modules) | The three Bulgarian strings and the two libc allocations reproduce as FAILs | W5 |
-| W10 | Tiers: scoped merge grade, nightly grader on a read-only cache | Merge grade inside its budget on ten real tasks; nightly inside its budget | W2, G21 |
+| W10 | Tiers: scoped merge grade, nightly grader on a read-only cache | Merge grade inside its budget on ten real tasks; nightly inside its budget | G21 for the nightly cache only |
 | W11 | Sandbox (B5/G3), then retire the trajectory rules it makes redundant | Red-team task: zero successful escapes; rule table reduced | — |
 
 W1, W3, W5, W6 and W11 can start at once and touch different files.
@@ -498,7 +534,7 @@ then their mutants stay informational exactly as at L2 today, so no module is ev
 
 ## 14. Measurement plan
 
-1. **Cost.** Re-run `timeline.py` after W2 and after W10 on comparable tasks. Target [P]: mutation plus waiting under
+1. **Cost.** Re-run `timeline.py` now (the 49% predates T121–T123), and again after W10, on comparable tasks. Target [P]: mutation plus waiting under
    25% of agent wall time (72% today), with the model share rising accordingly.
 2. **Fidelity.** v1 and v2 kill matrices byte-compared on the selftest modules on every gate change (a selftest), and
    on the nightly sample for products.
@@ -533,8 +569,8 @@ default with a rule for revising it from data (§14); the owner can override any
   missing simulation invariant, a spec the Rust oracle also gets wrong), nothing does. That is the accepted cost of
   an agent-only system; §14 item 4 is how such escapes turn into gates.
 
-- **Nothing here is measured yet.** §5.4 is an expectation from published work and from the shape of v1; W1 exists
-  to replace it with numbers.
+- **The one thing measured so far refuted its section.** W1 rejected the mutation engine of §5 (§5.6). The other cost
+  and yield expectations in this document are still unmeasured; §14 is how each gets a number.
 - **The oracle only covers what the Rust app does.** Behaviour the Rust app gets wrong is reproduced faithfully.
 - **Simulation invariants are written by someone.** A missing invariant is a missing check; the list is gate-owned
   and reviewed by Opus, which is advisory evidence only (P5).
