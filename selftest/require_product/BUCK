@@ -18,3 +18,17 @@ c_mutants(name = "weak_mutants", module = ":table", tests = [":table_weak"])
 # Red: a library that traps by itself (judged as before), and one that depends on another gate target.
 c_library(name = "own_trap", srcs = ["own_trap.c"], deps = ["gate//rt:require"])
 c_library(name = "bad_dep", srcs = ["bad_dep.c"], deps = ["gate//ctest:perf"])
+
+# T131. Red: a product that carries its own `rt/require.h` (with a trap in it) next to the dependency on the gate's;
+# and the product's own uses of the reserved name `rigor_require` besides calling it: `#define`/`#undef`, a function of
+# that name, its address.
+c_library(name = "own_header", srcs = ["own_header.c"], headers = ["rt/require.h"], deps = ["gate//rt:require"])
+c_library(name = "reserved_define", srcs = ["reserved_define.c"], deps = ["gate//rt:require"])
+c_library(name = "reserved_decl", srcs = ["reserved_decl.c"], deps = ["gate//rt:require"])
+c_library(name = "reserved_addr", srcs = ["reserved_addr.c"], deps = ["gate//rt:require"])
+
+# The guard budget (`rigor guards`): six guards and two guards in 130 lines each (cap 3 per module).
+c_library(name = "guards_a", srcs = ["guards_a.c"], deps = ["gate//rt:require"])
+c_structure(name = "guards_a_s", module = ":guards_a", srcs = ["guards_a.c"], deps = ["gate//rt:require"])
+c_library(name = "guards_b", srcs = ["guards_b.c"], deps = ["gate//rt:require"])
+c_structure(name = "guards_b_s", module = ":guards_b", srcs = ["guards_b.c"], deps = ["gate//rt:require"])

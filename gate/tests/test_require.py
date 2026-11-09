@@ -13,9 +13,11 @@ LOAD = 'load("@gate//rules:c.bzl", "c_binary", "c_catalog", "c_fuzz", "c_library
 REQUIRE = "gate//rt:require"
 
 
-def trap_unit(file=facts_rt.HEADER, name="__builtin_trap"):
+def trap_unit(file=facts_rt.HEADER, name="__builtin_trap", gate=True):
     document = unit(identifiers=[(name, 12)])
     document["identifiers"][0]["file"] = file
+    if gate is not None:
+        document["identifiers"][0]["gate"] = gate    # the scanner's flag: the compiler read the gate cell's file
     return document
 
 
@@ -92,6 +94,30 @@ class Semantic(Gates):
         for file in ("p/a.c", "p/rt/require.h", "other/rt/require.h", "rt/require.hh"):
             with self.subTest(file=file):
                 self.assertEqual(self.sem([trap_unit(file)], [REQUIRE]), [("forbidden-builtin", "__builtin_trap")])
+
+    def test_a_product_header_of_that_name_is_judged_as_before(self):
+        # same path, same dependency, but the scanner saw the file in the product's tree (`gate` false), or an
+        # older facts file that has no flag at all
+        for flag in (False, None):
+            with self.subTest(gate=flag):
+                self.assertEqual(self.sem([trap_unit(gate=flag)], [REQUIRE]),
+                                 [("forbidden-builtin", "__builtin_trap")])
+
+    def test_the_flag_of_another_fact_does_not_help_a_product_trap(self):
+        both = trap_unit(gate=False)
+        both["identifiers"].append(dict(trap_unit()["identifiers"][0], line=99))
+        self.assertEqual(self.sem([both], [REQUIRE]), [("forbidden-builtin", "__builtin_trap")])
+
+    def test_the_flag_must_be_a_boolean(self):
+        bad = trap_unit()
+        bad["identifiers"][0]["gate"] = "yes"
+        self.rules("semantic-suppressions", [facts("//p:lib", [bad], deps=[REQUIRE]), CTEST], 2)
+
+    def test_reserved_name_facts_are_findings(self):
+        for name in ("rigor_require", "#define rigor_require", "#undef rigor_require"):
+            with self.subTest(name=name):
+                self.assertEqual(self.sem([trap_unit("p/a.c", name, gate=False)], [REQUIRE]),
+                                 [("reserved-identifier", name)])
 
     def test_another_builtin_in_the_header_is_judged_as_before(self):
         self.assertEqual(self.sem([trap_unit(name="__builtin_unreachable")], [REQUIRE]),
