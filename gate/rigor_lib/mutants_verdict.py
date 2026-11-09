@@ -123,10 +123,17 @@ def mutant_outcomes(report, mutant, baseline_ids):
     """Combine the per-test outcomes of a live mutant: (verdict, findings)."""
     found = []
     kinds = []
+    asserted = set()   # the tests (earlier in the report's order) whose run of this mutant failed a check
     for name in report.tests:
         run = mutant.runs.get(name)
         if run is None:
             found.append(finding("missing-run", module=report.label, id=mutant.id, test=name))
+            continue
+        if run.killed_by is not None:
+            # T121: skipped after a kill. Never a pass, and never taken on trust: the named test must be an earlier
+            # one whose run of this very mutant this code judges a failed check; otherwise the mutant is `unrun`.
+            if run.killed_by not in asserted:
+                found.append(finding("bad-skip", module=report.label, id=mutant.id, test=name, killed_by=run.killed_by))
             continue
         kind, ids, why = outcome_of_run(run)
         if kind == "bad" or (kind != "crash" and name in baseline_ids and ids != baseline_ids[name]):
@@ -134,6 +141,8 @@ def mutant_outcomes(report, mutant, baseline_ids):
                                  reason=why or "different tests than the baseline"))
             continue
         kinds.append(kind)
+        if kind == "assert":
+            asserted.add(name)
     if found:
         return "unrun", found
     if "assert" in kinds:

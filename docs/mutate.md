@@ -4,7 +4,7 @@ Coverage says a line ran, not that a test would notice if the line were wrong. A
 one small, deliberate defect; if every test still passes, the tests do not constrain that behaviour. The rule
 for L3 modules is **zero surviving mutants**; the only way past one is a signed `equivalent-mutant` approval.
 
-Everything runs on RE in the `release` mode (a grading builds the `c_mutants` targets in chunks of 12, T115; `docs/grade.md`): `buck2 build //pkg:<name>` of a `c_mutants` target yields
+Everything runs on RE in the `release` mode (a grading builds the `c_mutants` targets in chunks of 12, three at a time, T115/T121; the target name derives from the module label, so action keys do not depend on the module's position; `docs/grade.md`): `buck2 build //pkg:<name>` of a `c_mutants` target yields
 `report.json`, `rigor mutants` decides. Self-test: `selftest/mutate.sh`.
 
 ```
@@ -38,7 +38,7 @@ Now `c_mutants` has an attribute `batch` (default 16):
 | What | One action per |
 |---|---|
 | `mutant_compile` (`-O2`) and `mutant_compile_o0` | batch of at most `batch` mutants (of one or more sources); `tool.py compile-batch` compiles each mutant on its own, in its own scratch directory, and writes its object and its record. A mutant the compiler rejects is `unviable`, the others still compile. A compiler crash or a stale spec fails the batch (as it failed the single action) |
-| `mutant_run` | batch and test (resource limits: every mutant binary runs under the ctest harness limits, 64 MiB per file, 20 s CPU per test, 256 descriptors, no core, a 256 MiB scratch quota per test, see "Runaway tests" below); `tool.py linkrun-batch` links and runs each mutant in a fresh process and scratch directory, one after another, with the timeouts of before (10 s per test inside ctest, 180 s per binary). A crash or timeout is that mutant's record only; a failed link fails the batch |
+| `mutant_run` | batch and test (resource limits: every mutant binary runs under the ctest harness limits, 64 MiB per file, 20 s CPU per test, 256 descriptors, no core, a 256 MiB scratch quota per test, see "Runaway tests" below); `tool.py linkrun-batch` links and runs each mutant in a fresh process and scratch directory, one after another, with the timeouts of before (10 s per test inside ctest, 180 s per binary). A crash or timeout is that mutant's record only; a failed link fails the batch. **Stop at the first kill (T121):** the action is per batch and *group* of tests (the module's own package's tests first, then the others, in groups of 16, every order fixed by the labels). A mutant's runs stop at the first one that fails a check; the later runs of that mutant, in the group and in every later group (each group action reads the previous group's record of the mutant), are not made and are recorded as `{"killed_by": <test>}`. A surviving mutant, or one that only crashes, runs every test. The report's `tests` is this order; `runs` holds every test, the skipped ones as `killed_by` records. Measured on business-apps (lk/audit): 78,126 of about 86,800 test runs ran after the mutant was already dead |
 
 The records are the same files as before (`obj/.../<id>.json`, `run/.../<id>.json`), one per mutant (and test), so
 `collect` and `rigor mutants` are unchanged; a missing record fails the build (exit 2, never a pass). A batch that fails
@@ -302,7 +302,7 @@ leaves the map correct and makes every operation O(n). The module's complexity i
 | `killed-crash` | no check failure, but a test crashed, was killed, timed out (ctest 10 s per test, 180 s per binary), tripped a sanitizer exit, or the binary died |
 | `killed-perf` | every test passed, but a perf target of the module (`perf = [...]`) left its declared complexity class with this mutant (T090, below). Counted as killed, reported separately |
 | `survived` | every test passed |
-| `unrun` | a live mutant has no usable run (a `missing-run` or `bad-results` finding says why) |
+| `unrun` | a live mutant has no usable run (a `missing-run`, `bad-results` or `bad-skip` finding says why) |
 
 ## `rigor mutants --results DIR --policy P.toml [--perf-results DIR] [--out F] [--approvals DIR --repo R --head H]`
 `DIR` holds one `report.json` copy (`*.json`) per `c_mutants` target; the policy is
@@ -322,6 +322,7 @@ L1 is "not mutated" and never appears here; `rigor grade` writes this policy, se
 | `baseline-red` | the unmutated tests are not all passing with at least one assertion each |
 | `harness-mismatch` | the unmutated recompile is not byte-identical to Buck2's own object |
 | `missing-o0` | a mutant equal at `-O2` to the baseline or an earlier mutant has no usable `-O0` compile in the report (the verdict is `unrun`) |
+| `bad-skip` | a run of a live mutant is marked skipped (`killed_by`), but the named test is not an earlier test whose run of that mutant fails a check (T121): a skipped run is never a pass and never trusted |
 | `missing-run`, `bad-results` | a live mutant has no run, or results that are unparsable, skip a test, disagree with the exit status, or name other tests than the baseline |
 | `module-not-in-policy`, `policy-module-without-report` | report and policy disagree |
 | `forged-approval` | as in docs/gate.md |

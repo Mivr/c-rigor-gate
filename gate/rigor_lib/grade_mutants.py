@@ -13,9 +13,11 @@ The reports are built in release mode (cached like any build; `--uncached` appli
 In role test-author it is PASS with info `not-applicable`: the head is the stub commit (P002 Q2).
 """
 
+import hashlib
 import os
 import re
 from argparse import Namespace
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, jsonio, perf_package, perf_policy
@@ -36,6 +38,11 @@ _TAIL_CHARS = 4000
 # BrokenPipe under the shared 8 GiB cgroup. 12 keeps a build near 4k actions (about ten builds for 112 modules):
 # small enough for the stream and the daemon to survive, large enough that the RE farm still sees a wide graph.
 MUTANTS_CHUNK = 12
+# Chunk builds in flight at once in the one daemon (T121). Sequential chunks left the RE farm (64 slots) mostly idle:
+# each chunk waited for its slowest module. 3 x 12 modules is about 12k actions in the daemon at a time, a
+# third of the 42k-action build that died (T115) and three times the 4k of one chunk; the memory the daemon holds
+# grows with the graph in flight, so this is the knob to lower if a grade dies of a dropped stream again.
+MUTANTS_INFLIGHT = 3
 PERF_DIR = "mutants-perf"
 PERF_KIT = "gate//ctest:perf"   # the harness has a main of its own: never linked into a test
 
@@ -240,12 +247,17 @@ def plan(layout, levels, perf=None):
     return Plan(modules, found)
 
 
-def target_name(index, module):
-    return "m%03d_%s" % (index, re.sub(r"[^A-Za-z0-9_]", "_", module.label.lstrip("/")))
+def target_name(module):
+    """The `c_mutants` target of a module. Derived from the module's label alone, never from its position in the
+    grading: the name is part of every output path of the target's actions, so a position in it would change the
+    action keys (and miss the cache) whenever a module is added or removed before it (T121). The hash keeps two
+    labels that sanitise to the same text apart."""
+    digest = hashlib.sha256(module.label.encode("utf-8")).hexdigest()[:8]
+    return "m_%s_%s" % (re.sub(r"[^A-Za-z0-9_]", "_", module.label.lstrip("/")), digest)
 
 
-def target_label(index, module):
-    return "//%s:%s" % (PACKAGE_DIR, target_name(index, module))
+def target_label(module):
+    return "//%s:%s" % (PACKAGE_DIR, target_name(module))
 
 
 def _list(items):
@@ -257,19 +269,18 @@ def build_file_text(modules):
     for i, m in enumerate(modules):
         if m.perf:  # T090: the module's perf targets run for the survivors
             calls.append('c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    perf = %s,\n    deps = %s,\n)\n'
-                         % (target_name(i, m), m.label, _list(m.tests), _list([t for t, _ in m.perf]), _list(m.deps)))
+                         % (target_name(m), m.label, _list(m.tests), _list([t for t, _ in m.perf]), _list(m.deps)))
         else:
             calls.append('c_mutants(\n    name = "%s",\n    module = "%s",\n    tests = %s,\n    deps = %s,\n)\n'
-                         % (target_name(i, m), m.label, _list(m.tests), _list(m.deps)))
+                         % (target_name(m), m.label, _list(m.tests), _list(m.deps)))
     return 'load("@gate//rules:c.bzl", "c_mutants")\n\n' + "\n".join(calls)
 
 
-def policy_text(modules, indexes=None):
-    """The `rigor mutants` policy; `indexes` are the package positions of `modules` (default: all)."""
-    indexes = range(len(modules)) if indexes is None else indexes
-    return "\n".join('[module."%s"]\nlevel = "%s"\n' % (target_label(i, m), m.level)
-                     + "".join('[module."%s".perf."%s"]\nclass = "%s"\n' % (target_label(i, m), t, c) for t, c in m.perf)
-                     for i, m in zip(indexes, modules))
+def policy_text(modules):
+    """The `rigor mutants` policy of MODULES."""
+    return "\n".join('[module."%s"]\nlevel = "%s"\n' % (target_label(m), m.level)
+                     + "".join('[module."%s".perf."%s"]\nclass = "%s"\n' % (target_label(m), t, c) for t, c in m.perf)
+                     for m in modules)
 
 
 def write_shared_package_file(tree):
@@ -309,18 +320,22 @@ def chunks_of(count):
 
 def _build_chunk(run, flags, number, indexes, labels, perf_labels):
     """One bounded `buck2 build` of the chunk's targets (and `[perf]` outputs), retried once when it died of a
-    transport failure. Returns (results, exit code, stderr, executed, cached, retried)."""
+    transport failure. Returns (results, exit code, stderr, executed, cached, retried). Safe to run in several
+    threads at once: every file it writes is named after the chunk, and its action counts come from the build's
+    own event log, not from "the last command"."""
     report = run.report_path("mutants-%03d" % number)
+    events = run.report_path("mutants-%03d" % number).replace(".json", ".events.pb.zst")
     wanted = [labels[i] for i in indexes]
     extra = sorted(perf_labels[i] for i in indexes if i in perf_labels)
     executed = cached = 0
     retried = False
     while True:
-        if os.path.lexists(report):
-            os.unlink(report)  # never read a report an earlier run (or attempt) left
+        for path in (report, events):
+            if os.path.lexists(path):
+                os.unlink(path)  # never read a report an earlier run (or attempt) left
         code, _, err = grade_build.run_buck(run.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
-                                                     "--build-report", report] + flags + wanted + extra)
-        done_executed, done_cached = grade_build.action_counts(run.tree)
+                                                     "--build-report", report, "--event-log", events] + flags + wanted + extra)
+        done_executed, done_cached = grade_build.action_counts(run.tree, events)
         executed, cached = executed + done_executed, cached + done_cached
         results = grade_build.read_report(report) or {}
         missing = any((results.get("root" + label) or {}).get("success") != "SUCCESS" for label in wanted)
@@ -329,20 +344,45 @@ def _build_chunk(run, flags, number, indexes, labels, perf_labels):
         retried = True   # the same daemon: its cache is warm, so the retry only redoes what was not finished
 
 
+def _build_chunks(run, flags, labels, perf_labels, uncached):
+    """Build every chunk, at most `inflight(uncached)` at a time in the one daemon; the outcomes in chunk order.
+    A chunk that raises (Buck2 could not run, a timeout) stops the ones not started yet and re-raises once the
+    running ones are done, as the sequential loop stopped at it."""
+    ranges = chunks_of(len(labels))
+    workers = max(1, min(inflight(uncached), len(ranges)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_build_chunk, run, flags, n, r, labels, perf_labels) for n, r in enumerate(ranges)]
+        try:
+            return [f.result() for f in futures]
+        except BaseException:
+            for f in futures:
+                f.cancel()
+            raise
+
+
+def inflight(uncached):
+    """Chunk builds running at once. An uncached build re-primes and verifies the toolchain around every build
+    command (`grade_build.run_buck`, which reads "the last command"): those stay one at a time."""
+    return 1 if uncached else MUTANTS_INFLIGHT
+
+
 def build_reports(run, uncached, modules):
-    """Build every c_mutants target in chunks of `MUTANTS_CHUNK` modules; copy the reports. Returns
-    (findings, metadata, built indexes). One build of every module died of a dropped stream and took every
-    pending target with it (T115); a chunk that dies that way is retried once, and a chunk that still fails
-    costs only its own modules. The daemon stays up between the chunks."""
-    labels = [target_label(i, m) for i, m in enumerate(modules)]
-    perf_labels = {i: target_label(i, m) + "[perf]" for i, m in enumerate(modules) if m.perf}
+    """Build every c_mutants target in chunks of `MUTANTS_CHUNK` modules, `MUTANTS_INFLIGHT` chunks at a time in
+    one daemon; copy the reports. Returns (findings, metadata, built indexes). One build of every module died of
+    a dropped stream and took every pending target with it (T115); a chunk that dies that way is retried once,
+    and a chunk that still fails costs only its own modules. Sequential chunks left the farm idle while the
+    slowest module of each one finished (T121); the chunks overlap now. The outcome never depends on the order
+    in which they finish: results, findings and metadata are assembled in chunk order."""
+    labels = [target_label(m) for m in modules]
+    perf_labels = {i: target_label(m) + "[perf]" for i, m in enumerate(modules) if m.perf}
     flags = ["--no-remote-cache"] if uncached else []
     out_dir = run.mutants_reports
     os.makedirs(out_dir)
     metadata = {"executed_actions": 0, "cached_actions": 0, "exit_code": 0, "chunks": 0, "retried": []}
     found, built = [], []
-    for number, indexes in enumerate(chunks_of(len(modules))):
-        results, code, err, executed, cached, retried = _build_chunk(run, flags, number, indexes, labels, perf_labels)
+    outcomes = _build_chunks(run, flags, labels, perf_labels, uncached)
+    for number, (indexes, outcome) in enumerate(zip(chunks_of(len(modules)), outcomes)):
+        results, code, err, executed, cached, retried = outcome
         metadata["chunks"] += 1
         metadata["executed_actions"] += executed
         metadata["cached_actions"] += cached
@@ -402,12 +442,12 @@ def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT
     policy = os.path.join(run.work, "tmp", "mutants-policy.toml")
     os.makedirs(os.path.dirname(policy), exist_ok=True)
     with open(policy, "xb") as handle:
-        handle.write(policy_text([modules[i] for i in built], built).encode("utf-8"))
+        handle.write(policy_text([modules[i] for i in built]).encode("utf-8"))
     perf_dir = os.path.join(os.path.dirname(run.mutants_reports), PERF_DIR)
     result = rigor_mutants.run(Namespace(
         results=run.mutants_reports, policy=policy, perf_results=perf_dir, approvals=g.args.approvals,
         repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind)
-    names = {target_label(i, modules[i]): modules[i].label for i in built}
+    names = {target_label(modules[i]): modules[i].label for i in built}
     summaries = {names.get(label, label): summary for label, summary in result.metadata["modules"].items()}
     found = [dict(item, rule=renames.get(item["rule"], item["rule"])) for item in
              _relabel(result.findings, names)] if renames else _relabel(result.findings, names)
@@ -444,7 +484,7 @@ def _run(g, run):
     build_found, metadata, built = build_reports(run, g.args.uncached, chosen.modules)
     found.extend(build_found)
     metadata["package_sha256"] = package_sha
-    metadata["targets"] = {m.label: target_label(i, m) for i, m in enumerate(chosen.modules)}
+    metadata["targets"] = {m.label: target_label(m) for m in chosen.modules}
     metadata["modules"], metadata["approvals_used"] = {}, []
     if built:
         # The policy names only the modules that built: a missing one already has its own finding.

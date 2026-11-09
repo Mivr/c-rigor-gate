@@ -702,5 +702,10 @@ grep -Eq "^build +not run: gate toolchain is FAIL$" "$work/toolchain-mismatch.lo
 [ "$(git -C "$root" status --porcelain=v1 --untracked-files=no)" = "$root_status_before" ] || fail "toolchain mismatch: the gate checkout changed"
 echo "  the gate checkout is unchanged and no daemon is left"
 
+# The mutants gate's reuse of unchanged modules (T121): its own script, its own product repo and work dirs.
+echo "[mutants-cache] repeat grade, one-module change, survivor on a cache hit (selftest/mutants_cache.sh)"
+bash selftest/mutants_cache.sh > "$work/mutants_cache.log" 2>&1 || { tail -n 30 "$work/mutants_cache.log" >&2; fail "mutants cache"; }
+cat "$work/mutants_cache.log"
+
 echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, 7 test-author) ${parallel_secs}s"
 echo "selftest/grade.sh: all $step steps passed"

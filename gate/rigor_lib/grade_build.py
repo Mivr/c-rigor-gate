@@ -94,12 +94,13 @@ def result_targets(tree):
     return 0, labels, err
 
 
-def action_counts(tree):
-    """(executed, cached) action counts of the last Buck2 command, from `log what-ran`.
+def action_counts(tree, event_log=None):
+    """(executed, cached) action counts of the last Buck2 command, from `log what-ran`; of the command that wrote
+    EVENT_LOG (`buck2 build --event-log PATH`) when given, which stays right while other commands run at once.
 
     Column 3 is the executor: `cache` for an action-cache hit, otherwise where it really ran.
     """
-    code, out, err = run_buck(tree, ["log", "what-ran"])
+    code, out, err = run_buck(tree, ["log", "what-ran"] + ([event_log] if event_log else []))
     if code != 0:
         raise InternalError("buck2 log what-ran failed: %s" % err.strip()[-500:])
     executed = cached = 0
