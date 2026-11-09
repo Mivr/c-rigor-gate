@@ -300,5 +300,7 @@ f	-	2004468	b302a0d6e5c1e8768fd96360a4fef5b20e0df0bf4c37193e84e86e2216ee3ac6	lib
 f	-	4606774	181608ff6fb8b4fc04e66eaa6d92c52db1fc0b6560d522c1dfc1115263e94a9e	lib/clang/19/lib/x86_64-unknown-linux-gnu/libclang_rt.msan.a
 f	-	106006	9a006a93cc70c4970effa19c0b7d9fdb0deb421dd64f146e2a5afc49eca36b58	lib/clang/19/lib/x86_64-unknown-linux-gnu/libclang_rt.msan.a.syms
 f	-	160964	bcbf5f08311ddd09e4e1f2fdc682a9ad0f5af3066a77aa8a4420517aa63a17d7	lib/clang/19/lib/x86_64-unknown-linux-gnu/libclang_rt.profile.a
+f	-	5520298	c31e2457e7389691bee42a04637d8b69211ea9f88471903b671c6cf45abd9ed3	lib/clang/19/lib/x86_64-unknown-linux-gnu/libclang_rt.tsan.a
+f	-	94269	717915ff75e775a40e2dece6c60a06845e7b190da4e2ffb35c1eb86f5d7a3256	lib/clang/19/lib/x86_64-unknown-linux-gnu/libclang_rt.tsan.a.syms
 f	-	1757362	f3d4e1c06167e80514ec1548f66dacf724856617c9f5edce8b62826e104fe314	lib/clang/19/lib/x86_64-unknown-linux-gnu/libclang_rt.ubsan_standalone.a
 f	-	1831	e48c3f02c626a511f3c2ecb42c842682c345f141929bc726e2b99d9b33b22f8b	lib/clang/19/lib/x86_64-unknown-linux-gnu/libclang_rt.ubsan_standalone.a.syms

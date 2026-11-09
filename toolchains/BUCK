@@ -20,7 +20,7 @@ constraint_value(name = "never", constraint_setting = ":mode")
 
 [
     constraint_value(name = m, constraint_setting = ":mode")
-    for m in ["release", "san", "cov", "fuzz", "msan"]
+    for m in ["release", "san", "cov", "fuzz", "msan", "tsan"]
 ]
 
 exec_platform(
@@ -39,7 +39,7 @@ exec_platform(
         mode = ":" + m,
         visibility = ["PUBLIC"],
     )
-    for m in ["release", "san", "cov", "fuzz", "msan"]
+    for m in ["release", "san", "cov", "fuzz", "msan", "tsan"]
 ]
 
 # ---------------------------------------------------------------------------
@@ -64,6 +64,8 @@ RUNTIMES = [
     "libclang_rt.profile.a",
     "libclang_rt.msan.a",
     "libclang_rt.msan.a.syms",
+    "libclang_rt.tsan.a",
+    "libclang_rt.tsan.a.syms",
 ]
 
 fetched_tree(

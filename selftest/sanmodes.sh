@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Self-test of the msan build mode (T125). Fixtures: selftest/sanmodes/**, copied into a scratch package per
+# Self-test of the msan and tsan build modes (T125). Fixtures: selftest/sanmodes/**, copied into a scratch package per
 # case. Needs only bash, python3 (stdlib) and tools/buck2. Every case runs twice (the second time with a fresh nonce in
 # the test source, so the results action really executes again) and the verdicts and reports must be identical.
 set -uo pipefail
@@ -34,12 +34,20 @@ mkpkg() {
   printf '%s\n' "$buck" > "$scratch/$name/BUCK"
 }
 
+# startup_diag <log>: a results run that ends with the sanitizer runtime's own start-up CHECK is a farm problem, not a
+# verdict: say so in one line (it is still a failure)
+startup_diag() {
+  if grep -Eq 'personality\(.*\) *!= *\(?\(?-1|memory layout is incompatible' "$1"; then
+    echo "FAIL [$step]: the worker does not allow personality(ADDR_NO_RANDOMIZE): the sanitizer runtime cannot start; see docs/toolchain.md, \"The farm prerequisite\"" >&2
+  fi
+}
+
 # build_res <mode> <package> <target>: builds `<target>_results` in the mode; sets RES (results.jsonl), REP (san report)
 build_res() {
   local mode="$1" name="$2" target="$3" log
   log="$out/b.$mode.$name.$target.log"
   run "$log" build --target-platforms "${PLAT}$mode" "$pkg/$name:${target}_results" "$pkg/$name:${target}_results[san_report]" --show-output \
-    || fail "$CUR: build $name:${target}_results ($mode) failed" "$log"
+    || { startup_diag "$log"; fail "$CUR: build $name:${target}_results ($mode) failed" "$log"; }
   RES="$(awk -v t=":${target}_results" 'substr($1, length($1) - length(t) + 1) == t && /buck-out/ {print $2}' "$log" | tail -1)"
   REP="$(awk 'index($1, "[san_report]") && /buck-out/ {print $2}' "$log" | tail -1)"
   [ -f "$RES" ] || fail "$CUR: no results file for $name:$target ($mode): '$RES'" "$log"
@@ -72,7 +80,8 @@ expect_fail() {
   [[ "$v1" =~ $loc ]] || fail "$CUR: the failure reason has no '$loc': $v1"
   grep -Eq "$needle" "$REP" || fail "$CUR: the report has no '$needle'" "$REP"
   grep -Eq "$loc" "$REP" || fail "$CUR: the report does not name '$loc'" "$REP"
-  if grep -Eq '/var/tmp|/home/|/data/|/tmp/|/worker|/execroot' "$REP"; then fail "$CUR: absolute path in the report" "$REP"; fi
+  # the sanitizer runtime's own frames carry its build path (llvm-project/...); the product's never an absolute one
+  if grep -v 'llvm-project/' "$REP" | grep -Eq '/var/tmp|/home/|/data/|/tmp/|/worker|/execroot'; then fail "$CUR: absolute path in the report" "$REP"; fi
   echo "  $mode verdict: $v1"
   echo "  --- report (first lines) ---"; head -n 14 "$REP" | sed 's/^/  | /'
   ok "$name:$target FAILS in $mode, symbolized, naming $loc"
@@ -80,7 +89,9 @@ expect_fail() {
   build_res "$mode" "$name" "$target"; v2="$(verdict "$RES")"
   [ "$v1" = "$v2" ] || fail "$CUR: the verdict changed between runs: '$v1' vs '$v2'"
   cmp -s "$out/res.1" "$RES" || fail "$CUR: results differ between runs"
-  cmp -s "$out/rep.1" "$REP" || fail "$CUR: the report differs between runs: $(diff "$out/rep.1" "$REP" | head -5)"
+  # TSan prints the thread and process ids ("tid=7708", "pid=7703"); everything else of a report is the same on every run
+  sed -E 's/(tid|pid)=[0-9]+/\1=N/' "$out/rep.1" > "$out/rep.1n"; sed -E 's/(tid|pid)=[0-9]+/\1=N/' "$REP" > "$out/rep.2n"
+  cmp -s "$out/rep.1n" "$out/rep.2n" || fail "$CUR: the report differs between runs: $(diff "$out/rep.1n" "$out/rep.2n" | head -5)"
   ok "$name:$target ($mode): second run identical (verdict, results, report)"
 }
 
@@ -112,6 +123,10 @@ no_target() {
 BUCK_UNINIT='load("@gate//rules:c.bzl", "c_library", "c_test")
 c_library(name = "pair", srcs = ["pair.c"], headers = ["pair.h"])
 c_test(name = "pair_test", srcs = ["pair_test.c"], deps = [":pair"])'
+BUCK_RACE='load("@gate//rules:c.bzl", "c_library", "c_test")
+c_library(name = "counter", srcs = ["counter.c"], headers = ["counter.h"], system_libs = ["pthread"])
+c_test(name = "counter_test", srcs = ["counter_test.c"], deps = [":counter"], threads = True)
+c_test(name = "plain_test", srcs = ["counter_test.c"], deps = [":counter"])'
 BUCK_X11='load("@gate//rules:c.bzl", "c_library", "c_test")
 c_library(name = "xlink", srcs = ["xlink.c"], headers = ["xlink.h"], system_libs = ["X11"])
 c_test(name = "xlink_test", srcs = ["xlink_test.c"], deps = [":xlink"])'
@@ -119,9 +134,12 @@ c_test(name = "xlink_test", srcs = ["xlink_test.c"], deps = [":xlink"])'
 rm -rf "$scratch"
 mkpkg uninit "$BUCK_UNINIT" uninit/pair.h:pair.h uninit/pair.c:pair.c uninit/pair_test.c:pair_test.c
 mkpkg uninit_fixed "$BUCK_UNINIT" uninit/pair.h:pair.h uninit/pair_fixed.c:pair.c uninit/pair_test.c:pair_test.c
+mkpkg race "$BUCK_RACE" race/counter.h:counter.h race/counter.c:counter.c race/counter_test.c:counter_test.c
+mkpkg race_fixed "$BUCK_RACE" race/counter.h:counter.h race/counter_locked.c:counter.c race/counter_test.c:counter_test.c
 mkpkg x11 "$BUCK_X11" ../x11_product/xlink.h:xlink.h ../x11_product/xlink.c:xlink.c ../x11_product/xlink_test.c:xlink_test.c
 sed -i 's|scratch_x11/ok|scratch_sanmodes/x11|' "$scratch/x11/xlink_test.c"
 bugline="$(grep -n 'if (p->b > 0)' "$scratch/uninit/pair.c" | cut -d: -f1)"
+raceline="$(grep -n 'g_count += 1;' "$scratch/race/counter.c" | cut -d: -f1)"
 
 begin "msan: a read of an uninitialised struct field that decides a branch FAILS, symbolized, naming the line"
 expect_fail msan uninit pair_test "MemorySanitizer: use-of-uninitialized-value" "selftest/scratch_sanmodes/uninit/pair\.c:$bugline" pair_test.c
@@ -137,12 +155,32 @@ for m in release san; do
   ok "uninit:pair_test PASSES in $m although it reads uninitialised memory (only msan sees it)"
 done
 
+begin "tsan: two pthreads writing one variable without a lock FAIL, symbolized, naming the line"
+expect_fail tsan race counter_test "ThreadSanitizer: data race" "selftest/scratch_sanmodes/race/counter\\.c:$raceline" counter_test.c
+
+begin "tsan: the mutex twin passes"
+expect_pass tsan race_fixed counter_test counter_test.c
+
+begin "the same race passes in release, san and msan"
+for m in release san msan; do
+  build_res "$m" race counter_test
+  v="$(verdict "$RES")" || fail "$CUR: bad results file"
+  [ "$v" = pass ] || fail "$CUR: the race was reported in $m: $v" "$REP"
+  ok "race:counter_test PASSES in $m (only tsan sees it)"
+done
+
+begin "a test with threads = False has no tsan results target (and an msan one)"
+no_target tsan race_fixed plain_test
+build_res msan race_fixed plain_test; [ "$(verdict "$RES")" = pass ] || fail "$CUR: plain_test msan"
+ok "race_fixed:plain_test has an msan result"
+
 begin "a test whose link closure has X11 has no msan results target, but has release and san ones"
 for m in release san; do
   build_res "$m" x11 xlink_test
   ok "x11:xlink_test has a $m result"
 done
 no_target msan x11 xlink_test
+no_target tsan x11 xlink_test
 
 echo "elapsed ${SECONDS}s"
 echo "ALL CHECKS PASSED ($checks)"
