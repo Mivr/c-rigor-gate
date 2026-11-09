@@ -16,7 +16,7 @@ import tomllib
 
 ALL = (
     "gate", "grade", "mutate", "structure", "product_checks", "toolchain", "ctest", "fuzz", "third_party",
-    "canaries", "tripwires", "trajectory_real", "perf", "profiles",
+    "canaries", "tripwires", "trajectory_real", "perf", "profiles", "sanmodes",
 )
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)

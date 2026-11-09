@@ -9,12 +9,12 @@ platform's mode constraint; the sealed warning profile is appended last.
 load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:embed.bzl", "c_embed_gen")
-load("@gate//rules:ctest.bzl", "MSAN_ENV_LINES", "TSAN_ENV_LINES", "ctest_results", "fuzz_run")
+load("@gate//rules:ctest.bzl", "MSAN_ENV_LINES", "ctest_results", "fuzz_run")
 load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
 
-_SEALED = [
+_SEALED_HEAD = [
     "-std=c17",
     "-Wall",
     "-Wextra",
@@ -25,8 +25,16 @@ _SEALED = [
     "-Wshadow",
     "-Wcast-qual",
     "-Wvla",
-    # clang has no -Wstack-usage (a GCC flag); -Wframe-larger-than is its equivalent.
-    "-Wframe-larger-than=512",
+]
+
+# clang has no -Wstack-usage (a GCC flag); -Wframe-larger-than is its equivalent. The msan mode alone leaves it out:
+# origin tracking inflates the frames of instrumented code, which is never shipped (docs/toolchain.md).
+_FRAME_LIMIT = select({
+    "toolchains//:msan": [],
+    "DEFAULT": ["-Wframe-larger-than=512"],
+})
+
+_SEALED_TAIL = [
     "-Wformat=2",
     "-Wnull-dereference",
     "-Wimplicit-fallthrough",
@@ -49,16 +57,16 @@ _SEALED = [
 
 _SAN = "-fsanitize=address,undefined,leak"
 _FUZZ = "-fsanitize=fuzzer,address,undefined"
+# No PIE in the msan mode: a PIE executable lands at 0x5555_5555_4000 plus up to 16 TB of ASLR, which can leave
+# MSan's application ranges. A non-PIE one sits at 0x400000 and the shared libraries at the mmap base, inside app-3.
 _MSAN = ["-fsanitize=memory", "-fsanitize-memory-track-origins=2"]
-_TSAN = "-fsanitize=thread"
 
 _COMPILE_BY_MODE = {
     "toolchains//:release": ["-O2"],
     "toolchains//:san": ["-O1", "-g", _SAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:cov": ["-fprofile-instr-generate", "-fcoverage-mapping", "-fcoverage-mcdc"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
-    "toolchains//:msan": ["-O1", "-g"] + _MSAN + ["-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
-    "toolchains//:tsan": ["-O1", "-g", _TSAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:msan": ["-O1", "-g"] + _MSAN + ["-fno-pie", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
 }
 
 _LINK_BY_MODE = {
@@ -66,12 +74,11 @@ _LINK_BY_MODE = {
     "toolchains//:san": [_SAN],
     "toolchains//:cov": ["-fprofile-instr-generate"],
     "toolchains//:fuzz": [_FUZZ],
-    "toolchains//:msan": _MSAN,
-    "toolchains//:tsan": [_TSAN],
+    "toolchains//:msan": _MSAN + ["-no-pie"],
 }
 
 def _compile_flags():
-    return select(_COMPILE_BY_MODE) + _SEALED
+    return select(_COMPILE_BY_MODE) + _SEALED_HEAD + _FRAME_LIMIT + _SEALED_TAIL
 
 def _link_flags():
     return select(_LINK_BY_MODE)
@@ -119,20 +126,12 @@ _NOT_IN_MSAN = select({
     "DEFAULT": [],
 })
 
-# `<name>_results` of a `c_test`: release and san always, msan always (a test with an uninstrumented dependency is
-# already incompatible through that dependency), tsan only for `threads = True`.
+# `<name>_results` of a `c_test`: release, san and msan (a test with an uninstrumented dependency is already
+# incompatible with msan through that dependency).
 _RESULTS_EVERY_MODE = select({
     "toolchains//:release": [],
     "toolchains//:san": [],
     "toolchains//:msan": [],
-    "DEFAULT": ["toolchains//:never"],
-})
-
-_RESULTS_THREADED = select({
-    "toolchains//:release": [],
-    "toolchains//:san": [],
-    "toolchains//:msan": [],
-    "toolchains//:tsan": [],
     "DEFAULT": ["toolchains//:never"],
 })
 
@@ -331,14 +330,11 @@ def c_binary(name, srcs = [], deps = []):
     )
     _facts(name, "c_binary", srcs, deps)
 
-# `<name>_results` is built in release and san (cov and fuzz do not produce verdicts), in msan unless the link closure
-# has a system library beyond libc and pthread, and in tsan only for `threads = True`.
+# `<name>_results` is built in release and san (cov and fuzz do not produce verdicts), and in msan unless the link
+# closure has a system library beyond libc and pthread.
 
-def c_test(name, srcs = [], deps = [], threads = False):
-    """A ctest binary and its `<name>_results`. `threads = True`: the test starts threads, so it also has a tsan result."""
+def c_test(name, srcs = [], deps = []):
     _check("c_test", srcs, [])
-    if type(threads) != "bool":
-        fail("c_test: `threads` must be True or False, got {!r}".format(threads))
     native.cxx_test(
         name = name,
         srcs = srcs,
@@ -354,10 +350,9 @@ def c_test(name, srcs = [], deps = [], threads = False):
     ctest_results(
         name = name + "_results",
         test = ":" + name,
-        target_compatible_with = _RESULTS_THREADED if threads else _RESULTS_EVERY_MODE,
+        target_compatible_with = _RESULTS_EVERY_MODE,
         env_lines = select({
             "toolchains//:msan": MSAN_ENV_LINES,
-            "toolchains//:tsan": TSAN_ENV_LINES,
             "DEFAULT": [],
         }),
     )

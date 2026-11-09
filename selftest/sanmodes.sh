@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Self-test of the msan and tsan build modes (T125). Fixtures: selftest/sanmodes/**, copied into a scratch package per
+# Self-test of the msan build mode (T125). Fixtures: selftest/sanmodes/**, copied into a scratch package per
 # case. Needs only bash, python3 (stdlib) and tools/buck2. Every case runs twice (the second time with a fresh nonce in
 # the test source, so the results action really executes again) and the verdicts and reports must be identical.
 set -uo pipefail
@@ -36,10 +36,11 @@ mkpkg() {
 
 # build_res <mode> <package> <target>: builds `<target>_results` in the mode; sets RES (results.jsonl), REP (san report)
 build_res() {
-  local mode="$1" name="$2" target="$3" log="$out/b.$mode.$name.$target.log"
+  local mode="$1" name="$2" target="$3" log
+  log="$out/b.$mode.$name.$target.log"
   run "$log" build --target-platforms "${PLAT}$mode" "$pkg/$name:${target}_results" "$pkg/$name:${target}_results[san_report]" --show-output \
     || fail "$CUR: build $name:${target}_results ($mode) failed" "$log"
-  RES="$(awk -v t="${target}_results " 'index($1, t) && !index($1, "[") && /buck-out/ {print $2}' "$log" | tail -1)"
+  RES="$(awk -v t=":${target}_results" 'substr($1, length($1) - length(t) + 1) == t && /buck-out/ {print $2}' "$log" | tail -1)"
   REP="$(awk 'index($1, "[san_report]") && /buck-out/ {print $2}' "$log" | tail -1)"
   [ -f "$RES" ] || fail "$CUR: no results file for $name:$target ($mode): '$RES'" "$log"
   [ -f "$REP" ] || fail "$CUR: no san report for $name:$target ($mode): '$REP'" "$log"
@@ -99,7 +100,8 @@ expect_pass() {
 
 # no_target <mode> <package> <target> <regex>: `<target>_results` does not exist in the mode
 no_target() {
-  local mode="$1" name="$2" target="$3" log="$out/nt.$mode.$name.$target.log"
+  local mode="$1" name="$2" target="$3" log
+  log="$out/nt.$mode.$name.$target.log"
   if run "$log" build --target-platforms "${PLAT}$mode" "$pkg/$name:${target}_results"; then
     fail "$CUR: $name:${target}_results was built in $mode" "$log"
   fi
@@ -110,10 +112,6 @@ no_target() {
 BUCK_UNINIT='load("@gate//rules:c.bzl", "c_library", "c_test")
 c_library(name = "pair", srcs = ["pair.c"], headers = ["pair.h"])
 c_test(name = "pair_test", srcs = ["pair_test.c"], deps = [":pair"])'
-BUCK_RACE='load("@gate//rules:c.bzl", "c_library", "c_test")
-c_library(name = "counter", srcs = ["counter.c"], headers = ["counter.h"], system_libs = ["pthread"])
-c_test(name = "counter_test", srcs = ["counter_test.c"], deps = [":counter"], threads = True)
-c_test(name = "plain_test", srcs = ["counter_test.c"], deps = [":counter"])'
 BUCK_X11='load("@gate//rules:c.bzl", "c_library", "c_test")
 c_library(name = "xlink", srcs = ["xlink.c"], headers = ["xlink.h"], system_libs = ["X11"])
 c_test(name = "xlink_test", srcs = ["xlink_test.c"], deps = [":xlink"])'
@@ -121,12 +119,9 @@ c_test(name = "xlink_test", srcs = ["xlink_test.c"], deps = [":xlink"])'
 rm -rf "$scratch"
 mkpkg uninit "$BUCK_UNINIT" uninit/pair.h:pair.h uninit/pair.c:pair.c uninit/pair_test.c:pair_test.c
 mkpkg uninit_fixed "$BUCK_UNINIT" uninit/pair.h:pair.h uninit/pair_fixed.c:pair.c uninit/pair_test.c:pair_test.c
-mkpkg race "$BUCK_RACE" race/counter.h:counter.h race/counter.c:counter.c race/counter_test.c:counter_test.c
-mkpkg race_fixed "$BUCK_RACE" race/counter.h:counter.h race/counter_locked.c:counter.c race/counter_test.c:counter_test.c
 mkpkg x11 "$BUCK_X11" ../x11_product/xlink.h:xlink.h ../x11_product/xlink.c:xlink.c ../x11_product/xlink_test.c:xlink_test.c
 sed -i 's|scratch_x11/ok|scratch_sanmodes/x11|' "$scratch/x11/xlink_test.c"
 bugline="$(grep -n 'if (p->b > 0)' "$scratch/uninit/pair.c" | cut -d: -f1)"
-raceline="$(grep -n 'g_count += 1;' "$scratch/race/counter.c" | cut -d: -f1)"
 
 begin "msan: a read of an uninitialised struct field that decides a branch FAILS, symbolized, naming the line"
 expect_fail msan uninit pair_test "MemorySanitizer: use-of-uninitialized-value" "selftest/scratch_sanmodes/uninit/pair\.c:$bugline" pair_test.c
@@ -142,31 +137,12 @@ for m in release san; do
   ok "uninit:pair_test PASSES in $m although it reads uninitialised memory (only msan sees it)"
 done
 
-begin "tsan: two pthreads writing one variable without a lock FAIL, symbolized, naming the line"
-expect_fail tsan race counter_test "ThreadSanitizer: data race" "selftest/scratch_sanmodes/race/counter\.c:$raceline" counter_test.c
-
-begin "tsan: the mutex twin passes"
-expect_pass tsan race_fixed counter_test counter_test.c
-
-begin "the same race passes in release and san, and msan has nothing to say about it"
-for m in release san msan; do
-  build_res "$m" race counter_test
-  v="$(verdict "$RES")" || fail "$CUR: bad results file"
-  [ "$v" = pass ] || fail "$CUR: the race was reported in $m: $v" "$REP"
-  ok "race:counter_test PASSES in $m"
-done
-
-begin "which tests have which results target"
-no_target tsan race_fixed plain_test
-no_target tsan uninit pair_test
-build_res msan race_fixed plain_test; [ "$(verdict "$RES")" = pass ] || fail "$CUR: plain_test msan"
-ok "race_fixed:plain_test (threads = False) has an msan result and no tsan result"
+begin "a test whose link closure has X11 has no msan results target, but has release and san ones"
 for m in release san; do
   build_res "$m" x11 xlink_test
   ok "x11:xlink_test has a $m result"
 done
 no_target msan x11 xlink_test
-no_target tsan x11 xlink_test
 
 echo "elapsed ${SECONDS}s"
 echo "ALL CHECKS PASSED ($checks)"
