@@ -147,6 +147,9 @@ selftests = ["grade"]
 glob = "selftest/mutants_cache.sh"
 selftests = ["grade", "canaries"]
 [[rule]]
+glob = "tools/mutants"
+selftests = ["grade"]
+[[rule]]
 glob = "selftest/mutants_lane.sh"
 selftests = ["grade"]
 [[rule]]
