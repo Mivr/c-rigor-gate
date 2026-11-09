@@ -84,8 +84,9 @@ pure libc (`memcpy`, `str*`, `malloc`, `snprintf`, `abort`, `__errno_location`),
 * **F-parser** works on the scanner's canonical types, which drop qualifiers and expand typedefs: `const char *` and
   `char *` are the same, `uint8_t *` is `unsigned_char *`, `size_t` is `unsigned_long`. It therefore matches every
   `(char *, int)` pair, a string out-parameter with its capacity included: over-reporting, the safe direction. It
-  needs the structure facts (`--structure`); without them, or for a function whose type the scanner could not read
-  (`null`), or a variadic or unprototyped one, the rule does not apply (under-reporting). It sees a byte buffer only
+  needs the structure facts: `--structure` is required, and a module with compiled units and no structure facts is
+  the error `structure-missing`, so the rule cannot switch itself off. For a function whose type the scanner could
+  not read (`null`), or a variadic or unprototyped one, the rule does not apply (under-reporting). It sees a byte buffer only
   when the length is the *next* parameter, only as a single-level pointer (`char **` is not matched), only in
   functions the module defines and exports; a length-first signature `(size_t, const uint8_t *)`, a struct wrapping the
   buffer, and a callback that receives bytes are missed. Functions defined in headers (`static inline`) are not
@@ -107,7 +108,7 @@ carries them.
 
 ## `rigor policy-check`
 ```
-rigor policy-check --policy P.toml --facts DIR [--structure DIR] [--architecture A.toml]
+rigor policy-check --policy P.toml --facts DIR --structure DIR [--architecture A.toml]
                    [--require-profiles] [--emit-profiles] [--out F]
 ```
 Judges the modules the policy lists that have facts of kind `c_library` or `c_binary`. Exit 0 PASS, 1 FAIL, 2 on any
@@ -119,6 +120,8 @@ defect of an input (missing or malformed policy, facts, structure facts or archi
 | `profile-missing` | info; error with `--require-profiles` | `module` (no `profile` key, or an empty list) |
 | `profile-below-floor` | error | `module`, `profile` (the missing one), `floor_rule`, `symbol` (or `function` for `F-parser`) |
 | `level-below-floor` | error | `module`, `level`, `floor`, `dependent` |
+| `structure-missing` | error | `module`: a judged module whose facts have at least one compiled unit and which has no structure facts (a header-only module is exempt) |
+| `facts-missing` | error | `module`: a `[module]` table with a `level` key and no facts in `--facts` |
 | `profile-floor` | info | `module`, `floor`, `declared` (one per judged module) |
 
 A module without a profile is not checked against the profile floors (that is what `--require-profiles` is for); one

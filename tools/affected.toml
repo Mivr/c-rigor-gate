@@ -82,15 +82,13 @@ selftests = ["perf", "mutate", "grade", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/results_parse.py"
 selftests = ["ctest", "mutate", "product_checks", "third_party", "fuzz", "grade", "canaries"]
-# T127: the profile library and judge read facts and policy only; no existing gate calls them. There is no selftest
-# name for `selftest/profiles.sh` (names are fixed in tools/affected.py), so `product_checks`, the family that owns
-# the facts and the policy file, stands for it; run `selftest/profiles.sh` itself when these change.
+# T127: the profile library and judge read facts and policy only; no existing gate calls them.
 [[rule]]
 glob = "gate/rigor_lib/profiles.py"
-selftests = ["product_checks"]
+selftests = ["product_checks", "profiles"]
 [[rule]]
 glob = "gate/rigor_lib/policy_check.py"
-selftests = ["product_checks"]
+selftests = ["product_checks", "profiles"]
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
@@ -163,10 +161,10 @@ glob = "selftest/mutants_lane.sh"
 selftests = ["grade"]
 [[rule]]
 glob = "selftest/profiles.sh"
-selftests = ["product_checks"]
+selftests = ["product_checks", "profiles"]
 [[rule]]
 glob = "selftest/profiles_product/**"
-selftests = ["product_checks"]
+selftests = ["product_checks", "profiles"]
 [[rule]]
 glob = "selftest/grade_product/**"
 selftests = ["grade"]

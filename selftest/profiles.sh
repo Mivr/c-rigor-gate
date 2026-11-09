@@ -114,7 +114,7 @@ case_run() {
   expected=("$@")
   local i rc
   for i in 1 2; do
-    "${RIGOR[@]}" policy-check --policy "$pol" --facts "$out/facts" --structure "$out/st" --architecture "$out/architecture.toml" \
+    "${RIGOR[@]}" policy-check --policy "$pol" --facts "$out/facts" --structure "${ST:-$out/st}" --architecture "$out/architecture.toml" \
       "${extra[@]}" --out "$out/$name.$i.json" > "$out/$name.$i.txt" 2> "$out/$name.$i.err"
     rc=$?
     [ "$rc" = "$want" ] || fail "$CUR: $name run $i exited $rc, wanted $want" "$out/$name.$i.txt"
@@ -173,6 +173,17 @@ case_run others 1 "$out/others.toml" -- "profile-below-floor:task:F-concurrent:p
 begin "red (level floor): an L2 module that an L3 module depends on; the data edge to an L1 module is exempt"
 tool policy "$out/base_l2.toml" "base=pure,L2"
 case_run base_l2 1 "$out/base_l2.toml" -- "level-below-floor:base::$pkg:top"
+
+begin "red (fail closed): a module with units but no structure facts; a policy module with a level but no facts"
+mkdir -p "$out/st_short"
+for f in "$out"/st/*.json; do [ "$(basename "$f")" = calc.json ] || cp "$f" "$out/st_short/"; done
+ST="$out/st_short" case_run no_structure 1 "$out/good.toml" -- "structure-missing:calc::"
+tool policy "$out/ghost.toml" "ghost=pure,L2"
+case_run no_facts 1 "$out/ghost.toml" -- "facts-missing:ghost::"
+if "${RIGOR[@]}" policy-check --policy "$out/good.toml" --facts "$out/facts" > "$out/nost.txt" 2>&1; then
+  fail "$CUR: policy-check without --structure passed"
+fi
+echo "  policy-check without --structure is refused"
 
 begin "red (profile-missing, profile-unknown): info without --require-profiles, an error with it; an unknown name is an error"
 tool policy "$out/missing.toml" "calc=-,L2"

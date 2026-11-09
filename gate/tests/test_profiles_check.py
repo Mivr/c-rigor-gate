@@ -27,7 +27,13 @@ def doc(**modules):
     return {"module": {P + name: table for name, table in modules.items()}}
 
 
+def empty_structure(label):
+    return structure_data.Structure(label, "c_library", (), ("a.c",), (structure_data.Unit("a.c", (), (), ()),))
+
+
 def decide(document, facts, **kw):
+    """Structure facts are mandatory for a module with units: give every module an empty one unless told."""
+    kw.setdefault("structures", {label: empty_structure(label) for label in facts})
     return policy_check.decide(document, facts, third=THIRD, **kw)[0]
 
 
@@ -106,6 +112,20 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(policy_check.edge_kind(arch, P + "user", P + "shape"), "data")
         self.assertEqual(policy_check.edge_kind(arch, P + "top", P + "shape"), None)
 
+    def test_structure_missing_is_an_error_but_not_for_header_only(self):
+        facts = world(mod("a", undefined=["read"]))
+        result = decide(doc(a={"profile": ["adapter"]}), facts, structures={})
+        self.assertEqual(errors(result), [("structure-missing", "a")])
+        self.assertEqual(policy_check.decide(doc(a={"profile": ["adapter"]}), facts, third=THIRD)[0].status, "FAIL")
+        header_only = facts_data.Facts(P + "h", "c_library", (), ())
+        ok = decide(doc(h={"profile": ["pure"]}), {header_only.label: header_only}, structures={})
+        self.assertEqual(ok.status, "PASS")
+
+    def test_facts_missing_for_a_module_with_a_level(self):
+        facts = world(mod("a"))
+        result = decide(doc(a={"profile": "pure"}, gone={"level": "L3", "profile": "pure"}, nolevel={}), facts)
+        self.assertEqual(errors(result), [("facts-missing", "gone")])
+
     def test_defective_policy_is_exit_2(self):
         facts = world(mod("a"))
         for bad in ({"profile": 3}, {"profile": ["pure", "pure"]}, {"profile": [1]}, {"level": "L9"}):
@@ -156,6 +176,17 @@ class CliTest(TempDirTestCase):
                 json.dump(document, handle)
         return directory
 
+    def write_structure(self, *modules):
+        directory = os.path.join(self.tmp, "st")
+        os.makedirs(directory, exist_ok=True)
+        for m in modules:
+            document = {"schema": 1, "label": m.label, "kind": m.kind, "deps": [], "srcs": ["a.c"],
+                        "units": [{"src": "a.c", "files": [{"path": "a.c", "lines": 1, "bytes": 1, "longest_line": 1}],
+                                   "functions": [], "refs": []}]}
+            with open(os.path.join(directory, m.label.split(":")[1] + ".json"), "w") as handle:
+                json.dump(document, handle)
+        return directory
+
     def policy(self, text):
         path = os.path.join(self.tmp, "policy.toml")
         with open(path, "w") as handle:
@@ -171,23 +202,40 @@ class CliTest(TempDirTestCase):
             return code, json.load(handle)
 
     def test_exit_codes_and_out(self):
-        facts = self.write_facts(mod("rd", undefined=["read"]))
+        m = mod("rd", undefined=["read"])
+        facts, st = self.write_facts(m), self.write_structure(m)
         bad = self.policy('[module."//p:rd"]\nprofile = ["pure"]\n')
-        code, result = self.run_cli("--policy", bad, "--facts", facts)
+        code, result = self.run_cli("--policy", bad, "--facts", facts, "--structure", st)
         self.assertEqual((code, result["status"]), (1, "FAIL"))
         good = self.policy('[module."//p:rd"]\nprofile = ["adapter"]\n')
-        code, result = self.run_cli("--policy", good, "--facts", facts)
+        code, result = self.run_cli("--policy", good, "--facts", facts, "--structure", st)
         self.assertEqual((code, result["status"]), (0, "PASS"))
 
+    def test_structure_is_required_and_its_absence_per_module_fails(self):
+        m, other = mod("rd"), mod("other")
+        facts = self.write_facts(m, other)
+        policy = self.policy('[module."//p:rd"]\nprofile = ["pure"]\n')
+        with self.assertRaises(SystemExit) as caught:
+            self.run_cli("--policy", policy, "--facts", facts)
+        self.assertEqual(caught.exception.code, 2)
+        code, result = self.run_cli("--policy", policy, "--facts", facts, "--structure", self.write_structure(other))
+        self.assertEqual(code, 1)
+        self.assertEqual([f["rule"] for f in result["findings"] if f["severity"] == "error"], ["structure-missing"])
+
     def test_fail_closed_on_bad_input(self):
-        facts = self.write_facts(mod("rd"))
-        self.assertEqual(self.run_cli("--policy", os.path.join(self.tmp, "missing.toml"), "--facts", facts)[0], 2)
-        self.assertEqual(self.run_cli("--policy", self.policy("[module"), "--facts", facts)[0], 2)
-        self.assertEqual(self.run_cli("--policy", self.policy(""), "--facts", os.path.join(self.tmp, "nodir"))[0], 2)
-        self.assertEqual(self.run_cli("--policy", self.policy('[module."//p:rd"]\nprofile = 5\n'), "--facts", facts)[0], 2)
-        self.assertEqual(self.run_cli("--policy", self.policy(""), "--facts", facts, "--structure",
+        m = mod("rd")
+        facts, st = self.write_facts(m), self.write_structure(m)
+        empty = self.policy("")
+        self.assertEqual(self.run_cli("--policy", os.path.join(self.tmp, "missing.toml"), "--facts", facts,
+                                      "--structure", st)[0], 2)
+        self.assertEqual(self.run_cli("--policy", self.policy("[module"), "--facts", facts, "--structure", st)[0], 2)
+        self.assertEqual(self.run_cli("--policy", empty, "--facts", os.path.join(self.tmp, "nodir"),
+                                      "--structure", st)[0], 2)
+        self.assertEqual(self.run_cli("--policy", self.policy('[module."//p:rd"]\nprofile = 5\n'), "--facts", facts,
+                                      "--structure", st)[0], 2)
+        self.assertEqual(self.run_cli("--policy", empty, "--facts", facts, "--structure",
                                       os.path.join(self.tmp, "nostruct"))[0], 2)
-        self.assertEqual(self.run_cli("--policy", self.policy(""), "--facts", facts, "--architecture",
+        self.assertEqual(self.run_cli("--policy", empty, "--facts", facts, "--structure", st, "--architecture",
                                       os.path.join(self.tmp, "no.toml"))[0], 2)
 
 

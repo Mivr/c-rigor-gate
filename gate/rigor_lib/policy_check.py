@@ -1,12 +1,14 @@
 """`rigor policy-check`: a policy may add profiles and levels to what the facts force, never drop below it (P003 10.1).
 
-    rigor policy-check --policy P.toml --facts DIR [--structure DIR] [--architecture A.toml]
+    rigor policy-check --policy P.toml --facts DIR --structure DIR [--architecture A.toml]
                        [--require-profiles] [--emit-profiles] [--out F]
 
 The policy key is `[module."//pkg:name"] profile = ["pure", "parser"]` (a single string is accepted). Findings:
 `profile-unknown` (error), `profile-missing` (info; error with `--require-profiles`), `profile-below-floor` (error:
 module, the missing profile, the floor rule, the symbol or function that triggered it), `level-below-floor` (error:
-module, level, floor, the dependent that sets it) and the info `profile-floor` per module. Any defect in an input is
+module, level, floor, the dependent that sets it), `structure-missing` (error: a judged module with compiled units
+and no structure facts; F-parser cannot be decided), `facts-missing` (error: a policy module with a `level` and no
+facts) and the info `profile-floor` per module. Any defect in an input is
 exit 2. `--emit-profiles` prints the floor of every policy module as a `[module]` table with a `profile` line, sorted,
 for pasting into a policy; the summary then goes to stderr. Floors are computed in `profiles`; see docs/profiles.md.
 """
@@ -116,21 +118,23 @@ def _level_findings(levels, graph):
     return found
 
 
-def _structure_of(structures, label):
-    return None if structures is None else structures.get(label)
-
-
 def decide(document, facts_by_label, structures=None, arch=None, require=False, third=None):
     """(GateResult, {label: floor}) for the parsed policy `document`."""
     tables = _module_tables(document)
     prefixes = tuple(third.prefixes) if third else ()
     third_labels = frozenset(third.trusted) if third else frozenset()
+    structures = {} if structures is None else structures
     judged = [label for label in sorted(tables) if label in facts_by_label
               and facts_by_label[label].kind in PRODUCT_KINDS]
     found, floors, levels = [], {}, {}
+    for label in sorted(tables):
+        if "level" in tables[label] and label not in facts_by_label:
+            found.append(finding("facts-missing", module=label))
     for label in judged:
         table = tables[label]
-        reasons = profiles.floor_reasons(facts_by_label[label], _structure_of(structures, label), prefixes,
+        if facts_by_label[label].units and label not in structures:
+            found.append(finding("structure-missing", module=label))
+        reasons = profiles.floor_reasons(facts_by_label[label], structures.get(label), prefixes,
                                          third_labels)
         floors[label] = set(reasons) or {"pure"}
         found.extend(_floor_findings(label, table, declared_profiles(label, table), reasons, floors[label], require))
@@ -151,7 +155,7 @@ def emit_lines(floors):
 
 
 def _load_optional(args):
-    structures = structure_data.load_structure_dir(args.structure) if args.structure else None
+    structures = structure_data.load_structure_dir(args.structure)
     arch = layering.load(args.architecture) if args.architecture else None
     return structures, arch
 
@@ -183,7 +187,7 @@ def add_parser(subparsers):
                                    help="profiles and levels of a policy against the floors computed from facts")
     parser.add_argument("--policy", required=True)
     parser.add_argument("--facts", required=True)
-    parser.add_argument("--structure")
+    parser.add_argument("--structure", required=True)
     parser.add_argument("--architecture")
     parser.add_argument("--require-profiles", action="store_true")
     parser.add_argument("--emit-profiles", action="store_true")
