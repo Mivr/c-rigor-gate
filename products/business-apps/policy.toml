@@ -480,6 +480,41 @@ exports = ["main"]
 allow = []
 exports = ["main"]
 
+[module."//apps/lockers/lk/preflight:pf_book_inv_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_check_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_codes_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_data_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_relay_sync_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_report_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:preflight"]
+level = "L3"
+impl = ["apps/lockers/lk/preflight/src/**"]
+allow = []
+exports = []
+
+[module."//apps/lockers/lk/preflight:testkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lk/report:report"]
 level = "L3"
 impl = ["apps/lockers/lk/report/src/**"]
@@ -863,7 +898,7 @@ exports = ["kit_calls", "kit_del", "kit_file", "kit_init", "kit_log_reset", "kit
     "main"]
 
 [module."//apps/lockers/lkadp/e2eclock:e2eclock"]
-level = "L2"
+level = "L3"
 impl = ["apps/lockers/lkadp/e2eclock/src/**"]
 allow = ["memcpy", "memset"]
 exports = ["lk_e2eclock_init", "lk_e2eclock_wall"]
@@ -1099,6 +1134,49 @@ exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset"
     "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
     "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
+[module."//apps/lockers/lkapp/checkconfig:cc_book_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_codes_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_config_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_data_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_inv_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_relay_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_report_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_sync_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:checkconfig"]
+level = "L2"
+impl = ["apps/lockers/lkapp/checkconfig/src/**"]
+allow = []
+exports = []
+
+[module."//apps/lockers/lkapp/checkconfig:testkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkapp/commission:answers_test"]
 allow = ["memcpy", "memset", "strcmp", "strlen", "strncmp"]
 exports = ["main"]
@@ -1221,6 +1299,53 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkapp/posixio:addr_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/posixio:build_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/posixio:config_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/posixio:dir_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/posixio:out_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/posixio:port_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/posixio:posixio"]
+level = "L2"
+impl = ["apps/lockers/lkapp/posixio/src/**"]
+allow = []
+exports = []
+
+[module."//apps/lockers/lkapp/posixio:relay_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/posixio:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkapp/posixio:thread_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/posixio:tls_test"]
+allow = []
+exports = ["main"]
+
 [module."//apps/lockers/lkapp/runtime:chain_test"]
 allow = ["memset"]
 exports = ["main"]
@@ -1306,6 +1431,22 @@ allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lkapp/winpolicy:winpolicy_sdk_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:both_config_headers_compile_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:kfsthreads_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:pinboot_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:pinrun_test"]
 allow = []
 exports = ["main"]
 
@@ -1834,6 +1975,33 @@ exports = ["lk_catalog"]
 allow = []
 exports = ["main"]
 
+[module."//apps/lockers/lkui/input:input"]
+level = "L3"
+impl = ["apps/lockers/lkui/input/src/**"]
+allow = []
+exports = []
+
+[module."//apps/lockers/lkui/input:input_intent_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkui/input:input_refuse_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkui/input:input_wedge_keys_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkui/input:input_wedge_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkui/input:testkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkui/notices:notices"]
 level = "L3"
 impl = ["apps/lockers/lkui/notices/src/**"]
@@ -1842,6 +2010,10 @@ exports = ["lkui_notices"]
 
 [module."//apps/lockers/lkui/notices:notices_banner_test"]
 allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/notices:notices_dismiss_arg_test"]
+allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lkui/notices:notices_error_test"]
@@ -1854,6 +2026,10 @@ exports = ["main"]
 
 [module."//apps/lockers/lkui/notices:notices_golden_test"]
 allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/notices:notices_keys_test"]
+allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lkui/notices:notices_nodes_test"]
@@ -2969,6 +3145,15 @@ exports = ["main"]
 allow = ["bcmp", "memset"]
 exports = ["main"]
 
+[module."//lib/io/cabundle:cacert"]
+level = "L1"
+allow = []
+exports = ["cabundle_cacert", "cabundle_cacert_len"]
+
+[module."//lib/io/cabundle:cacert_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/io/osal:osal"]
 level = "L2"
 impl = ["lib/io/osal/src/**"]
@@ -3130,6 +3315,14 @@ exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent",
     "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
     "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main", "sw_count", "sw_map",
     "sw_run"]
+
+[module."//lib/io/posix_fs:kfs_tempname_real_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/io/posix_fs:kfs_tempname_test"]
+allow = []
+exports = ["main"]
 
 [module."//lib/io/posix_fs:kfs_write_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
@@ -4012,6 +4205,39 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//lib/ui/lvhost:lvh_flush_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvhost:lvh_input_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvhost:lvh_open_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvhost:lvh_time_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["main"]
+
+[module."//lib/ui/lvhost:lvhost"]
+level = "L2"
+impl = ["lib/ui/lvhost/src/**"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = []
+
+[module."//lib/ui/lvhost:testkit"]
+level = "L1"
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = []
+
 [module."//lib/ui/scene:scene"]
 level = "L3"
 impl = ["lib/ui/scene/src/**"]
@@ -4021,6 +4247,10 @@ exports = ["sc_append", "sc_args_store", "sc_args_valid", "sc_dump_line", "sc_fi
     "scene_add_notice", "scene_arg", "scene_args_used", "scene_begin", "scene_check",
     "scene_count", "scene_dump", "scene_end", "scene_find", "scene_init", "scene_node_at",
     "scene_overflow"]
+
+[module."//lib/ui/scene:scene_adopt_test"]
+allow = []
+exports = ["main"]
 
 [module."//lib/ui/scene:scene_args_test"]
 allow = ["bcmp", "memcpy", "memset"]
@@ -4247,54 +4477,67 @@ exports = ["main"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:boot_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:bootfail_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:bootmisc_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:e2e_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:e2emap_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:host_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:layout_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:loops_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:net_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:relaywrap_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:snapedge_test"]
 allow = ["memset"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:snapshot_test"]
 allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:testkit"]
 level = "L1"
 allow = []
@@ -4304,18 +4547,22 @@ exports = []
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:wallclk_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strcat", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:watch_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:wire"]
 level = "L2"
 impl = ["apps/lockers/lkapp/wire/src/**"]
 allow = ["memcpy", "memset", "strlen"]
+allow_builtins = ["__atomic_load_n", "__atomic_store_n"]
 exports = ["lk_wire_core_step", "lk_wire_fatal", "lk_wire_init", "lk_wire_net_step",
     "lk_wire_opener_step", "lk_wire_parse_args", "lk_wire_post", "lk_wire_run", "lk_wire_scene",
     "lk_wire_snapshot_fill", "lk_wire_start", "lk_wire_stop", "lk_wire_stopping", "lk_wire_ui_step",
@@ -4324,6 +4571,7 @@ exports = ["lk_wire_core_step", "lk_wire_fatal", "lk_wire_init", "lk_wire_net_st
     "lkw_load_inventory", "lkw_nap", "lkw_now", "lkw_objects", "lkw_open_dirs", "lkw_relay_close",
     "lkw_relay_open", "lkw_runtime", "lkw_sat32", "lkw_say", "lkw_say_buf", "lkw_set_stop",
     "lkw_split_path", "lkw_watch_codes"]
+
 [module."//apps/lockers/lkrx/boot:boot_refresh_test"]
 allow = ["memset"]
 exports = ["main"]
@@ -4442,6 +4690,7 @@ exports = ["lvr_applied", "lvr_apply", "lvr_count", "lvr_do_create", "lvr_do_mov
     "lvr_do_update", "lvr_dropped", "lvr_fields", "lvr_init", "lvr_mapped", "lvr_next_sibling",
     "lvr_obj", "lvr_on_click", "lvr_part_of", "lvr_place", "lvr_place_after", "lvr_prev_sibling",
     "lvr_ready", "lvr_relayout", "lvr_reset", "lvr_secs_of", "lvr_take_intents", "lvr_text_of"]
+
 [module."//lib/ui/lvrender:testkit"]
 level = "L1"
 third_party = ["gate//third_party/lvgl:lvgl"]
