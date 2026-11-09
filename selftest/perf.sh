@@ -112,13 +112,14 @@ rm -f "$scratch/@/gen.inc"
   done
 } > "$scratch/@/BUCK"
 
-# Two copies. the copies differ in a nonce comment (all sources), so both are cold: compile, link and run actions re-execute.
+# Two copies. The copies differ in a nonce (a comment in BUCK and headers, a string constant in the .c files, which changes
+# the object and so the binary), so both are cold: compile, link and the perf run itself re-execute on whichever worker is free.
 for c in a b; do
   mkdir -p "$scratch/$c"
   for file in "$scratch"/@/*; do
     dst="$scratch/$c/$(basename "$file")"
     sed "s|/@/|/$c/|g" "$file" > "$dst"
-    case "$dst" in */BUCK) echo "# nonce $nonce $c" >> "$dst" ;; *) echo "/* nonce $nonce $c */" >> "$dst" ;; esac
+    case "$dst" in */BUCK) echo "# nonce $nonce $c" >> "$dst" ;; *.c) echo "__attribute__((used)) static const char perf_nonce[] = \"$nonce $c\";" >> "$dst" ;; *) echo "/* nonce $nonce $c */" >> "$dst" ;; esac
   done
 done
 rm -rf "$scratch/@"
@@ -143,7 +144,10 @@ python3 - "$out" $fixtures <<'PY' || exit 1
 import json, sys
 out = sys.argv[1]
 fixtures = [f.split(":")[0] for f in sys.argv[2:]]
-DET = ("name", "seed", "n", "status", "counter", "errno", "input_len", "instructions", "libc_bytes", "result")
+sys.path.insert(0, "gate")
+from rigor_lib import perf_judge
+# Exact between two cold runs. `instructions` agrees within perf_judge.count_bound (docs/perf.md "Determinism").
+DET = ("name", "seed", "n", "status", "counter", "errno", "input_len", "libc_bytes", "result")
 
 def load(c, n):
     with open("%s/%s.%s.jsonl" % (out, c, n)) as fh:
@@ -163,7 +167,16 @@ for n in fixtures:
         da = {k: ra.get(k) for k in DET}
         db = {k: rb.get(k) for k in DET}
         check(da == db, "%s: counts differ between cold runs: %s vs %s" % (n, da, db))
+        ia, ib = ra.get("instructions"), rb.get("instructions")
+        check((ia is None) == (ib is None) and (ia is None or perf_judge.counts_agree(ia, ib)),
+              "%s: instructions differ beyond the bound between cold runs: %s vs %s" % (n, ia, ib))
         check("wall_ns_median" in ra or ra["status"] != "ok", "%s: no wall field" % n)
+
+# The agreement rule itself, on synthetic records: one instruction apart agrees, far apart differs.
+syn = lambda v: {"instructions": v}
+check(perf_judge.counts_agree(syn(342312029)["instructions"], syn(342312028)["instructions"]), "synthetic: one apart must agree")
+check(not perf_judge.counts_agree(342312029, 342312029 * 2), "synthetic: far apart must differ")
+check(not perf_judge.counts_agree(115051, 115051 + perf_judge.count_bound(115051, 115051) + 1), "synthetic: just past the bound must differ")
 
 def ratio(n, field):
     lo, hi = recs[n]
@@ -194,7 +207,7 @@ for n in ("ovf", "rerr", "segv"):
 if bad:
     print("FAIL:\n  " + "\n  ".join(bad), file=sys.stderr)
     sys.exit(1)
-print("perf selftest: ok (%d fixtures, counts identical across two cold builds)" % len(fixtures))
+print("perf selftest: ok (%d fixtures, counts equal or within the stated bound across two cold builds)" % len(fixtures))
 PY
 
 # ==== T090: judging against complexity classes, and perf-killed mutants ============================

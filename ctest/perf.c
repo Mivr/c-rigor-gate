@@ -70,6 +70,7 @@ typedef struct {
     int multiplexed;
     int measured; /* the counter was attempted */
     uint64_t len, instructions, bytes, result, wall_median;
+    uint64_t reps[REPS]; /* metadata: the instruction count of every rep, in run order */
 } rec_t;
 
 static char g_in[PERF_INPUT_CAP + GUARD];
@@ -161,6 +162,7 @@ static void measure(rec_t *r, uint64_t seed, size_t n) {
     for (int i = 0; i < REPS; i++) { v[i] = reps[i].instr; }
     sort7(v);
     r->instructions = v[REPS / 2];
+    for (int i = 0; i < REPS; i++) { r->reps[i] = reps[i].instr; }
     for (int i = 0; i < REPS; i++) { v[i] = reps[i].bytes; }
     sort7(v);
     r->bytes = v[REPS / 2];
@@ -177,17 +179,19 @@ static int set_limit(__rlimit_resource_t what, rlim_t v) {
     return setrlimit(what, &rl);
 }
 
+static rec_t g_rec;
+
 static int child_main(int wfd, uint64_t seed, size_t n) {
-    rec_t r;
-    (void)memset(&r, 0, sizeof r);
+    rec_t *r = &g_rec;
+    (void)memset(r, 0, sizeof *r);
     if (set_limit(RLIMIT_CPU, 20) != 0) { return 4; }
     (void)alarm(TIMEOUT_S);
-    measure(&r, seed, n);
-    return write(wfd, &r, sizeof r) == (ssize_t)sizeof r ? 0 : 3;
+    measure(r, seed, n);
+    return write(wfd, r, sizeof *r) == (ssize_t)sizeof *r ? 0 : 3;
 }
 
 /* ---- records ---- */
-typedef struct { const char *name; uint64_t seed; FILE *out; } ctx_t;
+typedef struct { const char *name; uint64_t seed; FILE *out; char cpu[96]; } ctx_t;
 
 static void emit(const ctx_t *c, size_t n, const char *status, const rec_t *r, int sig, int code) {
     (void)fprintf(c->out, "{\"name\":\"%s\",\"seed\":%llu,\"n\":%zu,\"status\":\"%s\"", c->name,
@@ -205,6 +209,10 @@ static void emit(const ctx_t *c, size_t n, const char *status, const rec_t *r, i
         else { (void)fprintf(c->out, ",\"instructions\":null"); }
         (void)fprintf(c->out, ",\"libc_bytes\":%llu,\"result\":%llu,\"wall_ns_median\":%llu",
                       (unsigned long long)r->bytes, (unsigned long long)r->result, (unsigned long long)r->wall_median);
+        (void)fprintf(c->out, ",\"cpu\":\"%s\"", c->cpu);
+        (void)fprintf(c->out, ",\"reps\":[");
+        for (int i = 0; i < REPS; i++) { (void)fprintf(c->out, "%s%llu", i ? "," : "", (unsigned long long)r->reps[i]); }
+        (void)fprintf(c->out, "]");
     }
     (void)fprintf(c->out, "}\n");
 }
@@ -226,6 +234,25 @@ static void one_size(const ctx_t *c, size_t n) {
     (void)close(p[0]);
 }
 
+static void cpu_model(char *out, size_t cap) {
+    FILE *f = fopen("/proc/cpuinfo", "r");
+    out[0] = '\0';
+    if (f == NULL) { return; }
+    char line[256];
+    while (fgets(line, sizeof line, f) != NULL) {
+        if (strncmp(line, "model name", 10) == 0) {
+            char *c = strchr(line, ':');
+            size_t k = 0;
+            if (c == NULL) { break; }
+            for (c++; *c == ' '; c++) { }
+            for (; *c != '\0' && *c != '\n' && k + 1 < cap; c++) { out[k++] = (*c == '"' || *c == '\\') ? '_' : *c; }
+            out[k] = '\0';
+            break;
+        }
+    }
+    (void)fclose(f);
+}
+
 static int parse_sizes(const char *s, size_t *v) {
     int k = 0;
     while (*s != '\0' && k < MAX_SIZES) {
@@ -240,7 +267,7 @@ static int parse_sizes(const char *s, size_t *v) {
 }
 
 int main(int argc, char **argv) {
-    ctx_t c = {NULL, 0, NULL};
+    ctx_t c = {NULL, 0, NULL, {0}};
     if (signal(SIGXFSZ, SIG_IGN) == SIG_ERR || set_limit(RLIMIT_FSIZE, 64 << 20) != 0 || set_limit(RLIMIT_CPU, 600) != 0 ||
         set_limit(RLIMIT_NOFILE, 256) != 0 || set_limit(RLIMIT_CORE, 0) != 0) { return 2; }
     const char *out = NULL;
@@ -254,6 +281,7 @@ int main(int argc, char **argv) {
         else { return 2; }
     }
     if (c.name == NULL || out == NULL || k == 0 || (argc % 2) == 0) { return 2; }
+    cpu_model(c.cpu, sizeof c.cpu);
     c.out = fopen(out, "w");
     if (c.out == NULL) { return 2; }
     for (int i = 0; i < k; i++) { one_size(&c, sizes[i]); }
