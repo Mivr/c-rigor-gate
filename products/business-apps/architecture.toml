@@ -792,3 +792,21 @@ kind = "pure"
 from = "//lib/ui/lvrender:lvrender"
 to = "//lib/ui/uikit:uikit"
 kind = "pure"
+
+# lkui/input (L293/L296) builds core events (ev records) from scene intents; its BUCK deps list ev, rxwire and fmap
+# (lib-rt, lib-ds), beside the app-ui layers above. Three module edges rather than a layer rule: no other app-ui module needs them.
+[[edge]]
+from = "//apps/lockers/lkui/input:input"
+to = "//lib/ds/fmap:fmap"
+kind = "pure"
+
+[[edge]]
+from = "//apps/lockers/lkui/input:input"
+to = "//lib/rt/ev:ev"
+kind = "pure"
+
+[[edge]]
+from = "//apps/lockers/lkui/input:input"
+to = "//lib/rt/rxwire:rxwire"
+kind = "pure"
+
