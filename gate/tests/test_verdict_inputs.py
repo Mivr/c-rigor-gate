@@ -21,7 +21,7 @@ LLVM, SYSROOT, BUCK2 = "1" * 64, "2" * 64, "3" * 64
 FILE_HASHES = {key: jsonio.sha256_hex(key.encode()) for key in
                ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
                 "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
-                "order_sha256", "witness_sha256", "perf_sha256")}
+                "order_sha256", "witness_sha256", "perf_sha256", "fuzz_regressions_sha256")}
 WITNESS_FIXTURE = GATE_DIR / "tests" / "fixtures" / "witness" / "good"
 
 
@@ -208,6 +208,7 @@ class Snapshot(TempDirTestCase):
                  "expected_tests_sha256": lambda: self.write("expected-tests.json", "x"),
                  "expected_tests_previous_sha256": lambda: self.write("expected-tests.previous.json", "x"),
                  "ram_budget_sha256": lambda: self.write("ram-budget.toml", "x"),
+                 "fuzz_regressions_sha256": lambda: self.write("fuzz-regressions.json", "{}"),
                  "approvals_sha256": lambda: (self.approvals / ("0" * 64 + ".json")).write_text("{ }")}
         for key, edit in edits.items():
             edit()

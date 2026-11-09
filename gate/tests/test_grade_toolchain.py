@@ -13,7 +13,7 @@ from rigor_lib.findings import GateResult
 from tests.helpers import GATE_DIR, TempDirTestCase
 
 # The gates that compile or link: none of them may run unless `toolchain` passed.
-COMPILING = ["semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "mutants",
+COMPILING = ["semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "fuzz", "mutants",
              "witness-tests", "mutants-witness"]
 
 # What buck2 (exit 3) printed when the verify action of the llvm tree failed in the T073 demonstration

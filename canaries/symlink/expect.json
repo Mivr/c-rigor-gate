@@ -19,6 +19,7 @@
     "tests-release",
     "tests-san",
     "perf",
+    "fuzz",
     "mutants",
     "witness-tests",
     "mutants-witness"

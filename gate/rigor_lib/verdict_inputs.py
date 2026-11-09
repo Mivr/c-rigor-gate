@@ -29,16 +29,19 @@ WITNESS_NAME = "witness"
 PERF_NAME = "perf"
 # Files beside product.toml that the grade reads; the name is kept so path arithmetic still works.
 PRODUCT_FILES = ("product.toml", "policy.toml", "expected-tests.json", "expected-tests.previous.json",
-                 "ram-budget.toml", "architecture.toml")
+                 "ram-budget.toml", "architecture.toml", "fuzz-regressions.json")
 
 SHA_KEYS = ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
             "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
             "order_sha256", "buckconfig_sha256", "toolchain_buck_sha256", "llvm_sha256",
-            "sysroot_sha256", "buck2_sha256", "witness_sha256", "perf_sha256")
+            "sysroot_sha256", "buck2_sha256", "witness_sha256", "perf_sha256",
+            "fuzz_regressions_sha256")
 COMMIT_KEYS = ("gate_sha", "head", "base", "merge_base")
 INPUT_KEYS = frozenset(SHA_KEYS + COMMIT_KEYS + ("gate_clean", "product", "uncached"))
-# Absent on purpose in many grades: no approvals bundle, no previous expected-tests file, no witness, no perf bundle.
-OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256", "ram_budget_sha256", "witness_sha256", "perf_sha256"})
+# Absent on purpose in many grades: no approvals bundle, no previous expected-tests file, no witness, no perf bundle,
+# no fuzz regression list.
+OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256", "ram_budget_sha256", "witness_sha256",
+                           "perf_sha256", "fuzz_regressions_sha256"})
 
 
 # ---------------------------------------------------------------- snapshot (read once, use the copy)
@@ -110,6 +113,7 @@ def snapshot_inputs(args, work):
     hashes["expected_tests_sha256"] = copies["expected-tests.json"]
     hashes["expected_tests_previous_sha256"] = copies["expected-tests.previous.json"]
     hashes["ram_budget_sha256"] = copies["ram-budget.toml"]
+    hashes["fuzz_regressions_sha256"] = copies["fuzz-regressions.json"]
     approvals_copy = os.path.join(base, APPROVALS_NAME)
     hashes["approvals_sha256"] = snapshot_approvals(args.approvals, approvals_copy)
     if args.approvals is not None:

@@ -1,4 +1,4 @@
-"""`rigor fuzz`: the verdict on the fuzz runs of a product (T126, P003 §7.2, G23). Landed, not wired into `rigor grade`.
+"""`rigor fuzz`: the verdict on the fuzz runs of a product (T126, P003 §7.2, G23). Run by `rigor grade` as the gate `fuzz` (grade_fuzz.py, T129).
 
     rigor fuzz --results DIR --policy P.toml --facts DIR [--regressions R.json] [--out F]
 
@@ -6,6 +6,7 @@ Policy (gate-owned, the same `policy.toml` the other gates read; only these keys
 
     [module."//pkg:name"]
     fuzz = true            # the module must be fuzzed: some c_fuzz target lists it in `deps`
+    profile = ["parser"]   # the same, without `fuzz = true` (T127); `fuzz_runs` then applies as well
     fuzz_runs = 200000     # optional: the budget the run must have completed (default DEFAULT_RUNS, at most MAX_RUNS)
 
 The results directory (flat; anything else in it is exit 2) is what the `c_fuzz` action produced, collected by the
@@ -21,12 +22,13 @@ import os
 import re
 from dataclasses import dataclass
 
-from rigor_lib import facts_data, grade_policy, jsonio
+from rigor_lib import facts_data, grade_policy, jsonio, policy_check
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 from rigor_lib.runner import gate_handler
 
 GATE_ID = "fuzz"
+PARSER = "parser"   # a module with this profile must be fuzzed (T127, P003 §4)
 DEFAULT_RUNS = 200000   # the same as FUZZ_DEFAULT_RUNS / FUZZ_MAX_RUNS in rules/fuzz.bzl (a unit test compares them)
 MAX_RUNS = 2000000
 INDEX = "index.json"
@@ -71,7 +73,7 @@ def _text(path):
 
 
 def load_policy(path):
-    """{module label: budget in runs} of the modules that must be fuzzed."""
+    """{module label: budget in runs} of the modules that must be fuzzed: `fuzz = true`, or the `parser` profile."""
     modules = grade_policy.load_document(path).get("module", {})
     if not isinstance(modules, dict):
         _fail("policy", "[module] must be a table of tables")
@@ -84,9 +86,10 @@ def load_policy(path):
         runs = table.get("fuzz_runs")
         if runs is not None and (type(runs) is not int or not 1 <= runs <= MAX_RUNS):
             _fail("policy", "module %s: fuzz_runs must be an integer in [1, %d]" % (label, MAX_RUNS))
-        if runs is not None and not table.get("fuzz", False):
-            _fail("policy", "module %s: fuzz_runs without fuzz = true" % label)
-        if table.get("fuzz", False):
+        must = table.get("fuzz", False) or PARSER in (policy_check.declared_profiles(label, table) or ())
+        if runs is not None and not must:
+            _fail("policy", "module %s: fuzz_runs without fuzz = true or the parser profile" % label)
+        if must:
             if not facts_data.LABEL.fullmatch(label):
                 _fail("policy", "odd module label %r" % label)
             required[label] = DEFAULT_RUNS if runs is None else runs
