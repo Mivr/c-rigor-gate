@@ -1,0 +1,3 @@
+{"at":100,"evidence":"","kind":"claim","prev":"0000000000000000000000000000000000000000000000000000000000000000","seq":1,"subject":"equivalent-mutant:m1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+{"at":101,"evidence":"","kind":"claim","prev":"53403bddc99c8fa360290cd4942b47cd5cfbb14e4c1b49cc490cd74cd6639c56","seq":2,"subject":"suppression:src/a.c:3-x:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+{"at":102,"evidence":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","kind":"revocation","prev":"f27771ffc33f780a665515b3b6ee4cd5e51094df98de651ba92e3b6294876e97","seq":3,"subject":"equivalent-mutant:m1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
