@@ -8,7 +8,9 @@ depend on it directly, found by a query in the tree), and whether "nothing was m
 import json
 import os
 import shutil
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest import mock
 
@@ -157,6 +159,10 @@ class Planning(unittest.TestCase):
         self.assertEqual(first.modules[0].tests, tuple(sorted(tests)))
 
 
+def named(label):
+    return grade_mutants.target_name(grade_mutants.Module(label, "L2", (), ()))
+
+
 class GeneratedPackage(unittest.TestCase):
     def modules(self):
         lay = layout(libs=["//core:core", "//url:url"],
@@ -168,18 +174,29 @@ class GeneratedPackage(unittest.TestCase):
         text = grade_mutants.build_file_text(self.modules())
         self.assertEqual(text, (
             'load("@gate//rules:c.bzl", "c_mutants")\n\n'
-            'c_mutants(\n    name = "m000_core_core",\n    module = "//core:core",\n'
+            'c_mutants(\n    name = "%s",\n    module = "//core:core",\n'
             '    tests = [\n        "//core:t",\n        "//url:t",\n    ],\n    deps = [\n        "//url:url",\n    ],\n)\n\n'
-            'c_mutants(\n    name = "m001_url_url",\n    module = "//url:url",\n'
-            '    tests = [\n        "//url:t",\n    ],\n    deps = [\n        "//core:core",\n    ],\n)\n'))
+            'c_mutants(\n    name = "%s",\n    module = "//url:url",\n'
+            '    tests = [\n        "//url:t",\n    ],\n    deps = [\n        "//core:core",\n    ],\n)\n')
+            % (named("//core:core"), named("//url:url")))
+
+    def test_a_target_name_depends_on_the_label_alone_never_on_the_position(self):
+        """T121: the name is in every output path of the target's actions, so in their cache keys."""
+        modules = self.modules()
+        self.assertTrue(grade_mutants.target_name(modules[0]).startswith("m_core_core_"))
+        for subset in (modules, modules[1:], modules[::-1]):
+            for m in subset:
+                self.assertEqual(grade_mutants.target_name(m), named(m.label))
+        self.assertNotEqual(named("//a_b:c"), named("//a:b_c"))   # the same sanitised text, two labels
+        self.assertNotEqual(named("//a:b"), named("//a:c"))
+        self.assertRegex(named("//a-b/c:d"), r"^m_[A-Za-z0-9_]+$")
 
     def test_names_and_policy_labels_follow_the_modules(self):
         modules = self.modules()
-        self.assertEqual([grade_mutants.target_label(i, m) for i, m in enumerate(modules)],
-                         ["//gate-mutants:m000_core_core", "//gate-mutants:m001_url_url"])
+        a, b = "//gate-mutants:" + named("//core:core"), "//gate-mutants:" + named("//url:url")
+        self.assertEqual([grade_mutants.target_label(m) for m in modules], [a, b])
         self.assertEqual(grade_mutants.policy_text(modules),
-                         '[module."//gate-mutants:m000_core_core"]\nlevel = "L3"\n\n'
-                         '[module."//gate-mutants:m001_url_url"]\nlevel = "L2"\n')
+                         '[module."%s"]\nlevel = "L3"\n\n[module."%s"]\nlevel = "L2"\n' % (a, b))
 
 
 class PerfModules(unittest.TestCase):
@@ -215,13 +232,14 @@ class PerfModules(unittest.TestCase):
                                      {"//core:core": {"//core:p_perf": "O(log n)"}}).modules
         text = grade_mutants.build_file_text(modules)
         self.assertNotIn("mutate.bzl", text)
-        self.assertIn('c_mutants(\n    name = "m000_core_core",\n    module = "//core:core",\n'
-                      '    tests = [\n        "//core:t",\n    ],\n    perf = [\n        "//core:p_perf",\n    ],\n', text)
-        self.assertIn('c_mutants(\n    name = "m001_url_url",', text)
+        a, b = named("//core:core"), named("//url:url")
+        self.assertIn('c_mutants(\n    name = "%s",\n    module = "//core:core",\n'
+                      '    tests = [\n        "//core:t",\n    ],\n    perf = [\n        "//core:p_perf",\n    ],\n' % a, text)
+        self.assertIn('c_mutants(\n    name = "%s",' % b, text)
         self.assertEqual(grade_mutants.policy_text(modules),
-                         '[module."//gate-mutants:m000_core_core"]\nlevel = "L3"\n'
-                         '[module."//gate-mutants:m000_core_core".perf."//core:p_perf"]\nclass = "O(log n)"\n\n'
-                         '[module."//gate-mutants:m001_url_url"]\nlevel = "L2"\n')
+                         '[module."//gate-mutants:%s"]\nlevel = "L3"\n'
+                         '[module."//gate-mutants:%s".perf."//core:p_perf"]\nclass = "O(log n)"\n\n'
+                         '[module."//gate-mutants:%s"]\nlevel = "L2"\n' % (a, a, b))
 
     def test_the_gate_perf_binaries_need_no_level_and_the_perf_harness_is_never_linked_into_a_test(self):
         lay = layout(libs=["//core:core"], binaries=["//gate-perf:lk"], external=["gate//ctest:perf"],
@@ -368,7 +386,11 @@ class ChunkedBuild(TempDirTestCase):
         self.tree = self.sub("work/tree")
         self.sub("work/tree/buck-out")
         self.calls = []
+        self.lock = threading.Lock()
         self.script = {}   # (chunk number, attempt) -> (exit code, stderr, labels that fail)
+
+    def name(self, index):
+        return named("//m%d:m" % index)
 
     def modules(self, count, perf=()):
         return [grade_mutants.Module("//m%d:m" % i, "L3", ("//m%d:t" % i,), (),
@@ -384,8 +406,9 @@ class ChunkedBuild(TempDirTestCase):
             report = args[args.index("--build-report") + 1]
             targets = [a for a in args if a.startswith("//gate-mutants:")]
             number = int(os.path.basename(report).split("-")[-1].split(".")[0])
-            attempt = attempts[number] = attempts.get(number, -1) + 1
-            self.calls.append((number, attempt, targets, os.path.exists(report)))
+            with self.lock:
+                attempt = attempts[number] = attempts.get(number, -1) + 1
+                self.calls.append((number, attempt, targets, os.path.exists(report)))
             code, err, failing = self.script.get((number, attempt), (0, "", ()))
             results = {}
             for target in targets:
@@ -407,7 +430,9 @@ class ChunkedBuild(TempDirTestCase):
             return code, "", err
         with mock.patch("rigor_lib.grade_build.run_buck", side_effect=fake_buck), \
                 mock.patch("rigor_lib.grade_build.action_counts", return_value=(3, 5)):
-            return modules, grade_mutants.build_reports(run, False, modules)
+            outcome = grade_mutants.build_reports(run, False, modules)
+        self.calls.sort(key=lambda c: c[:2])   # the chunks overlap: only the order of (chunk, attempt) is defined
+        return modules, outcome
 
     def reports(self):
         return sorted(os.listdir(str(self.work / "mutants-reports")))
@@ -433,13 +458,13 @@ class ChunkedBuild(TempDirTestCase):
         self.run_build(n + 2)
         for index in (0, n - 1, n, n + 1):
             text = (self.work / "mutants-reports" / ("%03d.json" % index)).read_text()
-            self.assertIn("m%03d_" % index, text)
+            self.assertIn(self.name(index), text)
         self.assertEqual([c[0] for c in self.calls], [0, 1])
-        self.assertEqual(self.calls[1][2][0], "//gate-mutants:" + grade_mutants.target_name(n, self.modules(n + 1)[n]))
+        self.assertEqual(self.calls[1][2][0], "//gate-mutants:" + self.name(n))
 
     def test_a_transient_failure_in_chunk_two_retried_gives_the_output_of_a_clean_run(self):
         n = self.N
-        self.script = {(1, 0): (1, self.PIPE, ("m%03d_m%d_m" % (n, n),))}
+        self.script = {(1, 0): (1, self.PIPE, (self.name(n),))}
         _, (found, metadata, built) = self.run_build(2 * n)
         self.assertEqual([(c[0], c[1]) for c in self.calls], [(0, 0), (1, 0), (1, 1)])
         self.assertFalse(self.calls[2][3])   # the retry's report file was removed first
@@ -450,7 +475,7 @@ class ChunkedBuild(TempDirTestCase):
 
     def test_a_transient_failure_twice_fails_only_the_modules_of_that_chunk(self):
         n = self.N
-        everything = tuple("m%03d_m%d_m" % (i, i) for i in range(n, 2 * n))
+        everything = tuple(self.name(i) for i in range(n, 2 * n))
         self.script = {(1, 0): (1, self.PIPE, everything), (1, 1): (1, "Broken pipe again", everything)}
         _, (found, metadata, built) = self.run_build(3 * n)
         self.assertEqual([(c[0], c[1]) for c in self.calls], [(0, 0), (1, 0), (1, 1), (2, 0)])
@@ -461,7 +486,7 @@ class ChunkedBuild(TempDirTestCase):
         self.assertEqual(metadata["stderr_tail"], "Broken pipe again")
 
     def test_a_real_build_failure_is_not_retried(self):
-        self.script = {(0, 0): (1, "error: compilation of m.c failed", ("m000_m0_m",))}
+        self.script = {(0, 0): (1, "error: compilation of m.c failed", (self.name(0),))}
         _, (found, metadata, built) = self.run_build(2)
         self.assertEqual([(c[0], c[1]) for c in self.calls], [(0, 0)])
         self.assertEqual([f["module"] for f in found], ["//m0:m"])
@@ -473,13 +498,13 @@ class ChunkedBuild(TempDirTestCase):
         self.assertEqual(len(self.calls), 1)
 
     def test_a_transport_text_with_a_zero_exit_is_not_retried(self):
-        self.script = {(0, 0): (0, self.PIPE, ("m000_m0_m",))}   # exit zero, a target missing
+        self.script = {(0, 0): (0, self.PIPE, (self.name(0),))}   # exit zero, a target missing
         self.run_build(1)
         self.assertEqual(len(self.calls), 1)
 
     def test_the_metadata_sums_the_chunks_and_every_attempt_and_the_exit_is_the_first_failure(self):
         n = self.N
-        self.script = {(0, 0): (1, self.PIPE, ("m000_m0_m",)), (1, 0): (2, "boom", ("m%03d_m%d_m" % (n, n),))}
+        self.script = {(0, 0): (1, self.PIPE, (self.name(0),)), (1, 0): (2, "boom", (self.name(n),))}
         _, (_, metadata, _) = self.run_build(2 * n)
         # chunk 0 ran twice (retry), chunk 1 once: 3 builds of (3 executed, 5 cached)
         self.assertEqual((metadata["executed_actions"], metadata["cached_actions"]), (9, 15))
@@ -494,13 +519,118 @@ class ChunkedBuild(TempDirTestCase):
         self.assertEqual(sum(t.endswith("[perf]") for t in self.calls[1][2]), 1)
         perf = self.work / grade_mutants.PERF_DIR
         self.assertEqual(sorted(os.listdir(str(perf))), ["001.json", "%03d.json" % n])
-        self.assertIn("m%03d_" % n, (perf / ("%03d.json" % n)).read_text())
+        self.assertIn(self.name(n), (perf / ("%03d.json" % n)).read_text())
 
     def test_the_transport_classifier(self):
         for text in ("h2 protocol error: broken", "write: Broken pipe", "Connection reset by peer", "transport error"):
             self.assertTrue(grade_build.transport_failure(text), text)
         for text in ("", "error: undefined reference to `x`", "FAILED: test t", "build failed"):
             self.assertFalse(grade_build.transport_failure(text), text)
+
+
+class OverlappedChunks(TempDirTestCase):
+    """T121: the chunk builds overlap (bounded), and nothing in the outcome depends on who finishes first."""
+    N = grade_mutants.MUTANTS_CHUNK
+
+    def setUp(self):
+        super().setUp()
+        self.work = self.sub("work")
+        self.tree = self.sub("work/tree")
+        self.sub("work/tree/buck-out")
+        self.lock = threading.Lock()
+
+    def modules(self, count):
+        return [grade_mutants.Module("//m%d:m" % i, "L3", ("//m%d:t" % i,), ()) for i in range(count)]
+
+    def reports(self):
+        return sorted(os.listdir(str(self.work / "mutants-reports")))
+
+    def build_with(self, count, uncached=False, hook=None):
+        """build_reports over COUNT modules with a fake Buck2; HOOK(number) runs inside every build."""
+        modules = self.modules(count)
+        run = grade_build.TreeRun(self.tree, str(self.work), mutants_reports=str(self.work / "mutants-reports"))
+        counted = []
+
+        def fake_buck(tree, args):
+            report = args[args.index("--build-report") + 1]
+            number = int(os.path.basename(report).split("-")[-1].split(".")[0])
+            if hook:
+                hook(number)
+            results = {}
+            for target in (a for a in args if a.startswith("//gate-mutants:")):
+                name = target.split(":")[1]
+                with open(os.path.join(tree, "buck-out", name + ".json"), "w") as handle:
+                    handle.write('{"label": "%s"}' % name)
+                results["root" + target] = {"success": "SUCCESS", "outputs": {"DEFAULT": ["buck-out/%s.json" % name]}}
+            with open(report, "w") as handle:
+                handle.write(json.dumps({"results": results, "events": args[args.index("--event-log") + 1]}))
+            return 0, "", ""
+
+        def counts(tree, event_log=None):
+            counted.append(event_log)
+            return 1, 2
+        with mock.patch("rigor_lib.grade_build.run_buck", side_effect=fake_buck), \
+                mock.patch("rigor_lib.grade_build.action_counts", side_effect=counts):
+            return grade_mutants.build_reports(run, uncached, modules), counted
+
+    def test_the_documented_number_of_chunks_is_really_in_flight_together(self):
+        k = grade_mutants.MUTANTS_INFLIGHT
+        self.assertGreater(k, 1)
+        barrier = threading.Barrier(k)   # every build waits for k-1 others: it only passes if they overlap
+        (found, metadata, built), _ = self.build_with(k * self.N, hook=lambda number: barrier.wait(timeout=60))
+        self.assertEqual((found, built), ([], list(range(k * self.N))))
+
+    def workers_of(self, count, uncached):
+        """The `max_workers` the build asked its pool for."""
+        asked = []
+
+        def pool(max_workers):
+            asked.append(max_workers)
+            return ThreadPoolExecutor(max_workers=max_workers)
+        with mock.patch.object(grade_mutants, "ThreadPoolExecutor", side_effect=pool):
+            self.build_with(count, uncached=uncached)
+        return asked
+
+    def test_no_more_than_the_bound_is_in_flight(self):
+        self.assertEqual(self.workers_of(6 * self.N, False), [grade_mutants.MUTANTS_INFLIGHT])
+
+    def test_uncached_builds_stay_one_at_a_time(self):
+        """`grade_build.run_buck` re-primes the toolchain around an uncached build and reads "the last command"."""
+        self.assertEqual(grade_mutants.inflight(True), 1)
+        self.assertEqual(self.workers_of(6 * self.N, True), [1])
+
+    def test_one_chunk_needs_one_worker(self):
+        self.assertEqual(self.workers_of(self.N, False), [1])
+
+    def test_each_chunk_counts_its_own_event_log(self):
+        (_, metadata, _), counted = self.build_with(3 * self.N)
+        self.assertEqual(sorted(counted), sorted(str(self.work / ("build-report-mutants-%03d.events.pb.zst" % i)) for i in range(3)))
+        self.assertEqual((metadata["executed_actions"], metadata["cached_actions"]), (3, 6))
+
+    def test_the_outcome_is_in_chunk_order_whoever_finishes_first(self):
+        gate = threading.Event()   # chunk 0 finishes last
+        order = []
+
+        def hook(number):
+            if number == 0:
+                gate.wait(timeout=60)
+            else:
+                with self.lock:
+                    order.append(number)
+                    if len(order) == 2:
+                        gate.set()
+        (found, metadata, built), _ = self.build_with(3 * self.N, hook=hook)
+        self.assertEqual(sorted(order), [1, 2])
+        self.assertEqual(built, list(range(3 * self.N)))
+        self.assertEqual(self.reports(), ["%03d.json" % i for i in range(3 * self.N)])
+        self.assertEqual(metadata["chunks"], 3)
+
+    def test_an_error_in_one_chunk_stops_the_run_and_is_raised(self):
+        def hook(number):
+            if number == 1:
+                raise InternalError("cannot run buck2")
+        with self.assertRaises(InternalError):
+            self.build_with(5 * self.N, hook=hook)
 
 
 class Gate(TempDirTestCase):

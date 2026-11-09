@@ -17,6 +17,7 @@ import hashlib
 import os
 import re
 from argparse import Namespace
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, jsonio, perf_package, perf_policy
@@ -37,6 +38,11 @@ _TAIL_CHARS = 4000
 # BrokenPipe under the shared 8 GiB cgroup. 12 keeps a build near 4k actions (about ten builds for 112 modules):
 # small enough for the stream and the daemon to survive, large enough that the RE farm still sees a wide graph.
 MUTANTS_CHUNK = 12
+# Chunk builds in flight at once in the one daemon (T121). Sequential chunks left the RE farm (64 slots) mostly idle:
+# each chunk waited for its slowest module. 3 x 12 modules is about 12k actions in the daemon at a time, a
+# third of the 42k-action build that died (T115) and three times the 4k of one chunk; the memory the daemon holds
+# grows with the graph in flight, so this is the knob to lower if a grade dies of a dropped stream again.
+MUTANTS_INFLIGHT = 3
 PERF_DIR = "mutants-perf"
 PERF_KIT = "gate//ctest:perf"   # the harness has a main of its own: never linked into a test
 
@@ -314,18 +320,22 @@ def chunks_of(count):
 
 def _build_chunk(run, flags, number, indexes, labels, perf_labels):
     """One bounded `buck2 build` of the chunk's targets (and `[perf]` outputs), retried once when it died of a
-    transport failure. Returns (results, exit code, stderr, executed, cached, retried)."""
+    transport failure. Returns (results, exit code, stderr, executed, cached, retried). Safe to run in several
+    threads at once: every file it writes is named after the chunk, and its action counts come from the build's
+    own event log, not from "the last command"."""
     report = run.report_path("mutants-%03d" % number)
+    events = run.report_path("mutants-%03d" % number).replace(".json", ".events.pb.zst")
     wanted = [labels[i] for i in indexes]
     extra = sorted(perf_labels[i] for i in indexes if i in perf_labels)
     executed = cached = 0
     retried = False
     while True:
-        if os.path.lexists(report):
-            os.unlink(report)  # never read a report an earlier run (or attempt) left
+        for path in (report, events):
+            if os.path.lexists(path):
+                os.unlink(path)  # never read a report an earlier run (or attempt) left
         code, _, err = grade_build.run_buck(run.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
-                                                     "--build-report", report] + flags + wanted + extra)
-        done_executed, done_cached = grade_build.action_counts(run.tree)
+                                                     "--build-report", report, "--event-log", events] + flags + wanted + extra)
+        done_executed, done_cached = grade_build.action_counts(run.tree, events)
         executed, cached = executed + done_executed, cached + done_cached
         results = grade_build.read_report(report) or {}
         missing = any((results.get("root" + label) or {}).get("success") != "SUCCESS" for label in wanted)
@@ -334,11 +344,35 @@ def _build_chunk(run, flags, number, indexes, labels, perf_labels):
         retried = True   # the same daemon: its cache is warm, so the retry only redoes what was not finished
 
 
+def _build_chunks(run, flags, labels, perf_labels, uncached):
+    """Build every chunk, at most `inflight(uncached)` at a time in the one daemon; the outcomes in chunk order.
+    A chunk that raises (Buck2 could not run, a timeout) stops the ones not started yet and re-raises once the
+    running ones are done, as the sequential loop stopped at it."""
+    ranges = chunks_of(len(labels))
+    workers = max(1, min(inflight(uncached), len(ranges)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_build_chunk, run, flags, n, r, labels, perf_labels) for n, r in enumerate(ranges)]
+        try:
+            return [f.result() for f in futures]
+        except BaseException:
+            for f in futures:
+                f.cancel()
+            raise
+
+
+def inflight(uncached):
+    """Chunk builds running at once. An uncached build re-primes and verifies the toolchain around every build
+    command (`grade_build.run_buck`, which reads "the last command"): those stay one at a time."""
+    return 1 if uncached else MUTANTS_INFLIGHT
+
+
 def build_reports(run, uncached, modules):
-    """Build every c_mutants target in chunks of `MUTANTS_CHUNK` modules; copy the reports. Returns
-    (findings, metadata, built indexes). One build of every module died of a dropped stream and took every
-    pending target with it (T115); a chunk that dies that way is retried once, and a chunk that still fails
-    costs only its own modules. The daemon stays up between the chunks."""
+    """Build every c_mutants target in chunks of `MUTANTS_CHUNK` modules, `MUTANTS_INFLIGHT` chunks at a time in
+    one daemon; copy the reports. Returns (findings, metadata, built indexes). One build of every module died of
+    a dropped stream and took every pending target with it (T115); a chunk that dies that way is retried once,
+    and a chunk that still fails costs only its own modules. Sequential chunks left the farm idle while the
+    slowest module of each one finished (T121); the chunks overlap now. The outcome never depends on the order
+    in which they finish: results, findings and metadata are assembled in chunk order."""
     labels = [target_label(m) for m in modules]
     perf_labels = {i: target_label(m) + "[perf]" for i, m in enumerate(modules) if m.perf}
     flags = ["--no-remote-cache"] if uncached else []
@@ -346,8 +380,9 @@ def build_reports(run, uncached, modules):
     os.makedirs(out_dir)
     metadata = {"executed_actions": 0, "cached_actions": 0, "exit_code": 0, "chunks": 0, "retried": []}
     found, built = [], []
-    for number, indexes in enumerate(chunks_of(len(modules))):
-        results, code, err, executed, cached, retried = _build_chunk(run, flags, number, indexes, labels, perf_labels)
+    outcomes = _build_chunks(run, flags, labels, perf_labels, uncached)
+    for number, (indexes, outcome) in enumerate(zip(chunks_of(len(modules)), outcomes)):
+        results, code, err, executed, cached, retried = outcome
         metadata["chunks"] += 1
         metadata["executed_actions"] += executed
         metadata["cached_actions"] += cached
