@@ -534,8 +534,9 @@ static void apply_san(const char *suite, const char *name, pid_t pid, result_t *
     (void)snprintf(res->reason + used, sizeof res->reason - used, "; %s", g_san_sum);
 }
 
-/* 0 = result filled in, -1 = framework error. The child inherits no descriptor of ours. */
-static int run_one(const char *suite, const ctest_case_t *c, result_t *res) {
+/* 0 = result filled in, -1 = framework error. The child inherits no descriptor of ours. Not inlined: with the msan
+ * mode (origin tracking) the inlined frame of `ctest_run` would pass the sealed 512-byte frame limit. */
+__attribute__((noinline)) static int run_one(const char *suite, const ctest_case_t *c, result_t *res) {
     int status = 0;
     int wt;
     pid_t pid;

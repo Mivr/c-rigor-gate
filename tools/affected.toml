@@ -233,3 +233,10 @@ selftests = []
 [[rule]]
 glob = "tools/job*"
 selftests = []
+# T125: the msan/tsan self-test has no name of its own in tools/affected.py yet; `toolchain` is the closest selftest.
+[[rule]]
+glob = "selftest/sanmodes.sh"
+selftests = ["toolchain"]
+[[rule]]
+glob = "selftest/sanmodes/**"
+selftests = ["toolchain"]

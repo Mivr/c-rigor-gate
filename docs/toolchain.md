@@ -62,6 +62,8 @@ A mode is a target platform. The default (`[parser] target_platform_detector_spe
 | san | `tools/buck2 test --target-platforms toolchains//:linux_san //...` | `-O1 -g -fsanitize=address,undefined,leak -fno-sanitize-recover=all -fno-omit-frame-pointer` |
 | cov | `tools/buck2 test --target-platforms toolchains//:linux_cov //...` | `-fprofile-instr-generate -fcoverage-mapping -fcoverage-mcdc` |
 | fuzz | `tools/buck2 test --target-platforms toolchains//:linux_fuzz //...` | `-fsanitize=fuzzer,address,undefined` (+ `-O1 -g -fno-sanitize-recover=all -fno-omit-frame-pointer`) |
+| msan (T125) | `tools/buck2 build --target-platforms toolchains//:linux_msan //x:t_results` | `-O1 -g -fsanitize=memory -fsanitize-memory-track-origins=2 -fno-sanitize-recover=all -fno-omit-frame-pointer` |
+| tsan (T125) | `tools/buck2 build --target-platforms toolchains//:linux_tsan //x:t_results` | `-O1 -g -fsanitize=thread -fno-sanitize-recover=all -fno-omit-frame-pointer` |
 
 Coverage report (line, branch, MC/DC), also on RE, via the fetched `llvm-profdata` / `llvm-cov`:
 
@@ -72,6 +74,28 @@ tools/buck2 build --target-platforms toolchains//:linux_cov //examples/hello:hel
 `c_binary` and `c_test` are incompatible with `fuzz` (libFuzzer supplies `main`); `c_fuzz` is only built in `fuzz`.
 `c_fuzz` is a test that runs `-seed=1 -runs=200000` as a cacheable RE action (see "Fuzz runs" below); it fails when
 the fuzzer finds a crash.
+
+## The msan and tsan modes (T125; landed, not wired into `rigor grade`)
+
+Two more target platforms, `toolchains//:linux_msan` and `toolchains//:linux_tsan`, with the flags above (sealed in
+`rules/c.bzl`, the same in `rules/third_party.bzl` for gate-owned third-party code). Their runtimes
+(`libclang_rt.{msan,tsan}.a` and `.syms`) are members of the pinned LLVM 19.1.7 archive and of `llvm.manifest`.
+Only `<name>_results` is produced in them, with the sealed environment of `san` plus `MSAN_OPTIONS` / `TSAN_OPTIONS`
+(`rules/ctest.bzl`: `halt_on_error=1`, the hermetic `external_symbolizer_path`, `log_path`, `stack_trace_format` for
+TSan so frames read `#N 0x.. in <func> <file>:<line>`).
+
+- `c_test(threads = True)` has a tsan results target; `threads = False` (the default) has none.
+- msan has a results target for every `c_test`, except one whose link closure has a sysroot library beyond libc and
+  pthread (MSan needs every linked object instrumented; today only X11): such a `c_library` is incompatible with the
+  msan mode, and so is everything that depends on it.
+- What they cannot see: MSan only finds uninitialised reads of code that is compiled with it (not in libc, X11, or
+  the kernel) and only on executed paths; TSan only finds races between threads that actually ran in the test, and
+  does not see races through uninstrumented code or lock-free logic hidden from it. Neither runs a product that talks to
+  the kernel or a device. A clean verdict is evidence, not proof.
+- Known limit of the farm (not solved here): both runtimes map fixed shadow ranges and, when the kernel's ASLR
+  entropy is high, re-exec themselves with `personality(ADDR_NO_RANDOMIZE)`. The workers' sandbox refuses that call, so
+  the runtime dies at start-up (`CHECK failed: ... personality(...)`) in a share of the runs: about half for MSan, nearly
+  all for TSan. The results action then fails with `test binary could not run` and no verdict. See the T125 report.
 
 ## Sealed flags
 

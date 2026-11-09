@@ -9,7 +9,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:embed.bzl", "c_embed_gen")
-load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
+load("@gate//rules:ctest.bzl", "MSAN_ENV_LINES", "TSAN_ENV_LINES", "ctest_results", "fuzz_run")
 load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
@@ -49,12 +49,16 @@ _SEALED = [
 
 _SAN = "-fsanitize=address,undefined,leak"
 _FUZZ = "-fsanitize=fuzzer,address,undefined"
+_MSAN = ["-fsanitize=memory", "-fsanitize-memory-track-origins=2"]
+_TSAN = "-fsanitize=thread"
 
 _COMPILE_BY_MODE = {
     "toolchains//:release": ["-O2"],
     "toolchains//:san": ["-O1", "-g", _SAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:cov": ["-fprofile-instr-generate", "-fcoverage-mapping", "-fcoverage-mcdc"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:msan": ["-O1", "-g"] + _MSAN + ["-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:tsan": ["-O1", "-g", _TSAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
 }
 
 _LINK_BY_MODE = {
@@ -62,6 +66,8 @@ _LINK_BY_MODE = {
     "toolchains//:san": [_SAN],
     "toolchains//:cov": ["-fprofile-instr-generate"],
     "toolchains//:fuzz": [_FUZZ],
+    "toolchains//:msan": _MSAN,
+    "toolchains//:tsan": [_TSAN],
 }
 
 def _compile_flags():
@@ -102,6 +108,31 @@ _SAN_ONLY = ["toolchains//:san"]
 _RELEASE_OR_SAN = select({
     "toolchains//:release": [],
     "toolchains//:san": [],
+    "DEFAULT": ["toolchains//:never"],
+})
+
+# MemorySanitizer needs every object of the program instrumented, and the pinned sysroot has no instrumented system
+# library. A `c_library` that links a sysroot library other than libc and pthread (today: X11) is therefore
+# incompatible with the msan mode, and so is everything that depends on it: its tests have no msan `_results`.
+_NOT_IN_MSAN = select({
+    "toolchains//:msan": ["toolchains//:never"],
+    "DEFAULT": [],
+})
+
+# `<name>_results` of a `c_test`: release and san always, msan always (a test with an uninstrumented dependency is
+# already incompatible through that dependency), tsan only for `threads = True`.
+_RESULTS_EVERY_MODE = select({
+    "toolchains//:release": [],
+    "toolchains//:san": [],
+    "toolchains//:msan": [],
+    "DEFAULT": ["toolchains//:never"],
+})
+
+_RESULTS_THREADED = select({
+    "toolchains//:release": [],
+    "toolchains//:san": [],
+    "toolchains//:msan": [],
+    "toolchains//:tsan": [],
     "DEFAULT": ["toolchains//:never"],
 })
 
@@ -173,6 +204,7 @@ def c_library(name, srcs = [], headers = [], deps = [], visibility = [], system_
         compiler_flags = _compile_flags(),
         exported_post_linker_flags = link_flags,
         link_style = "static",
+        target_compatible_with = _NOT_IN_MSAN if [l for l in system_libs if l != "pthread"] else [],
     )
     _facts(name, "c_library", srcs, deps + exported_deps, system_libs = system_libs)
 
@@ -299,10 +331,14 @@ def c_binary(name, srcs = [], deps = []):
     )
     _facts(name, "c_binary", srcs, deps)
 
-# `<name>_results` is built in release and san only (cov and fuzz do not produce verdicts).
+# `<name>_results` is built in release and san (cov and fuzz do not produce verdicts), in msan unless the link closure
+# has a system library beyond libc and pthread, and in tsan only for `threads = True`.
 
-def c_test(name, srcs = [], deps = []):
+def c_test(name, srcs = [], deps = [], threads = False):
+    """A ctest binary and its `<name>_results`. `threads = True`: the test starts threads, so it also has a tsan result."""
     _check("c_test", srcs, [])
+    if type(threads) != "bool":
+        fail("c_test: `threads` must be True or False, got {!r}".format(threads))
     native.cxx_test(
         name = name,
         srcs = srcs,
@@ -318,7 +354,12 @@ def c_test(name, srcs = [], deps = []):
     ctest_results(
         name = name + "_results",
         test = ":" + name,
-        target_compatible_with = _RELEASE_OR_SAN,
+        target_compatible_with = _RESULTS_THREADED if threads else _RESULTS_EVERY_MODE,
+        env_lines = select({
+            "toolchains//:msan": MSAN_ENV_LINES,
+            "toolchains//:tsan": TSAN_ENV_LINES,
+            "DEFAULT": [],
+        }),
     )
 
     # `<name>_coverage` renders the line/branch/MC-DC report; only built in the cov mode.

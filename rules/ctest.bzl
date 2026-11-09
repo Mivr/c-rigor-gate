@@ -21,6 +21,21 @@ def sanitizer_env_lines(log_path = None):
         'export LSAN_OPTIONS="$common"',
     ]
 
+# Extra sealed options of the msan and tsan modes (`ctest_results` only; the san and release scripts are unchanged).
+# `ctest` forks one process per test and the sanitizer log is read per pid, so `log_path` (in `$common`) is all the
+# fork needs. `halt_on_error=1`: the first report ends the test process (MSan: exit 77, TSan: exit 66), which `ctest`
+# reports as a failure together with the log. `external_symbolizer_path` is the hermetic llvm-symbolizer (MSan and
+# TSan do not read ASAN_SYMBOLIZER_PATH). TSan prints frames as `#N <func> <file>:<line>` unless told otherwise;
+# `stack_trace_format` gives them the `#N 0x.. in <func> <file>:<line>` shape of the other sanitizers, which is what
+# the `ctest` summary parses.
+MSAN_ENV_LINES = [
+    'export MSAN_OPTIONS="$common:external_symbolizer_path=$sym:halt_on_error=1:exitcode=77:abort_on_error=0:handle_abort=1:handle_sigill=1:handle_sigbus=1:handle_sigfpe=1:print_stats=0"',
+]
+
+TSAN_ENV_LINES = [
+    'export TSAN_OPTIONS="$common:external_symbolizer_path=$sym:halt_on_error=1:exitcode=66:abort_on_error=0:handle_abort=1:handle_sigill=1:handle_sigbus=1:handle_sigfpe=1:report_signal_unsafe=1:stack_trace_format=\'    #%n %p %F %L\'"',
+]
+
 def _ctest_results_impl(ctx: AnalysisContext) -> list[Provider]:
     binary = ctx.attrs.test[DefaultInfo].default_outputs[0]
     results = ctx.actions.declare_output("results.jsonl")
@@ -37,7 +52,7 @@ def _ctest_results_impl(ctx: AnalysisContext) -> list[Provider]:
             # Hermetic symbolizer (a declared input), symbolized stack traces, and every failure fatal.
             # The sanitizer logs go to "$log.<pid>"; the binary reads them per test, strips pids and
             # addresses, and puts them in the report. Keep these options in sync with docs/ctest.md.
-        ] + sanitizer_env_lines('"$log"') + [
+        ] + sanitizer_env_lines('"$log"') + ctx.attrs.env_lines + [
             "rc=0",
             '"$bin" --seed 1 --out "$out" --san-log "$log" --san-report "$report" || rc=$?',
             'if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then',
@@ -62,6 +77,7 @@ ctest_results = rule(
     impl = _ctest_results_impl,
     attrs = {
         "test": attrs.dep(),
+        "env_lines": attrs.list(attrs.string(), default = []),
         "_symbolizer": attrs.exec_dep(default = "toolchains//:llvm-symbolizer", providers = [RunInfo]),
     },
 )
