@@ -37,6 +37,50 @@ class GatePath(unittest.TestCase):
                 self.assertFalse(cscan.is_gate_path(path))
 
 
+PRODUCT_MARKER = "/gate/rt/__require__/"       # a product grade: the gate is the cell `gate`
+ROOT_MARKER = "/root/rt/__require__/"          # the gate's own selftests: the gate is the root cell
+ROOT_GATE = "buck-out/v2/art/root/rt/__require__/0123456789abcdef/buck-headers/rt/require.h"
+SPOOF = "buck-out/v2/art/root/x/gate/rt/__require__/0123456789abcdef/buck-headers/rt/require.h"
+SPOOF_ROOT = "buck-out/v2/art/root/x/root/rt/__require__/0123456789abcdef/buck-headers/rt/require.h"
+
+
+class Anchored(unittest.TestCase):
+    """The gate marker matches only right after the output kind (T131 review)."""
+
+    def test_the_real_gate_header_in_a_product_grade(self):
+        self.assertTrue(cscan.is_gate_path(GATE_HEADER, [PRODUCT_MARKER]))
+        self.assertTrue(cscan.is_gate_path(GATE_HEADER))
+
+    def test_the_gate_header_when_the_gate_is_the_root_cell(self):
+        self.assertTrue(cscan.is_gate_path(ROOT_GATE, [ROOT_MARKER]))
+        self.assertFalse(cscan.is_gate_path(ROOT_GATE))
+
+    def test_a_product_directory_named_like_the_gate_is_not_the_gate(self):
+        for marker, path in ((PRODUCT_MARKER, SPOOF), (ROOT_MARKER, SPOOF_ROOT)):
+            with self.subTest(path=path):
+                self.assertFalse(cscan.is_gate_path(path, [marker]))
+
+    def test_no_recognisable_layout_is_the_products(self):
+        for path in ("a/gate/rt/__require__/x/rt/require.h", "buck-out/v2/tmp/root/rt/__require__/x/rt/require.h",
+                     "buck-out/v2/art/root", "buck-out/a/b/c/art/root/rt/__require__/x/h.h", "rt/__require__/rt/require.h"):
+            with self.subTest(path=path):
+                self.assertFalse(cscan.is_gate_path(path, [PRODUCT_MARKER, ROOT_MARKER]))
+
+    def test_a_define_in_a_spoofed_header_is_reserved(self):
+        text = (mark("a.c") + mark(SPOOF, 1, " 1") + "#define rigor_require(x) ((void)0)\n" + mark("a.c", 2, " 2")
+                + "int f(void) { return 1; }\n")
+        collector = cscan.Collector((ROOT,), (), [PRODUCT_MARKER])
+        collector.scan(text)
+        names = [i["name"] for i in collector.result()["identifiers"]]
+        self.assertEqual(names, ["#define rigor_require"])
+
+    def test_the_same_define_in_the_real_gate_header_is_not_reported(self):
+        text = mark("a.c") + mark(GATE_HEADER, 1, " 1") + "#define rigor_require(x) ((void)0)\n" + mark("a.c", 2, " 2")
+        collector = cscan.Collector((ROOT,), (), [PRODUCT_MARKER])
+        collector.scan(text)
+        self.assertEqual(collector.result()["identifiers"], [])
+
+
 class Flag(unittest.TestCase):
     def test_the_trap_in_the_gate_header_is_flagged(self):
         result = scan(with_header(GATE_HEADER, "int f(void) { return 1; }\n"))

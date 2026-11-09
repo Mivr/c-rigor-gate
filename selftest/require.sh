@@ -234,7 +234,7 @@ round() {
   # facts, structure, libc list
   run "$d/facts_release.log" build "$pkg:table_facts" "$pkg:table_bin_facts" "$pkg:table_test_facts" "$pkg:own_trap_facts" "$pkg:bad_dep_facts" \
     "$pkg:own_header_facts" "$pkg:reserved_define_facts" "$pkg:reserved_decl_facts" "$pkg:reserved_addr_facts" \
-    "$pkg:guards_a_facts" "$pkg:guards_b_facts" "$pkg:guards_a_s" "$pkg:guards_b_s" \
+    "$pkg:spoof_user_facts" "$pkg:guards_a_facts" "$pkg:guards_b_facts" "$pkg:guards_a_s" "$pkg:guards_b_s" \
     "$pkg:table_facts[calls]" "$pkg:table_bin_facts[calls]" "$pkg:table_test_facts[calls]" \
     //ctest:ctest_facts //rt:require_facts "$pkg:table_s" "$pkg:table_bin_s" toolchains//:libc_symbols --show-output \
     || fail "$CUR: facts (release, round $n) did not build" "$d/facts_release.log"
@@ -302,6 +302,9 @@ check_gates() {
   tool policy "$d/rdef.toml" reserved_define
   tool policy "$d/rdecl.toml" reserved_decl
   tool policy "$d/raddr.toml" reserved_addr
+  tool policy "$d/spoof.toml" spoof_user
+  tool mkfd "$d/facts_release" "$d/fd_spoof" spoof_user ctest require
+  gate_case "$d" spoof_user semantic-suppressions 1 "$d/spoof.toml" "$d/fd_spoof" -- "reserved-identifier:#define rigor_require"
   tool mkfd "$d/facts_release" "$d/fd_own" own_header ctest require
   tool mkfd "$d/facts_release" "$d/fd_rdef" reserved_define ctest require
   tool mkfd "$d/facts_release" "$d/fd_rdecl" reserved_decl ctest require

@@ -112,16 +112,31 @@ def display_file(path):
     return "/".join("~" if _VOLATILE_SEGMENT.match(part) else part for part in path.split("/"))
 
 
-def is_gate_path(path):
-    """True when the compiler read `path` from the output tree of a cell other than the product's (the gate's)."""
+def output_tree(path):
+    """(cell, the components after the cell) of `buck-out/<version>/{gen,art}/<cell>/...`, or None when the path does
+    not have that layout (the first `buck-out` is the real one; the output kind stands one or two components after it)."""
     parts = os.path.normpath(path).split("/")
     if "buck-out" not in parts:
-        return False
+        return None
     rest = parts[parts.index("buck-out") + 1:]
-    for index, part in enumerate(rest[:-1]):
+    for index, part in enumerate(rest[:-2]):
         if part in OUTPUT_KINDS and 0 < index <= 2:
-            return rest[index + 1] != PRODUCT_CELL
-    return False
+            return rest[index + 1], rest[index + 2:]
+    return None
+
+
+def is_gate_path(path, markers=()):
+    """True when the compiler read `path` from the gate's output tree: a cell other than the product's, or (the gate being
+    the root cell) a tree that starts, right after the output kind, with one of `markers` (`/<cell>/<package>/__<name>__/`).
+    A marker is never matched anywhere else in the path, and an unrecognised layout is the product's."""
+    tree = output_tree(path)
+    if tree is None:
+        return False
+    cell, tail = tree
+    if cell != PRODUCT_CELL:
+        return True
+    start = "/" + cell + "/" + "/".join(tail) + "/"
+    return any(start.startswith(marker) for marker in markers)
 
 
 def watched(name):
@@ -412,7 +427,7 @@ class Collector:
     def is_gate(self, path):
         """The compiler read `path` from the gate's own output tree: another cell than the product's, or a header tree
         the rule named (`--gate-marker`)."""
-        return is_gate_path(path) or any(m in os.path.normpath(path) + "/" for m in self.gate_markers)
+        return is_gate_path(path, self.gate_markers)
 
     def header_name(self, path):
         norm = os.path.normpath(path)
