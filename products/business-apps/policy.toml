@@ -803,92 +803,92 @@ exports = []
 
 [module."//apps/lockers/lkadp/codeshttp:blobback_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:body_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:cache_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:codeshttp"]
 level = "L2"
 impl = ["apps/lockers/lkadp/codeshttp/src/**"]
 allow = ["memchr", "memcpy", "memset"]
 exports = ["ch_accept_200", "ch_blob_size_ok", "ch_fail", "ch_fallback", "ch_fetch", "ch_is_live",
-    "ch_not_modified", "ch_url_parse", "ch_visible", "codeshttp_blob_bytes",
+    "ch_not_modified", "ch_port", "ch_url_is_plain", "ch_url_parse", "ch_visible", "codeshttp_blob_bytes",
     "codeshttp_blob_set", "codeshttp_cache_saved", "codeshttp_confirmed", "codeshttp_init",
     "codeshttp_loaded", "codeshttp_step"]
 
 [module."//apps/lockers/lkadp/codeshttp:fail_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:fallback_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:init_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:l229_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:ok_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:request_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:status_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
-exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read",
-    "kit_cache_same", "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded",
-    "kit_failed", "kit_fs_steps", "kit_init", "kit_json_len", "kit_loaded", "kit_lookup",
-    "kit_next", "kit_ok", "kit_open", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
-    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "main"]
+exports = ["kit_again", "kit_body", "kit_cache_put", "kit_cache_put_raw", "kit_cache_read", "kit_cache_same",
+    "kit_count", "kit_drop", "kit_expect_failed", "kit_expect_loaded", "kit_failed", "kit_fs_steps",
+    "kit_init", "kit_json_len", "kit_loaded", "kit_lookup", "kit_next", "kit_ok", "kit_open",
+    "kit_other_calls", "kit_plain_rig", "kit_preload", "kit_raw", "kit_ready", "kit_req_header",
+    "kit_req_line", "kit_resp", "kit_set", "kit_set_blob_cap", "kit_step", "kit_tls_rig", "main"]
 
 [module."//apps/lockers/lkadp/codeshttp:testkit"]
 level = "L1"
@@ -902,7 +902,9 @@ exports = ["kit_calls", "kit_del", "kit_file", "kit_init", "kit_log_reset", "kit
     "main"]
 
 [module."//apps/lockers/lkadp/e2eclock:e2eclock"]
-level = "L3"
+# L2 by orchestrator ruling (2026-11-09): an e2e-only decorator around a wall port of the same type, so
+# indirect-cycle-possible cannot be removed structurally; at L2 it is info.
+level = "L2"
 impl = ["apps/lockers/lkadp/e2eclock/src/**"]
 allow = ["memcpy", "memset"]
 exports = ["lk_e2eclock_init", "lk_e2eclock_wall"]
@@ -1007,108 +1009,108 @@ exports = ["main"]
 [module."//apps/lockers/lkadp/synchttp:ack_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:batch_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:fail_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:init_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:request_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:resp_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:snap_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:state_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:status_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:synchttp"]
 level = "L2"
 impl = ["apps/lockers/lkadp/synchttp/src/**"]
 allow = ["memchr", "memcpy", "memset"]
-exports = ["sh_collect", "sh_exchange", "sh_is_live", "sh_line_keys", "sh_snap_body",
-    "sh_snap_valid", "sh_state_load", "sh_state_save", "sh_url_parse", "synchttp_init",
+exports = ["sh_collect", "sh_exchange", "sh_is_live", "sh_line_keys", "sh_port", "sh_snap_body",
+    "sh_snap_valid", "sh_state_load", "sh_state_save", "sh_url_is_plain", "sh_url_parse", "synchttp_init",
     "synchttp_state", "synchttp_state_saved", "synchttp_step", "synchttp_whoami"]
 
 [module."//apps/lockers/lkadp/synchttp:testkit"]
@@ -1119,24 +1121,24 @@ exports = []
 [module."//apps/lockers/lkadp/synchttp:url_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkadp/synchttp:whoami_test"]
 allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkapp/checkconfig:cc_book_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strlen", "strstr"]
@@ -1359,7 +1361,7 @@ exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count",
 
 [module."//apps/lockers/lkapp/posixio:port_test"]
 allow = ["__xstat", "accept", "bind", "close", "closedir", "fchmod", "getsockname", "in6addr_loopback",
-    "listen", "memcpy", "mkdtemp", "opendir", "poll", "read", "readdir", "snprintf", "write"]
+    "listen", "memcpy", "mkdtemp", "opendir", "poll", "read", "readdir", "send", "snprintf", "write"]
 deny_exempt = ["clock_gettime", "getenv", "open", "socket"]
 exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
     "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
@@ -1446,6 +1448,108 @@ exports = ["lkrt_audit_map", "lkrt_core_init", "lkrt_core_stats", "lkrt_core_ste
     "lkrt_ui_post", "lkrt_warn"]
 
 [module."//apps/lockers/lkapp/runtime:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkapp/shell_linux:lockers"]
+level = "L1"
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/shell_linux:lockers_e2e"]
+level = "L1"
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/shell_linux:shell"]
+level = "L1"
+allow_mutable_data = true
+# The shell lists lvgl in its BUCK deps (the gate rejects a dep the policy does not permit); its own sources call no lv_* symbol.
+third_party = ["gate//third_party/lvgl:lvgl"]
+# Writable bytes: the one static kiosk object (design D15). getenv: P290 D10 (CLUB_E2E). clock_gettime: the shell reads the wall/monotonic clock itself.
+allow = ["__errno_location", "__xstat", "poll", "pthread_sigmask", "read", "sigaddset", "sigemptyset",
+    "signalfd", "write"]
+deny_exempt = ["clock_gettime", "getenv"]
+exports = ["lk_shell_main"]
+
+[module."//apps/lockers/lkapp/shell_linux:x11"]
+level = "L1"
+system_libs = ["X11"]
+allow = ["XCloseDisplay", "XCreateGC", "XCreateImage", "XCreateSimpleWindow", "XDestroyWindow", "XFlush",
+    "XFreeGC", "XInternAtom", "XLookupString", "XMapWindow", "XNextEvent", "XOpenDisplay", "XPending",
+    "XPutImage", "XSelectInput", "XSetWMNormalHints", "XSetWMProtocols", "XStoreName"]
+exports = ["lk_x11_blit", "lk_x11_close", "lk_x11_events", "lk_x11_fd", "lk_x11_open", "lk_x11_pending"]
+
+[module."//apps/lockers/lkapp/uiloop:testkit"]
+level = "L1"
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = []
+
+[module."//apps/lockers/lkapp/uiloop:uil_input_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame", "k_frame_clear", "k_hash",
+    "k_ink", "k_is", "k_is_scanned", "k_mem", "k_obj_centre", "k_open", "k_open_raw", "k_pool",
+    "k_pub_banner_notice", "k_pub_dialog", "k_pub_lang", "k_pub_screen", "k_pub_snackbar", "k_pub_snap",
+    "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
+    "k_world_reset", "main"]
+
+[module."//apps/lockers/lkapp/uiloop:uil_loop_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame", "k_frame_clear", "k_hash",
+    "k_ink", "k_is", "k_is_scanned", "k_mem", "k_obj_centre", "k_open", "k_open_raw", "k_pool",
+    "k_pub_banner_notice", "k_pub_dialog", "k_pub_lang", "k_pub_screen", "k_pub_snackbar", "k_pub_snap",
+    "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
+    "k_world_reset", "main"]
+
+[module."//apps/lockers/lkapp/uiloop:uil_open_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame", "k_frame_clear", "k_hash",
+    "k_ink", "k_is", "k_is_scanned", "k_mem", "k_obj_centre", "k_open", "k_open_raw", "k_pool",
+    "k_pub_banner_notice", "k_pub_dialog", "k_pub_lang", "k_pub_screen", "k_pub_snackbar", "k_pub_snap",
+    "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
+    "k_world_reset", "main"]
+
+[module."//apps/lockers/lkapp/uiloop:uil_redraw_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame", "k_frame_clear", "k_hash",
+    "k_ink", "k_is", "k_is_scanned", "k_mem", "k_obj_centre", "k_open", "k_open_raw", "k_pool",
+    "k_pub_banner_notice", "k_pub_dialog", "k_pub_lang", "k_pub_screen", "k_pub_snackbar", "k_pub_snap",
+    "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
+    "k_world_reset", "main"]
+
+[module."//apps/lockers/lkapp/uiloop:uil_render_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["bcmp", "memcpy", "memset", "strcmp", "strlen", "strncmp"]
+exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame", "k_frame_clear", "k_hash",
+    "k_ink", "k_is", "k_is_scanned", "k_mem", "k_obj_centre", "k_open", "k_open_raw", "k_pool",
+    "k_pub_banner_notice", "k_pub_dialog", "k_pub_lang", "k_pub_screen", "k_pub_snackbar", "k_pub_snap",
+    "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
+    "k_world_reset", "main"]
+
+[module."//apps/lockers/lkapp/uiloop:uil_wedge_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
+exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame", "k_frame_clear", "k_hash",
+    "k_ink", "k_is", "k_is_scanned", "k_mem", "k_obj_centre", "k_open", "k_open_raw", "k_pool",
+    "k_pub_banner_notice", "k_pub_dialog", "k_pub_lang", "k_pub_screen", "k_pub_snackbar", "k_pub_snap",
+    "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
+    "k_world_reset", "main"]
+
+[module."//apps/lockers/lkapp/uiloop:uiloop"]
+level = "L2"
+impl = ["apps/lockers/lkapp/uiloop/src/**"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memset"]
+exports = ["uil_close", "uil_key_char", "uil_key_enter", "uil_open", "uil_pointer", "uil_redraw", "uil_stats",
+    "uil_step"]
+
+[module."//apps/lockers/lkapp/version:version"]
 level = "L1"
 allow = []
 exports = []
@@ -4281,26 +4385,26 @@ exports = ["main"]
 [module."//lib/ui/lvhost:lvh_flush_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memset"]
-exports = ["k_buf1", "k_buf2", "k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_pool",
-    "k_surface", "main"]
+exports = ["k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_surface", "kit_buf1",
+    "kit_buf2", "kit_pool", "main"]
 
 [module."//lib/ui/lvhost:lvh_input_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memset"]
-exports = ["k_buf1", "k_buf2", "k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_pool",
-    "k_surface", "main"]
+exports = ["k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_surface", "kit_buf1",
+    "kit_buf2", "kit_pool", "main"]
 
 [module."//lib/ui/lvhost:lvh_open_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcmp", "memset"]
-exports = ["k_buf1", "k_buf2", "k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_pool",
-    "k_surface", "main"]
+exports = ["k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_surface", "kit_buf1",
+    "kit_buf2", "kit_pool", "main"]
 
 [module."//lib/ui/lvhost:lvh_time_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memset"]
-exports = ["k_buf1", "k_buf2", "k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_pool",
-    "k_surface", "main"]
+exports = ["k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_surface", "kit_buf1",
+    "kit_buf2", "kit_pool", "main"]
 
 [module."//lib/ui/lvhost:lvhost"]
 level = "L2"
@@ -4422,16 +4526,17 @@ level = "L2"
 impl = ["lib/ui/uikit/src/**"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = []
-exports = ["kit_button_create", "kit_button_label", "kit_button_set_text", "kit_code",
-    "kit_countdown_create", "kit_countdown_set", "kit_font_open", "kit_fonts_close",
-    "kit_is_enabled", "kit_key_create", "kit_label_create", "kit_label_set_text", "kit_notice_card",
+exports = ["kit_button_create", "kit_button_label", "kit_button_set_text", "kit_code", "kit_countdown_create",
+    "kit_countdown_set", "kit_font_open", "kit_fonts_close", "kit_is_enabled", "kit_key_create",
+    "kit_label_create", "kit_label_set_text", "kit_notice_add_row", "kit_notice_card",
     "kit_notice_clear_countdown", "kit_notice_countdown", "kit_notice_create", "kit_notice_delete",
-    "kit_notice_dismiss", "kit_notice_set_countdown", "kit_notice_set_dismiss_code",
-    "kit_notice_set_dismiss_text", "kit_notice_set_tap_outside", "kit_notice_set_text",
-    "kit_notice_set_warn", "kit_notice_text", "kit_numpad_create", "kit_numpad_key",
-    "kit_numpad_set_enabled", "kit_numpad_set_text", "kit_set_code", "kit_set_enabled",
-    "kit_theme_apply", "kit_theme_of", "kit_theme_release", "kit_theme_tokens",
-    "kit_tokens_default", "kitp_button_new", "kitp_format_countdown", "kitp_inherit_text"]
+    "kit_notice_dismiss", "kit_notice_is_fixed", "kit_notice_remove_row", "kit_notice_row",
+    "kit_notice_row_count", "kit_notice_set_countdown", "kit_notice_set_dismiss_code",
+    "kit_notice_set_dismiss_text", "kit_notice_set_fixed", "kit_notice_set_tap_outside",
+    "kit_notice_set_text", "kit_notice_set_warn", "kit_notice_text", "kit_numpad_create", "kit_numpad_key",
+    "kit_numpad_set_enabled", "kit_numpad_set_text", "kit_set_code", "kit_set_enabled", "kit_theme_apply",
+    "kit_theme_of", "kit_theme_release", "kit_theme_tokens", "kit_tokens_default", "kitp_button_new",
+    "kitp_format_countdown", "kitp_inherit_text"]
 
 [module."//lib/ui/uikit:uikit_button_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
@@ -4513,13 +4618,13 @@ exports = ["kf_click", "kf_click_at", "kf_close", "kf_h", "kf_need", "kf_odd_tok
 [module."//apps/lockers/lkadp/synchttp:two_test"]
 allow = ["bcmp", "memcmp", "memcpy", "memset", "snprintf", "strlen", "strtoull"]
 exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset", "kit_count",
-    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2",
-    "kit_init", "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open",
-    "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply", "kit_req_body",
-    "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
-    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode",
-    "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
-    "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
+    "kit_data_steps", "kit_door", "kit_doors", "kit_doors_body", "kit_expect", "kit_expect2", "kit_init",
+    "kit_next", "kit_nreq_body", "kit_nreq_is", "kit_nreq_line", "kit_open", "kit_other_calls",
+    "kit_plain_rig", "kit_plant", "kit_pool_size", "kit_raw", "kit_ready", "kit_reinit", "kit_reply",
+    "kit_req_body", "kit_req_header", "kit_req_is", "kit_req_line", "kit_resp", "kit_resp_hdr", "kit_result",
+    "kit_result_oldest", "kit_result_pending", "kit_seqs", "kit_snap", "kit_state_mode", "kit_state_put",
+    "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
+    "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkapp/runtime:audit_map_test"]
 allow = ["memcpy", "memset", "strlen"]
@@ -4680,82 +4785,92 @@ exports = ["fontdata_liberation_sans", "fontdata_liberation_sans_len"]
 [module."//lib/ui/lvrender:lvr_init_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_input_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_leak_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_map_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_notice_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_ops_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strcmp", "strlen", "strncpy"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_prop_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strcmp", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_surv_map_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_surv_notice_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvr_text_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memcpy", "memset", "strlen"]
-exports = ["lf_add", "lf_add_notice", "lf_apply", "lf_base", "lf_cat", "lf_clear", "lf_click_at",
-    "lf_click_obj", "lf_close", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
-    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool",
-    "lf_random_scene", "lf_rect", "lf_settle", "lf_step", "main"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
 
 [module."//lib/ui/lvrender:lvrender"]
 level = "L2"
@@ -4763,9 +4878,10 @@ impl = ["lib/ui/lvrender/src/**"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["memset"]
 exports = ["lvr_applied", "lvr_apply", "lvr_count", "lvr_do_create", "lvr_do_move", "lvr_do_remove",
-    "lvr_do_update", "lvr_dropped", "lvr_fields", "lvr_init", "lvr_mapped", "lvr_next_sibling",
-    "lvr_obj", "lvr_on_click", "lvr_part_of", "lvr_place", "lvr_place_after", "lvr_prev_sibling",
-    "lvr_ready", "lvr_relayout", "lvr_reset", "lvr_secs_of", "lvr_take_intents", "lvr_text_of"]
+    "lvr_do_update", "lvr_dropped", "lvr_fields", "lvr_fix_all", "lvr_init", "lvr_mapped", "lvr_next_sibling",
+    "lvr_obj", "lvr_on_click", "lvr_part_of", "lvr_place", "lvr_place_after", "lvr_prev_sibling", "lvr_ready",
+    "lvr_relayout", "lvr_reset", "lvr_row_new", "lvr_row_removed", "lvr_secs_of", "lvr_take_intents",
+    "lvr_text_of"]
 
 [module."//lib/ui/lvrender:testkit"]
 level = "L1"

@@ -1,0 +1,11 @@
+# RAM budget of the kiosk binaries (business-apps decision D15, owner 2026-11-09): 30 MB of writable static data each.
+# Measured at T120: 4740056 bytes each (product 4727112 + third party 12944).
+[binary."//apps/lockers/lkapp/shell_linux:lockers"]
+max_bytes = 31457280
+
+[binary."//apps/lockers/lkapp/shell_linux:lockers_e2e"]
+max_bytes = 31457280
+
+# The commissioning tool (not a kiosk binary; D15 does not apply). Measured at T120: 149116 bytes. 1 MiB ceiling.
+[binary."//apps/lockers/lkapp/commission:commission_main"]
+max_bytes = 1048576
