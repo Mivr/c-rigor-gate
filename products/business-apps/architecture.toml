@@ -31,12 +31,14 @@ modules = ["//lib/io/posix_fs:testkit",
            "//lib/sim/simnet:testkit",
            "//lib/ui/scenediff:testkit",
            "//lib/ui/lvrender:testkit",
+           "//lib/ui/lvhost:testkit",
            "//lib/ui/uikit:testkit",
            "//apps/lockers/lk/auditplan:testkit",
            "//apps/lockers/lk/book:testkit",
            "//apps/lockers/lk/booktext:testkit",
            "//apps/lockers/lk/codesfile:testkit",
            "//apps/lockers/lk/inventory:testkit",
+           "//apps/lockers/lk/preflight:testkit",
            "//apps/lockers/lk/report:testkit",
            "//apps/lockers/lk/selftest:testkit",
            "//apps/lockers/lk/syncbody:testkit",
@@ -49,7 +51,9 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/lkadp/synchttp:testkit",
            "//apps/lockers/lkapp/commission:boardkit",
            "//apps/lockers/lkapp/commission:testkit",
+           "//apps/lockers/lkapp/checkconfig:testkit",
            "//apps/lockers/lkapp/e2e:testkit",
+           "//apps/lockers/lkapp/posixio:testkit",
            "//apps/lockers/lkapp/runtime:testkit",
            "//apps/lockers/lkapp/winpolicy:testkit",
            "//apps/lockers/lkapp/wire:testkit",
@@ -67,6 +71,7 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/lkrx/vstate:testkit",
            "//apps/lockers/lksim/board:testkit",
            "//apps/lockers/lkui/notices:testkit",
+           "//apps/lockers/lkui/input:testkit",
            "//apps/lockers/lkui/screens:testkit",
            "//apps/lockers/relay/driver:testkit",
            "//apps/lockers/relay/opener_sm:testkit"]
@@ -787,3 +792,21 @@ kind = "pure"
 from = "//lib/ui/lvrender:lvrender"
 to = "//lib/ui/uikit:uikit"
 kind = "pure"
+
+# lkui/input (L293/L296) builds core events (ev records) from scene intents; its BUCK deps list ev, rxwire and fmap
+# (lib-rt, lib-ds), beside the app-ui layers above. Three module edges rather than a layer rule: no other app-ui module needs them.
+[[edge]]
+from = "//apps/lockers/lkui/input:input"
+to = "//lib/ds/fmap:fmap"
+kind = "pure"
+
+[[edge]]
+from = "//apps/lockers/lkui/input:input"
+to = "//lib/rt/ev:ev"
+kind = "pure"
+
+[[edge]]
+from = "//apps/lockers/lkui/input:input"
+to = "//lib/rt/rxwire:rxwire"
+kind = "pure"
+

@@ -480,6 +480,45 @@ exports = ["main"]
 allow = []
 exports = ["main"]
 
+[module."//apps/lockers/lk/preflight:pf_book_inv_test"]
+allow = ["bcmp", "memcmp", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_check_test"]
+allow = ["bcmp", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_codes_test"]
+allow = ["bcmp", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_data_test"]
+allow = ["bcmp", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_relay_sync_test"]
+allow = ["bcmp", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:pf_report_test"]
+allow = ["bcmp", "memset", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/lockers/lk/preflight:preflight"]
+level = "L3"
+impl = ["apps/lockers/lk/preflight/src/**"]
+allow = ["memcpy", "strlen"]
+exports = ["lk_pf_any_failed", "lk_pf_check_make", "lk_pf_counts_by_size", "lk_pf_exit_code",
+    "lk_pf_judge_book", "lk_pf_judge_codes", "lk_pf_judge_config", "lk_pf_judge_data",
+    "lk_pf_judge_inventory", "lk_pf_judge_relay", "lk_pf_judge_sync", "lk_pf_line", "lk_pf_mark_name",
+    "lk_pf_render", "lk_pf_render_report", "lk_pf_report_check", "lk_pf_report_exit_code", "lk_pf_report_len",
+    "pf_begin", "pf_clear", "pf_end", "pf_fixed", "pf_line_lf", "pf_lit"]
+
+[module."//apps/lockers/lk/preflight:testkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lk/report:report"]
 level = "L3"
 impl = ["apps/lockers/lk/report/src/**"]
@@ -863,7 +902,7 @@ exports = ["kit_calls", "kit_del", "kit_file", "kit_init", "kit_log_reset", "kit
     "main"]
 
 [module."//apps/lockers/lkadp/e2eclock:e2eclock"]
-level = "L2"
+level = "L3"
 impl = ["apps/lockers/lkadp/e2eclock/src/**"]
 allow = ["memcpy", "memset"]
 exports = ["lk_e2eclock_init", "lk_e2eclock_wall"]
@@ -1099,6 +1138,59 @@ exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset"
     "kit_state_put", "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored",
     "kit_text", "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
+[module."//apps/lockers/lkapp/checkconfig:cc_book_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strlen", "strstr"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_codes_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strlen", "strstr"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_config_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memmove", "memset", "snprintf", "strchr", "strlen", "strstr"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_data_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strcmp", "strlen"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_inv_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strcpy", "strlen"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_relay_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strcpy", "strlen"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_report_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strlen", "strstr"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:cc_sync_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strlen", "strstr"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/checkconfig:checkconfig"]
+level = "L2"
+impl = ["apps/lockers/lkapp/checkconfig/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["lk_checkconfig_run", "lkcc_book", "lkcc_cfg_parse", "lkcc_cfg_view", "lkcc_codes", "lkcc_data",
+    "lkcc_empty_kfs", "lkcc_inventory", "lkcc_now", "lkcc_relay", "lkcc_report", "lkcc_sat32", "lkcc_st",
+    "lkcc_sync"]
+
+[module."//apps/lockers/lkapp/checkconfig:testkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkapp/commission:answers_test"]
 allow = ["memcpy", "memset", "strcmp", "strlen", "strncmp"]
 exports = ["main"]
@@ -1221,6 +1313,100 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkapp/posixio:addr_test"]
+allow = ["__xstat", "accept", "bind", "close", "closedir", "fchmod", "getsockname", "in6addr_loopback",
+    "listen", "mkdtemp", "opendir", "poll", "read", "readdir", "snprintf", "strlen", "write"]
+deny_exempt = ["getenv", "open", "socket"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
+[module."//apps/lockers/lkapp/posixio:build_test"]
+allow = ["__xstat", "accept", "bcmp", "bind", "close", "closedir", "fchmod", "fcntl", "getsockname",
+    "in6addr_loopback", "listen", "memset", "mkdtemp", "opendir", "poll", "read", "readdir", "snprintf",
+    "write"]
+deny_exempt = ["getenv", "open", "pipe", "socket"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
+[module."//apps/lockers/lkapp/posixio:config_test"]
+allow = ["__xstat", "accept", "bind", "chmod", "close", "closedir", "fchmod", "getsockname",
+    "in6addr_loopback", "listen", "memcpy", "memset", "mkdtemp", "mkfifo", "opendir", "poll", "read",
+    "readdir", "snprintf", "strcpy", "strlen", "symlink", "write"]
+deny_exempt = ["getenv", "open", "socket", "unlink"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
+[module."//apps/lockers/lkapp/posixio:dir_test"]
+allow = ["__xstat", "accept", "bind", "chmod", "close", "closedir", "fchmod", "getsockname",
+    "in6addr_loopback", "listen", "memcpy", "memset", "mkdir", "mkdtemp", "opendir", "poll", "read",
+    "readdir", "snprintf", "strcpy", "strlen", "umask", "write"]
+deny_exempt = ["getenv", "open", "socket"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
+[module."//apps/lockers/lkapp/posixio:out_test"]
+allow = ["__xstat", "accept", "bind", "close", "closedir", "fchmod", "fcntl", "getsockname",
+    "in6addr_loopback", "listen", "memset", "mkdtemp", "opendir", "poll", "read", "readdir", "setitimer",
+    "sigemptyset", "snprintf", "write"]
+deny_exempt = ["getenv", "open", "pipe", "sigaction", "socket"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
+[module."//apps/lockers/lkapp/posixio:port_test"]
+allow = ["__xstat", "accept", "bind", "close", "closedir", "fchmod", "getsockname", "in6addr_loopback",
+    "listen", "memcpy", "mkdtemp", "opendir", "poll", "read", "readdir", "snprintf", "write"]
+deny_exempt = ["clock_gettime", "getenv", "open", "socket"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
+[module."//apps/lockers/lkapp/posixio:posixio"]
+level = "L2"
+impl = ["apps/lockers/lkapp/posixio/src/**"]
+allow = ["__errno_location", "__fxstat", "__xstat", "chmod", "close", "memchr", "memcpy", "memset", "mkdir",
+    "read", "strlen", "write"]
+deny_exempt = ["open"]
+exports = ["lk_posixio_addr_text", "lk_posixio_build", "lk_posixio_close", "lk_posixio_unix_seconds",
+    "lkpx_check_config", "lkpx_clock_port", "lkpx_lock_port", "lkpx_mutexes_destroy", "lkpx_mutexes_init",
+    "lkpx_nomk_init", "lkpx_open_dir", "lkpx_open_relay", "lkpx_path", "lkpx_read_config", "lkpx_ui_run",
+    "lkpx_wall_port", "lkpx_write_err", "lkpx_write_out"]
+
+[module."//apps/lockers/lkapp/posixio:relay_test"]
+allow = ["__errno_location", "__xstat", "accept", "bind", "close", "closedir", "fchmod", "getsockname",
+    "in6addr_loopback", "listen", "mkdtemp", "opendir", "poll", "read", "readdir", "send", "snprintf",
+    "write"]
+deny_exempt = ["getenv", "open", "socket"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
+[module."//apps/lockers/lkapp/posixio:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkapp/posixio:thread_test"]
+allow = ["__xstat", "accept", "bind", "close", "closedir", "fchmod", "getsockname", "in6addr_loopback",
+    "listen", "mkdtemp", "opendir", "poll", "read", "readdir", "snprintf", "write"]
+deny_exempt = ["getenv", "open", "socket"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
+[module."//apps/lockers/lkapp/posixio:tls_test"]
+third_party = ["gate//third_party/tls_peer:tls_peer"]
+allow = ["__xstat", "accept", "bind", "close", "closedir", "fchmod", "getsockname", "in6addr_loopback",
+    "listen", "mkdtemp", "opendir", "poll", "read", "readdir", "snprintf", "strlen", "write"]
+deny_exempt = ["getenv", "open", "socket"]
+exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
+    "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
+    "kit_tmpdir", "main"]
+
 [module."//apps/lockers/lkapp/runtime:chain_test"]
 allow = ["memset"]
 exports = ["main"]
@@ -1307,6 +1493,25 @@ exports = ["main"]
 
 [module."//apps/lockers/lkapp/winpolicy:winpolicy_sdk_test"]
 allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:both_config_headers_compile_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:kfsthreads_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strcmp", "strlen"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:pinboot_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strlen"]
+allow_builtins = ["__builtin_trap"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/wire:pinrun_test"]
+allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
+allow_builtins = ["__builtin_trap"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/boot:boot"]
@@ -1429,8 +1634,8 @@ exports = []
 level = "L3"
 impl = ["apps/lockers/lkrx/fold_core/src/**"]
 allow = ["bcmp", "memcpy", "memset"]
-exports = ["fc_live", "lk_book_slice_init", "lk_clock_init", "lk_config_init", "lk_fold_book",
-    "lk_fold_clock", "lk_fold_config", "lk_fold_inventory", "lk_fold_session",
+exports = ["fc_live", "lk_book_slice_init", "lk_book_was_uncertain", "lk_clock_init", "lk_config_init",
+    "lk_fold_book", "lk_fold_clock", "lk_fold_config", "lk_fold_inventory", "lk_fold_session",
     "lk_inventory_init", "lk_session_init"]
 
 [module."//apps/lockers/lkrx/fold_core:fold_core_book_test"]
@@ -1834,6 +2039,33 @@ exports = ["lk_catalog"]
 allow = []
 exports = ["main"]
 
+[module."//apps/lockers/lkui/input:input"]
+level = "L3"
+impl = ["apps/lockers/lkui/input/src/**"]
+allow = []
+exports = ["lk_input_intent", "lk_input_touch", "lk_wedge_clear", "lk_wedge_enter", "lk_wedge_key"]
+
+[module."//apps/lockers/lkui/input:input_intent_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkui/input:input_refuse_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkui/input:input_wedge_keys_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkui/input:input_wedge_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/input:testkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkui/notices:notices"]
 level = "L3"
 impl = ["apps/lockers/lkui/notices/src/**"]
@@ -1842,6 +2074,10 @@ exports = ["lkui_notices"]
 
 [module."//apps/lockers/lkui/notices:notices_banner_test"]
 allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/notices:notices_dismiss_arg_test"]
+allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkui/notices:notices_error_test"]
@@ -1853,6 +2089,10 @@ allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkui/notices:notices_golden_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/notices:notices_keys_test"]
 allow = ["memset"]
 exports = ["main"]
 
@@ -2969,6 +3209,15 @@ exports = ["main"]
 allow = ["bcmp", "memset"]
 exports = ["main"]
 
+[module."//lib/io/cabundle:cacert"]
+level = "L1"
+allow = []
+exports = ["cabundle_cacert", "cabundle_cacert_len"]
+
+[module."//lib/io/cabundle:cacert_test"]
+allow = ["memchr", "strlen", "strstr"]
+exports = ["main"]
+
 [module."//lib/io/osal:osal"]
 level = "L2"
 impl = ["lib/io/osal/src/**"]
@@ -3055,88 +3304,104 @@ exports = ["posix_clock_faults", "posix_clock_init", "posix_clock_init_real", "p
     "posix_clock_set_wall_offset", "posix_clock_sys_libc", "posix_wall_port"]
 
 [module."//lib/io/posix_fs:kfs_args_test"]
-allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:kfs_at_fake_test"]
 allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strpbrk"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:kfs_at_real_test"]
-allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy", "memset",
-    "mkdir", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strcmp", "strlen"]
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memchr", "memcpy",
+    "memset", "mkdir", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strcmp", "strlen"]
 deny_exempt = ["fopen", "getenv", "unlink"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_dir_count", "kit_dir_put", "kit_dir_read",
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_dir_count", "kit_dir_put", "kit_dir_read",
     "kit_fd_count", "kit_rig_open", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
 
 [module."//lib/io/posix_fs:kfs_fd0_test"]
-allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:kfs_list_test"]
-allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:kfs_open_test"]
-allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:kfs_pread_test"]
-allow = ["bcmp", "memcpy", "memset", "snprintf", "strchr", "strcmp", "strcpy", "strlen"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strchr", "strcmp", "strcpy", "strlen"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:kfs_read_test"]
-allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:kfs_real_test"]
-allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memcpy", "memset",
-    "mkdir", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "statvfs", "strcmp", "umask"]
+allow = ["__xstat", "bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memchr", "memcpy",
+    "memset", "mkdir", "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "statvfs", "strcmp", "umask"]
 deny_exempt = ["fopen", "getenv", "rename", "unlink"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_dir_count", "kit_dir_put", "kit_dir_read",
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_dir_count", "kit_dir_put", "kit_dir_read",
     "kit_fd_count", "kit_rig_open", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
 
 [module."//lib/io/posix_fs:kfs_sweep_test"]
-allow = ["bcmp", "memcpy", "memset", "printf", "snprintf", "strcmp", "strlen"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "printf", "snprintf", "strcmp", "strlen"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main", "sw_count", "sw_map",
-    "sw_run"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main", "sw_count", "sw_map", "sw_run"]
+
+[module."//lib/io/posix_fs:kfs_tempname_real_test"]
+allow = ["bcmp", "closedir", "fclose", "ferror", "fgetc", "fread", "fwrite", "memchr", "memcpy", "memset",
+    "mkdtemp", "opendir", "readdir", "rmdir", "snprintf", "strcmp", "strlen"]
+deny_exempt = ["fopen", "getenv", "unlink"]
+exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_dir_count", "kit_dir_put", "kit_dir_read",
+    "kit_fd_count", "kit_rig_open", "kit_tmpdir_make", "kit_tmpdir_remove", "main"]
+
+[module."//lib/io/posix_fs:kfs_tempname_test"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp", "strlen", "strncat"]
+exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:kfs_write_test"]
-allow = ["bcmp", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strcmp", "strlen"]
 exports = ["kf_begin", "kf_clip", "kf_content", "kf_dent_count", "kf_drop_dent", "kf_fail", "kf_fail2",
-    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log",
-    "kf_log_reset", "kf_mode", "kf_new_dent", "kf_new_ino", "kf_open_fds", "kf_override", "kf_pread",
-    "kf_put", "kf_set_hook", "kf_swap", "kf_sys", "kit_rig_open", "main"]
+    "kf_fd_get", "kf_find_dent", "kf_has", "kf_init", "kf_ino_release", "kf_is", "kf_log", "kf_log_reset",
+    "kf_mode", "kf_new_dent", "kf_new_ino", "kf_note", "kf_open_fds", "kf_override", "kf_pread", "kf_put",
+    "kf_set_hook", "kf_swap", "kf_sys", "kf_trace", "kit_rig_open", "main"]
 
 [module."//lib/io/posix_fs:posix_fs"]
 level = "L2"
@@ -3145,9 +3410,10 @@ allow = ["__errno_location", "__fxstat", "__fxstatat", "close", "closedir", "fch
     "fstatvfs", "fsync", "ftruncate", "memcpy", "mkdir", "pread", "read", "readdir", "renameat",
     "strlen", "unlinkat", "write"]
 deny_exempt = ["open", "openat"]
-exports = ["posix_fs_c_close", "posix_fs_c_fsize", "posix_fs_c_fsync", "posix_fs_c_openat", "posix_fs_close",
-    "posix_fs_gate_name", "posix_fs_map", "posix_fs_op_read_at", "posix_fs_op_truncate",
-    "posix_fs_open", "posix_fs_port", "posix_fs_sys_libc", "posix_fs_sys_pread"]
+exports = ["posix_fs_c_close", "posix_fs_c_fsize", "posix_fs_c_fsync", "posix_fs_c_openat",
+    "posix_fs_c_unlinkat", "posix_fs_close", "posix_fs_gate_name", "posix_fs_map", "posix_fs_op_read_at",
+    "posix_fs_op_replace", "posix_fs_op_truncate", "posix_fs_open", "posix_fs_port", "posix_fs_sys_libc",
+    "posix_fs_sys_pread", "posix_fs_write_all"]
 
 [module."//lib/io/posix_fs:testkit"]
 level = "L1"
@@ -4012,15 +4278,55 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//lib/ui/lvhost:lvh_flush_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memset"]
+exports = ["k_buf1", "k_buf2", "k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_pool",
+    "k_surface", "main"]
+
+[module."//lib/ui/lvhost:lvh_input_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memset"]
+exports = ["k_buf1", "k_buf2", "k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_pool",
+    "k_surface", "main"]
+
+[module."//lib/ui/lvhost:lvh_open_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memcmp", "memset"]
+exports = ["k_buf1", "k_buf2", "k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_pool",
+    "k_surface", "main"]
+
+[module."//lib/ui/lvhost:lvh_time_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memset"]
+exports = ["k_buf1", "k_buf2", "k_cap", "k_cap_clear", "k_frame_diff", "k_open", "k_open_raw", "k_pool",
+    "k_surface", "main"]
+
+[module."//lib/ui/lvhost:lvhost"]
+level = "L2"
+impl = ["lib/ui/lvhost/src/**"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = ["lvh_close", "lvh_display", "lvh_open", "lvh_pointer", "lvh_step"]
+
+[module."//lib/ui/lvhost:testkit"]
+level = "L1"
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = []
+exports = []
+
 [module."//lib/ui/scene:scene"]
 level = "L3"
 impl = ["lib/ui/scene/src/**"]
 allow = []
-exports = ["sc_append", "sc_args_store", "sc_args_valid", "sc_dump_line", "sc_find_index",
-    "sc_fits", "sc_live", "sc_open", "sc_set_overflow", "sc_walk_next", "scene_add",
-    "scene_add_notice", "scene_arg", "scene_args_used", "scene_begin", "scene_check",
-    "scene_count", "scene_dump", "scene_end", "scene_find", "scene_init", "scene_node_at",
-    "scene_overflow"]
+exports = ["sc_append", "sc_args_store", "sc_args_valid", "sc_dump_line", "sc_find_index", "sc_fits",
+    "sc_live", "sc_open", "sc_set_overflow", "sc_walk_next", "scene_add", "scene_add_notice", "scene_adopt",
+    "scene_arg", "scene_args_used", "scene_begin", "scene_check", "scene_count", "scene_dump", "scene_end",
+    "scene_find", "scene_init", "scene_node_at", "scene_overflow"]
+
+[module."//lib/ui/scene:scene_adopt_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
 
 [module."//lib/ui/scene:scene_args_test"]
 allow = ["bcmp", "memcpy", "memset"]
@@ -4247,54 +4553,67 @@ exports = ["main"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:boot_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:bootfail_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:bootmisc_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:e2e_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:e2emap_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:host_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:layout_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:loops_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:net_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:relaywrap_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:snapedge_test"]
 allow = ["memset"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:snapshot_test"]
 allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:testkit"]
 level = "L1"
 allow = []
@@ -4304,18 +4623,22 @@ exports = []
 allow = ["memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:wallclk_test"]
 allow = ["memcpy", "memmove", "memset", "snprintf", "strcat", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:watch_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 exports = ["main"]
 allow_builtins = ["__builtin_trap"]
+
 [module."//apps/lockers/lkapp/wire:wire"]
 level = "L2"
 impl = ["apps/lockers/lkapp/wire/src/**"]
 allow = ["memcpy", "memset", "strlen"]
+allow_builtins = ["__atomic_load_n", "__atomic_store_n"]
 exports = ["lk_wire_core_step", "lk_wire_fatal", "lk_wire_init", "lk_wire_net_step",
     "lk_wire_opener_step", "lk_wire_parse_args", "lk_wire_post", "lk_wire_run", "lk_wire_scene",
     "lk_wire_snapshot_fill", "lk_wire_start", "lk_wire_stop", "lk_wire_stopping", "lk_wire_ui_step",
@@ -4324,6 +4647,7 @@ exports = ["lk_wire_core_step", "lk_wire_fatal", "lk_wire_init", "lk_wire_net_st
     "lkw_load_inventory", "lkw_nap", "lkw_now", "lkw_objects", "lkw_open_dirs", "lkw_relay_close",
     "lkw_relay_open", "lkw_runtime", "lkw_sat32", "lkw_say", "lkw_say_buf", "lkw_set_stop",
     "lkw_split_path", "lkw_watch_codes"]
+
 [module."//apps/lockers/lkrx/boot:boot_refresh_test"]
 allow = ["memset"]
 exports = ["main"]
@@ -4442,6 +4766,7 @@ exports = ["lvr_applied", "lvr_apply", "lvr_count", "lvr_do_create", "lvr_do_mov
     "lvr_do_update", "lvr_dropped", "lvr_fields", "lvr_init", "lvr_mapped", "lvr_next_sibling",
     "lvr_obj", "lvr_on_click", "lvr_part_of", "lvr_place", "lvr_place_after", "lvr_prev_sibling",
     "lvr_ready", "lvr_relayout", "lvr_reset", "lvr_secs_of", "lvr_take_intents", "lvr_text_of"]
+
 [module."//lib/ui/lvrender:testkit"]
 level = "L1"
 third_party = ["gate//third_party/lvgl:lvgl"]
