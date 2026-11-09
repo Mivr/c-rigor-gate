@@ -16,6 +16,8 @@ deny_exempt = ["setjmp"]
 allow = ["longjmp"]
 [module."//p:trap"]
 allow_builtins = ["__builtin_trap"]
+[module."//p:atom"]
+allow_builtins = ["__atomic_load_n", "__atomic_store_n"]
 """
 
 
@@ -82,6 +84,27 @@ class RuleCase(TempDirTestCase):
         self.assertIsNone(self.rule("__builtin_trap", "//p:trap"))
         self.assertEqual(self.rule("__builtin_unreachable", "//p:trap"), "forbidden-builtin")
         self.assertEqual(self.rule("__builtin_trap"), "forbidden-builtin")
+
+    def test_atomic_load_store_are_guarded_and_nothing_else_atomic(self):
+        for name in ("__atomic_load_n", "__atomic_store_n"):
+            with self.subTest(name=name):
+                self.assertEqual(semantic_table.builtin_class(name), "guarded")
+                self.assertIsNone(self.rule(name, "//p:atom"))
+                self.assertEqual(self.rule(name), "forbidden-builtin")
+                self.assertEqual(self.rule(name, "//p:trap"), "forbidden-builtin")
+        for name in ("__atomic_fetch_add", "__atomic_exchange_n", "__atomic_load", "__atomic_thread_fence",
+                     "__sync_synchronize", "__c11_atomic_load"):
+            with self.subTest(name=name):
+                self.assertEqual(self.rule(name, "//p:atom"), "forbidden-builtin")
+
+    def test_policy_cannot_allow_other_atomics(self):
+        path = self.tmp / "bad.toml"
+        path.write_text(GLOBAL + '[module."//p:x"]\nallow_builtins = ["__atomic_fetch_add"]\n', encoding="utf-8")
+        with self.assertRaises(InternalError):
+            facts_policy.load_policy(path)
+        path.write_text(GLOBAL + '[module."//p:x"]\nallow_builtins = ["__atomic_load_n"]\n', encoding="utf-8")
+        self.assertEqual(facts_policy.load_policy(path).modules["//p:x"].allow_builtins,
+                         frozenset({"__atomic_load_n"}))
 
     def test_policy_cannot_allow_other_builtins(self):
         for name in ("__builtin_alloca", "alloca", "__builtin_frame_address", "__builtin_expect"):

@@ -42,6 +42,8 @@ c_library(name = "weak", srcs = ["weak.c"])
 c_library(name = "asm", srcs = ["asm.c"])
 c_library(name = "rename", srcs = ["rename.c"])
 c_library(name = "unreach", srcs = ["unreach.c"])
+c_library(name = "at_ok", srcs = ["at_ok.c"])
+c_library(name = "at_fetch", srcs = ["at_fetch.c"])
 c_library(name = "kill", srcs = ["kill.c"])
 c_library(name = "fopen", srcs = ["fopen.c"])
 c_library(name = "write", srcs = ["write.c"])
@@ -134,6 +136,14 @@ EOF
 cat > unreach.c <<'EOF'
 #define UNREACHABLE() __builtin_unreachable()
 int unreach_f(int a) { if (a > 0) { return 1; } UNREACHABLE(); }
+EOF
+cat > at_ok.c <<'EOF'
+int at_ok_get(int *p) { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
+void at_ok_set(int *p, int v) { __atomic_store_n(p, v, __ATOMIC_RELEASE); }
+EOF
+cat > at_fetch.c <<'EOF'
+int at_fetch_get(int *p) { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
+int at_fetch_add(int *p) { return __atomic_fetch_add(p, 1, __ATOMIC_SEQ_CST); }
 EOF
 
 # --- symbol reds ---
@@ -490,13 +500,13 @@ cd "$root"
 "${RIGOR[@]}" buckfiles --root "$scratch" > "$out/bf3.txt" 2>&1 || fail "$CUR" "$out/bf3.txt"
 
 begin "every red source passes the T002 line scan (this is what the semantic scan is for)"
-for f in linespl paste splice digraph attr weak asm unreach kill rename fopen write ctestsym puts exittest fz_fuzz; do
+for f in linespl paste splice digraph attr weak asm unreach at_ok at_fetch kill rename fopen write ctestsym puts exittest fz_fuzz; do
   tool textscan_misses "$scratch/p/$f.c" "$out" || fail "$CUR: $f.c"
 done
 echo "  16 sources: line scan exit 0 on all"
 
 begin "facts actions build on RE for every target (release) and the libc export list exists"
-targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const sl_ok ex_a ex_b ex_c ex_d emb)
+targets=(linespl lineplain linenum clean clean_test clean_bin paste splice digraph attr weak asm rename unreach at_ok at_fetch kill fopen write ctestsym puts dep_a dep_b dep_c exittest fz b_alloca b_paste b_frame b_longjmp b_sync b_hidden b_io b_ovf b_hdrs x_ok x_func x_mut x_const sl_ok ex_a ex_b ex_c ex_d emb)
 args=(); for t in "${targets[@]}"; do args+=("$pkg:${t}_facts"); done
 run "$out/facts.log" build "${args[@]}" //ctest:ctest_facts //examples/hello:lib_facts //examples/hello:hello_facts //examples/hello:hello_test_facts toolchains//:libc_symbols --show-output || fail "$CUR" "$out/facts.log"
 tool collect "$out/facts.log" "$out/facts" || fail "$CUR: collect"
@@ -542,6 +552,14 @@ tool policy "$out/p_unreach_ok.toml" "unreach;builtins=__builtin_unreachable"
 gate_case unreach_ok $SEM 0 "$out/p_unreach_ok.toml" unreach --
 tool policy "$out/p_unreach_other.toml" "unreach;builtins=__builtin_trap"
 gate_case unreach_other $SEM 1 "$out/p_unreach_other.toml" unreach -- forbidden-builtin:__builtin_unreachable
+
+begin "builtins: __atomic_load_n/__atomic_store_n are guarded; every other __atomic_* stays forbidden"
+tool policy "$out/p_at.toml" at_ok
+gate_case at_ok_unlisted $SEM 1 "$out/p_at.toml" at_ok -- forbidden-builtin:__atomic_load_n forbidden-builtin:__atomic_store_n
+tool policy "$out/p_at_ok.toml" "at_ok;builtins=__atomic_load_n,__atomic_store_n"
+gate_case at_ok_listed $SEM 0 "$out/p_at_ok.toml" at_ok --
+tool policy "$out/p_at_fetch.toml" "at_fetch;builtins=__atomic_load_n,__atomic_store_n"
+gate_case at_fetch $SEM 1 "$out/p_at_fetch.toml" at_fetch -- forbidden-builtin:__atomic_fetch_add
 
 begin "symbols: kill through a macro alias, exit through an asm label, _exit in a test, getenv in a fuzz target"
 tool policy "$out/p_kill.toml" kill

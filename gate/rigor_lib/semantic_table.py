@@ -56,7 +56,10 @@ BANNED_BUILTIN_PREFIXES = ("__builtin_alloca",)   # __builtin_alloca, _with_alig
 SYMBOL_BUILTINS = {"__builtin_setjmp": "setjmp", "__builtin_longjmp": "longjmp"}
 
 # Allowed only in modules whose policy entry lists them in `allow_builtins`.
-GUARDED_BUILTINS = ("__builtin_trap", "__builtin_unreachable", "__builtin_debugtrap")
+# `__atomic_load_n`/`__atomic_store_n` are the lock-free flag primitive for a module that owns threads.
+# The memory-order argument is NOT checked: the facts carry identifier names, not argument tokens.
+GUARDED_BUILTINS = ("__builtin_trap", "__builtin_unreachable", "__builtin_debugtrap",
+                    "__atomic_load_n", "__atomic_store_n")
 
 # Reserved names a product may define: the feature-test macros of C17 / POSIX / glibc
 # (they select declarations; none of them adds code). `_FORTIFY_SOURCE` is deliberately absent.
