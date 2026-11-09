@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# tools/mutants MODULE... --product products/<p>/product.toml [--level L3] [--head SHA] [--uncached]
+# Measure the grade's mutant actions of chosen modules from a product checkout (docs/mutate.md, "Lane workflow").
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec python3 -I -B "$here/gate/rigor" lane-mutants "$@"

@@ -255,6 +255,35 @@ and whose return type is void, a scalar or a record has the `function-body` muta
 function-pointer return. `mutants_verdict.accounting_findings(report, level)` makes it an **error at L3 and above**
 and info below; with no `level` it is info (the caller must pass the module's level).
 
+## Lane workflow: `tools/mutants` (T123)
+
+A lane that must kill the survivors of its module does **not** write a `c_mutants` target in a scratch clone (other
+action keys: the whole-repo grade then measured the same mutants again from scratch). From the lane's worktree, after
+committing:
+
+    gate/tools/mutants //path/to/module [//other:module ...] --product gate/products/<p>/product.toml [--level L3] [--head SHA] [--uncached]
+
+(`rigor lane-mutants`, `gate/rigor_lib/lane_mutants.py`.) It builds the grade's tree from the commit (`HEAD` by default; a
+checkout with uncommitted changes to tracked files is refused, the grade grades commits) in a work directory outside
+the checkout (`$TMPDIR/lane-mutants/<checkout>`, or `--work`), so the product tree is never touched. The module list
+comes from the grade's own `grade_mutants.build_plan` (policy levels, tests that depend on the module, link deps,
+perf targets), and the chosen modules get the grade's `gate-mutants/BUCK` entries (`write_package`: same target name,
+attributes, tests and order, same rules), built with the pinned Buck2 on RE and judged by `grade_mutants.judge`
+(`rigor mutants`' code). A module that is not mutated (level L1, no tests, not in the policy) is exit 2, naming the choices.
+
+Output: one line per mutant (`verdict  module  file:line  id  function: original -> replacement`; verdicts killed-assert,
+killed-crash, killed-perf, survived, unviable, unrun, equivalent, duplicate), a count line per module, the findings that
+are errors at the module's level, `mutant actions: N executed, M from the cache`, and the verdict the grade would give.
+Exit 0 = no error finding, 1 = some, 2 = internal error. `--level` changes only the level the verdict is judged at (the
+actions do not depend on it).
+
+**What is shared:** the `mutant_list`, baseline, `mutant_compile`, `mutant_compile_o0` and `mutant_run` actions have the
+same keys as the grade's, so the grade of the same sources executes none of them for that module
+(`selftest/mutants_lane.sh`: the grade runs zero `mutant_run` actions for the measured module, its report is byte-identical
+to the lane's). A change to the module, its tests, its deps or the gate commit makes new actions in both, as always.
+**Not shared:** modules with perf targets are measured without the perf bundle the grade may have (those actions differ);
+the whole-repo verdict (other modules, `level-missing` findings and the like) is still the grade's.
+
 ## Perf kills: `killed-perf` (T090, G30)
 Some mutants are not equivalent although no test can see them: in a hash map, `hash(key)` replaced by `return 0`
 leaves the map correct and makes every operation O(n). The module's complexity is a promise (`docs/perf.md`,
