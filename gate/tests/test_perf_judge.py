@@ -120,6 +120,36 @@ class Parse(unittest.TestCase):
                 perf_judge.parse_records("p", bad)
 
 
+class Agreement(unittest.TestCase):
+    def test_equal_counts_agree(self):
+        self.assertTrue(perf_judge.counts_agree(342312029, 342312029))
+        self.assertTrue(perf_judge.counts_agree(0, 0))
+
+    def test_counts_inside_the_bound_agree(self):
+        self.assertTrue(perf_judge.counts_agree(342312029, 342312028))    # the farm's one-instruction difference
+        self.assertTrue(perf_judge.counts_agree(115051, 115051 + perf_judge.COUNT_ABS))
+        edge = perf_judge.count_bound(342312029, 342312029)
+        self.assertTrue(perf_judge.counts_agree(342312029, 342312029 - edge))
+
+    def test_counts_outside_the_bound_differ(self):
+        self.assertFalse(perf_judge.counts_agree(115051, 115051 + perf_judge.COUNT_ABS + 1))
+        self.assertFalse(perf_judge.counts_agree(342312029, 342312029 - perf_judge.count_bound(342312029, 0) - 400))
+        self.assertFalse(perf_judge.counts_agree(1000, 1100))
+
+    def test_agreement_is_symmetric_and_the_bound_is_tiny_against_a_class_step(self):
+        self.assertEqual(perf_judge.counts_agree(5, 30), perf_judge.counts_agree(30, 5))
+        for count in (100, 10 ** 6, 10 ** 9):
+            self.assertLess(perf_judge.count_bound(count, count), count // 1000 + 17)
+
+    def test_a_real_class_change_is_not_agreement_and_still_judged_on_ratios(self):
+        linear, quadratic = [rec(1000, 1000), rec(4000, 4000)], [rec(1000, 1000), rec(4000, 16000)]
+        self.assertFalse(perf_judge.counts_agree(4000, 16000))
+        self.assertEqual(perf_judge.exceeded("O(n)", linear), [])
+        self.assertEqual(len(perf_judge.exceeded("O(n)", quadratic)), 1)
+        jittered = [rec(1000, 1001), rec(4000, 4003)]
+        self.assertEqual(perf_judge.exceeded("O(n)", jittered), [])
+
+
 class Judge(unittest.TestCase):
     def judge(self, cost_class, records):
         return perf_gate.judge_target("//x:y_perf", "//x:y", cost_class, records)
@@ -131,7 +161,16 @@ class Judge(unittest.TestCase):
         (item,) = self.judge("O(n)", [rec(10, 100), rec(40, 1600)])
         self.assertEqual((item["rule"], item["severity"], item["target"], item["class"], item["module"]),
                          ("perf-class-exceeded", "error", "//x:y_perf", "O(n)", "//x:y"))
-        self.assertEqual((item["count1"], item["count2"], item["ratio"], item["counter"]), (100, 1600, "16.000", "instructions"))
+        self.assertEqual((item["counter"], item["n1"], item["n2"]), ("instructions", 10, 40))
+        self.assertFalse({"count1", "count2", "ratio", "limit"} & set(item))
+        (shown,) = perf_gate.evidence("O(n)", [rec(10, 100), rec(40, 1600)])
+        self.assertEqual((shown["count1"], shown["count2"], shown["ratio"]), (100, 1600, "16.000"))
+
+    def test_findings_are_identical_when_the_counts_move_by_a_few_instructions(self):
+        a = self.judge("O(n)", [rec(10, 100), rec(40, 1600)])
+        b = self.judge("O(n)", [rec(10, 101), rec(40, 1603)])
+        self.assertEqual(a, b)
+        self.assertEqual(perf_gate.evidence("O(n)", [rec(10, 100), rec(40, 400)]), [])
 
     def test_unavailable_counter_is_an_error(self):
         (item,) = self.judge("O(n)", [rec(10, None, counter="unavailable", errno=1), rec(40, None, counter="unavailable", errno=1)])

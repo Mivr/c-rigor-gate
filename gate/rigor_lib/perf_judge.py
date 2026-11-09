@@ -26,6 +26,10 @@ CLASSES = ("O(1)", "O(log n)", "O(n)", "O(n log n)")
 COUNTERS = ("instructions", "libc_bytes")
 SLACK = 16
 LOG_ADDITIVE_FLOOR = 64
+# Two runs of the same binary agree on a count when they differ by at most COUNT_ABS + max(a, b) / 2^COUNT_REL_SHIFT
+# (docs/perf.md "Determinism": measured spread of +-3 at 3.4e8 instructions, 0 to 2 below 5e6).
+COUNT_ABS = 16
+COUNT_REL_SHIFT = 20
 _KEYS = ("name", "seed", "n", "status", "counter", "input_len")
 STATUSES = ("ok", "gen-overflow", "run-error", "crash", "timeout")
 
@@ -64,6 +68,17 @@ def parse_records(path, data):
             raise InternalError("%s:%d: a record must be an object" % (path, number))
         records.append(record)
     return records
+
+
+def count_bound(a, b):
+    """The largest difference between two runs' counts `a` and `b` (non-negative ints) that still agrees."""
+    return COUNT_ABS + (max(a, b) >> COUNT_REL_SHIFT)
+
+
+def counts_agree(a, b):
+    """True when two counts of the same measurement (same binary, same input, any worker) are within `count_bound`.
+    Not used for a class verdict: a verdict reads one count per size and compares ratios."""
+    return abs(a - b) <= count_bound(a, b)
 
 
 def _count(record, field):
