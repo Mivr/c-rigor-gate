@@ -1,0 +1,8 @@
+load("@gate//rules:c.bzl", "c_library")
+
+c_library(
+    name = "parse",
+    srcs = ["parse.c"],
+    headers = ["parse.h"],
+    visibility = ["PUBLIC"],
+)

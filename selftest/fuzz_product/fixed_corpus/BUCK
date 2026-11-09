@@ -1,0 +1,8 @@
+load("@gate//rules:c.bzl", "c_fuzz")
+
+c_fuzz(
+    name = "fz",
+    srcs = ["fz_fuzz.c"],
+    deps = ["//selftest/scratch_fuzz/libfixed:parse"],
+    corpus = glob(["corpus/*"]),
+)
