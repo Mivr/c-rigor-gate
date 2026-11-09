@@ -32,9 +32,9 @@ class CollectTest(unittest.TestCase):
                              "baseline_o0": put("base0.json", {"status": "ok", "hash": H[1]}),
                              "original": put("orig.json", {"status": "ok", "hash": H[0]})}],
                 "mutants": {"m/a.c": {
-                    "a" * 16: {"info": put("a.json", {"status": "ok", "hash": H[0]}), "runs": {},
+                    "a" * 16: {"info": put("a.json", {"status": "ok", "hash": H[0]}), "runs": [],
                                "o0": put("a0.json", {"status": "ok", "hash": H[2], "detail": "dropped"})},
-                    "b" * 16: {"info": put("b.json", {"status": "ok", "hash": H[3]}), "runs": {}},
+                    "b" * 16: {"info": put("b.json", {"status": "ok", "hash": H[3]}), "runs": [put("g1.json", {"runs": {"t1": {"rc": 0}}}), put("g2.json", {"runs": {"t2": {"killed_by": "t1"}}})]},
                 }}})
             tool.cmd_collect(["--manifest", manifest, "--out", str(tmp / "report.json")])
             report = json.loads((tmp / "report.json").read_text())
@@ -42,6 +42,9 @@ class CollectTest(unittest.TestCase):
         first, second = report["mutants"]
         self.assertEqual(first["compile"]["o0"], {"status": "ok", "hash": H[2]})
         self.assertNotIn("o0", second["compile"])
+        # T121: the record files of a mutant's test groups are merged, in the order of the groups
+        self.assertEqual(second["runs"], {"t1": {"rc": 0}, "t2": {"killed_by": "t1"}})
+        self.assertEqual(first["runs"], {})
 
 
 if __name__ == "__main__":

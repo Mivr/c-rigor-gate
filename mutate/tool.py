@@ -17,10 +17,23 @@
         Link (`-o BIN` appended), run `BIN --seed 1 --out RESULTS`, write
         {"rc": N, "timed_out": B, "results": the normalised JSON Lines text or null}. A failed link is an
         error (never a verdict). What is stored is a deterministic function of the verdict: see `normalise_*`.
-    tool.py linkrun-batch [--item N OUT OBJ1..OBJN]... -- <link command containing the argument @MUTANT_OBJECTS@>
-        The same for a batch of mutants (T064): for each item the command is run with `@MUTANT_OBJECTS@` replaced by
-        the N objects OBJ1..OBJN (the objects of the mutant's link, in link order), and OUT gets that mutant's record. One fresh process and one scratch directory per mutant, one after
-        another; a crash or timeout of one run is only its own record. A failed link fails the batch.
+    tool.py linkrun-batch [--stop-on assert|never] [--baseline N OBJ1..OBJN] --test NAME N TOBJ1..TOBJN [--test ...]...
+                          [--item N OUT OBJ1..OBJN [--prior F]]... -- <link command containing @TEST_OBJECTS@ and @MUTANT_OBJECTS@>
+        The same for a batch of mutants (T064) and a group of tests (T121): for each item and each test, in the
+        order of the `--test` options, the command is run with `@TEST_OBJECTS@` replaced by the test's objects and
+        `@MUTANT_OBJECTS@` by the N objects OBJ1..OBJN (the objects of the mutant's link, in link order). OUT gets
+        {"runs": {test: record}}, the record being the one `linkrun` writes. One fresh process and one scratch
+        directory per run, one after another; a crash or timeout of one run is only its own record. A failed link
+        fails the batch.
+        Adaptive limit (T122): with `--baseline` (the objects of the unmutated link, in link order) each test binary is
+        first run unmutated, once per action and only if a mutant needs it, and a mutant's run of that binary is killed
+        (`timed_out`, rc -9, as before) after clamp(20 x that wall time, 5 s, 180 s); a baseline that timed out keeps
+        180 s. Without `--baseline` the limit is 180 s. Wall times are never stored.
+        Stop at the first kill (T121): once a run of the mutant failed a check (`stop_kill`: rc 1 and a failed-check
+        line; with `--stop-on never` nothing counts) its later runs are not made: they get {"killed_by": TEST} with
+        the first killing test. A mutant whose `--prior` file (the group before, same mutant) already holds a kill
+        gets {"killed_by": ...} for every test of this group, naming the same test. A skipped run is never a pass:
+        `rigor mutants` accepts it only after a run of that very mutant that it judges a failed check itself.
     tool.py collect --manifest M --out F
         Merge the per-mutant files named by the manifest into one report. A mutant whose -O2 object equals
         the baseline's or an earlier mutant's also carries `compile.o0`, the result of compiling it again
@@ -36,8 +49,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 
-RUN_TIMEOUT_SECONDS = 180  # the whole test binary; ctest itself kills one test after 10 s
+RUN_TIMEOUT_SECONDS = 180  # the most a whole test binary may run (ctest itself kills one test after 10 s)
+# T122: a mutant's run of a test binary may take TIMEOUT_FACTOR x the wall time of that binary's unmutated run, but
+# at least TIMEOUT_MIN_SECONDS and at most RUN_TIMEOUT_SECONDS; a baseline that timed out keeps RUN_TIMEOUT_SECONDS.
+TIMEOUT_FACTOR = 20
+TIMEOUT_MIN_SECONDS = 5
 DETAIL_CHARACTERS = 600
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # `rigor mutants` calls a failed test "killed by an assert" when its reason starts like this (the counts and the
@@ -47,6 +65,7 @@ NORMAL_CHECK_FAILURE = "0 of 0 checks failed; first: (not stored)"
 NUMBER = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)")
 UNPARSABLE_LINE = "!"
 OBJECT_SLOT = "@MUTANT_OBJECTS@"  # where `linkrun-batch` puts the objects of the mutant it runs
+TEST_SLOT = "@TEST_OBJECTS@"      # ... and those of the test
 
 
 def canonical(obj):
@@ -180,21 +199,29 @@ def normalise_rc(rc, timed_out):
     return rc if rc in (0, 1) else -1
 
 
-def run_binary(binary, results):
+def adaptive_limit(baseline_wall, baseline_timed_out):
+    """The kill limit in seconds for a mutant's run of a binary whose baseline run took BASELINE_WALL."""
+    if baseline_timed_out:
+        return RUN_TIMEOUT_SECONDS
+    return min(max(TIMEOUT_FACTOR * baseline_wall, TIMEOUT_MIN_SECONDS), RUN_TIMEOUT_SECONDS)
+
+
+def run_binary(binary, results, limit=RUN_TIMEOUT_SECONDS):
     """Run a ctest binary in its own process group; (rc, timed_out)."""
     process = subprocess.Popen([binary, "--seed", "1", "--out", results], start_new_session=True,
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL)
     try:
-        return process.wait(timeout=RUN_TIMEOUT_SECONDS), False
+        return process.wait(timeout=limit), False
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
         process.wait()
         return -signal.SIGKILL, True
 
 
-def link_and_run(command, out):
-    """Link COMMAND (`-o BIN` appended) in a fresh scratch directory, run it, write the record to OUT."""
+def link_and_run(command, out, limit=RUN_TIMEOUT_SECONDS):
+    """Link COMMAND (`-o BIN` appended) in a fresh scratch directory, run it (killed after LIMIT seconds), write the
+    record to OUT; returns the wall time of the run (never stored: a record is a function of the verdict only)."""
     with tempfile.TemporaryDirectory(prefix="mutant-") as scratch:
         binary = os.path.join(scratch, "bin")
         done = subprocess.run(command + ["-o", binary], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -202,13 +229,16 @@ def link_and_run(command, out):
             sys.stderr.buffer.write(done.stderr)
             sys.exit("tool.py: linking failed with status %d" % done.returncode)
         results = os.path.join(scratch, "results.jsonl")
-        rc, timed_out = run_binary(binary, results)
+        started = time.monotonic()
+        rc, timed_out = run_binary(binary, results, limit)
+        wall = time.monotonic() - started
         text = None
         if os.path.isfile(results):
             with open(results, "rb") as handle:
                 text = handle.read().decode("utf-8", "replace")
         write_json(out, {"rc": normalise_rc(rc, timed_out), "timed_out": timed_out,
                          "results": None if text is None else normalise_results(text)})
+    return wall
 
 
 def cmd_linkrun(argv):
@@ -219,40 +249,129 @@ def cmd_linkrun(argv):
     link_and_run(command, args.out)
 
 
-def split_items(argv):
-    """(arguments before the first `--item`, [N, OUT, OBJ1..OBJN] ... for every item)."""
-    items = []
-    head = []
-    index = 0
-    while index < len(argv):
-        if argv[index] != "--item":
-            if items:
-                sys.exit("tool.py: unexpected argument %r after the items" % argv[index])
-            head.append(argv[index])
-            index += 1
+def stop_kill(record):
+    """Does this run record kill its mutant for good: the binary exited 1 and a result line is a failed check?
+    (`rigor mutants` makes the same call from the stored text, and only a run it calls a failed check justifies a
+    skipped one. A crash is not final: the verdict is killed-assert when any test fails a check, so a crash stays
+    open to a later check failure.)"""
+    if record["rc"] != 1 or record["timed_out"] or not record["results"]:
+        return False
+    for raw in record["results"].split("\n"):
+        if not raw:
             continue
         try:
-            count = int(argv[index + 1])
+            obj = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(obj, dict) and obj.get("status") != "pass" and isinstance(obj.get("reason"), str) \
+                and CHECK_FAILURE.match(obj["reason"]):
+            return True
+    return False
+
+
+def prior_killer(path):
+    """The test that killed the mutant in an earlier group's record file (`--prior`), or None."""
+    runs = read_json(path)["runs"]
+    for name, record in runs.items():
+        if "killed_by" in record:
+            return record["killed_by"]
+        if stop_kill(record):
+            return name
+    return None
+
+
+def parse_group_args(argv):
+    """(stop-on, [(test, [objects])], [(objects, out, prior or None)], baseline objects or None) of the arguments
+    before `--`."""
+    stop, tests, items, index, baseline = "assert", [], [], 0, None
+    while index < len(argv):
+        flag = argv[index]
+        try:
+            if flag == "--stop-on":
+                stop = argv[index + 1]
+                index += 2
+            elif flag == "--test":
+                count = int(argv[index + 2])
+                objects = argv[index + 3:index + 3 + count]
+                if count < 0 or len(objects) != count:
+                    raise ValueError
+                tests.append((argv[index + 1], objects))
+                index += 3 + count
+            elif flag == "--item":
+                count = int(argv[index + 1])
+                item = argv[index + 2:index + 3 + count]
+                if count < 1 or len(item) != count + 1:
+                    raise ValueError
+                items.append([item[1:], item[0], None])
+                index += 3 + count
+            elif flag == "--baseline" and baseline is None:
+                count = int(argv[index + 1])
+                baseline = argv[index + 2:index + 2 + count]
+                if count < 1 or len(baseline) != count:
+                    raise ValueError
+                index += 2 + count
+            elif flag == "--prior" and items and items[-1][2] is None:
+                items[-1][2] = argv[index + 1]
+                index += 2
+            else:
+                sys.exit("tool.py: unexpected argument %r" % flag)
         except (IndexError, ValueError):
-            sys.exit("tool.py: --item needs a count")
-        item = argv[index + 2:index + 3 + count]
-        if count < 1 or len(item) != count + 1:
-            sys.exit("tool.py: --item %d needs OUT and %d objects" % (count, count))
-        items.append(item)
-        index += 3 + count
-    return head, items
+            sys.exit("tool.py: bad %s arguments" % flag)
+    if stop not in ("assert", "never") or not tests or len({name for name, _ in tests}) != len(tests):
+        sys.exit("tool.py: --stop-on assert|never and distinct --test names are needed")
+    return stop, tests, [tuple(item) for item in items], baseline
+
+
+def link_and_record(command, limit=RUN_TIMEOUT_SECONDS):
+    """(link_and_run's record for COMMAND as a dict (no file), the wall time of the run)."""
+    with tempfile.TemporaryDirectory(prefix="mutant-") as scratch:
+        out = os.path.join(scratch, "record.json")
+        wall = link_and_run(command, out, limit)
+        return read_json(out), wall
+
+
+def fill_slots(command, test_objects, objects):
+    line = []
+    for word in command:
+        line.extend(test_objects if word == TEST_SLOT else objects if word == OBJECT_SLOT else [word])
+    return line
+
+
+class Limits:
+    """The kill limit of each test binary: from its unmutated run (BASELINE objects), made the first time a mutant
+    needs it, in this action, so that it is measured on the same machine at the same load (T122). Without baseline
+    objects every limit is RUN_TIMEOUT_SECONDS."""
+
+    def __init__(self, command, baseline):
+        self.command, self.baseline, self.known = command, baseline, {}
+
+    def of(self, name, test_objects):
+        if self.baseline is None:
+            return RUN_TIMEOUT_SECONDS
+        if name not in self.known:
+            record, wall = link_and_record(fill_slots(self.command, test_objects, self.baseline))
+            self.known[name] = adaptive_limit(wall, record["timed_out"])
+        return self.known[name]
 
 
 def cmd_linkrun_batch(argv):
     argv, command = split_command(argv)
-    head, items = split_items(argv)
-    if head:
-        sys.exit("tool.py: unexpected arguments %r" % head)
-    if command.count(OBJECT_SLOT) != 1:
-        sys.exit("tool.py: the link command must contain %s exactly once" % OBJECT_SLOT)
-    slot = command.index(OBJECT_SLOT)
-    for out, *objects in items:
-        link_and_run(command[:slot] + objects + command[slot + 1:], out)
+    stop, tests, items, baseline = parse_group_args(argv)
+    limits = Limits(command, baseline)
+    for slot in (OBJECT_SLOT, TEST_SLOT):
+        if command.count(slot) != 1:
+            sys.exit("tool.py: the link command must contain %s exactly once" % slot)
+    for objects, out, prior in items:
+        killer = None if prior is None or stop == "never" else prior_killer(prior)
+        runs = {}
+        for name, test_objects in tests:
+            if killer is not None:
+                runs[name] = {"killed_by": killer}
+                continue
+            runs[name], _ = link_and_record(fill_slots(command, test_objects, objects), limits.of(name, test_objects))
+            if stop == "assert" and stop_kill(runs[name]):
+                killer = name
+        write_json(out, {"runs": runs})
 
 
 def cmd_collect(argv):
@@ -277,7 +396,9 @@ def cmd_collect(argv):
             if "o0" in extra[mutant["id"]]:  # only a candidate for equivalent / duplicate has one (B15)
                 low = read_json(extra[mutant["id"]]["o0"])
                 item["compile"]["o0"] = {"status": low["status"], "hash": low["hash"]}
-            item["runs"] = {test: read_json(path) for test, path in extra[mutant["id"]]["runs"].items()}
+            item["runs"] = {}
+            for path in extra[mutant["id"]]["runs"]:   # one file per group of tests, in the order of the groups
+                item["runs"].update(read_json(path)["runs"])
             mutants.append(item)
     baseline = {test: read_json(path) for test, path in manifest["baseline_runs"].items()}
     write_json(args.out, {"schema": 1, "label": manifest["label"], "tests": manifest["tests"],

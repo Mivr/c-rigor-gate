@@ -247,7 +247,7 @@ def _mutants(g, state):
     build_found, build_metadata, built = grade_mutants.build_reports(state.run, g.args.uncached, modules)
     found.extend(build_found)
     metadata.update(_without_compiler_output(build_metadata))
-    metadata["targets"] = {m.label: grade_mutants.target_label(i, m) for i, m in enumerate(modules)}
+    metadata["targets"] = {m.label: grade_mutants.target_label(m) for m in modules}
     if built:
         judged, summaries, used = grade_mutants.judge(
             g, state.run, modules, built, approvals.KIND_WITNESS_EQUIVALENT_MUTANT, MUTANT_RENAMES)

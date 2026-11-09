@@ -24,6 +24,7 @@ class Run:
     rc: int
     timed_out: bool
     results: object  # str or None
+    killed_by: object = None  # a skipped run (T121): the test that had killed the mutant; rc, timed_out, results are empty
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,8 @@ def _digest(path, info, what):
 
 
 def parse_run(path, run, what):
+    if isinstance(run, dict) and set(run) == {"killed_by"}:   # not run: an earlier test of the mutant failed a check
+        return Run(-1, False, None, _text(path, run["killed_by"], what))
     _exact(path, run, ("rc", "timed_out", "results"), what)
     if type(run["timed_out"]) is not bool:
         _fail(path, "%s: timed_out must be a boolean" % what)

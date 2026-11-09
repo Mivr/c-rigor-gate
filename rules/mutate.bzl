@@ -54,6 +54,23 @@ def _test_key(label: Label) -> str:
     character outside [a-z0-9_] turned into `_`. (Two packages may each have a test called `arena_test`.)"""
     return "".join([c if c in _TEST_KEY_CHARS else "_" for c in (label.package + "__" + label.name).elems()])
 
+def _test_order(module: Label, tests: dict) -> list:
+    """The order in which a mutant's tests run: the tests of the module's own package first, then the others, each
+    sorted by their key (`<package>__<name>`). Fixed by the labels alone, so the same on every grade."""
+    own = sorted([k for k in tests if tests[k].label.package == module.package and tests[k].label.cell == module.cell])
+    return own + sorted([k for k in tests if k not in own])
+
+def _test_groups(module: Label, tests: dict) -> list:
+    """`_test_order` cut into the groups that become one action each: the module's own tests together, the rest
+    in groups of `_GROUP_TESTS`."""
+    order = _test_order(module, tests)
+    own = [k for k in order if tests[k].label.package == module.package and tests[k].label.cell == module.cell]
+    rest = order[len(own):]
+    groups = [own] if own else []
+    for start in range(0, len(rest), _GROUP_TESTS):
+        groups.append(rest[start:start + _GROUP_TESTS])
+    return groups
+
 def _objects(dep: Dependency) -> dict[str, Artifact]:
     """Plain (non-PIC) object files of a target, by the name Buck2 gave them (`<src>.o`)."""
     subs = dep[DefaultInfo].sub_targets
@@ -122,6 +139,14 @@ def _compile_prefix(ctx, headers, toolchain):
     )
 
 _DEFAULT_BATCH = 16
+
+# Stop at the first kill (T121). A mutant's tests run in a fixed order (`_test_order`), in groups of at most
+# `_GROUP_TESTS` tests; the runs of a mutant stop at the first one that fails a check ("assert"): its later runs are
+# skipped and say which test killed it. A crash does not stop the runs, because the verdict is killed-assert when ANY
+# test fails a check (crash only when none does): stopping at a crash could change the verdict. "never" runs
+# everything (the old behaviour).
+_STOP_ON = "assert"
+_GROUP_TESTS = 16
 
 def _batch_order(items, function_of):
     """The order in which mutants are packed into batches: by source, function, id. (`ordered`, the order of the
@@ -236,24 +261,38 @@ def _link_run(cfg, actions, objects, test, ident):
     )
     return out
 
-def _link_run_batch(cfg, actions, batch, run_objs, test, ident):
-    """One action links and runs every mutant of BATCH against TEST, each in its own process; returns
-    {(rel, id): record}."""
+def _link_run_batch(cfg, actions, batch, run_objs, group, priors, ident):
+    """One action links and runs every mutant of BATCH against the tests of GROUP, in that order, each run in its
+    own process; returns {(rel, id): record file}. A record holds {"runs": {test: run}}. `priors` (item -> the record
+    of the group before, or None) lets the tool skip a mutant that an earlier group already killed (T121); inside the
+    action it stops at the first run that fails a check. The skipped runs say which test killed the mutant. The
+    baseline objects let the tool derive each binary's kill limit from its unmutated run (T122)."""
     outs = {}
     items = []
     for item in batch:
         out = actions.declare_output("run/{}/{}.json".format(ident, item[1]))
         outs[item] = out
-        items.append(cmd_args("--item", str(len(cfg.rels)), out.as_output(), [run_objs[item] if r == item[0] else cfg.base_obj[r] for r in cfg.rels]))
+        items.append(cmd_args(
+            "--item",
+            str(len(cfg.rels)),
+            out.as_output(),
+            [run_objs[item] if r == item[0] else cfg.base_obj[r] for r in cfg.rels],
+            cmd_args("--prior", priors[item]) if priors[item] != None else [],
+        ))
+    tests = [cmd_args("--test", t, str(len(cfg.test_objects[t])), [o for _, o in cfg.test_objects[t]]) for t in group]
     actions.run(
         cmd_args(
             _python(cfg.tool),
             "linkrun-batch",
+            "--stop-on",
+            _STOP_ON,
+            cmd_args("--baseline", str(len(cfg.rels)), [cfg.base_obj[r] for r in cfg.rels]),
+            tests,
             items,
             "--",
             cfg.linker,
             cfg.link_flags,
-            [o for _, o in cfg.test_objects[test]],
+            "@TEST_OBJECTS@",
             "@MUTANT_OBJECTS@",
             cfg.libs,
         ),
@@ -327,15 +366,17 @@ def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_
             live = live or not folded
         if live:
             run_objs[(rel, mid)] = run_obj
-        entry = {"info": info, "runs": {}}
+        entry = {"info": info, "runs": []}
         if extra != None:
             entry["o0"] = extra
         manifest_mutants.setdefault(rel, {})[mid] = entry
     for batch in _batches(_batch_order([i for i in ordered if i in run_objs], function_of), function_of, cfg.batch):
-        for t in cfg.test_names:
-            outs = _link_run_batch(cfg, actions, batch, run_objs, t, "mutant/{}/{}/{}".format(batch[0][0], batch[0][1], t))
+        priors = {item: None for item in batch}
+        for number, group in enumerate(cfg.test_groups):
+            outs = _link_run_batch(cfg, actions, batch, run_objs, group, priors, "mutant/{}/{}/g{}".format(batch[0][0], batch[0][1], number))
             for item in batch:
-                manifest_mutants[item[0]][item[1]]["runs"][t] = outs[item]
+                manifest_mutants[item[0]][item[1]]["runs"].append(outs[item])
+                priors[item] = outs[item]
     manifest = actions.write_json("manifest.json", {
         "label": cfg.label,
         "tests": cfg.test_names,
@@ -353,7 +394,7 @@ def _stage3(dctx, artifacts, outputs, cfg, compiled, ordered, results, baseline_
     )
     if cfg.perf_out != None:
         runs = {item: manifest_mutants[item[0]][item[1]]["runs"] for item in run_objs}
-        watched = [out for item in run_objs for out in runs[item].values()]
+        watched = [out for item in run_objs for out in runs[item]]
         actions.dynamic_output(
             dynamic = watched,
             inputs = [],
@@ -425,10 +466,10 @@ def _stage4(dctx, artifacts, outputs, cfg, run_objs, runs):
     candidates = []
     for item in sorted(run_objs.keys()):
         passed = True
-        for out in runs[item].values():
-            record = artifacts[out].read_json()
-            if record["rc"] != 0 or record["timed_out"]:
-                passed = False
+        for out in runs[item]:
+            for record in artifacts[out].read_json()["runs"].values():
+                if "killed_by" in record or record["rc"] != 0 or record["timed_out"]:   # a skipped run follows a kill
+                    passed = False
         if passed:
             candidates.append(item)
     script = actions.write("perf/run.sh", _PERF_SCRIPT, is_executable = True)
@@ -491,7 +532,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
     tests = {_test_key(t.label): t for t in ctx.attrs.test_targets}
     if len(tests) != len(ctx.attrs.test_targets) or len(tests) == 0:
         fail("{}: tests must be a non-empty list of distinct targets".format(ctx.label))
-    test_names = sorted(tests.keys())
+    test_names = _test_order(ctx.attrs.module.label, tests)
     if len(real_objects) != len(srcs):
         fail("{}: the module compiled {} objects for {} sources".format(ctx.label, len(real_objects), len(srcs)))
     if ctx.attrs.batch < 1:
@@ -531,6 +572,7 @@ def _mutants_impl(ctx: AnalysisContext) -> list[Provider]:
         "rels": rels,
         "report": report,
         "src_by_rel": {s.short_path: s for s in srcs},
+        "test_groups": _test_groups(ctx.attrs.module.label, tests),
         "test_names": test_names,
         "test_objects": {n: sorted(_objects(tests[n]).items()) for n in test_names},
         "tool": ctx.attrs._tool,

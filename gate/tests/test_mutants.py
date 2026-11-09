@@ -527,6 +527,51 @@ class MutantsTest(TempDirTestCase):
         outcome, _ = self.grade()
         self.assertExit(outcome, 0)
 
+    # -- T121: runs skipped after a kill ----------------------------------------------------------
+    T3 = ("t1", "t2", "t3")
+
+    def verdict_of(self, runs, tests=T3):
+        other = {"t1": KILLED, "t2": {"killed_by": "t1"}, "t3": {"killed_by": "t1"}}
+        self.put(report([mutant(1, runs=runs), mutant(2, operator="arithmetic", runs=other)], tests=tests))
+        outcome, result = self.grade()
+        self.assertExit(outcome, 0)
+        return {k: n for k, n in result["metadata"]["modules"][LABEL]["verdicts"].items() if n}
+
+    def test_skipped_runs_after_a_check_kill_give_the_verdict_of_the_full_runs(self):
+        skip = {"killed_by": "t2"}
+        for full, short in (({"t1": PASS, "t2": KILLED, "t3": PASS}, {"t1": PASS, "t2": KILLED, "t3": skip}),
+                            ({"t1": KILLED, "t2": PASS, "t3": CRASH}, {"t1": KILLED, "t2": {"killed_by": "t1"}, "t3": {"killed_by": "t1"}}),
+                            ({"t1": CRASH, "t2": KILLED, "t3": PASS}, {"t1": CRASH, "t2": KILLED, "t3": skip})):
+            with self.subTest(full=full):
+                self.assertEqual(self.verdict_of(short), self.verdict_of(full))
+                self.assertEqual(self.verdict_of(short), {"killed-assert": 2})
+
+    def test_a_crash_before_a_check_kill_is_still_killed_assert(self):
+        self.assertEqual(self.verdict_of({"t1": CRASH, "t2": KILLED, "t3": {"killed_by": "t2"}}), {"killed-assert": 2})
+
+    def test_a_skipped_run_is_never_a_pass(self):
+        """No kill before it: the mutant is `unrun`, not a survivor and not killed."""
+        for runs in ({"t1": PASS, "t2": {"killed_by": "t1"}, "t3": PASS},                    # the named test passed
+                     {"t1": {"killed_by": "t2"}, "t2": KILLED, "t3": PASS},                  # the killer comes later
+                     {"t1": CRASH, "t2": {"killed_by": "t1"}, "t3": PASS},                   # a crash is no check kill
+                     {"t1": PASS, "t2": PASS, "t3": {"killed_by": "t9"}},                    # an unknown test
+                     {"t1": {"killed_by": "t1"}, "t2": PASS, "t3": PASS}):                   # itself
+            with self.subTest(runs=runs):
+                self.fails_with(report([mutant(1, runs=runs)], tests=self.T3), "bad-skip")
+
+    def test_a_skipped_run_of_a_test_that_is_not_in_the_report_is_refused(self):
+        self.write_policy("L3")
+        self.put(report([mutant(1, runs={"t1": KILLED, "tx": {"killed_by": "t1"}})], tests=self.T3))
+        outcome, _ = self.grade()
+        self.assertExit(outcome, 2)
+
+    def test_a_malformed_skip_record_is_refused(self):
+        for bad in ({"killed_by": 5}, {"killed_by": "t1", "rc": 0}, {"killed_by": ""}):
+            with self.subTest(bad=bad):
+                self.put(report([mutant(1, runs={"t1": KILLED, "t2": bad, "t3": PASS})], tests=self.T3))
+                outcome, _ = self.grade()
+                self.assertNotEqual(outcome.code, 0)
+
     # -- red: unusable facts -----------------------------------------------------------------
     def test_a_live_mutant_without_a_run_fails(self):
         self.fails_with(report([mutant(1), mutant(2, runs={})]), "missing-run")

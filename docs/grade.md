@@ -196,13 +196,18 @@ so the gate reads the head's results of both modes and builds nothing.
   product declares no `c_mutants`. The other libraries the tests link (the closure of their `deps` and the
   module's, without the module, dependents first) are passed as `deps`. See "Link dependencies of the mutants (T070)".
 - **The generated package.** After the product was copied, the step writes `gate-mutants/BUCK` (one `c_mutants` call
-  per module, target `m<NNN>_<module>`) and a root `PACKAGE` (`package(visibility = ["PUBLIC"], inherit = True)`;
+  per module, target `m_<module>_<sha8 of the label>`, never a position: T121) and a root `PACKAGE` (`package(visibility = ["PUBLIC"], inherit = True)`;
   without it the product's test targets, which are package-private, are invisible to another package). Both are
   gate files: `buckfiles` ran before, the product may not carry a `PACKAGE`, and the step stops with exit 2 if
   either path already exists in the tree. A module that is not `visibility = ["PUBLIC"]` therefore fails to build
   its mutants (`mutants-build-failed`).
 - **Build and judge.** `buck2 build` of the `c_mutants` targets in the release platform, in **chunks** of
-  `MUTANTS_CHUNK` (12) modules, one build per chunk with its own `build-report-mutants-<NNN>.json` and the chunk's
+  `MUTANTS_CHUNK` (12) modules, `MUTANTS_INFLIGHT` (3) chunk builds at a time in the one daemon (T121; they ran one after
+  the other and the RE farm idled while each chunk waited for its slowest module; `--uncached` keeps them one at a
+  time, because the toolchain re-priming around an uncached build reads "the last command"). Memory: 3 x 12 modules is
+  about 12k actions in the daemon at once, a third of the 42k-action single build that died and three times one chunk;
+  `MUTANTS_INFLIGHT` is the knob to lower. Each chunk counts its own actions from its own `--event-log`, and the
+  outcome is assembled in chunk order, so it never depends on who finishes first. One build per chunk with its own `build-report-mutants-<NNN>.json` and the chunk's
   `[perf]` outputs (T115; one build of about 112 modules died of an h2 `BrokenPipe` and failed every pending target).
   The daemon stays up between chunks (its cache is warm) and is killed at the end. A chunk whose build exits non-zero,
   leaves a target without SUCCESS and whose stderr matches `grade_build.transport_failure` (`h2 protocol error`,
@@ -210,7 +215,18 @@ so the gate reads the head's results of both modes and builds nothing.
   that still fails gives `mutants-build-failed` for its missing modules only. Report names keep the global module
   index; metadata sums the action counts over every attempt, `exit_code` is the first non-zero chunk exit, and
   `chunks`, `retried` (chunk indexes) and `stderr_tail` (last failing chunk) are added. `--no-remote-cache` with
-  `--uncached`. The reports are copied and `rigor mutants` runs in process over
+  `--uncached`.
+  **Stop at the first kill (T121).** A mutant's tests run in a fixed order (the tests of the module's own package, then the
+  others, each sorted by label) and its runs stop at the first test that fails a check; the rest are recorded as skipped
+  (`killed_by`), never as passes (`rigor mutants`: `bad-skip` unless an earlier run of that mutant fails a check). A crash
+  does not stop the runs: the verdict is killed-assert if any test fails a check, so every verdict stays what it was. See
+  `docs/mutate.md`.
+  **Reuse (T121).** Each `mutant_run` is a Buck2 action: for a module whose sources, tests, link deps, operator set,
+  toolchain and gate rules are unchanged its key is the same in every grade, so the RE action cache answers and a repeat
+  grade executes none. The key holds no work dir, time or nonce; the one per-grade thing that was in it, the target
+  name's position (`m<NNN>_`, part of every output path), is gone. The verdict is read from the cached action output; no
+  verdict is stored anywhere else. A module whose link deps changed re-runs (tests link every library the module's
+  tests link). `selftest/mutants_cache.sh` (a step of `selftest/grade.sh`) proves it. The reports are copied and `rigor mutants` runs in process over
   a policy the gate writes. Findings and the per-module summary (`total`, `verdicts`, `operators`, `survivors`)
   are reported with the product's module labels; metadata also has the executed/cached action counts and the
   sha256 of the generated `BUCK`.
