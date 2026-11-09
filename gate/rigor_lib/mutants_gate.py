@@ -18,7 +18,7 @@ can reach; info in L2),
 crash-only-function / no-assert-kill-function (L3 function whose mutants no check failure ever
 killed), crash-kill-ratio (L3 and up, info in L2: a function with at least MIN_KILLS killed mutants more
 than CRASH_RATIO_NUM/CRASH_RATIO_DEN of which were killed by a crash and not by a failed check: the tests
-mostly check "does not crash"), baseline-red, harness-mismatch, missing-run, bad-results, module-not-in-policy,
+mostly check "does not crash"), baseline-red, harness-mismatch, missing-run, bad-results, bad-skip, module-not-in-policy,
 policy-module-without-report, no-reports. Survivors of L2 modules are info findings.
 
 Perf kills (T090): a module table of the policy may carry `[module."label".perf."//x:y_perf"] class = "O(n)"`; the
