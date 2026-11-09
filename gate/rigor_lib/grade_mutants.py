@@ -163,6 +163,12 @@ def read_layout(run):
     attributes = jsonio.strict_loads(query(
         ["kind('^(cxx_library|cxx_binary|cxx_test|mutsrc)$', //...)"] + attribute + ["^(deps|exported_deps)$"]).encode("utf-8"))
     binaries = [line.strip() for line in query(["kind(cxx_binary, //...)"]).splitlines() if line.strip()]
+    # The libFuzzer binary behind a `c_fuzz` (`<name>__bin`) is the fuzz target's, not a module: no level, no mutants.
+    fuzz = jsonio.strict_loads(query(["kind(fuzz_run, //...)"] + attribute + ["^binary$"]).encode("utf-8"))
+    if not isinstance(fuzz, dict) or not all(isinstance(entry, dict) for entry in fuzz.values()):
+        raise InternalError("odd query output from buck2")
+    behind_fuzz = {entry.get("binary") for entry in fuzz.values()}
+    binaries = [label for label in binaries if label not in behind_fuzz]
     if not isinstance(attributes, dict):
         raise InternalError("odd query output from buck2")
     return parse_layout(results, add_external(attributes, libraries), binaries)

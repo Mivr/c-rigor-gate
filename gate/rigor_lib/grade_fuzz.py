@@ -57,13 +57,14 @@ def build_targets(g, labels):
     rule as the mutants build). Returns (results, exit code, stderr, executed, cached)."""
     report = os.path.join(g.work, "build-report-fuzz.json")
     flags = ["--no-remote-cache"] if g.args.uncached else []
+    wanted = ["%s[%s]" % (label, name) for label in labels for name in OUTPUTS]   # the report lists them per target
     executed = cached = 0
     retried = False
     while True:
         if os.path.lexists(report):
             os.unlink(report)
         code, _, err = grade_build.run_buck(g.tree, ["build", "--target-platforms", PLATFORM, "--keep-going",
-                                                     "--build-report", report] + flags + labels)
+                                                     "--build-report", report] + flags + wanted)
         done_executed, done_cached = grade_build.action_counts(g.tree)
         executed, cached = executed + done_executed, cached + done_cached
         results = grade_build.read_report(report) or {}

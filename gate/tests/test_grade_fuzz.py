@@ -7,7 +7,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import grade_fuzz, grade_pipeline, verdict
+from rigor_lib import grade_fuzz, grade_mutants, grade_pipeline, verdict
 from rigor_lib.errors import InternalError
 from tests import test_fuzz_gate_helpers as h
 from tests.helpers import GATE_DIR, TempDirTestCase
@@ -108,6 +108,30 @@ class Step(TempDirTestCase):
                 mock.patch.object(grade_fuzz.grade_checks, "build_facts", return_value="query failed"), \
                 mock.patch.object(grade_fuzz.grade_context, "kill_daemon"):
             self.assertIsNone(grade_fuzz.fuzz_gate_step(self.grading(self.POLICY_FUZZ)))
+
+
+class MutantsLayout(unittest.TestCase):
+    """The libFuzzer binary of a `c_fuzz` is no module for the mutants gate (no `level-missing`); a product binary is."""
+
+    def layout(self):
+        def fake_buck(tree, args):
+            query = args[1]
+            if query.startswith("kind(ctest_results"):
+                return 0, "{}", ""
+            if query.startswith("kind('^(cxx_library"):
+                return 0, json.dumps({"root//p:fz__bin": {"deps": []}, "root//p:tool": {"deps": []}}), ""
+            if query == "kind(cxx_binary, //...)":
+                return 0, "root//p:fz__bin\nroot//p:tool\n", ""
+            if query == "kind(fuzz_run, //...)":
+                self.assertEqual(args[2:], ["--output-format", "json", "--output-attribute", "^binary$"])
+                return 0, json.dumps({"root//p:fz": {"binary": "root//p:fz__bin"}}), ""
+            raise AssertionError(args)
+        run = SimpleNamespace(tree="t")
+        with mock.patch.object(grade_mutants.grade_build, "run_buck", side_effect=fake_buck):
+            return grade_mutants.read_layout(run)
+
+    def test_the_fuzz_binary_is_left_out_and_another_binary_stays(self):
+        self.assertEqual(self.layout().binaries, frozenset({"//p:tool"}))
 
 
 class Retry(TempDirTestCase):
