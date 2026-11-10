@@ -1,0 +1,10 @@
+{
+  "bypass": "an empty threads declaration",
+  "description": "T138: a c_test declared threads = True whose own objects reference neither pthread_create nor thrd_create. PENDING: `buckfiles` does not accept `threads` on c_test yet (gate/rigor_lib/buckfiles.py is outside T138's paths), so today `buckfiles` is red as well; when it accepts the keyword the expectation below is exact.",
+  "pending": "T138-buckfiles",
+  "fail": {
+    "symbols": [
+      "threads-vacuous"
+    ]
+  }
+}
