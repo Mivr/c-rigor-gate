@@ -29,8 +29,8 @@ def unit_findings(facts, unit, module, policy):
     for name, file, line in unit.line_directives:
         found.append(finding("line-directive", name=name, file=file, line=line, **where))
     for name, file, line in unit.identifiers:
-        if facts_rt.is_gate_trap(facts, name, file):
-            continue    # the trap inside gate//rt:require's header (T128), not the product's
+        if facts_rt.is_gate_trap(facts, name, file, (name, file, line) in unit.gate_identifiers):
+            continue    # the trap inside gate//rt:require's header (T128/T131), not the product's
         rule = identifier_rule(name, module, policy)
         if rule is not None:
             found.append(finding(rule, name=name, file=file, line=line, **where))
@@ -46,6 +46,8 @@ def identifier_rule(name, module, policy):
     rule = semantic_table.FORBIDDEN_IDENTIFIERS.get(name)
     if rule is not None:
         return rule
+    if facts_rt.is_reserved_use(name):
+        return "reserved-identifier"
     if name.startswith(semantic_table.MACRO_DIRECTIVES):
         return None if semantic_table.macro_allowed(name) else "reserved-macro"
     if name.startswith(semantic_table.BLOCK_INCLUDE):

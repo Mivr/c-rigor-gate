@@ -103,6 +103,10 @@ selftests = ["grade"]
 [[rule]]
 glob = "gate/signer_roles.toml"
 selftests = ["grade", "canaries"]
+# T131: the guard judge reads facts, structure facts and policy only; its selftest is the require one.
+[[rule]]
+glob = "gate/rigor_lib/guards_gate.py"
+selftests = ["require"]
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"

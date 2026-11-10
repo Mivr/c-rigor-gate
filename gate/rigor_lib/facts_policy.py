@@ -42,6 +42,7 @@ class Module:
     exports: frozenset = None   # None: no `exports` key
     allow_mutable_data: bool = False    # may define writable static data, local or external (T089)
     system_libs: frozenset = frozenset()    # the system libraries the module must declare, exactly (T095)
+    guards: int = 0         # how many of the module's `rigor_require` guards no public call can make false (T131)
 
 
 @dataclass(frozen=True)
@@ -65,10 +66,18 @@ def _only(where, table, allowed):
         raise InternalError("policy: %s may only contain %s" % (where, sorted(allowed)))
 
 
+def declared_guards(label, table):
+    """`guards = N` of a module table (T131): a non-negative integer; absent means 0. Anything else is exit 2."""
+    value = table.get("guards", 0)
+    if type(value) is not int or value < 0:
+        raise InternalError("policy: module %s: guards must be a non-negative integer" % label)
+    return value
+
+
 def _module(label, table, deny):
     where = "module %s" % label
     _only(where, table, ("allow", "deny_exempt", "allow_builtins", "third_party", "level", "exports", "impl",
-                           "allow_mutable_data", "perf", "system_libs", "profile", "fuzz", "fuzz_runs"))
+                           "allow_mutable_data", "perf", "system_libs", "profile", "fuzz", "fuzz_runs", "guards"))
     perf_policy.parse_module(label, table)
     mutable_data = table.get("allow_mutable_data", False)
     if type(mutable_data) is not bool:
@@ -89,7 +98,7 @@ def _module(label, table, deny):
     if not system_libs <= set(SYSTEM_LIBS):
         raise InternalError("policy: %s system_libs may only name %s" % (label, list(SYSTEM_LIBS)))
     return Module(_names(where + " allow", table.get("allow", [])), exempt, builtins, third, level, exports,
-                  mutable_data, system_libs)
+                  mutable_data, system_libs, declared_guards(label, table))
 
 
 def load_policy(path):

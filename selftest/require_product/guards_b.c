@@ -1,0 +1,130 @@
+#include "rt/require.h"
+
+/* Guard density module guards_b: 2 guards in 130 lines. */
+
+int guards_b_get0(int value) {
+    rigor_require(value >= 0);
+    return value + 0;
+}
+
+int guards_b_get1(int value) {
+    rigor_require(value >= 0);
+    return value + 1;
+}
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */
+/* padding */

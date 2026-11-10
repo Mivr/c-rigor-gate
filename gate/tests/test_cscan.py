@@ -32,7 +32,7 @@ class ScanCase(TempDirTestCase):
 
     def test_clean_text_has_no_facts(self):
         result = scan(mark("a.c") + "int f(void) { return 1; }\n")
-        self.assertEqual(result, {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": []})
+        self.assertEqual(result, {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": [], "guards": []})
 
     def test_pragma_line_with_location(self):
         result = scan(mark("a.c") + "int x;\n#pragma clang diagnostic ignored \"-Wall\"\n")
@@ -47,7 +47,7 @@ class ScanCase(TempDirTestCase):
 
     def test_definitions_are_not_expansions(self):
         text = mark("a.c") + '#define A(x) __attribute__((x))\n#define ASM __asm__\n#undef ASM\n'
-        self.assertEqual(scan(text), {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": []})
+        self.assertEqual(scan(text), {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": [], "guards": []})
 
     def test_attribute_names_inside_gnu_lists(self):
         text = mark("a.c") + "__attribute__((optnone)) int f(void);\n"
@@ -93,7 +93,7 @@ class ScanCase(TempDirTestCase):
         text = (mark("a.c") + mark(ROOT + "/stdio.h", 1, " 1 3") + "extern int f(void) __asm__(\"g\");\n"
                 + "#pragma GCC system_header\n__attribute__((weak)) int h;\n" + mark("a.c", 5, " 2")
                 + "int x;\n")
-        self.assertEqual(scan(text), {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": []})
+        self.assertEqual(scan(text), {"pragmas": [], "attributes": [], "identifiers": [], "line_directives": [], "guards": []})
 
     def test_system_flag_alone_does_not_hide_text(self):
         # A product header that says `#pragma GCC system_header` is flagged 3 by the compiler,
@@ -114,7 +114,7 @@ class ScanCase(TempDirTestCase):
         text = (mark("a.c") + mark(LVGL_H, 1, " 1") + "#define _LV_CONCAT(a, b) a##b\n#define __LV_X_H__\n"
                 + "extern int f(void) __asm__(\"g\");\n" + mark("a.c", 2, " 2") + "int x;\n")
         self.assertEqual(scan(text, vendor=[VENDOR]), {"pragmas": [], "attributes": [], "identifiers": [],
-                                                       "line_directives": []})
+                                                       "line_directives": [], "guards": []})
 
     def test_without_a_marker_or_in_a_product_dir_of_that_name_the_text_is_scanned(self):
         text = mark(LVGL_H) + "#define _LV_CONCAT(a, b) a##b\n"

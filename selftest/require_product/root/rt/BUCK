@@ -1,0 +1,12 @@
+load("@gate//rules:c.bzl", "c_library")
+
+# T131 red case: a product package whose path ends in the gate's own (`root/rt`, the gate being the root cell in
+# this selftest) with a library named `require`: its header tree has the same directory names as the gate's, but
+# not at the place right after the output kind. The label is the scratch package's (selftest/require.sh copies
+# selftest/require_product there).
+c_library(
+    name = "require",
+    srcs = ["spoof.c"],
+    headers = ["spoof.h"],
+    visibility = ["PUBLIC"],
+)

@@ -8,6 +8,10 @@
 #  * gates: `rigor buckfiles`, `rigor facts` (semantic-suppressions and symbols) and `rigor structure` accept the
 #    dependency with no allow_builtins and no policy entry; another `gate//` dependency fails as before, and so does a
 #    product that calls __builtin_trap itself;
+#  * T131: the trap in a product's own header is not the gate's (`forbidden-builtin`) although the target depends on the
+#    gate's library; `rigor_require` is reserved (`#define`, `#undef`, a function of that name, its address:
+#    `reserved-identifier`); `rigor guards` counts the call sites and judges the declared budget (within the density
+#    cap passes; over the sites and over the cap fail);
 #  * mutation: the guard's mutants exist and the CHECK_TRAPS tests kill them (the boundary one included); the same
 #    module tested without CHECK_TRAPS leaves them as survivors;
 #  * everything twice, the second time from sources stamped with a nonce so that nothing comes from the cache, and the
@@ -127,6 +131,21 @@ def bad(path, mode):
             or rows["bad/trap_outside"]["asserts"] != 0:
         print("  wrong check counts: %s" % {k: v["asserts"] for k, v in rows.items()}); sys.exit(1)
 
+def gpolicy(dest, a, b):
+    open(dest, "w").write("".join('[module."%s%s"]\nguards = %s\n\n' % (PKG, n, v) for n, v in (("guards_a", a), ("guards_b", b))))
+
+def gcheck(result, *expected):
+    """the errors of `rigor guards` are exactly EXPECTED (`rule:module`), and the info rows carry the counts"""
+    doc = json.load(open(result))
+    got = sorted(f["rule"] + ":" + f["module"].split(":")[-1] for f in doc["findings"] if f["severity"] == "error")
+    if got != sorted(expected):
+        print("  wanted %s\n  got    %s" % (sorted(expected), got)); sys.exit(1)
+    info = {f["module"].split(":")[-1]: (f["sites"], f["cap"]) for f in doc["findings"] if f["rule"] == "guards"}
+    if info != {"guards_a": (6, 3), "guards_b": (2, 3)}:
+        print("  unexpected info rows %s" % info); sys.exit(1)
+    if (doc["status"] == "PASS") != (not expected):
+        print("  status %s does not match the findings" % doc["status"]); sys.exit(1)
+
 def sort_lines(src, dest):
     open(dest, "w").write("".join(sorted(open(src).readlines())))
 
@@ -166,7 +185,7 @@ def same_meta(a, b):
         print("  mutation results differ between the rounds"); sys.exit(1)
 
 COMMANDS = {"collect": collect, "collect_modes": collect_modes, "mkfd": mkfd, "policy": policy, "levels": levels, "check": check, "good": good,
-            "bad": bad, "sort": sort_lines, "mutants": mutants, "boundary": boundary, "same_meta": same_meta}
+            "bad": bad, "gpolicy": gpolicy, "gcheck": gcheck, "sort": sort_lines, "mutants": mutants, "boundary": boundary, "same_meta": same_meta}
 COMMANDS[sys.argv[1]](*sys.argv[2:])
 PY
 tool() { "${PY[@]}" "$out/tool.py" "$@"; }
@@ -214,6 +233,8 @@ round() {
   done
   # facts, structure, libc list
   run "$d/facts_release.log" build "$pkg:table_facts" "$pkg:table_bin_facts" "$pkg:table_test_facts" "$pkg:own_trap_facts" "$pkg:bad_dep_facts" \
+    "$pkg:own_header_facts" "$pkg:reserved_define_facts" "$pkg:reserved_decl_facts" "$pkg:reserved_addr_facts" \
+    "$pkg:spoof_user_facts" "$pkg:guards_a_facts" "$pkg:guards_b_facts" "$pkg:guards_a_s" "$pkg:guards_b_s" \
     "$pkg:table_facts[calls]" "$pkg:table_bin_facts[calls]" "$pkg:table_test_facts[calls]" \
     //ctest:ctest_facts //rt:require_facts "$pkg:table_s" "$pkg:table_bin_s" toolchains//:libc_symbols --show-output \
     || fail "$CUR: facts (release, round $n) did not build" "$d/facts_release.log"
@@ -276,6 +297,22 @@ check_gates() {
       gate_case "$d" "bad_$mode" symbols 1 "$d/bad.toml" "$d/fd_bad_$mode" -- "missing-dep-facts://ctest:perf"
     fi
   done
+  # T131 (release facts; the scanner is the same in san): the gate-cell binding and the reserved name
+  tool policy "$d/own.toml" own_header
+  tool policy "$d/rdef.toml" reserved_define
+  tool policy "$d/rdecl.toml" reserved_decl
+  tool policy "$d/raddr.toml" reserved_addr
+  tool policy "$d/spoof.toml" spoof_user
+  tool mkfd "$d/facts_release" "$d/fd_spoof" spoof_user ctest require
+  gate_case "$d" spoof_user semantic-suppressions 1 "$d/spoof.toml" "$d/fd_spoof" -- "reserved-identifier:#define rigor_require"
+  tool mkfd "$d/facts_release" "$d/fd_own" own_header ctest require
+  tool mkfd "$d/facts_release" "$d/fd_rdef" reserved_define ctest require
+  tool mkfd "$d/facts_release" "$d/fd_rdecl" reserved_decl ctest require
+  tool mkfd "$d/facts_release" "$d/fd_raddr" reserved_addr ctest require
+  gate_case "$d" own_header semantic-suppressions 1 "$d/own.toml" "$d/fd_own" -- "forbidden-builtin:__builtin_trap"
+  gate_case "$d" reserved_define semantic-suppressions 1 "$d/rdef.toml" "$d/fd_rdef" -- "reserved-identifier:#define rigor_require" "reserved-identifier:#undef rigor_require"
+  gate_case "$d" reserved_decl semantic-suppressions 1 "$d/rdecl.toml" "$d/fd_rdecl" -- "reserved-identifier:rigor_require" "reserved-identifier:rigor_require"
+  gate_case "$d" reserved_addr semantic-suppressions 1 "$d/raddr.toml" "$d/fd_raddr" -- "reserved-identifier:rigor_require"
   "${RIGOR[@]}" facts --modes "$d/mrel" "$d/msan" --out "$d/modes.json" > "$d/modes.txt" 2>&1 || fail "$CUR: mode-divergence" "$d/modes.txt"
   tool check "$d/modes.json" || fail "$CUR: mode-divergence findings"
   echo "  mode-divergence: PASS (the guard is the same code in release and san)"
@@ -284,9 +321,34 @@ check_gates() {
 check_structure() {
   local d="$out/r$1"
   tool levels "$d/st.toml" table table_bin
-  "${RIGOR[@]}" structure --facts "$d/st" --policy "$d/st.toml" --out "$d/structure.json" > "$d/structure.txt" 2>&1 || fail "$CUR: structure failed" "$d/structure.txt"
+  tool mkfd "$d/st" "$d/st_t" table table_bin
+  "${RIGOR[@]}" structure --facts "$d/st_t" --policy "$d/st.toml" --out "$d/structure.json" > "$d/structure.txt" 2>&1 || fail "$CUR: structure failed" "$d/structure.txt"
   tool check "$d/structure.json" || fail "$CUR: structure findings"
   echo "  structure: PASS (the guard's function in the gate's header is not the product's)"
+}
+
+# guards_case <name> <want-exit> <a> <b> -- <expected error>...: `rigor guards` on guards_a (6 sites, 130 lines, cap 3) and
+# guards_b (2 sites, 130 lines, cap 3) with the budgets A and B
+guards_case() {
+  local d="$out/r$CURRENT" name="$1" want="$2" a="$3" b="$4" rc; shift 4
+  [ "${1:-}" = "--" ] && shift
+  tool gpolicy "$d/g_$name.toml" "$a" "$b"
+  "${RIGOR[@]}" guards --facts "$d/fd_g" --structure "$d/st_g" --policy "$d/g_$name.toml" --out "$d/guards_$name.json" > "$d/guards_$name.txt" 2>&1
+  rc=$?
+  [ "$rc" = "$want" ] || fail "$CUR: guards/$name exited $rc, wanted $want" "$d/guards_$name.txt"
+  tool gcheck "$d/guards_$name.json" "$@" || fail "$CUR: guards/$name findings differ" "$d/guards_$name.txt"
+  echo "  guards/$name (a=$a, b=$b) -> exit $rc ${*:-}"
+}
+
+check_guards() {
+  local d="$out/r$1"
+  CURRENT="$1"
+  tool mkfd "$d/facts_release" "$d/fd_g" guards_a guards_b
+  tool mkfd "$d/st" "$d/st_g" guards_a guards_b
+  guards_case within 0 3 2 --
+  guards_case none 0 0 0 --
+  guards_case over_cap 1 4 0 -- guard-budget-over-cap:guards_a
+  guards_case over_sites 1 0 3 -- guard-budget-over-sites:guards_b
 }
 
 check_mutants() {
@@ -318,6 +380,9 @@ check_gates 1
 begin "rigor structure on the product"
 check_structure 1
 
+begin "rigor guards: call sites, the declared budget within the cap, over the sites, over the cap"
+check_guards 1
+
 begin "mutation: the guard's mutants and the CHECK_TRAPS tests"
 check_mutants 1
 
@@ -345,6 +410,7 @@ round 2
 check_results 2
 check_gates 2
 check_structure 2
+check_guards 2
 check_mutants 2
 for mode in release san; do
   for t in table_test table_bad; do
