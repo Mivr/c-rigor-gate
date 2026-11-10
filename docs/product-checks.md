@@ -209,7 +209,7 @@ Products with a static-memory rule (`Mivr/business-apps`) need to see state that
   (library modules with no writable data, so green on the real toolchain) and `ram-over-budget` (its module has
   `allow_mutable_data = true` and only the budget fails) cover both sides.
 
-## Modes: `<name>_facts_san` and `rigor facts --modes` (T023)
+## Modes: `<name>_facts_san`, `_facts_msan`, `_facts_tsan` and `rigor facts --modes` (T023, T138)
 The semantic scan reads the **release** compile, but the `san` tests run the `san` compile. Code that exists in
 one of them only (`#if __has_feature(address_sanitizer)`, `__has_feature(undefined_behavior_sanitizer)`, a macro
 from a product header that tests either) is invisible to a release-only scan. So every `c_library`, `c_binary`,
@@ -220,7 +220,17 @@ sub-target, `calls.json`: the functions the preprocessed text calls, per unit (`
 an identifier followed by `(` in product text, keywords excluded; a declaration counts, so a function that exists
 in one mode only is found).
 
-`rigor facts --modes RELEASE_DIR SAN_DIR [--out F]` (gate `mode-divergence`). Each directory holds, per target,
+T138: every one of those targets also has a `<name>_facts_msan` (`c_msan_facts`, `toolchains//:msan`) and a
+`<name>_facts_tsan` (`c_tsan_facts`, `toolchains//:tsan`), the same rule and scanner on the compile of that mode, so code under
+`__has_feature(memory_sanitizer)`, `__has_feature(thread_sanitizer)` or `__SANITIZE_*__` is compared exactly like the san
+facts. The gate compares release with each mode in turn (`only_in` is `release`, `san`, `msan` or `tsan`). The comparison is on
+the preprocessed text of each mode, so a product macro that wraps `__has_feature` (canaries `mode-divergent`,
+`msan-guarded-code`) is seen in every mode: the macro is already expanded. A target whose link closure has a sysroot library
+beyond libc and pthread has no msan twin and is left out of the msan comparison. What is still not seen: a difference that
+changes no watched item (a different constant in one branch, no call, pragma, attribute or reserved identifier in it).
+
+`rigor facts --modes RELEASE_DIR SAN_DIR [--out F]` (gate `mode-divergence`; the CLI compares two directories, `facts_modes.run`
+takes the name of the second mode as `mode_name`, default `san`). Each directory holds, per target,
 `<name>.json` (the facts file) and `<name>.calls.json`. For every unit, each semantic item present in one
 mode and not in the other is a finding `mode-divergent-code` with `target`, `unit`, `only_in` (`release`|`san`),
 `item_kind` (`pragma`, `attribute`, `line-directive`, `identifier` (asm, builtins, `#define`/`#undef` of reserved
@@ -245,7 +255,6 @@ What this toolchain does and does not make differ (measured): `__has_feature(add
 clang 19 does not define under `-fsanitize=address`, so code under it is dead in both modes (not a divergence).
 `NDEBUG` is defined in neither mode and both modes optimise (`__OPTIMIZE__` is defined at `-O1` and `-O2`), so
 code under `#ifndef NDEBUG` or `#ifdef __OPTIMIZE__` is the same text in both (and visible to the release scan).
-Wiring into `rigor grade` is a later task.
 
 ### `gate//rt:require` (T128)
 The one gate library besides `ctest` and the third-party libraries that a product `c_library`, `c_binary` or `c_test`

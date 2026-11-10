@@ -28,7 +28,7 @@ path shows within days. `--uncached ID` overrides.
 | `stub-is-the-answer` | `tests-stub` | role test-author: a new test that fails on the stub of `core_zero` | `core_zero` is specified to return 0, so the only correct body is the stub; whatever the test asserts, it passes on the stub |
 | `witness-disagrees` | `witness-tests` | the head's expected test `core/neg` must pass on the gate-held witness | the head is correct (`-v`), the witness returns `1 - v`; the witness is gate-owned and the contributor cannot change it, so the test cannot pass against it |
 | `witness-equivalent-mutant` | `mutants-witness` | every mutant of the witness must die under the head's tests | the witness spells `v + 1 + 0`; the last `+` to `-` is equivalent; the head has no such code, so no test of the head can kill it |
-| `unproducible-test-id` | `tests-release`, `tests-san` | the expected list names `core/Add` | ctest accepts only `[a-z0-9_]+` names, so no product can emit an id with a capital; both modes must report `missing-test` (one tripwire for both gates: each is judged exactly, so a blind one changes the failing set) |
+| `unproducible-test-id` | `tests-release`, `tests-san`, `tests-msan` | the expected list names `core/Add` | ctest accepts only `[a-z0-9_]+` names, so no product can emit an id with a capital; the three modes must report `missing-test` (one tripwire for the three gates: each is judged exactly, so a blind one changes the failing set) |
 
 ### Gates without a tripwire
 The other gates of `gate/order.txt` judge the shape of the diff or the build, and everything they reject can be avoided
