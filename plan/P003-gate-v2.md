@@ -539,10 +539,10 @@ then their mutants stay informational exactly as at L2 today, so no module is ev
 | W1 engine measurement | T124 | Done: **no-go** (§5.6); prototype on `park/T124-schema-engine` |
 | W2 engine v2 | — | Cancelled by W1 |
 | W3 profiles and floors | T127 | Merged: library and `rigor policy-check`; **not yet a gate**, no product policy migrated |
-| W3b trust | T132 | Merged: signer roles, ledger, debt cap, tighten-only switch as an opt-in library; **nothing wired**: `orchestrator` still signs every kind |
+| W3b trust | T132 | Merged: signer roles, ledger, debt cap, tighten-only switch as an opt-in library; **nothing wired**: `orchestrator` still signs every kind. Wiring: T140, specified; lane stopped by the weekly limit before any change |
 | W4 guards | T128, T131 | Merged: `gate//rt:require`, `CHECK_TRAPS`, cell-bound trap allowance, reserved name, guard facts, `rigor guards`; **not a gate**, declared guards are not yet exempt from mutation, nothing checks a guard was executed |
-| W5 sanitizer modes | T125 | Merged: `msan` and `tsan` modes, proven on the farm (0 of 30 start failures each). Farm prerequisite: the workers' seccomp profile allows `personality(ADDR_NO_RANDOMIZE)` (applied by the owner). Gates: T138, in flight |
-| W5 hardened release | — | Not started |
+| W5 sanitizer modes | T125, T138 | Merged: `msan` and `tsan` modes, proven on the farm (0 of 30 start failures each), and the gates `tests-msan` and `tests-tsan` in every grade, with the thread-declaration rules in `symbols` and msan/tsan facts in `mode-divergence`. Farm prerequisite: the workers' seccomp profile allows `personality(ADDR_NO_RANDOMIZE)` (applied by the owner) |
+| W5 hardened release | T139 | Specified; lane stopped by the weekly limit before any change |
 | W6 fuzz | T126, T129, T135 | Merged: the `fuzz` gate runs in every grade; products can carry a corpus and a budget; regression list bound into the verdict. Nothing writes the regression list yet; no nightly campaign |
 | W7 `c_proof` | — | Not started |
 | W8 simulation, oracle replay | — | Not started (needs business-apps and club-apps tasks) |
