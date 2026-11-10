@@ -40,7 +40,7 @@ def load_document(path):
     return _load(path)
 
 
-def _module_tables(document):
+def module_tables(document):
     modules = document.get("module", {})
     if not isinstance(modules, dict) or not all(isinstance(t, dict) for t in modules.values()):
         raise InternalError("policy: [module] must be a table of tables")
@@ -50,7 +50,7 @@ def _module_tables(document):
 def load_levels(path):
     """label -> level for every module table that has one."""
     levels = {}
-    for label, table in _module_tables(_load(path)).items():
+    for label, table in module_tables(_load(path)).items():
         if "level" in table:
             if table["level"] not in LEVELS:
                 raise InternalError("policy: module %s: level must be one of %s" % (label, ", ".join(LEVELS)))

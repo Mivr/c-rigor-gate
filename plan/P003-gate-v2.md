@@ -532,6 +532,30 @@ W1, W3, W5, W6 and W11 can start at once and touch different files.
 `adapter` after W5, W6 and the fault-sweep check; `concurrent` after W5; `wiring` and `ui` after W8 and W9. Until
 then their mutants stay informational exactly as at L2 today, so no module is ever checked by less than v1.
 
+### 13.1 Implementation status (2026-11-10)
+
+| Package | Task | State |
+|---|---|---|
+| W1 engine measurement | T124 | Done: **no-go** (§5.6); prototype on `park/T124-schema-engine` |
+| W2 engine v2 | — | Cancelled by W1 |
+| W3 profiles and floors | T127 | Merged: library and `rigor policy-check`; **not yet a gate**, no product policy migrated |
+| W3b trust | T132 | Merged: signer roles, ledger, debt cap, tighten-only switch as an opt-in library; **nothing wired**: `orchestrator` still signs every kind |
+| W4 guards | T128, T131 | Merged: `gate//rt:require`, `CHECK_TRAPS`, cell-bound trap allowance, reserved name, guard facts, `rigor guards`; **not a gate**, declared guards are not yet exempt from mutation, nothing checks a guard was executed |
+| W5 sanitizer modes | T125 | Merged: `msan` and `tsan` modes, proven on the farm (0 of 30 start failures each). Farm prerequisite: the workers' seccomp profile allows `personality(ADDR_NO_RANDOMIZE)` (applied by the owner). Gates: T138, in flight |
+| W5 hardened release | — | Not started |
+| W6 fuzz | T126, T129, T135 | Merged: the `fuzz` gate runs in every grade; products can carry a corpus and a budget; regression list bound into the verdict. Nothing writes the regression list yet; no nightly campaign |
+| W7 `c_proof` | — | Not started |
+| W8 simulation, oracle replay | — | Not started (needs business-apps and club-apps tasks) |
+| W9 UI fit, limits, alloc trap | — | Not started |
+| W10 tiers | T137 | Merged: `--tier merge|nightly`, report-only mutation deferred at merge, tier bound into the verdict. The nightly grader on a read-only cache (G21) is a farm change and not started |
+| W11 sandbox | — | Not started |
+| Found on the way | T130, T136 | Merged: perf counts drift on one CPU model; bound derived from 200 runs; counts out of findings (B35) |
+| Found on the way | T133 | Merged: a product directory could pass as gate third-party code and hide suppressions from the semantic scan; path decisions anchored, canary `vendor-path-spoof` |
+
+Two expectations of this document were wrong and were corrected by measurement: the mutation engine (§5.6) and, in
+the perf work, the cause of the count differences (twice). No product has been regraded under any of the new gates:
+`business-apps` pins an older gate commit.
+
 ## 14. Measurement plan
 
 1. **Cost.** Re-run `timeline.py` now (the 49% predates T121–T123), and again after W10, on comparable tasks. Target [P]: mutation plus waiting under

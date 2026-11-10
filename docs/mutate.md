@@ -333,6 +333,16 @@ leaves the map correct and makes every operation O(n). The module's complexity i
 | `survived` | every test passed |
 | `unrun` | a live mutant has no usable run (a `missing-run`, `bad-results` or `bad-skip` finding says why) |
 
+## Deferred modules at tier `merge` (T137)
+`rigor grade --tier merge` does not build or run the mutants of a module whose mutation can only report: level L2 without a
+`profile`, or a module with `profile` for which `profiles.required(profiles, level)` does not make `mutation_zero_survivors`
+a `gate` (docs/grade.md, "Grade tiers"). `rigor mutants` itself is unchanged: it judges the reports it is given, with the
+policy it is given, and the grade simply leaves a deferred module out of both. The gate lists the module as info
+`mutation-deferred` (module, level, reason). What a deferred module cannot raise at merge, and only the nightly grade
+(`--tier nightly`, the default) raises: `no-mutants` (an error at every level), `all-unviable`, `mutants-build-failed`, and for a profiled module at
+L3 or above whose profile only reports mutation the survivor, `unviable-ratio` and `unmutated-function` errors. The mutants that exist and how they are judged do not
+depend on the tier.
+
 ## `rigor mutants --results DIR --policy P.toml [--perf-results DIR] [--out F] [--approvals DIR --repo R --head H]`
 `DIR` holds one `report.json` copy (`*.json`) per `c_mutants` target; the policy is
 `[module."//pkg:name"]` with `level = "L2" | "L3" | "L4" | "L5"` for each (L3, L4 and L5 are equally strict;

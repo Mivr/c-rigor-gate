@@ -35,6 +35,7 @@ class Fixture:
         self.buckconfig = "4" * 64
         self.commits = {"head": HEAD, "base": BASE, "merge_base": MERGE_BASE}
         self.gate_sha, self.gate_clean, self.name, self.uncached = GATE, True, "prod", False
+        self.tier = "nightly"
         self.file_hashes = dict(FILE_HASHES)
 
     def grading(self):
@@ -50,7 +51,7 @@ class Fixture:
                     ["gate/tools/buck2.version", jsonio.sha256_hex(version)]]
         documents = {"clone": {"metadata": dict(self.commits)}, "assemble": {"metadata": {"manifest": manifest}}}
         g = SimpleNamespace(tree=self.tree, work=self.root, gate_sha=self.gate_sha, gate_clean=self.gate_clean,
-                            product=SimpleNamespace(name=self.name), args=SimpleNamespace(uncached=self.uncached, approvals=None),
+                            product=SimpleNamespace(name=self.name), args=SimpleNamespace(uncached=self.uncached, approvals=None, tier=self.tier),
                             inputs=dict(self.file_hashes))
         return g, documents
 
@@ -97,6 +98,7 @@ class EveryInputChangesTheHash(TempDirTestCase):
         cases["gate_clean"] = lambda f: setattr(f, "gate_clean", False)
         cases["product"] = lambda f: setattr(f, "name", "other")
         cases["uncached"] = lambda f: setattr(f, "uncached", True)
+        cases["tier"] = lambda f: setattr(f, "tier", "merge")
         cases["buckconfig_sha256"] = lambda f: setattr(f, "buckconfig", "5" * 64)
         cases["llvm_sha256"] = lambda f: setattr(f, "llvm", "6" * 64)
         cases["sysroot_sha256"] = lambda f: setattr(f, "sysroot", "7" * 64)
