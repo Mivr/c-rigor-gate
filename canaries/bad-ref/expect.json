@@ -23,6 +23,7 @@
     "tests-san",
     "tests-stub",
     "perf",
+    "fuzz",
     "mutants",
     "witness-tests",
     "mutants-witness"

@@ -61,6 +61,11 @@ class VendorPathTest(unittest.TestCase):
             self.assertEqual(cscan.vendor_tail(path, [PRODUCT_MARKER]),
                              structure_scan.vendor_tail(path, [PRODUCT_MARKER]), path)
 
+    def test_the_one_path_walk_is_the_same_in_both_scanners(self):
+        for path in (REAL, SPOOF, SPOOF_HEADERS, "/w/" + REAL, "x.h", "buck-out/v2/gen/root/ab/m/a.h", *UNKNOWN):
+            self.assertEqual(cscan.output_tree(path), structure_scan.output_tree(path), path)
+        self.assertEqual(cscan.OUTPUT_KINDS, structure_scan.OUTPUT_KINDS)
+
     def test_a_spoofed_header_text_is_judged_as_the_products(self):
         text = '# 1 "%s" 1\n#pragma clang diagnostic ignored "-Wall"\n__attribute__((no_sanitize("address"))) int f;\n' % SPOOF_HEADERS
         collector = cscan.Collector([], [PRODUCT_MARKER])

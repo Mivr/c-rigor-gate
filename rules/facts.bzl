@@ -17,6 +17,10 @@ def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
     # their materialised tree is `buck-out/<version>/art/<gate cell>/third_party/...`; the scanners match this marker
     # only right after `buck-out/<version>` (T133), never as a fragment deeper in a path.
     vendor = "/art/{}/third_party/".format(ctx.attrs._ctest.label.cell)
+    # The gate's own header tree (`gate//rt:require`, T131): `.../<cell>/<package>/__<name>__/...`. A file read from it is
+    # the gate's, also when the gate is the root cell (the gate's own selftests), where no cell name tells it apart.
+    require = ctx.attrs._require.label
+    gate_marker = "/{}/{}/__{}__/".format(require.cell, require.package, require.name)
     subs = ctx.attrs.unit[DefaultInfo].sub_targets
     every = subs["objects"][DefaultInfo].sub_targets if "objects" in subs else {}
 
@@ -43,6 +47,8 @@ def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
         ctx.attrs._roots[RunInfo],
         "--vendor-marker",
         vendor,
+        "--gate-marker",
+        gate_marker,
         "--out",
         facts.as_output(),
     )
@@ -96,6 +102,7 @@ _ATTRS = {
     "unit": attrs.dep(),
     "_ctest": attrs.dep(default = "gate//ctest:ctest"),
     "_modes_scanner": attrs.source(default = "gate//gate/rigor_lib:facts_modes.py"),
+    "_require": attrs.dep(default = "gate//rt:require"),
     "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
     "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
     "_scanner": attrs.source(default = "gate//gate/rigor_lib:cscan.py"),

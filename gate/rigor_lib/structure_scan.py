@@ -251,31 +251,35 @@ class ScanError(Exception):
     """The scan cannot be trusted; the action fails."""
 
 
-def output_tail(path):
-    """`/<kind>/<cell>/...` of a file the compiler read from Buck2's output tree: what follows the first
-    `buck-out/<version>` of the path (relative, or absolute below the project root). None for any other layout."""
-    norm = os.path.normpath(path)
-    if norm.startswith("buck-out/"):
-        rest = norm[len("buck-out/"):]
-    elif "/buck-out/" in norm:
-        rest = norm.split("/buck-out/", 1)[1]
-    else:
+OUTPUT_KINDS = ("gen", "art")   # Buck2 output layout `buck-out/<version>/<kind>/<cell>/...` (as in cscan.py)
+
+
+def output_tree(path):
+    """(kind, cell, the components after the cell) of `buck-out/<version>/{gen,art}/<cell>/...`, or None when the path
+    does not have that layout (the first `buck-out` is the real one; the output kind stands one or two components
+    after it). The one path walk: every decision "is this the gate's file" starts here."""
+    parts = os.path.normpath(path).split("/")
+    if "buck-out" not in parts:
         return None
-    _, slash, tail = rest.partition("/")
-    return "/" + tail if slash else None
+    rest = parts[parts.index("buck-out") + 1:]
+    for index, part in enumerate(rest[:-2]):
+        if part in OUTPUT_KINDS and 0 < index <= 2:
+            return part, rest[index + 1], rest[index + 2:]
+    return None
 
 
 def vendor_tail(path, markers):
     """The part of `path` after the vendor marker (`mbedtls/ssl.h` for `/art/gate/third_party/`), or None. A file
-    is gate third-party code only when its path is `buck-out/<version>` + marker: right after the output kind. A
+    is gate third-party code only when its output tree starts, right after the version, with the marker. A
     fragment anywhere deeper (a product directory `x/art/gate/third_party/`) is the product's."""
-    tail = output_tail(path)
-    if tail is None:
+    tree = output_tree(path)
+    if tree is None:
         return None
-    tail += "/"
+    kind, cell, tail = tree
+    start = "/" + "/".join((kind, cell) + tuple(tail)) + "/"
     for marker in markers:
-        if tail.startswith(marker):
-            return tail[len(marker):]
+        if start.startswith(marker):
+            return start[len(marker):]
     return None
 
 

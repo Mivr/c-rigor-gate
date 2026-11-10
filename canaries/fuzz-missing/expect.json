@@ -1,0 +1,9 @@
+{
+  "bypass": "a parser module that nobody fuzzes",
+  "description": "the policy gives //parse:parse the parser profile, so a c_fuzz target must list it in deps; the product has the library and no target. Only the fuzz gate sees it.",
+  "fail": {
+    "fuzz": [
+      "fuzz-missing"
+    ]
+  }
+}

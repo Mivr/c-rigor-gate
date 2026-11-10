@@ -64,8 +64,8 @@ def _call_collector(cscan):
             self.pending = None
             self.skip = cscan.KEYWORDS | NOT_CALLS
 
-        def scan_line(self, raw, where, attributes):
-            super().scan_line(raw, where, attributes)
+        def scan_line(self, raw, where, attributes, gate=False):
+            super().scan_line(raw, where, attributes, gate)
             for kind, tok in cscan.tokens(raw):
                 if tok == "(" and self.pending is not None:
                     self.calls.add((self.pending,) + where)
