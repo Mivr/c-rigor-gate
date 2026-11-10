@@ -1,3 +1,13 @@
+# Orchestrator handoff, business-apps lane (2026-11-10)
+
+This file is shared; gate v2 status lives in `plan/P003-gate-v2.md` (another session). The business-apps lane merged
+T118 (guarded atomics), T119/T120 (business-apps config refresh 4 and 5, RAM budgets), T121 (stop at first kill,
+stable mutant names, overlapped chunks), T122 (adaptive run limit), T123 (`tools/mutants` for lanes). Whole-repo grade
+of business-apps now takes about 70 min (was a projected 8 h). Open for business-apps: 16 new test ids (L316) and the
+witness bundle (14 L3 modules without a hidden witness), both held for gate v2. New design: `plan/P004-visual-gate.md`
+(deterministic visual/UI gate; summary `plan/P004-summary.md`, earlier draft `plan/P004-visual-gate-draft.md`); it
+proposes amendments to P003 in its §12 and does not edit P003. Product-side state: business-apps `plan/HANDOFF.md`.
+
 # Orchestrator handoff (2026-11-09)
 
 The previous orchestrator session ran out of budget. State of the gate work:
