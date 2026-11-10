@@ -146,7 +146,7 @@ out = sys.argv[1]
 fixtures = [f.split(":")[0] for f in sys.argv[2:]]
 sys.path.insert(0, "gate")
 from rigor_lib import perf_judge
-# Exact between two cold runs. `instructions` agrees within perf_judge.count_bound (docs/perf.md "Determinism").
+# Exact between two cold runs, except `instructions` (perf_judge.run_differences: docs/perf.md "Determinism").
 DET = ("name", "seed", "n", "status", "counter", "errno", "input_len", "libc_bytes", "result")
 
 def load(c, n):
@@ -167,16 +167,27 @@ for n in fixtures:
         da = {k: ra.get(k) for k in DET}
         db = {k: rb.get(k) for k in DET}
         check(da == db, "%s: counts differ between cold runs: %s vs %s" % (n, da, db))
-        ia, ib = ra.get("instructions"), rb.get("instructions")
-        check((ia is None) == (ib is None) and (ia is None or perf_judge.counts_agree(ia, ib)),
-              "%s: instructions differ beyond the bound between cold runs: %s vs %s" % (n, ia, ib))
+        check((ra.get("instructions") is None) == (rb.get("instructions") is None), "%s: counts present in one run only" % n)
         check("wall_ns_median" in ra or ra["status"] != "ok", "%s: no wall field" % n)
+    # Raw instruction counts are compared only between runs on the same CPU model (within the bound); between models the
+    # class and the ratio between sizes are compared (perf_judge.run_differences, docs/perf.md "Determinism").
+    if all(r.get("instructions") is not None and r.get("counter") == "perf_event_open" for r in a + b):
+        diff = perf_judge.run_differences(a, b)
+        check(not diff, "%s: cold runs on %s and %s do not agree: %s" % (n, a[0].get("cpu"), b[0].get("cpu"), diff))
 
 # The agreement rule itself, on synthetic records: one instruction apart agrees, far apart differs.
 syn = lambda v: {"instructions": v}
 check(perf_judge.counts_agree(syn(342312029)["instructions"], syn(342312028)["instructions"]), "synthetic: one apart must agree")
 check(not perf_judge.counts_agree(342312029, 342312029 * 2), "synthetic: far apart must differ")
 check(not perf_judge.counts_agree(115051, 115051 + perf_judge.count_bound(115051, 115051) + 1), "synthetic: just past the bound must differ")
+
+def run(cpu, i1, i2):
+    return [{"n": 1000, "status": "ok", "counter": "perf_event_open", "instructions": i1, "libc_bytes": 0, "cpu": cpu},
+            {"n": 4000, "status": "ok", "counter": "perf_event_open", "instructions": i2, "libc_bytes": 0, "cpu": cpu}]
+check(not perf_judge.run_differences(run("X", 100000, 400000), run("X", 100000, 400010)), "synthetic: same model, inside the bound")
+check(perf_judge.run_differences(run("X", 100000, 400000), run("X", 100000, 401000)), "synthetic: same model, past the bound")
+check(not perf_judge.run_differences(run("X", 100000, 400000), run("Y", 90000, 370000)), "synthetic: two models, one class")
+check(perf_judge.run_differences(run("X", 100000, 400000), run("Y", 100000, 1600000)), "synthetic: two models, two classes")
 
 def ratio(n, field):
     lo, hi = recs[n]

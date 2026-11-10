@@ -60,7 +60,7 @@ When `status` is not `ok` the record carries `input_len` (and `signal`/`exit_cod
 first page touches add about 1.5e3 instructions) and is never the median; the warm runs differ by a few
 instructions at most (counter skid, see below), so the median is stable. `selftest/perf.sh` builds each fixture twice (two copies whose
 sources differ in a comment, so compile, link and run all re-execute) and requires identical `n`, `input_len`,
-`libc_bytes` and `result`, and `instructions` within the bound below (the nonce is a string constant in each `.c` file, so the
+`libc_bytes` and `result`, and `instructions` by `run_differences` (below) (the nonce is a string constant in each `.c` file, so the
 binary differs and the perf run really executes again). R011 measured identical ratios across 10 actions on two farm workers.
 Counts are from the same binary; a different CPU model or libc build may shift absolute counts by a small
 constant, never the ratio.
@@ -90,14 +90,45 @@ interrupt or the PMU's own skid landing inside the window (a timer tick every fe
 disable edges are not the cause: an empty window (`RESET`, `ENABLE`, `DISABLE`, `read` with nothing between) counted 31
 instructions in each of 7 reps of every run, and the cold first rep adds about 1.5e3 (the median skips it).
 
-Because it cannot be removed, **two runs agree on a count when they differ by at most
-`COUNT_ABS + max(a, b) >> COUNT_REL_SHIFT`** (`perf_judge.count_bound`, 16 plus 2^-20, about 1e-6 of the count:
-16 at 1e5 instructions, 16 + 326 at 3.4e8). That is 4 times the largest measured spread at the high end and 8 times
-the largest at the low end, and far below the 10 % margins of the complexity classes. `perf_judge.counts_agree` is
-used only by the selftest identity check; a verdict never compares two runs. It reads one count per size and judges
-the ratio, so the classes, the limits and every `killed-perf` verdict are unchanged. `libc_bytes`, `result` and
-`input_len` stay exactly equal. Findings carry no counts (see "Findings of the `perf` gate"), so they are
-byte-identical whichever worker ran the action.
+**Across CPU models (T136, B35 reopened).** The selftest still failed now and then (`mmove: instructions differ beyond
+the bound between cold runs: 4927378 vs 4927410`, 32 apart against a bound of 20). The hypothesis was two different CPU
+models. Measured 2026-11-10, 200 uncached executions of every fixture (8 and 24 cold copies per build, 9 builds, all on
+the farm): **every one reported `Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz`; no Zen 4 execution happened, so there is
+no cross-model count and the 32 difference was not between models.** It was the same-model drift, whose tail the T130
+data (a few dozen executions) had not reached. Per CPU model and per fixture (one model, 200 executions each):
+
+| fixture, n | min | median | max | max - min | wall (median) | old bound | new bound |
+|---|---|---|---|---|---|---|---|
+| `lin` 20000 | 115051 | 115051 | 115054 | 3 | 0.0 ms | 16 | 19 |
+| `lin` 80000 | 460051 | 460051 | 460051 | 0 | 0.1 ms | 16 | 30 |
+| `mmove` 10000 | 3596112 | 3596112 | 3596114 | 2 | 0.9 ms | 19 | 125 |
+| `mmove` 40000 | 4927377 | 4927378 | 4927429 | **52** | 16.7 ms | **20** | 166 |
+| `quad` 3000 | 21452986 | 21452986 | 21452988 | 2 | 2.9 ms | 36 | 670 |
+| `quad` 12000 | 342312025 | 342312029 | 342312143 | 118 | 45.8 ms | 342 | 10462 |
+
+Between models (not measured; the rule below does not need the numbers): none.
+
+The spread is a few instructions per timer tick that lands in the window (2 to 3 per wall millisecond at the maximum,
+a heavy tail: for `mmove` 40000 the median deviation is 1, the 99th percentile 46), so it grows with the time of the
+window, not with the count; a window with few instructions and a long time (a libc `memmove` loop) has the largest
+relative spread (1.1e-5). The old bound, 16 + 2^-20 of the count, was 2.6 times too small there. **New bound:
+`COUNT_ABS + max(a, b) >> COUNT_REL_SHIFT` with `COUNT_ABS = 16`, `COUNT_REL_SHIFT = 15`** (`perf_judge.count_bound`:
+16 plus 3.05e-5 of the count). Margin: at least 3 times the largest measured spread in every fixture (`mmove` 40000:
+166 against 52; `lin` 20000: 19 against 3, 6 times), and still 3000 times smaller than the 10 % margin of the complexity
+classes, so it cannot hide a class change. `libc_bytes`, `result` and `input_len` stay exactly equal.
+
+**The rule.** `perf_judge.run_differences(run_a, run_b)` compares two runs of the same measurement:
+- **same `cpu` string**: every `instructions` within `count_bound`, `libc_bytes` equal;
+- **different `cpu` strings** (or a record without `cpu`, which is never the same model): raw counts are not compared.
+  Per counter, the complexity class (the smallest class that allows the count at the last size) must be the same, and
+  the ratio between the first and last size must agree within 1.10, the judge's own margin (`CROSS_MODEL_MARGIN`).
+
+`counts_agree`/`run_differences` are used only by the selftest identity check. A verdict never compares two runs:
+`perf-class-exceeded` and `killed-perf` read the records of one `perf.jsonl` (one action, so one CPU model; `judge_target`,
+`mutants_perf`), one count per size, and judge the ratio. `tests/test_perf_judge.py` (`VerdictPath`) checks that the
+verdict does not depend on the `cpu` field, that targets are judged on their own records, and that no verdict module
+mentions the comparison functions. Nothing in the gate compares raw counts across actions, so no other place needed the
+rule. The findings carry no counts (see "Findings of the `perf` gate"), so they are byte-identical whichever worker ran the action.
 
 ## libc bulk bytes: the wrap list and its limits
 
