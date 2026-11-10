@@ -10,12 +10,14 @@ c_fuzz(
     name = "fz",
     srcs = ["fz_fuzz.c"],
     deps = ["//parser:parse"],          # the module(s) the harness calls, by their public header
-    corpus = glob(["corpus/*"]),        # files of the product; default: none
+    corpus = ["corpus/seed", "corpus/crash-1"],   # files of the product; default: none
     runs = 50000,                       # optional budget in runs; default 200000, maximum 2000000 (rules/fuzz.bzl)
 )
 ```
 
-`corpus` is a list of plain relative file paths of the package (never a label, never `..`). `runs` above the sealed
+`corpus` is a list of plain relative file paths of the package (never a label, never `..`). In a graded product the build file
+is checked by `rigor buckfiles` (T135): `corpus` takes exactly the form `srcs` takes on a `c_fuzz`, a list of string literals (no
+`glob`: list every file), and `runs` is an integer literal; anything else is `bad-argument`. `runs` above the sealed
 maximum, or not an integer, is a loading error. The rule lives in `rules/fuzz.bzl` (`fuzz_run`, the defaults and the
 argument checks); `c_fuzz` in `rules/c.bzl` only forwards.
 
@@ -89,6 +91,25 @@ The reproducer of a crash is committed into the corpus and its sha256 into the g
 corpus then fails the merge with `fuzz-regression-missing`, not silently. Without an entry in `R.json` nothing stops the
 deletion, so the entry is part of the fix.
 
+## A corpus in a graded product (T135)
+
+- **Where it lives.** In the product, in a directory of the `c_fuzz` package (`parse/corpus/<file>`), every file listed in `corpus`.
+  The layout (`product.toml`) must cover the files: a copied `BUCK` that names a file makes it a product file, so a corpus file
+  outside `layout.include` is `ungraded-path` (`product_layout.named_files`, the rule that covers `srcs`). A file that no
+  `BUCK` lists is not read by anything.
+- **A corpus file is data.** It reaches the grading tree like any product file and is replayed by the `fuzz` gate. The other
+  checks: `suppressions` scans the added lines of every file as text (so a corpus input that contains `NOLINT`, `-Wno-`, `#line`
+  and so on is `forbidden-pattern`, coverable by an approval; no exemption was added) and a file name ending in `.o`, `.a`, `.so`,
+  `.profdata` or `.profraw` is `binary-artifact` (name corpus files by hash or by purpose); `structure`, the symbol and
+  semantic facts and the mutation generator only read the `srcs` and `headers` of targets, so a corpus file is invisible to them.
+- **The budget.** `runs` is the product's request; the policy's budget still decides. A target with `runs` below it passes the
+  run and is `fuzz-short` (canary `fuzz-budget-lowered`).
+- **The regression list.** The gate owner appends the sha256 of a crashing input to `fuzz-regressions.json` (beside `policy.toml`)
+  and the product commits the input into the corpus of the target. As long as the file is listed in `corpus`, it is replayed
+  (`replayed` in the gate's metadata); if it is crashing code, the replay stops at it (`fuzz-crash`, phase `replay`, canary
+  `fuzz-regression-crashes`); if it is removed, `fuzz-regression-missing` (canary `fuzz-regression-dropped`). Nothing writes the
+  list automatically yet.
+
 ## Limits
 
 - A fixed seed and a fixed budget (200000 runs by default, a few seconds to a minute) find **shallow bugs only**: what a
@@ -100,8 +121,5 @@ deletion, so the entry is part of the fix.
   meaningful or reachable from the input.
 - Long campaigns on idle farm capacity, a corpus store bound into the verdict by hash, and differential harnesses are a
   later nightly task.
-- A graded product cannot name a `corpus` or `runs` in its `c_fuzz` yet: `buckfiles` accepts only `name`, `srcs`, `headers`, `deps`
-  and `visibility` for the macros. Until it does, a graded target replays no corpus (`fuzz-empty-corpus`, info) and a regression
-  input in `fuzz-regressions.json` can only be reported as `fuzz-regression-missing`.
-- The canaries of this gate are `fuzz-crash`, `fuzz-missing`, `fuzz-vacuous-harness` (`fuzz-harness-no-call`) and
-  `fuzz-regression-dropped`, with the control `fuzz-green` (`docs/canaries.md`).
+- The canaries of this gate are `fuzz-crash`, `fuzz-missing`, `fuzz-vacuous-harness` (`fuzz-harness-no-call`),
+  `fuzz-regression-dropped`, `fuzz-regression-crashes` and `fuzz-budget-lowered`, with the controls `fuzz-green` and `fuzz-corpus-replayed` (`docs/canaries.md`).

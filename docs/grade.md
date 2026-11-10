@@ -61,10 +61,16 @@ passed and the facts to exist, otherwise NOT_RUN; it runs only after `toolchain`
    `cached_actions`, `exit_code`, `required_modules` and per target `runs_done`, `corpus_files`, `replayed`, `phase`.
 6. **Roles.** `test-author`: PASS with info `not-applicable` (the stubs are not fuzzed), as for `mutants`.
 
-A graded product cannot give a `c_fuzz` a corpus or a `runs` yet: `buckfiles` accepts only `name`, `srcs`, `headers`, `deps` and
-`visibility` (`buckfiles.KEYWORDS`), so a graded `c_fuzz` is always run from an empty corpus with the default budget. The canaries
-`fuzz-crash`, `fuzz-missing`, `fuzz-vacuous-harness` and `fuzz-regression-dropped` and the control `fuzz-green` are red or green on
-this gate only; `selftest/grade.sh` grades a product with a clean target (gate PASS) and then the same head again (0 fuzz actions).
+A graded `c_fuzz` may name a `corpus` and a `runs` (T135): `buckfiles` accepts `corpus` (a list of string literals, the form `srcs`
+has on a `c_fuzz`; no `glob`) and `runs` (an integer literal) on `c_fuzz` only. The corpus files are product files: the layout
+must include them (a copied `BUCK` that names one makes it a named file, so outside `layout.include` it is `ungraded-path`, see
+"Layout coverage"), and the replay and the budget run as in `docs/fuzz.md`. The policy's budget still wins: `runs` below it is
+`fuzz-short`. An input that once crashed is committed into the corpus and its sha256 into the gate-owned `fuzz-regressions.json`
+(beside `policy.toml`, bound into `core.inputs.fuzz_regressions_sha256`); the gate's metadata shows it under `replayed`. The
+canaries `fuzz-crash`, `fuzz-missing`, `fuzz-vacuous-harness`, `fuzz-regression-dropped` (the corpus without the input),
+`fuzz-regression-crashes` (replay crash) and `fuzz-budget-lowered` and the controls `fuzz-green` and `fuzz-corpus-replayed` are red
+or green on this gate only; `selftest/grade.sh` grades a product with a clean target (gate PASS), the same head again (0 fuzz actions)
+and the four corpus and budget cases above.
 Because the libFuzzer binary of a `c_fuzz` (`<name>__bin`) is a `cxx_binary`, the mutants gate's layout query leaves out the
 binaries that a `fuzz_run` target names in its `binary` attribute (otherwise it would ask for a `level`).
 
