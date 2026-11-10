@@ -4,8 +4,10 @@ set -eu
 # result. `symbols` follows the link closure of the test and refuses the missing declaration.
 sed -i 's/srcs = \["util.c"\]/srcs = ["util.c"],\n    system_libs = ["pthread"]/' util/BUCK
 sed -i 's/^#endif$/\/* Sums on a second thread. *\/\nint util_sum_async(const int *values, size_t count);\n\n#endif/' util/util.h
-sed -i 's/^#include <stdlib.h>$/#include <pthread.h>\n#include <stdlib.h>/' util/util.c
-cat >> util/util.c <<'CODE'
+cat > util/util_async.c <<'CODE'
+#include <pthread.h>
+
+#include "util.h"
 
 typedef struct {
     const int *values;
@@ -31,6 +33,7 @@ int util_sum_async(const int *values, size_t count) {
     return job.total;
 }
 CODE
+sed -i 's/srcs = \["util.c"\],/srcs = ["util.c", "util_async.c"],/' util/BUCK
 cat >> util/BUCK <<'BUILD'
 
 c_test(name = "thread_test", srcs = ["thread_test.c"], deps = [":util"])
@@ -46,4 +49,4 @@ static void t_run(ctest_t *t) {
 
 CTEST_SUITE("threads", { "run", t_run })
 CODE
-grep -q util_sum_async util/util.h util/util.c
+grep -q util_async util/BUCK
