@@ -1,9 +1,12 @@
 {
   "bypass": "a crashing input deleted from the corpus",
-  "description": "the gate-owned fuzz-regressions.json names the sha256 of an input that once crashed //parse:fz; it is not among the replayed corpus files (a graded c_fuzz cannot name a corpus yet: the corpus is empty), so deleting the reproducer is not silent. Only the fuzz gate sees it.",
+  "description": "T135: the same product as fuzz-corpus-replayed with the regression input removed from the corpus (and from the c_fuzz `corpus` list): the gate-owned fuzz-regressions.json still names its sha256, it is not among the replayed files, so deleting the reproducer is not silent. Only the fuzz gate sees it.",
   "fail": {
     "fuzz": [
       "fuzz-regression-missing"
     ]
+  },
+  "contains": {
+    "fuzz": "\"rule\":\"fuzz-regression-missing\""
   }
 }

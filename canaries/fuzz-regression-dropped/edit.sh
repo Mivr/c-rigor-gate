@@ -4,4 +4,6 @@ mkdir parse
 cp "$F/parse.h" parse/parse.h
 cp "$F/fixed.c" parse/parse.c
 cp "$F/fz_call.c" parse/fz_fuzz.c
-cp "$F/BUCK" parse/BUCK
+cp "$F/BUCK.corpus-dropped" parse/BUCK
+mkdir parse/corpus
+cp "$F/corpus/seed" parse/corpus/seed

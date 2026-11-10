@@ -1,0 +1,15 @@
+load("@gate//rules:c.bzl", "c_fuzz", "c_library")
+
+c_library(
+    name = "parse",
+    srcs = ["parse.c"],
+    headers = ["parse.h"],
+    visibility = ["PUBLIC"],
+)
+
+c_fuzz(
+    name = "fz",
+    srcs = ["fz_fuzz.c"],
+    deps = [":parse"],
+    corpus = ["corpus/seed", "corpus/regress-oob"],
+)

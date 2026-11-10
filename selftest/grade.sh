@@ -634,11 +634,42 @@ git -C "$repo" add -A
 git -C "$repo" commit -q -m "fuzz target"
 fuzz_head="$(git -C "$repo" rev-parse HEAD)"
 
-grade_fuzz() {  # grade_fuzz <work name>: the fuzz product at $fuzz_head; sets $code
-  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$fuzz_head" --task "$work/task-fuzz.toml" \
-      --product "$fuzz_in/product.toml" --work "$work/$1" --out "$work/$1.verdict.json" > "$work/$1.log" 2>&1
+# T135: a graded c_fuzz target with a corpus and a budget. Four more heads on top of the fuzz one (the same harness):
+# the corpus holds the input of the gate-owned `fuzz-regressions.json` (PASS, replayed), that input removed from the corpus
+# (fuzz-regression-missing), a harness that crashes on it (fuzz-crash in phase replay) and `runs` below the policy (fuzz-short).
+mkdir -p "$work/fuzz-reg-inputs"
+cp "$fuzz_in/product.toml" "$fuzz_in/policy.toml" "$fuzz_in/expected-tests.json" "$work/fuzz-reg-inputs/"
+fuzz_head_of() {  # fuzz_head_of <branch> <c_fuzz extra args> <files to write: seed regress>: a commit on top of $fuzz_head; sets $made
+  git -C "$repo" checkout -q -f -B "$1" "$fuzz_head"
+  git -C "$repo" clean -q -fdx
+  mkdir -p "$repo/fz/corpus"
+  case "$3" in *seed*) printf 'SEED\001' > "$repo/fz/corpus/seed";; esac
+  case "$3" in *regress*) printf 'BOOM\007' > "$repo/fz/corpus/regress";; esac
+  printf '%s\n' 'load("@gate//rules:c.bzl", "c_fuzz")' '' "c_fuzz(name = \"core_fuzz\", srcs = [\"core_fuzz.c\"], deps = [\"//core:core\"]$2)" > "$repo/fz/BUCK"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "fuzz corpus case $1"
+  made="$(git -C "$repo" rev-parse HEAD)"
+}
+regress_sha="$(printf 'BOOM\007' | sha256sum | cut -d' ' -f1)"
+printf '{"//fz:core_fuzz": ["%s"]}\n' "$regress_sha" > "$work/fuzz-reg-inputs/fuzz-regressions.json"
+both=', corpus = ["corpus/seed", "corpus/regress"]'
+fuzz_head_of case-fuzz-corpus "$both" "seed regress"; corpus_head="$made"
+fuzz_head_of case-fuzz-dropped ', corpus = ["corpus/seed"]' "seed"; dropped_head="$made"
+# The crash head: the harness reads a 4-byte table at the index in byte 4 of an input that starts with 'B'.
+fuzz_head_of case-fuzz-crash "$both" "seed regress"
+sed -i 's|^    return total == -1 ? -1 : 0;|    if (size == 5U \&\& data[0] == 66) {\n        total += table[data[4]];\n    }\n&|; s|^int LLVMFuzzerTestOneInput(const uint8_t \*data, size_t size)$|static const uint8_t table[4] = {1, 2, 3, 4};\n\n&|' "$repo/fz/core_fuzz.c"
+git -C "$repo" commit -q -a -m "fuzz corpus case crash: the harness reads out of bounds"
+crash_head="$(git -C "$repo" rev-parse HEAD)"
+fuzz_head_of case-fuzz-budget ', runs = 1000' ""; budget_head="$made"
+git -C "$repo" cat-file -e "$corpus_head" && git -C "$repo" cat-file -e "$dropped_head" && git -C "$repo" cat-file -e "$crash_head" \
+  && grep -q "total += table" <(git -C "$repo" show "$crash_head:fz/core_fuzz.c") || fail "fuzz corpus: the heads were not prepared"
+
+grade_fuzz() {  # grade_fuzz <work name> [head [inputs dir [expected tokens]]]: the fuzz product; sets $code
+  local head="${2:-$fuzz_head}" inputs="${3:-$fuzz_in}"
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$head" --task "$work/task-fuzz.toml" \
+      --product "$inputs/product.toml" --work "$work/$1" --out "$work/$1.verdict.json" > "$work/$1.log" 2>&1
   code=$?
-  check_verdict "$work/$1.verdict.json" "" "$code" "$work/$1" || { tail -n 30 "$work/$1.log" >&2; return 1; }
+  check_verdict "$work/$1.verdict.json" "${4:-}" "$code" "$work/$1" || { tail -n 30 "$work/$1.log" >&2; return 1; }
   [ -z "$(find_daemons "$work/$1")" ] || { echo "$1: a process is still running" >&2; return 1; }
 }
 
@@ -667,12 +698,37 @@ assert c["core_sha256"] == w["core_sha256"], "core_sha256 differs between two ru
 EOF12
 }
 
-names=(warm hostile uncached internal witness_na witness_strong witness_equal extra_export fuzz
+step_fuzz_corpus() {  # T135: corpus and `runs` of a graded c_fuzz target, end to end through `rigor grade`
+  local r="$work/fuzz-reg-inputs"
+  grade_fuzz fuzzc-replayed "$corpus_head" "$r" || fail "fuzz corpus (replayed)"
+  python3 -I - "$work/fuzzc-replayed/results/fuzz.json" "$work/fuzzc-replayed.verdict.json" <<'EOF13' || fail "fuzz corpus: the regression input was not replayed"
+import json, sys
+r = json.load(open(sys.argv[1]))
+t = r["metadata"]["targets"]["//fz:core_fuzz"]
+print("  fuzz corpus: %s, corpus %d, replayed %d, phase %s" % (r["status"], t["corpus_files"], t["replayed"], t["phase"]))
+assert r["status"] == "PASS" and r["findings"] == [], r
+assert t["corpus_files"] == 2 and t["replayed"] == 2 and t["phase"] == "budget" and t["runs_done"] >= 5000, t
+assert json.load(open(sys.argv[2]))["core"]["inputs"]["fuzz_regressions_sha256"], "the regression list is not bound into the verdict"
+EOF13
+  grade_fuzz fuzzc-dropped "$dropped_head" "$r" "fuzz:fuzz-regression-missing" || fail "fuzz corpus (dropped)"
+  grade_fuzz fuzzc-crash "$crash_head" "$r" "fuzz:fuzz-crash" || fail "fuzz corpus (crash)"
+  grade_fuzz fuzzc-budget "$budget_head" "$fuzz_in" "fuzz:fuzz-short" || fail "fuzz corpus (budget)"
+  python3 -I - "$work/fuzzc-crash/results/fuzz.json" "$work/fuzzc-budget/results/fuzz.json" <<'EOF14' || fail "fuzz corpus: wrong findings"
+import json, sys
+c, b = (json.load(open(p)) for p in sys.argv[1:])
+assert [(f["rule"], f["phase"]) for f in c["findings"]] == [("fuzz-crash", "replay")], c["findings"]
+assert [f["rule"] for f in b["findings"]] == ["fuzz-empty-corpus", "fuzz-short"] or [f["rule"] for f in b["findings"]] == ["fuzz-short", "fuzz-empty-corpus"], b["findings"]
+print("  fuzz corpus: crash in phase replay, runs below the policy budget is fuzz-short")
+EOF14
+}
+
+names=(warm hostile uncached internal witness_na witness_strong witness_equal extra_export fuzz fuzz_corpus
        ta_green ta_release_pass ta_san_pass ta_timeout ta_no_new ta_a018 ta_no_previous)
 labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error"
         "pure impl change with a witness bundle (witness gates not applicable)" "test-surface change with a strong witness" "test-surface change with a witness identical to the head (cold, warm)"
         "clean module plus an unlisted exported function (unexpected-export)"
         "a clean c_fuzz target (the fuzz gate runs it), the same head again (no fuzz action)"
+        "c_fuzz with a corpus: replayed (PASS), regression input dropped, crash in the replay, runs below the policy budget"
         "test-author: a stub head with a correct witness" "test-author: a new test passes on the stub in release" "test-author: a new test passes on the stub in san only"
         "test-author: a stub that times out (info stub-timeout)" "test-author: no new ids" "test-author: old tests fail on a stubbed function, the witness passes them (A018)"
         "test-author without expected-tests.previous.json (exit 2)")
@@ -793,5 +849,5 @@ echo "[mutants-cache] repeat grade, one-module change, survivor on a cache hit (
 bash selftest/mutants_cache.sh > "$work/mutants_cache.log" 2>&1 || { tail -n 30 "$work/mutants_cache.log" >&2; fail "mutants cache"; }
 cat "$work/mutants_cache.log"
 
-echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, fuzz, 7 test-author) ${parallel_secs}s"
+echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, fuzz, fuzz corpus, 7 test-author) ${parallel_secs}s"
 echo "selftest/grade.sh: all $step steps passed"

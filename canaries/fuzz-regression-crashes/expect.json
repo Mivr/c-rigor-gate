@@ -1,0 +1,12 @@
+{
+  "bypass": "a fix of a parser that does not fix it: the input that once crashed stays in the corpus",
+  "description": "T135: the corpus lists the regression input and the parser still reads buf[data[4] % 8] from a 4-byte buffer: the replay of that corpus file crashes (phase replay), before the budget runs.",
+  "fail": {
+    "fuzz": [
+      "fuzz-crash"
+    ]
+  },
+  "contains": {
+    "fuzz": "\"phase\":\"replay\",\"reproducer_sha256\":\"d5063fae565994e00a5db4fd07660f339cec82cbe7475ca455640a35a400e5f7\",\"rule\":\"fuzz-crash\""
+  }
+}

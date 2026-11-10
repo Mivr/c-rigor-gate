@@ -44,6 +44,13 @@ class Coverage(TempDirTestCase):
         self.assertEqual(self.rules(["core/sub/BUCK", "docs/payload.txt"], bucks=[buck]),
                          [("ungraded-path", "docs/payload.txt")])
 
+    def test_corpus_file_named_by_a_c_fuzz_is_covered_by_the_layout_rule(self):
+        """T135: a corpus file is data, but a copied BUCK names it: outside layout.include it is `ungraded-path`."""
+        buck = ("fz/BUCK", 'c_fuzz(name = "f", srcs = ["f_fuzz.c"], corpus = ["corpus/a", "../data/b"], runs = 9)')
+        files = ["fz/BUCK", "fz/f_fuzz.c", "fz/corpus/a", "data/b", "fz/corpus/unlisted"]
+        self.assertEqual(self.rules(files, include=["fz/**"], bucks=[buck]), [("ungraded-path", "data/b")])
+        self.assertEqual(self.rules(files, bucks=[buck], include=["fz/**", "data/**"]), [])
+
     def test_c_file_under_excluded_docs_is_excluded_code(self):
         self.assertEqual(self.rules(["core/x.c", "core/docs/x.c", "core/docs/BUCK"], exclude=["core/docs/**"]),
                          [("excluded-code", "core/docs/BUCK"), ("excluded-code", "core/docs/x.c")])

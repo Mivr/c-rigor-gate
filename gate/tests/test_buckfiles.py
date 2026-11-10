@@ -112,6 +112,24 @@ class BuckFilesCase(TempDirTestCase):
         text = self.lib(srcs='glob(["src/*.c"])', headers='["a.h"] + glob(["src/*.h"])')
         self.assertEqual(product_layout.named_files([("BUCK", text)], {"src/a.c", "a.h", "x"}), {"a.h"})
 
+    def test_fuzz_corpus_and_runs(self):
+        """T135: `corpus` (string literals) and `runs` (an int literal) on a `c_fuzz`, and nowhere else."""
+        head = LOADS + 'c_fuzz(name = "f", srcs = ["f_fuzz.c"], '
+        self.assertEqual(self.check({"BUCK": head + 'corpus = ["corpus/a", "corpus/b"], runs = 5000)\n'}, 0), [])
+        for tail in ('corpus = glob(["src/*.c"]))', 'corpus = ["a"] + ["b"])', 'corpus = [1])', 'corpus = None)',
+                     'corpus = select({"DEFAULT": []}))', 'runs = "5")', 'runs = 5.0)',
+                     'runs = True)', 'runs = -5)', 'runs = 2 * 5)', 'runs = [5])', 'runs = N)', 'runs = None)',
+                     'corpus = ["a"], seeds = ["a"])'):
+            with self.subTest(tail=tail):
+                self.setUp()
+                self.red(head + tail + "\n", "bad-argument")
+        for macro in ("c_library", "c_binary", "c_test"):
+            for tail in ('corpus = ["a"]', "runs = 5"):
+                with self.subTest(macro=macro, tail=tail):
+                    self.setUp()
+                    self.red('load("@gate//rules:c.bzl", "%s")\n%s(name = "x", %s)\n' % (macro, macro, tail),
+                             "bad-argument")
+
     def test_concatenation_value(self):
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"] + ["b.c"])\n', "bad-argument")
 

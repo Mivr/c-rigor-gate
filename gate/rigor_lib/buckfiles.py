@@ -24,7 +24,9 @@ LOAD_PATH = "@gate//rules:c.bzl"
 MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog", "c_embed")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
-MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps")}
+# T135: `c_fuzz` takes `corpus` (the form `srcs` has on a `c_fuzz`: string literals, never a glob; the macro checks the paths)
+# and `runs` (an int literal).
+MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps"), "c_fuzz": ("corpus", "runs")}
 # T105: `c_catalog` has keywords of its own and no `srcs`/`headers`. `pots`, `langs`, `source_lang` and `symbol`
 # are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
 # is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).
@@ -164,6 +166,8 @@ def _value_ok(macro, keyword):
     if macro == CATALOG_MACRO and arg == "names":
         return _is_string_dict(node)
     if macro == EMBED_MACRO and arg == "max_bytes":
+        return _is_int(node)
+    if macro == "c_fuzz" and arg == "runs":
         return _is_int(node)
     if macro == EMBED_MACRO and arg == "nul":
         return _is_bool(node)

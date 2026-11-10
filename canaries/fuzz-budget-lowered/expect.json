@@ -1,0 +1,12 @@
+{
+  "bypass": "a c_fuzz target that sets `runs` below the budget the policy demands",
+  "description": "T135: the target says `runs = 1000`; the policy gives //parse:parse the parser profile (200000 runs by default). The run passes, but short of the policy budget.",
+  "fail": {
+    "fuzz": [
+      "fuzz-short"
+    ]
+  },
+  "contains": {
+    "fuzz": "\"rule\":\"fuzz-short\""
+  }
+}
