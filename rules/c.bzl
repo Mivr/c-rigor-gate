@@ -10,7 +10,7 @@ load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:embed.bzl", "c_embed_gen")
 load("@gate//rules:ctest.bzl", "MSAN_ENV_LINES", "TSAN_ENV_LINES", "ctest_results")
-load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
+load("@gate//rules:facts.bzl", "c_facts", "c_msan_facts", "c_san_facts", "c_tsan_facts")
 load("@gate//rules:fuzz.bzl", "fuzz_corpus", "fuzz_run", "fuzz_runs")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
@@ -113,10 +113,14 @@ def _check(macro, srcs, headers):
 # actions are read. `rigor facts --modes` compares the two (T023).
 _RELEASE_ONLY = ["toolchains//:release"]
 _SAN_ONLY = ["toolchains//:san"]
+_MSAN_ONLY = ["toolchains//:msan"]
+_TSAN_ONLY = ["toolchains//:tsan"]
 
 _RELEASE_OR_SAN = select({
     "toolchains//:release": [],
     "toolchains//:san": [],
+    "toolchains//:msan": [],
+    "toolchains//:tsan": [],
     "DEFAULT": ["toolchains//:never"],
 })
 
@@ -146,7 +150,14 @@ _RESULTS_THREADED = select({
 })
 
 def _facts(name, kind, srcs, deps, unit = None, system_libs = [], generated = []):
-    for suffix, mode, rule in (("_facts", _RELEASE_ONLY, c_facts), ("_facts_san", _SAN_ONLY, c_san_facts)):
+    # A twin per mode the gate compares with release (T138): san, msan and tsan. A module with a sysroot library beyond
+    # libc and pthread in its closure has no msan twin (its unit is incompatible with the msan mode).
+    for suffix, mode, rule in (
+        ("_facts", _RELEASE_ONLY, c_facts),
+        ("_facts_san", _SAN_ONLY, c_san_facts),
+        ("_facts_msan", _MSAN_ONLY, c_msan_facts),
+        ("_facts_tsan", _TSAN_ONLY, c_tsan_facts),
+    ):
         rule(
             name = name + suffix,
             unit = unit if unit else ":" + name,
@@ -363,6 +374,7 @@ def c_test(name, srcs = [], deps = [], threads = False):
     ctest_results(
         name = name + "_results",
         test = ":" + name,
+        threads = threads,
         target_compatible_with = _RESULTS_THREADED if threads else _RESULTS_EVERY_MODE,
         env_lines = select({
             "toolchains//:msan": MSAN_ENV_LINES,

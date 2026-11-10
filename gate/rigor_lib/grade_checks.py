@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from rigor_lib import buckfiles, facts_data, facts_policy, facts_semantic, facts_symbols, layering, layering_check
 from rigor_lib import grade_build, grade_context, grade_policy, facts_third_party, grade_toolchain, grade_tree
+from rigor_lib import facts_threads, grade_sanmodes
 from rigor_lib import paths, product_layout
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 
@@ -138,8 +139,12 @@ def semantic_gate(g):
 
 
 def symbols_gate(g):
-    return _fact_gate(g, lambda facts, policy, built: facts_symbols.run(
-        facts, policy, facts_data.load_symbol_list(built.libc)))
+    """`symbols`, plus the `threads` declaration of every test against its own objects (`facts_threads`, T138)."""
+    def judged(facts, policy, built):
+        result = facts_symbols.run(facts, policy, facts_data.load_symbol_list(built.libc))
+        result.findings.extend(facts_threads.findings(facts, grade_sanmodes.declared_threads(g.tree)))
+        return result
+    return _fact_gate(g, judged)
 
 
 ARCHITECTURE_FILE = "architecture.toml"

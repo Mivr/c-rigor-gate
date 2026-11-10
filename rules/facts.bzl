@@ -113,3 +113,9 @@ c_facts = rule(impl = _facts_impl, attrs = _ATTRS)
 # The same rule under another name for the `san` twin: `kind(c_facts, //...)` (what `rigor grade` builds,
 # in the release platform) must not pick the san targets up, and a regex `c_facts` does not match this name.
 c_san_facts = rule(impl = _facts_impl, attrs = _ATTRS)
+
+# The msan and tsan twins (T138), for the `mode-divergence` gate: `__has_feature(memory_sanitizer)` and
+# `__has_feature(thread_sanitizer)` code is in these compiles only.
+c_msan_facts = rule(impl = _facts_impl, attrs = _ATTRS)
+
+c_tsan_facts = rule(impl = _facts_impl, attrs = _ATTRS)
