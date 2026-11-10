@@ -62,6 +62,8 @@ A mode is a target platform. The default (`[parser] target_platform_detector_spe
 | san | `tools/buck2 test --target-platforms toolchains//:linux_san //...` | `-O1 -g -fsanitize=address,undefined,leak -fno-sanitize-recover=all -fno-omit-frame-pointer` |
 | cov | `tools/buck2 test --target-platforms toolchains//:linux_cov //...` | `-fprofile-instr-generate -fcoverage-mapping -fcoverage-mcdc` |
 | fuzz | `tools/buck2 test --target-platforms toolchains//:linux_fuzz //...` | `-fsanitize=fuzzer,address,undefined` (+ `-O1 -g -fno-sanitize-recover=all -fno-omit-frame-pointer`) |
+| msan (T125) | `tools/buck2 build --target-platforms toolchains//:linux_msan //x:t_results` | `-O1 -g -fsanitize=memory -fsanitize-memory-track-origins=2 -fno-sanitize-recover=all -fno-omit-frame-pointer`; link `-fsanitize=memory -fsanitize-memory-track-origins=2` |
+| tsan (T125) | `tools/buck2 build --target-platforms toolchains//:linux_tsan //x:t_results` | `-O1 -g -fsanitize=thread -fno-sanitize-recover=all -fno-omit-frame-pointer`; link `-fsanitize=thread` |
 
 Coverage report (line, branch, MC/DC), also on RE, via the fetched `llvm-profdata` / `llvm-cov`:
 
@@ -73,11 +75,43 @@ tools/buck2 build --target-platforms toolchains//:linux_cov //examples/hello:hel
 `c_fuzz` is a test that runs `-seed=1 -runs=200000` as a cacheable RE action (see "Fuzz runs" below); it fails when
 the fuzzer finds a crash.
 
+## The msan and tsan modes (T125; landed, not wired into `rigor grade`)
+
+Two target platforms, `toolchains//:linux_msan` (MemorySanitizer with origin tracking) and `toolchains//:linux_tsan`
+(ThreadSanitizer). The flags are sealed in `rules/c.bzl` and the same in `rules/third_party.bzl` for gate-owned
+third-party code, so a test that links mbedTLS is instrumented throughout. The runtimes (`libclang_rt.{msan,tsan}.a`
+and `.syms`) are members of the pinned LLVM 19.1.7 archive and of `llvm.manifest`. Only `<name>_results` is produced
+in them, with the sealed environment of `san` plus `MSAN_OPTIONS` / `TSAN_OPTIONS` (`rules/ctest.bzl`:
+`halt_on_error=1`, exit codes 77 / 66, the hermetic `external_symbolizer_path`, `log_path`; for TSan also
+`stack_trace_format`, so frames read `#N 0x.. in <func> <file>:<line>` like the other sanitizers). `ctest` forks one
+process per test; nothing more than `log_path` was needed for that. On a failing exit the action prints the sanitizer
+log to stderr, so a runtime that died at start-up names its reason.
+
+- **Which tests.** `c_test(threads = True)` has a tsan results target; `threads = False` (the default) has none. Every
+  `c_test` has an msan results target, except one whose link closure has a sysroot library beyond libc and pthread
+  (MSan needs every linked object instrumented; today only X11): such a `c_library` is incompatible with the msan mode,
+  and so is everything that depends on it.
+- **No frame limit in msan.** In the msan mode only, `-Wframe-larger-than=512` is not passed (every other sealed
+  warning is). The limit bounds the stack of shipped code; origin tracking inflates the frames of instrumented code,
+  which is not shipped (`ctest_run` alone reaches 632 bytes). TSan did not need this: tsan keeps the limit.
+- **What they cannot see.** MSan: only uninitialised reads in code compiled with it (not libc, X11 or the kernel) and
+  only on executed paths. TSan: only races between threads that actually ran in the test, and not through uninstrumented
+  code. Neither runs a product that talks to a device. A clean verdict is evidence, not proof.
+- **The farm prerequisite.** Both runtimes map fixed shadow ranges. When the kernel's ASLR entropy is high they re-exec
+  themselves with `personality(ADDR_NO_RANDOMIZE)`. The RE workers run under Docker's default seccomp profile plus one
+  rule that allows `personality(0x0040000)`. Without it the call fails, the runtime dies at start-up
+  (`CHECK failed: ... personality(...) != -1`, `memory layout is incompatible`) and the results action fails with
+  `test binary could not run`: measured on the farm before the rule, about one run in five for msan and almost always
+  for tsan (6 of 6). A shared-library layout cannot be fixed with link flags (`-no-pie` was tried: 59 of 300 starts
+  still failed). With the rule: 0 of 30 uncached runs of the passing fixture failed to start, for each mode.
+  `selftest/sanmodes.sh` prints one line naming this when a results run ends that way; it is still a failure.
+- Self-test: `selftest/sanmodes.sh`.
+
 ## Sealed flags
 
 `rules/c.bzl` appends `-std=c17 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wsign-conversion -Wshadow
 -Wcast-qual -Wvla -Wframe-larger-than=512 -Wformat=2 -Wnull-dereference -Wimplicit-fallthrough` after the mode
-flags. The macros `c_library`, `c_binary`, `c_test`, `c_fuzz` have no flag parameters.
+flags. The macros `c_library`, `c_binary`, `c_test`, `c_fuzz` have no flag parameters. (`-Wframe-larger-than=512` is left out in the msan mode only, see above.)
 
 ## Known limits (deviations)
 

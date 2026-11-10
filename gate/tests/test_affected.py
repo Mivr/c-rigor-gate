@@ -119,7 +119,7 @@ class RealRulesTests(unittest.TestCase):
 
     def test_each_selftest_script_selects_itself(self):
         for name in ("grade", "mutate", "structure", "product_checks", "toolchain", "ctest", "fuzz", "third_party",
-                     "canaries", "profiles", "require"):
+                     "canaries", "profiles", "require", "sanmodes"):
             self.assertIn(name, self.pick("selftest/%s.sh" % name))
 
     def test_every_tracked_file_has_a_specific_rule(self):
