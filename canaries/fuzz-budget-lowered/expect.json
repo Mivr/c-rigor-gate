@@ -5,5 +5,8 @@
     "fuzz": [
       "fuzz-short"
     ]
+  },
+  "contains": {
+    "fuzz": "\"rule\":\"fuzz-short\""
   }
 }

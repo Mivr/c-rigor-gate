@@ -5,5 +5,8 @@
     "fuzz": [
       "fuzz-regression-missing"
     ]
+  },
+  "contains": {
+    "fuzz": "\"rule\":\"fuzz-regression-missing\""
   }
 }
