@@ -44,7 +44,7 @@ class Setup(TempDirTestCase):
 class Registration(Setup):
     def test_tests_stub_runs_right_after_the_head_tests(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
-        self.assertEqual(ids[ids.index("tests-san") + 1], "tests-stub")
+        self.assertEqual(ids[ids.index("tests-san") + 1:ids.index("tests-stub")], ["tests-msan", "tests-tsan"])
         self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt")), ids)
 
 

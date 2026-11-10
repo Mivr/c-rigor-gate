@@ -142,7 +142,8 @@ def symbols_gate(g):
     """`symbols`, plus the `threads` declaration of every test against its own objects (`facts_threads`, T138)."""
     def judged(facts, policy, built):
         result = facts_symbols.run(facts, policy, facts_data.load_symbol_list(built.libc))
-        result.findings.extend(facts_threads.findings(facts, grade_sanmodes.declared_threads(g.tree)))
+        if any(item.kind == facts_threads.TEST_KIND for item in facts.values()):   # no test, nothing to declare
+            result.findings.extend(facts_threads.findings(facts, grade_sanmodes.declared_threads(g.tree)))
         return result
     return _fact_gate(g, judged)
 
