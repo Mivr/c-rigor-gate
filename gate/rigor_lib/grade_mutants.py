@@ -20,7 +20,7 @@ from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, jsonio, perf_package, perf_policy
+from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, grade_tier, jsonio, perf_package, perf_policy
 from rigor_lib import mutants_gate as rigor_mutants
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
@@ -490,17 +490,20 @@ def build_plan(g, run):
 def _run(g, run):
     chosen, shared = build_plan(g, run)
     found = list(chosen.findings)
-    if not chosen.modules:
-        return GateResult(rigor_mutants.GATE_ID, found, {"modules": {}})
-    package_sha = write_package(run, chosen.modules, shared)
-    build_found, metadata, built = build_reports(run, g.args.uncached, chosen.modules)
+    modules, deferred = grade_tier.split(g, chosen.modules)  # tier merge: the mutation that can only report waits
+    found.extend(grade_tier.findings(deferred))
+    if not modules:
+        return GateResult(rigor_mutants.GATE_ID, found, dict(grade_tier.metadata(g, deferred), modules={}))
+    package_sha = write_package(run, modules, shared)
+    build_found, metadata, built = build_reports(run, g.args.uncached, modules)
     found.extend(build_found)
+    metadata.update(grade_tier.metadata(g, deferred))
     metadata["package_sha256"] = package_sha
-    metadata["targets"] = {m.label: target_label(m) for m in chosen.modules}
+    metadata["targets"] = {m.label: target_label(m) for m in modules}
     metadata["modules"], metadata["approvals_used"] = {}, []
     if built:
         # The policy names only the modules that built: a missing one already has its own finding.
-        judged, summaries, used = judge(g, run, chosen.modules, built)
+        judged, summaries, used = judge(g, run, modules, built)
         found.extend(judged)
         metadata["modules"], metadata["approvals_used"] = summaries, used
     return GateResult(rigor_mutants.GATE_ID, found, metadata)

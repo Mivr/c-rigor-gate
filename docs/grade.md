@@ -2,7 +2,7 @@
 
 ```
 gate/rigor grade --product-repo R --base B --head H --task TASK.toml --product products/<p>/product.toml \
-                 [--approvals DIR] [--sign-key KEY] [--uncached] [--allow-dirty-gate] --work DIR --out verdict.json
+                 [--approvals DIR] [--sign-key KEY] [--tier merge|nightly] [--uncached] [--allow-dirty-gate] --work DIR --out verdict.json
 ```
 Exit 0 = overall PASS, 1 = FAIL, 2 = internal error (the verdict, if written, is FAIL). `--work` is
 emptied (`src`, `tree`, `results`, `test-results`, `facts`, `mutants-reports`, `mutants-perf`) at the start, so re-grading into the same `--work` never reads or collides with a previous run's files; `R` must be a local directory.
@@ -214,6 +214,47 @@ so the gate reads the head's results of both modes and builds nothing.
   tests may fail on the head (the A018 shape). A contract without `role` is `implementer`: a stubbed head graded so
   fails `test-not-pass`.
 
+## Grade tiers: `--tier merge|nightly` (T137, P003 §9, D2)
+`rigor grade --tier merge|nightly`, default `nightly`. **`nightly` is the whole grade, exactly what `rigor grade` was
+before tiers.** `merge` is the grade a merge bot can afford: it differs in one place today, the mutation of the modules
+whose mutation can only report (below). The tier is bound into the verdict (`inputs.tier`, in the hashed `core`), so a
+merge PASS and a nightly PASS of the same inputs have different `core_sha256` and cannot be confused; `rigor verify`
+prints the tier and `--require-tier TIER` refuses a verdict of the other one.
+
+| gate | `nightly` | `merge` |
+|---|---|---|
+| every gate but the two below | runs | runs, unchanged |
+| `mutants` | every module at L2 or above is built, run and judged | the modules that can only report are **deferred** (not built, not run); the others as in `nightly` |
+| `mutants-witness` | every module of the witness scope | the same deferral rule |
+
+**No other gate changes with the tier.** Later tasks add a row to this table for what they move; they do not invent a
+second mechanism (the tier is one string, `grade_tier.tier_of`, read from `args.tier`).
+
+**The deferral rule** (`gate/rigor_lib/grade_tier.py`). A module is deferred at tier `merge` when no finding of its
+mutation can be an error:
+- a module whose policy table declares no `profile`: level L2 (a surviving mutant is an info finding there). L3, L4 and L5
+  are mutated, judged as today;
+- a module that declares `profile` is judged by the technique matrix (`profiles.required`, P003 §4.1): it is deferred
+  unless `mutation_zero_survivors` is a `gate` for its profiles at its level (`pure` and `parser` gate from L3, `safety`
+  at every level; `adapter` and `concurrent` only report; `wiring` and `ui` have no mutation cell; with several
+  profiles one gating profile is enough). A profiled `adapter` at L3 is therefore deferred at merge even though a module
+  without a profile at L3 is not. An unknown profile or level is never deferred (the `policy-check` gate reports it).
+
+Each deferred module is an info finding `mutation-deferred` (`module`, `level`, `reason`) of the gate; the gate metadata
+has `tier` and `deferred` (the count). The metadata of a nightly grade has neither, and its findings are what they were.
+If every module is deferred the gate passes with the infos; `no-mutated-modules` still means the product has no module at
+L2 or above at all, in either tier. Findings that come from the plan, before a module is deferred (`level-missing`,
+`module-without-tests`, `unresolved-link-dep`, `unmutatable-module`, ...), are raised in both tiers.
+
+**What a deferred module can no longer raise at merge** (the nightly tier still raises all of them): `no-mutants` (an
+error at every level: a source with functions but no mutants), `all-unviable`, `mutants-build-failed` and
+`perf-build-failed` for it (nothing is built), the missing or malformed run reports of its mutants, and, for a profiled
+module at L3 or above whose profile only reports mutation, `survived-mutant`, `unviable-ratio`, `unmutated-function` and
+the other level-dependent errors (`rigor mutants` still judges every level L3 and above strictly, and the nightly grade
+does so as before). At L2 `unviable-ratio`, `unmutated-function` and survivors were info findings already; what is lost
+there is the report itself. A merge PASS is thus no evidence about these, which is why `rigor verify --require-tier
+nightly` exists for a bot that needs the whole grade.
+
 ## Mutation testing in the pipeline (`mutants`, T008)
 `gate/rigor_lib/grade_mutants.py`. What is mutated, and against which tests, is decided by the gate alone:
 - **Levels.** `products/<p>/policy.toml` (gate-owned) has `level = "L1".."L5"` per module table. Every `c_library`
@@ -335,6 +376,7 @@ the same `core_sha256`, whether the build was cold or fully cached; changing any
 | `buckconfig_sha256` | the generated `.buckconfig` (from the `assemble` manifest) |
 | `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | `toolchains/BUCK`, the LLVM and sysroot archive pins in it, and the Buck2 binary pin (`tools/buck2.version`), all from the assembled tree and checked against the manifest |
 | `uncached` | the `--uncached` flag (also kept as `core.uncached`) |
+| `tier` | `merge` or `nightly` (`--tier`, T137); a verdict of one tier never has the `core_sha256` of the other |
 
 **Unused approvals (T068).** `core.unused_approvals` is a verdict-level list (hashed with the rest of `core`, so it cannot
 be dropped silently; always present, `[]` without `--approvals`). After all gates ran, every *valid* approval (signed,
@@ -368,13 +410,15 @@ error (exit 2) before `clone`. `verdict.metadata.order_file` is now the snapshot
 ```
 gate/rigor verify --verdict verdict.json --allowed-signers SIGNERS \
     --expect-head <40-hex head> --expect-gate <40-hex gate commit> --expect-policy-sha <sha256 of policy.toml> \
-    [--require-uncached] [--signature verdict.json.sig]
+    [--require-uncached] [--require-tier merge|nightly] [--signature verdict.json.sig]
 ```
 Exit 0 only for a trustworthy PASS; exit 1 prints every reason it was rejected (`REJECTED: ...`); exit 2 is an
 internal error (unreadable file, no `ssh-keygen`). It checks, in order: the SSH signature over the exact file bytes
 (`ssh-keygen -Y verify`, namespace `c-rigor-gate-verdict`; `SIGNERS` must allow that namespace, the approvals
 `gate/allowed_signers` does not), then `core_sha256` recomputed from `core`, `overall == PASS`, every required input
 present and well formed, `gate_clean == true`, `core.uncached == inputs.uncached`, and the `--expect-*` values.
+`--require-tier TIER` rejects a verdict graded at another tier (`tier is merge, expected nightly`); the tier of the verdict is
+printed on every run (`rigor verify: tier merge`), also when it is rejected.
 `--expect-policy-sha` is the sha256 of the policy file the merge bot trusts (`sha256sum products/<p>/policy.toml`).
 Trust is keyed on `core_sha256` only together with these expectations.
 
