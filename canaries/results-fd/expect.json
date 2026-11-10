@@ -8,6 +8,9 @@
     "tests-san": [
       "test-not-pass"
     ],
+    "tests-msan": [
+      "test-not-pass"
+    ],
     "witness-tests": [
       "witness-test-not-pass"
     ]

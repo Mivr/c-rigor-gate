@@ -1,6 +1,7 @@
 {
   "bypass": "data race seen only in tsan",
   "description": "T138: two threads write one counter without a lock in a test declared threads = True: release, san and msan pass, ThreadSanitizer fails it. PENDING: `buckfiles` does not accept `threads` on c_test yet (gate/rigor_lib/buckfiles.py is outside T138's paths), so today `buckfiles` is red as well; when it accepts the keyword the expectation below is exact.",
+  "pending": "T138-buckfiles",
   "fail": {
     "tests-tsan": [
       "no-assertions",
