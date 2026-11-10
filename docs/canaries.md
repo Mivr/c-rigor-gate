@@ -250,6 +250,13 @@ All five share `canaries/_catalog/files/` (a canary-local `i18n` runtime with th
 here is `i18n/`, `cat/` next to `core/`, `util/`. `expect.json` `contains` pins the exact `po2c` message in `build.json`, so a
 canary that fails for another reason is a miss.
 
+## Canary added by T133
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `vendor-path-spoof` | `core/art/gate/third_party/spoof.h` with a diagnostic pragma and `no_sanitize`; the directory name must not pass as gate third-party code | `semantic-suppressions`: forbidden-attribute, pragma; `suppressions`: forbidden-pattern; `mutants`: unmutated-function | none |
+
+Before T133 `semantic-suppressions` passed it (the vendor marker was matched anywhere in the path).
+
 ## Canaries added by T129 (the `fuzz` gate)
 | canary | bypass | fails | NOT_RUN |
 |---|---|---|---|

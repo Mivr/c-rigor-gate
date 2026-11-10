@@ -36,7 +36,7 @@ product text (not in the gate's file) with the function it is in (docs/require.m
   expansions count. Text from a file below the toolchain's own header directories
   (`toolchains//:system-roots`, decided by path, not by the system-header flag a product could set with a
   pragma) is skipped as product text; so are `<built-in>` and `<command line>`, and (T108) the exported header
-  trees of the gate-owned third-party libraries (path contains `/art/<gate cell>/third_party/`, passed by
+  trees of the gate-owned third-party libraries (path is `buck-out/<version>/art/<gate cell>/third_party/...`, anchored right after the version, T133; passed by
   `rules/facts.bzl` as `--vendor-marker`; a macro such a header defines counts like a toolchain macro for
   `reserved-macro`). Config hashes are removed
   from reported paths. Three more kinds of fact are reported as identifiers (the schema-1 facts file has
@@ -356,6 +356,8 @@ step "the GNU line-marker form ... does not compile"), so a product cannot forge
 (also spliced) always produces a flag-less marker and is reported.
 
 ## Known limits
+* A product directory named like the gate's third-party tree (`x/art/gate/third_party/`) is not exempt: the vendor marker
+  matches only at the start of the output-tree path, and an unrecognised layout is product code (T133, canary `vendor-path-spoof`).
 * A `#line N` that only moves forward in the same file is indistinguishable from the compiler's own
   resynchronisation and is not reported (it only changes the line numbers of later findings; it cannot
   rename the file). Backward moves and renames are reported.

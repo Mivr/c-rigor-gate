@@ -113,15 +113,31 @@ def display_file(path):
 
 
 def output_tree(path):
-    """(cell, the components after the cell) of `buck-out/<version>/{gen,art}/<cell>/...`, or None when the path does
-    not have that layout (the first `buck-out` is the real one; the output kind stands one or two components after it)."""
+    """(kind, cell, the components after the cell) of `buck-out/<version>/{gen,art}/<cell>/...`, or None when the path
+    does not have that layout (the first `buck-out` is the real one; the output kind stands one or two components
+    after it). The one path walk: every decision "is this the gate's file" starts here."""
     parts = os.path.normpath(path).split("/")
     if "buck-out" not in parts:
         return None
     rest = parts[parts.index("buck-out") + 1:]
     for index, part in enumerate(rest[:-2]):
         if part in OUTPUT_KINDS and 0 < index <= 2:
-            return rest[index + 1], rest[index + 2:]
+            return part, rest[index + 1], rest[index + 2:]
+    return None
+
+
+def vendor_tail(path, markers):
+    """The part of `path` after the vendor marker (`mbedtls/ssl.h` for `/art/gate/third_party/`), or None. A file
+    is gate third-party code only when its output tree starts, right after the version, with the marker. A
+    fragment anywhere deeper (a product directory `x/art/gate/third_party/`) is the product's."""
+    tree = output_tree(path)
+    if tree is None:
+        return None
+    kind, cell, tail = tree
+    start = "/" + "/".join((kind, cell) + tuple(tail)) + "/"
+    for marker in markers:
+        if start.startswith(marker):
+            return start[len(marker):]
     return None
 
 
@@ -132,7 +148,7 @@ def is_gate_path(path, markers=()):
     tree = output_tree(path)
     if tree is None:
         return False
-    cell, tail = tree
+    _, cell, tail = tree
     if cell != PRODUCT_CELL:
         return True
     start = "/" + cell + "/" + "/".join(tail) + "/"
@@ -398,8 +414,8 @@ class GuardTracker:
 class Collector:
     def __init__(self, system_roots, vendor_markers=(), gate_markers=()):
         self.roots = [os.path.normpath(root) + "/" for root in system_roots]
-        # Path fragments of the gate-owned third-party header trees (`/art/<gate cell>/third_party/`, T108): text
-        # there is not the product's either. No marker (or one that matches nothing) keeps today's behaviour.
+        # Gate-owned third-party header trees (`/art/<gate cell>/third_party/`, T108): text there is not the
+        # product's either. A marker counts only right after `buck-out/<version>` (T133, `vendor_tail`).
         self.vendor = [marker for marker in vendor_markers if marker]
         # Path fragments of the gate's own header trees, for a gate that is the root cell (T131): `/<cell>/<pkg>/__<name>__/`.
         self.gate_markers = [marker for marker in gate_markers if marker]
@@ -422,7 +438,8 @@ class Collector:
         if path.startswith("<"):   # "<built-in>" and "<command line>": the compiler's own text
             return True
         norm = os.path.normpath(path) + "/"
-        return any(norm.startswith(root) for root in self.roots) or any(m in norm for m in self.vendor)
+        return any(norm.startswith(root) for root in self.roots) \
+            or vendor_tail(path, self.vendor) is not None
 
     def is_gate(self, path):
         """The compiler read `path` from the gate's own output tree: another cell than the product's, or a header tree
