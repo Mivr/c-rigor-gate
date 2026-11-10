@@ -26,6 +26,17 @@ class BuckFilesCase(TempDirTestCase):
     def test_green_build_file(self):
         self.assertEqual(self.check({"core/BUCK": GOOD, "BUCK": GOOD, "core/a.c": "int x;"}, 0), [])
 
+    def test_threads_is_a_boolean_literal_of_c_test_only(self):
+        loads = 'load("@gate//rules:c.bzl", "c_library", "c_test")\n'
+        for value in ("True", "False"):
+            self.assertEqual(self.check({"BUCK": loads + 'c_test(name = "t", srcs = ["t.c"], threads = %s)\n' % value}, 0), [])
+        for value in ('"yes"', "1", "None", "flag", "not False", "[True]"):
+            with self.subTest(value=value):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": loads + 'c_test(name = "t", threads = %s)\n' % value}, 1), ["bad-argument"])
+        self.setUp()
+        self.assertEqual(self.check({"BUCK": loads + 'c_library(name = "l", threads = True)\n'}, 1), ["bad-argument"])
+
     def test_green_empty_and_comment_only(self):
         self.assertEqual(self.check({"BUCK": "# nothing here\n"}, 0), [])
 
@@ -393,7 +404,7 @@ class TestOnlyLabelCase(TempDirTestCase):
                                  [("bad-argument", "dep")])
 
     def test_a_library_may_not_depend_on_a_test_or_on_what_a_test_derives(self):
-        for dep in (":t", ":t_facts", ":t_results", ":t_coverage", "//pkg/p:t", "//other/pkg/p:t_results", "//pkg/p:t_facts"):
+        for dep in (":t", ":t_facts", ":t_facts_san", ":t_facts_msan", ":t_facts_tsan", ":t_results", ":t_coverage", "//pkg/p:t", "//other/pkg/p:t_results", "//pkg/p:t_facts"):
             with self.subTest(dep=dep):
                 self.setUp()
                 files = {"p/BUCK": LOADS + 'c_test(name = "t", deps = ["%s"])\n' % PEER,

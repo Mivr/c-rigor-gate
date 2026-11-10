@@ -225,9 +225,9 @@ class Closure(TempDirTestCase):
             self.assertEqual(grade_sanmodes.declared_threads("/t"), {"//u:t": True, "//u:v": False})
 
 
-def test_facts(label, kind, undefined=()):
+def test_facts(label, kind, undefined=(), deps=()):
     unit = facts_data.Unit("t.c.o", frozenset(), frozenset(), frozenset(undefined), (), (), (), ())
-    return facts_data.Facts(label, kind, (), (unit,))
+    return facts_data.Facts(label, kind, tuple(deps), (unit,))
 
 
 class Threads(TempDirTestCase):
@@ -248,6 +248,26 @@ class Threads(TempDirTestCase):
     def test_the_matching_cases_pass(self):
         self.assertEqual(self.judge(["pthread_create"], True), [])
         self.assertEqual(self.judge(["memcpy"], False), [])
+
+    def world(self, declared, library_undefined=("pthread_create",), cycle=False):
+        world = {"//u:t": test_facts("//u:t", "c_test", ["util_run"], ["//u:mid", "gate//ctest:ctest"]),
+                 "//u:mid": test_facts("//u:mid", "c_library", [], ["//u:os"]),
+                 "//u:os": test_facts("//u:os", "c_library", library_undefined, ["//u:mid"] if cycle else [])}
+        return facts_threads.findings(world, {"//u:t": declared})
+
+    def test_threads_started_through_a_library_count(self):
+        [item] = self.world(False)
+        self.assertEqual((item["rule"], item["target"], item["functions"], item["via"]),
+                         ("threads-undeclared", "//u:t", ["pthread_create"], ["//u:os"]))
+        self.assertEqual(self.world(True), [])
+
+    def test_a_declaration_is_vacuous_when_nothing_in_the_closure_creates_threads(self):
+        [item] = self.world(True, library_undefined=("memcpy",))
+        self.assertEqual(item["rule"], "threads-vacuous")
+        self.assertEqual(self.world(False, library_undefined=("memcpy",)), [])
+
+    def test_a_dependency_cycle_ends(self):
+        self.assertEqual(self.world(True, cycle=True), [])
 
     def test_only_tests_are_judged(self):
         self.assertEqual(self.judge(["pthread_create"], False, kind="c_library"), [])

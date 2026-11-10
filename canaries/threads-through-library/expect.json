@@ -1,0 +1,9 @@
+{
+  "bypass": "a test that starts threads through a library, not declared threads = True",
+  "description": "T138: the library calls pthread_create, the test only calls the library. The test's own object has no thread-creation reference, but its link closure does, so it must declare threads = True; without it the test has no tsan result.",
+  "fail": {
+    "symbols": [
+      "threads-undeclared"
+    ]
+  }
+}

@@ -225,6 +225,7 @@ prints the tier and `--require-tier TIER` refuses a verdict of the other one.
 | gate | `nightly` | `merge` |
 |---|---|---|
 | every gate but the two below | runs | runs, unchanged |
+| `tests-msan`, `tests-tsan` (T138) | run | run, unchanged (both tiers run both gates) |
 | `mutants` | every module at L2 or above is built, run and judged | the modules that can only report are **deferred** (not built, not run); the others as in `nightly` |
 | `mutants-witness` | every module of the witness scope | the same deferral rule |
 
