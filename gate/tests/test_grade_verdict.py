@@ -251,6 +251,34 @@ class Verify(TempDirTestCase):
         self.make(bad)
         self.assertRejected(self.verify(), "witness_sha256 is missing or malformed")
 
+    def test_require_tier_accepts_only_that_tier_and_the_tier_is_always_printed(self):
+        self.make()   # a nightly grade
+        outcome = self.verify()
+        self.assertEqual(outcome.code, 0)
+        self.assertIn("tier nightly", outcome.stdout)
+        self.assertEqual(self.verify("--require-tier", "nightly").code, 0)
+        self.assertRejected(self.verify("--require-tier", "merge"), "tier is nightly, expected merge")
+        self.fixture.tier = "merge"
+        self.make()
+        outcome = self.verify("--require-tier", "nightly")
+        self.assertRejected(outcome, "tier is merge, expected nightly")
+        self.assertIn("tier merge", outcome.stdout)
+        self.assertEqual(self.verify("--require-tier", "merge").code, 0)
+        self.assertEqual(self.verify().code, 0)
+
+    def test_a_forged_tier_breaks_the_signature_and_an_unknown_tier_is_malformed(self):
+        self.fixture.tier = "merge"
+        self.make()
+        document = read_json(self.verdict)
+        document["core"]["inputs"]["tier"] = "nightly"
+        self.verdict.write_bytes(jsonio.canonical_dumps(document))
+        self.assertRejected(self.verify("--require-tier", "nightly"), "signature is not valid")
+
+        def odd(core):
+            core["inputs"]["tier"] = "weekly"
+        self.make(odd)
+        self.assertRejected(self.verify(), "tier is missing or malformed")
+
     def test_an_unreadable_verdict_is_an_internal_error(self):
         outcome = run_rigor(["verify", "--verdict", self.tmp / "none.json", "--allowed-signers", self.signers])
         self.assertEqual(outcome.code, 2)
