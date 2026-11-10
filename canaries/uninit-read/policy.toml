@@ -27,7 +27,7 @@ exports = ["main"]
 level = "L2"
 impl = ["util/util.c"]
 allow = ["malloc"]
-exports = ["util_make_ramp", "util_sum"]
+exports = ["util_make_ramp", "util_sum", "util_spare"]
 
 [module."//util:core_test"]
 allow = []
