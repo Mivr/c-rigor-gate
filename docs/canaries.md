@@ -311,12 +311,9 @@ test fails in msan; no threaded test exists in the base product, so `tests-tsan`
 | `uninit-read` | a branch decided by a struct field nobody wrote (read in another unit, so the compiler cannot fold it) | `tests-msan`: no-assertions, test-not-pass | none |
 | `threads-undeclared` | a test that calls `pthread_create` without `threads = True` (so it has no tsan result) | `symbols`: threads-undeclared | none |
 | `msan-guarded-code` | code under `__has_feature(memory_sanitizer)` behind a product macro | `mode-divergence`: mode-divergent-code | none |
-| `data-race` (**pending**) | two threads write one counter without a lock, in a test declared `threads = True` | `tests-tsan`: no-assertions, test-not-pass | none |
-| `threads-vacuous` (**pending**) | `threads = True` on a test that starts no thread | `symbols`: threads-vacuous | none |
+| `threads-through-library` | the library calls `pthread_create`, the test only calls the library; no declaration | `symbols`: threads-undeclared | none |
+| `data-race` | two threads write one counter without a lock, in a test declared `threads = True` | `tests-tsan`: no-assertions, test-not-pass | none |
+| `threads-vacuous` | `threads = True` on a test whose closure starts no thread | `symbols`: threads-vacuous | none |
 
-`data-race` and `threads-vacuous` are pending on `T138-buckfiles`: `rigor buckfiles` (`gate/rigor_lib/buckfiles.py`, outside T138's
-paths) does not accept the keyword `threads` on `c_test`, so a product cannot declare a threaded test yet and `buckfiles` is red
-for both as well (`bad-argument`). Run as pending canaries, `tests-tsan` fails the race exactly as expected
-(`no-assertions`, `test-not-pass`) and `symbols` reports `threads-vacuous`; once `buckfiles` accepts `threads = True` (a
-boolean literal, as `c_embed`'s `nul`) and `_facts_msan`/`_facts_tsan` are added to its derived test names, remove `pending`.
-Until then no live canary fails `tests-tsan`, which the coverage check of the pack (`check_coverage`) reports.
+`buckfiles` accepts `threads` on `c_test` as a boolean literal only, and refuses the derived `_facts_msan` / `_facts_tsan`
+names as deps like the other derived names. Every gate has a live canary again.

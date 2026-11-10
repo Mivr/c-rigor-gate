@@ -88,7 +88,7 @@ process per test; nothing more than `log_path` was needed for that. On a failing
 log to stderr, so a runtime that died at start-up names its reason.
 
 - **Which tests.** The gates `tests-msan` and `tests-tsan` of `rigor grade` (`docs/grade.md`) judge exactly these sets: `tests-tsan` the tests declared `threads = True`
-  (and the `symbols` gate checks the declaration against the test's own objects: `threads-undeclared`, `threads-vacuous`), `tests-msan` every test but
+  (and the `symbols` gate checks the declaration against thread creation in the test and its link closure: `threads-undeclared`, `threads-vacuous`), `tests-msan` every test but
   those with no msan target (info `msan-not-applicable`, naming the library). `c_test(threads = True)` has a tsan results target; `threads = False` (the default) has none. Every
   `c_test` has an msan results target, except one whose link closure has a sysroot library beyond libc and pthread
   (MSan needs every linked object instrumented; today only X11): such a `c_library` is incompatible with the msan mode,

@@ -204,6 +204,10 @@ assert m["mode"] == "msan" and m["expected_count"] == 5 and len(m["targets"]) ==
 assert m["executed_actions"] > 0 and m["exit_code"] == 0, m
 assert [f["rule"] for f in tsan["findings"]] == ["no-threaded-tests"], tsan["findings"]
 assert "executed_actions" not in t, t
+md = json.load(open("%s/mode-divergence.json" % sys.argv[1]))["metadata"]
+print("  mode-divergence cold: %d executed + %d cached actions, %.1fs; of them the msan twins %d + %d, the tsan twins %d + %d"
+      % (md["executed_actions"], md["cached_actions"], md["seconds"], md["msan"]["executed_actions"], md["msan"]["cached_actions"],
+         md["tsan"]["executed_actions"], md["tsan"]["cached_actions"]))
 print("  cold cost of the two gates: tests-msan %d executed + %d cached actions, %.1fs; tests-tsan 0 actions, %.1fs (cold grade %ss)"
       % (m["executed_actions"], m["cached_actions"], m["seconds"], t["seconds"], sys.argv[2]))
 EOF3
