@@ -291,7 +291,7 @@ class Step(TempDirTestCase):
 
     def test_it_is_registered_after_the_tests_and_before_mutants_and_is_in_the_order_file(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
-        self.assertEqual(ids[ids.index("tests-stub") + 1:ids.index("mutants")], ["perf"])
+        self.assertEqual(ids[ids.index("tests-stub") + 1:ids.index("mutants")], ["fuzz", "perf"])
         self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt")), ids)
 
     def test_a_product_without_perf_entries_passes_with_info(self):

@@ -16,6 +16,7 @@
     ]
   },
   "not_run": [
+    "fuzz",
     "mutants",
     "mutants-witness"
   ]

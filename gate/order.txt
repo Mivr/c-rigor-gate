@@ -13,6 +13,7 @@ mode-divergence
 tests-release
 tests-san
 tests-stub
+fuzz
 perf
 mutants
 witness-tests

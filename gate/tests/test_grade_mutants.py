@@ -650,7 +650,7 @@ class Gate(TempDirTestCase):
 
     def test_it_is_registered_after_the_tests_and_before_the_witness_gates_and_is_in_the_order_file(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
-        self.assertEqual(ids[-6:], ["tests-san", "tests-stub", "perf", "mutants", "witness-tests", "mutants-witness"])
+        self.assertEqual(ids[-6:], ["tests-stub", "fuzz", "perf", "mutants", "witness-tests", "mutants-witness"])
         self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt"))[-6:], ids[-6:])
 
     def test_it_does_not_run_unless_the_tree_was_built_and_every_test_passed(self):

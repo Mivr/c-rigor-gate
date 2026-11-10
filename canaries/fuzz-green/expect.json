@@ -1,0 +1,4 @@
+{
+  "control": true,
+  "description": "a parser module (profile parser) with a fixed parser and a harness that calls it: the fuzz gate passes within the budget (T129)"
+}
