@@ -3082,6 +3082,10 @@ impl = ["lib/fmt/jkidx/src/**"]
 allow = ["memcmp"]
 exports = ["jkidx_insert"]
 
+[module."//lib/fmt/jkidx:jkidx_rot_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/fmt/jkidx:jkidx_test"]
 allow = ["memcmp", "memcpy", "snprintf", "strlen"]
 exports = ["main"]
@@ -3176,6 +3180,10 @@ level = "L3"
 impl = ["lib/fmt/jstr/src/**"]
 allow = []
 exports = ["jstr_decode"]
+
+[module."//lib/fmt/jstr:jstr_limit_test"]
+allow = ["strlen"]
+exports = ["main"]
 
 [module."//lib/fmt/jstr:jstr_test"]
 allow = ["memcpy", "memset", "snprintf"]
@@ -3746,6 +3754,11 @@ exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed
     "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
     "kit_same", "kit_split_next_recv", "main"]
 
+[module."//lib/io/tls_stream:pnet_ctx_test"]
+allow = ["bind", "close", "getsockname", "listen"]
+deny_exempt = ["socket"]
+exports = ["main"]
+
 [module."//lib/io/tls_stream:pnet_test"]
 allow = ["accept", "bind", "close", "getsockname", "in6addr_loopback", "listen", "memset", "poll",
     "read", "write"]
@@ -4222,9 +4235,17 @@ exports = ["sh_cond_broadcast", "sh_cond_destroy", "sh_cond_init", "sh_cond_sign
 allow = []
 exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
+[module."//lib/sim/simhost:simhost_due_test"]
+allow = []
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
+
 [module."//lib/sim/simhost:simhost_gap_test"]
 allow = []
 exports = ["main"]
+
+[module."//lib/sim/simhost:simhost_idle_test"]
+allow = []
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simhost:simhost_init_test"]
 allow = ["memset"]
@@ -4244,6 +4265,14 @@ exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "s
 
 [module."//lib/sim/simhost:simhost_seed_test"]
 allow = ["memcpy"]
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
+
+[module."//lib/sim/simhost:simhost_until_test"]
+allow = []
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
+
+[module."//lib/sim/simhost:simhost_wait_test"]
+allow = []
 exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simnet:simnet"]
