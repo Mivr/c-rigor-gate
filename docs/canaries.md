@@ -274,6 +274,19 @@ gates to have passed): every `not_run` list that named `mutants` names `fuzz` no
 `fuzz-regression-dropped` is reworked (above). All share `canaries/_fuzz/files/` (`BUCK.corpus`, `BUCK.corpus-dropped`, `BUCK.runs`
 and `corpus/`). `fuzz` is the last gate, so no `not_run` list changes.
 
+## Canary added by T137 (grade tiers)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `tier-forged` | a verdict graded at tier `merge` presented as a nightly one: the control product graded `--tier merge`, signed with a throwaway key, then `rigor verify --require-tier nightly` | none at grade time; `verify` must exit 1 with `tier is merge, expected nightly` (and exit 0 with `--require-tier merge`, so it is refused for its tier alone) | none |
+
+Its `expect.json` has `verify` instead of `fail`: `require_tier` is the tier that must be refused, `refused` the text of the
+refusal; the runner grades at the other tier, whatever `--tier` says.
+
+**The tier `merge` pass.** `selftest/canaries.sh --jobs 8 --tier merge` grades every canary at tier `merge` against the same
+`expect.json`: a canary that is red on `mutants` at an L3 or L4 module (the base product's `//core:core` is L3) must be red
+there at merge, in the same gate and rule. The L2 module of the base product (`//util:util`) is deferred at merge, so a canary
+whose red gate depends on it would miss in that pass; the pass is a second run of the same pack, not a second pack.
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
