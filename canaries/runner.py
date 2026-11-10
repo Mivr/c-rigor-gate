@@ -30,7 +30,9 @@ BASE = os.path.join(ROOT, "canaries", "_base")  # the shared tree and witness, f
 GATE_ORDER = os.path.join(ROOT, "gate", "order.txt")
 UNCACHED_DEFAULT = "weak-test"
 DEFAULT_JOBS = 8
-EXPECT_KEYS = {"description", "bypass", "fail", "not_run", "exit", "pending", "control", "absent", "contains"}
+EXPECT_KEYS = {"description", "bypass", "fail", "not_run", "exit", "pending", "control", "absent", "contains", "verify"}
+TIERS = ("merge", "nightly")
+VERIFY_NAMESPACE = "c-rigor-gate-verdict"
 # Gates no product can make fail: they judge the grader, not the product, so no canary can expect them to
 # fail. They are exempt from the coverage check only because a selftest proves each one fails:
 #   toolchain: the last step of selftest/grade.sh (a scratch gate clone with one manifest sha256 flipped,
@@ -60,8 +62,8 @@ def load_expect(canary_id):
     unknown = set(expect) - EXPECT_KEYS
     if unknown:
         raise SystemExit("canaries/%s/expect.json: unknown keys %s" % (canary_id, sorted(unknown)))
-    if "fail" not in expect and not expect.get("control"):
-        raise SystemExit("canaries/%s/expect.json: a canary needs `fail`" % canary_id)
+    if "fail" not in expect and not expect.get("control") and "verify" not in expect:
+        raise SystemExit("canaries/%s/expect.json: a canary needs `fail` or `verify`" % canary_id)
     return expect
 
 
@@ -147,6 +149,8 @@ def render(failed, not_run):
 def expected_text(expect):
     if expect.get("control"):
         return "PASS"
+    if "verify" in expect:
+        return "PASS, verify --require-tier %s refused" % expect["verify"]["require_tier"]
     fail = {gate: sorted(rules) for gate, rules in expect["fail"].items()}
     return render(fail, sorted(expect.get("not_run", [])))
 
@@ -159,7 +163,42 @@ def witness_dir(canary_id):
     return os.path.join(BASE, "witness")
 
 
-def grade_one(canary_id, scratch, uncached, keep=True):
+def signing_files(work):
+    """(private key, allowed_signers file) of a throwaway key, for a canary whose verdict `rigor verify` must judge."""
+    key = os.path.join(work, "key")
+    run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "canary", "-f", key], work)
+    with open(key + ".pub", encoding="utf-8") as handle:
+        kind, blob = handle.read().split()[:2]
+    signers = os.path.join(work, "allowed_signers")
+    with open(signers, "w", encoding="utf-8") as handle:
+        handle.write('canary namespaces="%s" %s %s\n' % (VERIFY_NAMESPACE, kind, blob))
+    return key, signers
+
+
+def verify_verdict(verdict, signers, tier, head):
+    """(exit code, output) of `rigor verify --require-tier TIER` on a verdict."""
+    result = run(["python3", "-I", "-B", os.path.join(ROOT, "gate", "rigor"), "verify", "--verdict", verdict,
+                  "--allowed-signers", signers, "--expect-head", head, "--require-tier", tier], ROOT, check=False)
+    return result.returncode, result.stdout + result.stderr
+
+
+def judge_verify(expect, verdict, signers, head):
+    """Reasons a `verify` canary failed. The verdict is a signed PASS of the grade tier the canary names; it must be
+    accepted with that tier required (so it is refused for its tier alone) and refused with the other one."""
+    want = expect["verify"]
+    own = [t for t in TIERS if t != want["require_tier"]][0]
+    why = []
+    code, out = verify_verdict(verdict, signers, own, head)
+    if code != 0 or "tier %s" % own not in out:
+        why.append("the verdict is not accepted at its own tier %s (exit %d): %s" % (own, code, out.strip()[-300:]))
+    code, out = verify_verdict(verdict, signers, want["require_tier"], head)
+    if code != 1 or want["refused"] not in out:
+        why.append("verify --require-tier %s was not refused as %r (exit %d): %s"
+                   % (want["require_tier"], want["refused"], code, out.strip()[-300:]))
+    return why
+
+
+def grade_one(canary_id, scratch, uncached, keep=True, tier=None):
     expect = load_expect(canary_id)
     work = os.path.join(scratch, canary_id)
     os.makedirs(work)
@@ -176,12 +215,23 @@ def grade_one(canary_id, scratch, uncached, keep=True):
                    "--product", os.path.join(source, "product.toml"),
                    "--work", os.path.join(work, "grade"), "--out", verdict]
         command += ["--witness", witness_dir(canary_id)]
+        signers = None
+        if "verify" in expect:   # graded at the tier the canary names, signed with a throwaway key
+            key, signers = signing_files(work)
+            tier = [t for t in TIERS if t != expect["verify"]["require_tier"]][0]
+            command += ["--sign-key", key]
+        if tier is not None:
+            command += ["--tier", tier]
         if uncached:
             command.append("--uncached")
         result = run(command, ROOT, {"TMPDIR": work}, check=False)
         with open(os.path.join(work, "grade.log"), "w", encoding="utf-8") as log:
             log.write(result.stdout + result.stderr)
         outcome.update(judge(expect, result.returncode, os.path.join(work, "grade"), verdict, work, canary_id))
+        if signers is not None and os.path.isfile(verdict):
+            why = judge_verify(expect, verdict, signers, head)
+            outcome["why"] = outcome.get("why", []) + why
+            outcome["ok"] = outcome["ok"] and not why
     except Exception as error:  # a canary that cannot run is a failed canary, never a skipped one
         outcome.update(got="ERROR %s" % str(error)[:300], ok=False, why=["harness error"])
     outcome["seconds"] = time.time() - started
@@ -214,12 +264,13 @@ def judge(expect, code, grade_work, verdict, work, canary_id=""):
         return {"got": "no verdict (exit %d)" % code, "ok": False,
                 "why": ["no verdict.json"] + leak_reasons(leaked)}
     overall, failed, not_run, passed = summarize(grade_work, verdict)
-    got = render(failed, not_run) + ("" if code == expect.get("exit", 1) or expect.get("control")
+    got = render(failed, not_run) + ("" if code == expect.get("exit", 1) or expect.get("control") or "verify" in expect
                                      else " exit %d" % code)
     why = []
-    if expect.get("control"):
+    if expect.get("control") or "verify" in expect:
         if overall != "PASS" or code != 0:
-            why.append("control must PASS (overall %s, exit %d)" % (overall, code))
+            why.append("%s must PASS (overall %s, exit %d)" % ("control" if expect.get("control") else "a verify canary",
+                                                                overall, code))
     else:
         want = {gate: sorted(rules) for gate, rules in expect["fail"].items()}
         if failed != want:
@@ -273,7 +324,7 @@ def uncovered(gates, expects):
     covered = set()
     for expect in expects:
         if not expect.get("pending") and not expect.get("control"):
-            covered |= set(expect["fail"])
+            covered |= set(expect.get("fail", {}))
     return [gate for gate in gates if gate not in covered and gate not in GRADER_INTEGRITY_GATES]
 
 
@@ -296,7 +347,7 @@ def cost(canary_id):
     Only the order canaries are started in depends on this, never a verdict.
     """
     expect = load_expect(canary_id)
-    if expect.get("control"):
+    if expect.get("control") or "verify" in expect:
         return 99
     skipped = len(expect.get("not_run", []))
     return 10 - skipped
@@ -321,7 +372,7 @@ def announce(done):
     print("  %-28s %s (%.0fs)" % (done["id"], "ok" if done["ok"] else "done", done["seconds"]), flush=True)
 
 
-def grade_all(selected, scratch, uncached_id, jobs, keep):
+def grade_all(selected, scratch, uncached_id, jobs, keep, tier=None):
     """Grade every selected canary, each in its own clone, `jobs` at a time (the uncached one counts as one).
 
     The control runs first and warms the cache the others share; the uncached canary shares nothing with
@@ -331,7 +382,7 @@ def grade_all(selected, scratch, uncached_id, jobs, keep):
     outcomes, lock = [], threading.Lock()
 
     def one(canary_id):
-        done = grade_one(canary_id, scratch, canary_id == uncached_id, keep)
+        done = grade_one(canary_id, scratch, canary_id == uncached_id, keep, tier)
         with lock:
             outcomes.append(done)
         announce(done)
@@ -360,6 +411,10 @@ def main():
     parser.add_argument("--uncached", default=None,
                         help="the canary graded with --uncached (default %s; tripwires: rotated by day)" % UNCACHED_DEFAULT)
     parser.add_argument("--keep", action="store_true")
+    parser.add_argument("--tier", choices=TIERS, default=None,
+                        help="grade every canary at this tier (T137). `merge` is the second pass: every canary that "
+                             "is red on `mutants` at an L3 or L4 module must still be red; the pack's expectations "
+                             "are the same (default: the grade's own default, nightly)")
     parser.add_argument("--root", default="canaries", help="the pack directory (default %(default)s; tripwires)")
     args = parser.parse_args()
     global CANARIES
@@ -383,7 +438,7 @@ def main():
     scratch = tempfile.mkdtemp(prefix="rigor-canaries.", dir=os.environ.get("TMPDIR", "/var/tmp"))
     started = time.time()
     try:
-        outcomes = grade_all(selected, scratch, args.uncached, args.jobs, args.keep)
+        outcomes = grade_all(selected, scratch, args.uncached, args.jobs, args.keep, args.tier)
         outcomes.sort(key=lambda item: (not item["control"], item["id"]))
         print()
         print_table(outcomes)

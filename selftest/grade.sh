@@ -388,6 +388,18 @@ step_warm() {  # same head in a fresh work dir: nothing executes; the verdict is
   echo "  signature verifies (namespace c-rigor-gate-verdict only)"
 }
 
+step_tier() {  # T137: tier merge defers the L2 module's mutation (the checks run after the parallel steps)
+  local started code
+  started="$(now)"
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$last_head" --task "$work/task.toml" \
+      --product "$product" --work "$work/tier-merge" --out "$work/tier-merge.verdict.json" --tier merge \
+      > "$work/tier-merge.log" 2>&1
+  code=$?
+  echo "  exit $code, $(elapsed "$started")s"
+  check_verdict "$work/tier-merge.verdict.json" "" "$code" "$work/tier-merge" || { tail -n 30 "$work/tier-merge.log" >&2; fail "tier merge"; }
+  [ -z "$(find_daemons "$work/tier-merge")" ] || fail "tier merge: a process is still running"
+}
+
 step_hostile() {  # the pipeline ignores the inherited environment, down to core_sha256
   local started code
   mkdir -p "$work/evil-home/.buckconfig.d"
@@ -722,9 +734,9 @@ print("  fuzz corpus: crash in phase replay, runs below the policy budget is fuz
 EOF14
 }
 
-names=(warm hostile uncached internal witness_na witness_strong witness_equal extra_export fuzz fuzz_corpus
+names=(warm hostile uncached tier internal witness_na witness_strong witness_equal extra_export fuzz fuzz_corpus
        ta_green ta_release_pass ta_san_pass ta_timeout ta_no_new ta_a018 ta_no_previous)
-labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error"
+labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "clean, --tier merge (the L2 module is deferred)" "internal-error"
         "pure impl change with a witness bundle (witness gates not applicable)" "test-surface change with a strong witness" "test-surface change with a witness identical to the head (cold, warm)"
         "clean module plus an unlisted exported function (unexpected-export)"
         "a clean c_fuzz target (the fuzz gate runs it), the same head again (no fuzz action)"
@@ -773,6 +785,23 @@ assert w["metadata"]["gate_metadata"]["toolchain"]["verified"] is False
 print("  toolchain: verified in the uncached grade, not verified (cached grade) in the warm one")
 assert u["core_sha256"] != w["core_sha256"]
 EOF4
+
+python3 -I - "$work/warm.verdict.json" "$work/tier-merge.verdict.json" <<'EOF15' || fail "tier merge: wrong mutants gate or verdict"
+import json, sys
+n, m = (json.load(open(p)) for p in sys.argv[1:])
+gn, gm = n["metadata"]["gate_metadata"]["mutants"], m["metadata"]["gate_metadata"]["mutants"]
+fm = json.load(open(sys.argv[2].replace(".verdict.json", "/results/mutants.json")))["findings"]
+assert n["core"]["inputs"]["tier"] == "nightly" and m["core"]["inputs"]["tier"] == "merge"
+assert n["core_sha256"] != m["core_sha256"], "a merge PASS and a nightly PASS have the same core_sha256"
+assert set(gn["modules"]) == {"//core:core", "//util:util"} and "tier" not in gn and "deferred" not in gn, gn
+assert set(gm["modules"]) == {"//core:core"} and gm["tier"] == "merge" and gm["deferred"] == 1, gm
+assert gm["modules"]["//core:core"]["total"] > 0 and gm["modules"]["//core:core"]["survivors"] == [], gm
+assert set(gm["targets"]) == {"//core:core"}, gm["targets"]
+assert [(f["rule"], f["module"], f["severity"]) for f in fm] == [("mutation-deferred", "//util:util", "info")], fm
+an, am = gn["executed_actions"] + gn["cached_actions"], gm["executed_actions"] + gm["cached_actions"]
+print("  mutants actions (executed + cached): nightly %d, merge %d; deferred %s" % (an, am, fm[0]["reason"]))
+assert 0 < am < an, (am, an)
+EOF15
 
 python3 -I - "$work/warm.verdict.json" "$work/witness-na.verdict.json" <<'EOF8' || fail "witness-na: the head gates differ from the grading without --witness"
 import json, sys
