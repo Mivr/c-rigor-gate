@@ -24,7 +24,7 @@ import os
 import re
 from argparse import Namespace
 
-from rigor_lib import facts_modes, grade_build, grade_context, grade_policy, jsonio, structure
+from rigor_lib import facts_modes, grade_build, grade_context, grade_policy, grade_sanmodes, jsonio, structure
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
 
@@ -34,6 +34,9 @@ RELEASE = "toolchains//:linux_release"
 SAN = "toolchains//:linux_san"
 FACTS_RULE = "c_facts"
 SAN_RULE = "c_san_facts"
+# The modes compared with release (T138): the mode, and the rule of its facts twins.
+MODE_RULES = (("san", SAN_RULE), ("msan", "c_msan_facts"), ("tsan", "c_tsan_facts"))
+PLATFORMS = {"san": SAN, "msan": "toolchains//:linux_msan", "tsan": "toolchains//:linux_tsan"}
 KINDS = ("c_library", "c_binary", "c_test", "c_fuzz")
 MAX_STRUCTURE_LEVEL = "L3"
 _ROOT = "root//"
@@ -322,7 +325,12 @@ def _structure(g, originals):
 
 def san_twin(label):
     """`//pkg:x_facts` -> `//pkg:x_facts_san`."""
-    return label + "_san"
+    return twin(label, "san")
+
+
+def twin(label, mode):
+    """`//pkg:x_facts` -> `//pkg:x_facts_<mode>`."""
+    return "%s_%s" % (label, mode)
 
 
 def modes_gate(g):
@@ -349,27 +357,84 @@ def _build_mode(g, platform, labels, tag, directory):
     return built, metadata
 
 
+def _twins_of(release, mode, existing, blockers):
+    """(the twins of `mode` the release targets must have, the findings for the ones that do not exist).
+
+    A target with a sysroot library beyond libc and pthread in its closure has no msan twin (`msan-not-applicable`
+    in `tests-msan` names the library for tests): it is left out of the msan comparison."""
+    found, twins = [], []
+    for label in release:
+        if mode == "msan" and blockers.get(label[:-len("_facts")]) is not None:
+            continue
+        if twin(label, mode) in existing:
+            twins.append(twin(label, mode))
+        else:
+            found.append(finding("missing-%s-twin" % mode, target=label))
+    return twins, found
+
+
 def _modes(g):
     release = query_labels(g.tree, "kind(%s, //...)" % FACTS_RULE)
-    san = query_labels(g.tree, "kind(%s, //...)" % SAN_RULE)
-    found = [finding("missing-san-twin", target=label) for label in release if san_twin(label) not in san]
-    found += [finding("missing-release-twin", target=label) for label in san if label[:-len("_san")] not in release]
+    existing = {mode: query_labels(g.tree, "kind(%s, //...)" % rule) for mode, rule in MODE_RULES}
+    found = []
+    for mode, _ in MODE_RULES:
+        found += [finding("missing-release-twin", target=label, mode=mode) if mode != "san" else
+                  finding("missing-release-twin", target=label)
+                  for label in existing[mode] if label[:-len("_" + mode)] not in release]
     if not release:
         found.append(finding("no-mode-targets"))
         return GateResult(facts_modes.GATE_ID, found, {})
-    twins = [san_twin(label) for label in release if san_twin(label) in san]
-    release_dir, san_dir = fresh_dir(g, "modes-release"), fresh_dir(g, "modes-san")
+    blockers = grade_sanmodes.msan_blockers(g.tree)
+    twins = {}
+    for mode, _ in MODE_RULES:
+        twins[mode], missing = _twins_of(release, mode, existing[mode], blockers)
+        found += missing
+    release_dir = fresh_dir(g, "modes-release")
     built_release, release_meta = _build_mode(g, RELEASE, release, "modes-release", release_dir)
-    built_san, san_meta = _build_mode(g, SAN, twins, "modes-san", san_dir)
     found += [finding("modes-build-failed", target=label, mode="release") for label in release if label not in built_release]
-    found += [finding("modes-build-failed", target=label, mode="san") for label in twins if label not in built_san]
-    metadata = {"release": release_meta, "san": san_meta, "targets": len(release)}
+    metadata = {"release": release_meta, "targets": len(release)}
+    directories = {}
+    for mode, _ in MODE_RULES:
+        if not twins[mode]:
+            metadata[mode] = {"executed_actions": 0, "cached_actions": 0, "exit_code": 0}   # nothing to compare (msan: all blocked)
+            continue
+        directories[mode] = fresh_dir(g, "modes-" + mode)
+        built, metadata[mode] = _build_mode(g, PLATFORMS[mode], twins[mode], "modes-" + mode, directories[mode])
+        found += [finding("modes-build-failed", target=label, mode=mode) for label in twins[mode] if label not in built]
     for counter in ("executed_actions", "cached_actions"):
-        metadata[counter] = release_meta[counter] + san_meta[counter]
+        metadata[counter] = release_meta[counter] + sum(metadata[mode][counter] for mode, _ in MODE_RULES)
     if found:
-        # Something is missing or did not build: the two directories cannot line up, and a comparison
+        # Something is missing or did not build: the directories cannot line up, and a comparison
         # of what is left would pass a module it never saw.
         return GateResult(facts_modes.GATE_ID, found, metadata)
-    result = facts_modes.run(Namespace(modes=[release_dir, san_dir]))
-    metadata.update(result.metadata)
-    return GateResult(facts_modes.GATE_ID, result.findings, metadata)
+    return _compared(g, release_dir, directories, twins, release, metadata)
+
+
+def _release_subset(g, release_dir, release, twins, mode):
+    """A directory with the release facts of the targets that have a twin in `mode` (the files are named by the
+    index of the target among `release`, as `_build_mode` wrote them)."""
+    directory = fresh_dir(g, "modes-release-" + mode)
+    for index, label in enumerate(release):
+        if twin(label, mode) in twins:
+            for suffix in (".json", ".calls.json"):
+                copy_file(os.path.join(release_dir, "%03d%s" % (index, suffix)),
+                          os.path.join(directory, "%03d%s" % (index, suffix)))
+    return directory
+
+
+def _compared(g, release_dir, directories, twins, release, metadata):
+    """Release against each mode's twins, from the directories that hold the facts. A mode compares only the targets
+    it has a twin for (msan has none for a module with a sysroot library beyond pthread), so the release side is cut
+    to the same targets."""
+    found = []
+    for mode, _ in MODE_RULES:
+        if not twins[mode]:
+            continue
+        side = release_dir
+        if len(twins[mode]) != len(release):
+            side = _release_subset(g, release_dir, release, twins[mode], mode)
+        result = facts_modes.run(Namespace(modes=[side, directories[mode]], mode_name=mode))
+        found += result.findings
+        metadata[mode + "_units"] = result.metadata["units"]
+    metadata["units"] = metadata.get("san_units", 0)
+    return GateResult(facts_modes.GATE_ID, found, metadata)

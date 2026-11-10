@@ -299,3 +299,21 @@ pass `canaries/runner.py` (`MERGE_DEFERS_CONTAINS`) skips that pin, nothing else
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
+
+## Canaries added by T138 (`tests-msan`, `tests-tsan`)
+Every expectation that lists `tests-san` in `not_run` now lists `tests-msan` and `tests-tsan` too (they need the same
+clean build, run by the pack, not guessed); every canary whose test fails in release and san (`failing-test`,
+`removed-test`, `skipped-test`, `results-fd`, `deleted-target`) also fails `tests-msan` with the same rules (the same
+test fails in msan; no threaded test exists in the base product, so `tests-tsan` passes). The tripwire `unproducible-test-id` fails `tests-msan` as well.
+
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `uninit-read` | a branch decided by a struct field nobody wrote (read in another unit, so the compiler cannot fold it) | `tests-msan`: no-assertions, test-not-pass | none |
+| `threads-undeclared` | a test that calls `pthread_create` without `threads = True` (so it has no tsan result) | `symbols`: threads-undeclared | none |
+| `msan-guarded-code` | code under `__has_feature(memory_sanitizer)` behind a product macro | `mode-divergence`: mode-divergent-code | none |
+| `threads-through-library` | the library calls `pthread_create`, the test only calls the library; no declaration | `symbols`: threads-undeclared | none |
+| `data-race` | two threads write one counter without a lock, in a test declared `threads = True` | `tests-tsan`: no-assertions, test-not-pass | none |
+| `threads-vacuous` | `threads = True` on a test whose closure starts no thread | `symbols`: threads-vacuous | none |
+
+`buckfiles` accepts `threads` on `c_test` as a boolean literal only, and refuses the derived `_facts_msan` / `_facts_tsan`
+names as deps like the other derived names. Every gate has a live canary again.

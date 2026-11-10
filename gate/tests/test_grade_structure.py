@@ -153,14 +153,18 @@ class ModesFindings(TempDirTestCase):
     def test_a_missing_twin_is_a_finding_and_no_comparison_is_made(self):
         grading = SimpleNamespace(status={"assemble": "PASS", "build": "PASS"}, tree="/t", work=str(self.tmp),
                                   args=SimpleNamespace(uncached=False))
-        labels = {"c_facts": ["root//p:a_facts", "root//p:b_facts"], "c_san_facts": ["root//p:a_facts_san"]}
+        both = ["root//p:a_facts", "root//p:b_facts"]
+        labels = {"c_facts": both, "c_san_facts": ["root//p:a_facts_san"],
+                  "c_msan_facts": [label + "_msan" for label in both], "c_tsan_facts": [label + "_tsan" for label in both]}
         with mock.patch.object(grade_structure, "query_labels", lambda tree, expr: labels[expr.split("(")[1].split(",")[0]]), \
+                mock.patch.object(grade_structure.grade_sanmodes, "msan_blockers", lambda tree: {}), \
                 mock.patch.object(grade_structure, "_build_mode", lambda *a: ([], {"executed_actions": 0, "cached_actions": 0})), \
                 mock.patch.object(grade_structure.facts_modes, "run") as compare:
             result = grade_structure._modes(grading)
         compare.assert_not_called()
         rules = sorted((f["rule"], f["target"], f.get("mode")) for f in result.findings)
-        self.assertEqual(rules[0], ("missing-san-twin", "root//p:b_facts", None))
+        self.assertIn(("missing-san-twin", "root//p:b_facts", None), rules)
+        self.assertNotIn("missing-msan-twin", [rule for rule, _, _ in rules])
         self.assertEqual(result.status, "FAIL")
 
 

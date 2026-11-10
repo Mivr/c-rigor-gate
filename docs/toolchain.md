@@ -75,7 +75,7 @@ tools/buck2 build --target-platforms toolchains//:linux_cov //examples/hello:hel
 `c_fuzz` is a test that runs `-seed=1 -runs=200000` as a cacheable RE action (see "Fuzz runs" below); it fails when
 the fuzzer finds a crash.
 
-## The msan and tsan modes (T125; landed, not wired into `rigor grade`)
+## The msan and tsan modes (T125; graded by `tests-msan` and `tests-tsan` since T138)
 
 Two target platforms, `toolchains//:linux_msan` (MemorySanitizer with origin tracking) and `toolchains//:linux_tsan`
 (ThreadSanitizer). The flags are sealed in `rules/c.bzl` and the same in `rules/third_party.bzl` for gate-owned
@@ -87,7 +87,9 @@ in them, with the sealed environment of `san` plus `MSAN_OPTIONS` / `TSAN_OPTION
 process per test; nothing more than `log_path` was needed for that. On a failing exit the action prints the sanitizer
 log to stderr, so a runtime that died at start-up names its reason.
 
-- **Which tests.** `c_test(threads = True)` has a tsan results target; `threads = False` (the default) has none. Every
+- **Which tests.** The gates `tests-msan` and `tests-tsan` of `rigor grade` (`docs/grade.md`) judge exactly these sets: `tests-tsan` the tests declared `threads = True`
+  (and the `symbols` gate checks the declaration against thread creation in the test and its link closure: `threads-undeclared`, `threads-vacuous`), `tests-msan` every test but
+  those with no msan target (info `msan-not-applicable`, naming the library). `c_test(threads = True)` has a tsan results target; `threads = False` (the default) has none. Every
   `c_test` has an msan results target, except one whose link closure has a sysroot library beyond libc and pthread
   (MSan needs every linked object instrumented; today only X11): such a `c_library` is incompatible with the msan mode,
   and so is everything that depends on it.
@@ -105,6 +107,10 @@ log to stderr, so a runtime that died at start-up names its reason.
   for tsan (6 of 6). A shared-library layout cannot be fixed with link flags (`-no-pie` was tried: 59 of 300 starts
   still failed). With the rule: 0 of 30 uncached runs of the passing fixture failed to start, for each mode.
   `selftest/sanmodes.sh` prints one line naming this when a results run ends that way; it is still a failure.
+  `rigor grade` (T138) turns it into the one error `sanitizer-startup` of `tests-msan` / `tests-tsan`, which names this
+  prerequisite and lists no missing test; the build is not retried, so a farm without the rule fails every grade clearly.
+- **Stable reports.** TSan prints `(pid=N)` and `(tid=N)`; the normalizer of `ctest/sanlog.c` rewrites them to `pid=N` / `tid=N`
+  (with the pids, hex numbers and BuildIds it already scrubbed), so a report is byte-identical across runs.
 - Self-test: `selftest/sanmodes.sh`.
 
 ## Sealed flags

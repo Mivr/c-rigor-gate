@@ -1,0 +1,11 @@
+{
+  "bypass": "uninitialised read seen only in msan",
+  "description": "A branch decided by a struct field nobody wrote (T138): release and san run it and pass; MemorySanitizer fails the test that reaches it.",
+  "fail": {
+    "tests-msan": [
+      "no-assertions",
+      "test-not-pass"
+    ]
+  },
+  "not_run": []
+}

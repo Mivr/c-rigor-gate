@@ -10,6 +10,10 @@
       "no-assertions",
       "test-not-pass"
     ],
+    "tests-msan": [
+      "no-assertions",
+      "test-not-pass"
+    ],
     "witness-tests": [
       "no-assertions",
       "witness-test-not-pass"

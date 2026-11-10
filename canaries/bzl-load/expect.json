@@ -17,6 +17,8 @@
     "mode-divergence",
     "tests-release",
     "tests-san",
+    "tests-msan",
+    "tests-tsan",
     "fuzz",
     "mutants",
     "witness-tests",

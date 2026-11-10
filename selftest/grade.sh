@@ -76,7 +76,8 @@ bad = {g for g, s in got.items() if s == "FAIL"}
 not_run = {g for g, s in got.items() if s == "NOT_RUN"}
 # A failed build means there are no results or facts to judge: those gates are NOT_RUN (still a failure).
 # Mutation testing and fuzzing need a clean tree and green tests: they are NOT_RUN after any of these failed.
-want_not_run = ({"tests-release", "tests-san", "semantic-suppressions", "symbols", "structure", "mode-divergence"}
+want_not_run = ({"tests-release", "tests-san", "tests-msan", "tests-tsan", "semantic-suppressions", "symbols", "structure",
+                 "mode-divergence"}
                 if "build" in expected else set())
 if expected & {"assemble", "buckfiles", "build", "tests-release", "tests-san"}:
     want_not_run.update(("mutants", "fuzz"))
@@ -189,10 +190,27 @@ assert mods["//core:core"]["total"] > 0 and mods["//core:core"]["survivors"] == 
 assert m["targets"].keys() == mods.keys(), m["targets"]
 assert m["executed_actions"] > 0, m
 EOF2
-for gate in structure mode-divergence; do
+for gate in structure mode-divergence tests-msan; do
   [ "$(jget "$cold_verdict" metadata gate_metadata "$gate" executed_actions)" -gt 0 ] \
     || fail "cold run executed no $gate actions: the nonce did not reach them"
 done
+# T138: tests-msan builds and judges every test of the selftest product; it has no threaded test, so tests-tsan builds nothing.
+python3 -I - "$work/clean/results" "$cold_secs" <<'EOF3' || fail "cold: tests-msan or tests-tsan"
+import json, sys
+msan, tsan = [json.load(open("%s/%s.json" % (sys.argv[1], g))) for g in ("tests-msan", "tests-tsan")]
+assert msan["status"] == "PASS" and tsan["status"] == "PASS", (msan["status"], tsan["status"])
+m, t = msan["metadata"], tsan["metadata"]
+assert m["mode"] == "msan" and m["expected_count"] == 5 and len(m["targets"]) == 3, m
+assert m["executed_actions"] > 0 and m["exit_code"] == 0, m
+assert [f["rule"] for f in tsan["findings"]] == ["no-threaded-tests"], tsan["findings"]
+assert "executed_actions" not in t, t
+md = json.load(open("%s/mode-divergence.json" % sys.argv[1]))["metadata"]
+print("  mode-divergence cold: %d executed + %d cached actions, %.1fs; of them the msan twins %d + %d, the tsan twins %d + %d"
+      % (md["executed_actions"], md["cached_actions"], md["seconds"], md["msan"]["executed_actions"], md["msan"]["cached_actions"],
+         md["tsan"]["executed_actions"], md["tsan"]["cached_actions"]))
+print("  cold cost of the two gates: tests-msan %d executed + %d cached actions, %.1fs; tests-tsan 0 actions, %.1fs (cold grade %ss)"
+      % (m["executed_actions"], m["cached_actions"], m["seconds"], t["seconds"], sys.argv[2]))
+EOF3
 
 # ---------------------------------------------------------------------------------------
 # Witness steps (T039). A test-surface change (a comment in core_test.c) puts //core:core in the witness
@@ -375,10 +393,14 @@ step_warm() {  # same head in a fresh work dir: nothing executes; the verdict is
   echo "  exit $code, $(elapsed "$started")s"
   check_verdict "$work/warm.verdict.json" "" "$code" || { tail -n 30 "$work/warm.log" >&2; fail "warm"; }
   echo "  build actions executed: cold $exec_cold, warm $(jget "$work/warm.verdict.json" metadata gate_metadata build executed_actions)"
-  for gate in build symbols mutants structure mode-divergence; do
+  for gate in build symbols mutants structure mode-divergence tests-msan; do
     n="$(jget "$work/warm.verdict.json" metadata gate_metadata "$gate" executed_actions)"
     [ "$n" = 0 ] || fail "warm run executed $n $gate actions"
   done
+  [ "$(jget "$work/warm.verdict.json" metadata gate_metadata tests-msan cached_actions)" -gt 0 ] \
+    || fail "warm run: tests-msan found nothing in the cache"
+  grep -q '"no-threaded-tests"' "$work/warm/results/tests-tsan.json" || fail "warm run: tests-tsan did not pass as no-threaded-tests"
+  echo "  tests-msan executed 0 actions, tests-tsan none"
   [ "$sha_cold" = "$(jget "$work/warm.verdict.json" core_sha256)" ] || fail "core_sha256 differs between two runs of the same inputs"
   echo "  core_sha256 identical: $sha_cold"
   ssh-keygen -Y check-novalidate -n c-rigor-gate-verdict -s "$work/warm.verdict.json.sig" < "$work/warm.verdict.json" >/dev/null 2>&1 \
@@ -857,8 +879,8 @@ result = json.load(open(sys.argv[2]))
 code, flipped = int(sys.argv[3]), sys.argv[4]
 got = {g["id"]: g["status"] for g in core["gates"]}
 print("  " + " ".join("%s=%s" % kv for kv in got.items()) + "  overall=" + core["overall"])
-compiling = {"semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "fuzz", "mutants",
-             "witness-tests", "mutants-witness"}
+compiling = {"semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "tests-msan", "tests-tsan",
+             "fuzz", "mutants", "witness-tests", "mutants-witness"}
 assert code == 1 and core["overall"] == "FAIL" and core["uncached"] is True, (code, core["overall"])
 assert {g for g, s in got.items() if s == "FAIL"} == {"toolchain"}, got
 assert {g for g, s in got.items() if s == "NOT_RUN"} == compiling | {"tests-release", "tests-san"}, got

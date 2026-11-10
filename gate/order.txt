@@ -12,6 +12,8 @@ structure
 mode-divergence
 tests-release
 tests-san
+tests-msan
+tests-tsan
 tests-stub
 fuzz
 perf

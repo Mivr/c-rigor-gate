@@ -83,6 +83,8 @@ ctest_results = rule(
     attrs = {
         "test": attrs.dep(),
         "env_lines": attrs.list(attrs.string(), default = []),
+        # The `threads` declaration of the `c_test` (T138): `rigor grade` reads it to know which tests have a tsan result.
+        "threads": attrs.bool(default = False),
         "_symbolizer": attrs.exec_dep(default = "toolchains//:llvm-symbolizer", providers = [RunInfo]),
     },
 )
