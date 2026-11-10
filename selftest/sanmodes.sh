@@ -89,9 +89,10 @@ expect_fail() {
   build_res "$mode" "$name" "$target"; v2="$(verdict "$RES")"
   [ "$v1" = "$v2" ] || fail "$CUR: the verdict changed between runs: '$v1' vs '$v2'"
   cmp -s "$out/res.1" "$RES" || fail "$CUR: results differ between runs"
-  # TSan prints the thread and process ids ("tid=7708", "pid=7703"); everything else of a report is the same on every run
-  sed -E 's/(tid|pid)=[0-9]+/\1=N/' "$out/rep.1" > "$out/rep.1n"; sed -E 's/(tid|pid)=[0-9]+/\1=N/' "$REP" > "$out/rep.2n"
-  cmp -s "$out/rep.1n" "$out/rep.2n" || fail "$CUR: the report differs between runs: $(diff "$out/rep.1n" "$out/rep.2n" | head -5)"
+  # TSan prints the process and thread ids ("pid=7703", "tid=7708"): the normalizer (ctest/sanlog.c) scrubs them, so the
+  # report is byte-identical across runs without any help here
+  if grep -Eq '(pid|tid)=[0-9]' "$REP"; then fail "$CUR: a process or thread id is left in the report" "$REP"; fi
+  cmp -s "$out/rep.1" "$REP" || fail "$CUR: the report differs between runs: $(diff "$out/rep.1" "$REP" | head -5)"
   ok "$name:$target ($mode): second run identical (verdict, results, report)"
 }
 
