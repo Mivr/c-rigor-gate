@@ -286,6 +286,8 @@ refusal; the runner grades at the other tier, whatever `--tier` says.
 `expect.json`: a canary that is red on `mutants` at an L3 or L4 module (the base product's `//core:core` is L3) must be red
 there at merge, in the same gate and rule. The L2 module of the base product (`//util:util`) is deferred at merge, so a canary
 whose red gate depends on it would miss in that pass; the pass is a second run of the same pack, not a second pack.
+The one known case is `third-party-link` (an L2 control whose `contains` pins a finding of the L2 module's mutants): in the merge
+pass `canaries/runner.py` (`MERGE_DEFERS_CONTAINS`) skips that pin, nothing else of its expectation.
 
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is

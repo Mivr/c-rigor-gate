@@ -39,6 +39,10 @@ VERIFY_NAMESPACE = "c-rigor-gate-verdict"
 #              graded --uncached: toolchain FAIL toolchain-mismatch, every compiling gate NOT_RUN, exit 1).
 GRADER_INTEGRITY_GATES = frozenset({"toolchain"})
 
+# Canaries whose `contains` pins a finding of an L2 module's mutation: that module is deferred at tier `merge`
+# (docs/grade.md), so in the tier `merge` pass the pin is not applicable (the rest of the expectation still is).
+MERGE_DEFERS_CONTAINS = frozenset({"third-party-link"})
+
 GIT_ENV = {
     "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
     "GIT_AUTHOR_NAME": "canary", "GIT_AUTHOR_EMAIL": "canary@example.invalid",
@@ -227,7 +231,7 @@ def grade_one(canary_id, scratch, uncached, keep=True, tier=None):
         result = run(command, ROOT, {"TMPDIR": work}, check=False)
         with open(os.path.join(work, "grade.log"), "w", encoding="utf-8") as log:
             log.write(result.stdout + result.stderr)
-        outcome.update(judge(expect, result.returncode, os.path.join(work, "grade"), verdict, work, canary_id))
+        outcome.update(judge(expect, result.returncode, os.path.join(work, "grade"), verdict, work, canary_id, tier))
         if signers is not None and os.path.isfile(verdict):
             why = judge_verify(expect, verdict, signers, head)
             outcome["why"] = outcome.get("why", []) + why
@@ -258,7 +262,7 @@ def leak_reasons(leaked):
     return ["a process is still running in the grading tree: %s" % ", ".join("%d (%s)" % item for item in leaked)] if leaked else []
 
 
-def judge(expect, code, grade_work, verdict, work, canary_id=""):
+def judge(expect, code, grade_work, verdict, work, canary_id="", tier=None):
     leaked = find_daemons(work)
     if not os.path.isfile(verdict):
         return {"got": "no verdict (exit %d)" % code, "ok": False,
@@ -283,7 +287,8 @@ def judge(expect, code, grade_work, verdict, work, canary_id=""):
             why.append("overall %s" % overall)
         if overall == "PASS" and is_tripwire_root():
             why.insert(0, green_message(canary_id, expect))
-    for gate, text in sorted(expect.get("contains", {}).items()):
+    skip_contains = tier == "merge" and canary_id in MERGE_DEFERS_CONTAINS
+    for gate, text in sorted({} if skip_contains else expect.get("contains", {}).items()):
         path = os.path.join(grade_work, "results", gate + ".json")
         if not os.path.isfile(path) or text not in open(path, encoding="utf-8").read():
             why.append("results/%s.json lacks %r: it failed for another reason" % (gate, text))
