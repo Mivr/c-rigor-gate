@@ -4924,3 +4924,23 @@ allow = ["bcmp", "fprintf", "memcpy", "memset", "stderr"]
 exports = ["kf_click", "kf_click_at", "kf_close", "kf_h", "kf_need", "kf_odd_tokens", "kf_open",
     "kf_open_bare", "kf_open_with", "kf_pixel", "kf_pool", "kf_rgb", "kf_screen", "kf_settle",
     "kf_w", "kf_watch", "kf_x1", "kf_x2", "kf_y1", "kf_y2", "main"]
+
+[module."//lib/fmt/jlex:jlex_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/jpnum:jpnum_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/httphdr:httphdr_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/sim/simfs_tab:simfs_tab_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/io/pfscript:pfscript_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
