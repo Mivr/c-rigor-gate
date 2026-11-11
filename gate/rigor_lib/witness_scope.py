@@ -115,7 +115,7 @@ def _modules(layout):
 
 
 def _direct_tests(layout, module):
-    return sorted(t for t in layout.tests if module in layout.deps[t])
+    return list(grade_mutants.direct_tests(layout, module))
 
 
 def test_surface(layout, impl_map_, paths_):

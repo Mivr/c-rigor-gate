@@ -54,17 +54,23 @@ def _test_key(label: Label) -> str:
     character outside [a-z0-9_] turned into `_`. (Two packages may each have a test called `arena_test`.)"""
     return "".join([c if c in _TEST_KEY_CHARS else "_" for c in (label.package + "__" + label.name).elems()])
 
+def _own_package(module: Label, test: Label) -> bool:
+    """Is `test` a test of the module's own package (same cell, same package)? The one definition of "own
+    package": `rigor grade` hands a module only such tests (`grade_mutants.own_tests` mirrors it); the order and
+    the groups below use it for a `c_mutants` target written by hand with tests of other packages too."""
+    return test.package == module.package and test.cell == module.cell
+
 def _test_order(module: Label, tests: dict) -> list:
     """The order in which a mutant's tests run: the tests of the module's own package first, then the others, each
     sorted by their key (`<package>__<name>`). Fixed by the labels alone, so the same on every grade."""
-    own = sorted([k for k in tests if tests[k].label.package == module.package and tests[k].label.cell == module.cell])
+    own = sorted([k for k in tests if _own_package(module, tests[k].label)])
     return own + sorted([k for k in tests if k not in own])
 
 def _test_groups(module: Label, tests: dict) -> list:
     """`_test_order` cut into the groups that become one action each: the module's own tests together, the rest
     in groups of `_GROUP_TESTS`."""
     order = _test_order(module, tests)
-    own = [k for k in order if tests[k].label.package == module.package and tests[k].label.cell == module.cell]
+    own = [k for k in order if _own_package(module, tests[k].label)]
     rest = order[len(own):]
     groups = [own] if own else []
     for start in range(0, len(rest), _GROUP_TESTS):
