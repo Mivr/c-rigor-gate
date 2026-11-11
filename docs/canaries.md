@@ -198,6 +198,7 @@ FAIL gates with their error rules, and `N later gates` means a gate the bypass s
 | `extra-hook` | extra exported writable hook | `symbols`: mutable-global-export, unexpected-export | none |
 | `failing-test` | failing test | `tests-release`: test-not-pass; `tests-san`: test-not-pass | mutants |
 | `foreign-test-kill` | a module pinned only by another package's test: the `core_sign` checks move from `//core:core_test` to `//util:core_test` (own-package rule, `docs/grade.md` "Tests") | `mutants`: survived-mutant; `mutants-witness`: witness-survived-mutant | none |
+| `foreign-test-scope` (control) | none: only `util/util_core_test.c` changes, a test of util's package that lists `//core:core`; the bundle has no `core` entry. W = {`//util:util`} (`docs/witness.md`, test surface) | none: PASS (with the wider W of before: `witness-tests`: witness-missing) | none |
 | `foreign-tests-only` | a new L2 module whose only (strong) test is in another package | `mutants`: module-without-tests (`foreign_tests`) | none |
 | `generator-attribute` | function lost by the mutant generator | `mutants`: survived-mutant | none |
 | `git-replace` | git replace | `contract`: outside-allowed | none |
