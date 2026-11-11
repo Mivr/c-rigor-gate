@@ -266,10 +266,10 @@ committing:
 (`rigor lane-mutants`, `gate/rigor_lib/lane_mutants.py`.) It builds the grade's tree from the commit (`HEAD` by default; a
 checkout with uncommitted changes to tracked files is refused, the grade grades commits) in a work directory outside
 the checkout (`$TMPDIR/lane-mutants/<checkout>`, or `--work`), so the product tree is never touched. The module list
-comes from the grade's own `grade_mutants.build_plan` (policy levels, tests that depend on the module, link deps,
+comes from the grade's own `grade_mutants.build_plan` (policy levels, the tests of the module's own package that depend on it, link deps,
 perf targets), and the chosen modules get the grade's `gate-mutants/BUCK` entries (`write_package`: same target name,
 attributes, tests and order, same rules), built with the pinned Buck2 on RE and judged by `grade_mutants.judge`
-(`rigor mutants`' code). A module that is not mutated (level L1, no tests, not in the policy) is exit 2, naming the choices.
+(`rigor mutants`' code). A module that is not mutated (level L1, no test in its own package, not in the policy) is exit 2, naming the choices.
 
 Output: one line per mutant (`verdict  module  file:line  id  function: original -> replacement`; verdicts killed-assert,
 killed-crash, killed-perf, survived, unviable, unrun, equivalent, duplicate), a count line per module, the findings that

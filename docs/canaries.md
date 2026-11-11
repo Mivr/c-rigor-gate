@@ -197,6 +197,8 @@ FAIL gates with their error rules, and `N later gates` means a gate the bypass s
 | `denied-libc` | denied libc symbol | `symbols`: denied-symbol | none |
 | `extra-hook` | extra exported writable hook | `symbols`: mutable-global-export, unexpected-export | none |
 | `failing-test` | failing test | `tests-release`: test-not-pass; `tests-san`: test-not-pass | mutants |
+| `foreign-test-kill` | a module pinned only by another package's test: the `core_sign` checks move from `//core:core_test` to `//util:core_test` (own-package rule, `docs/grade.md` "Tests") | `mutants`: survived-mutant; `mutants-witness`: witness-survived-mutant | none |
+| `foreign-tests-only` | a new L2 module whose only (strong) test is in another package | `mutants`: module-without-tests (`foreign_tests`) | none |
 | `generator-attribute` | function lost by the mutant generator | `mutants`: survived-mutant | none |
 | `git-replace` | git replace | `contract`: outside-allowed | none |
 | `header-only-kit` (control) | a module whose tests use a header-only test kit is mutation graded at L3 | none: PASS | none |
@@ -234,6 +236,8 @@ FAIL gates with their error rules, and `N later gates` means a gate the bypass s
 | `weak-error-code` | tests check failure, not which failure | `mutants`: survived-mutant; `witness-tests`: witness-build-failed | mutants-witness |
 | `weak-string` | tests check non-NULL, not the text | `mutants`: survived-mutant; `witness-tests`: witness-build-failed | mutants-witness |
 | `weak-symbol` | weak symbol | `semantic-suppressions`: forbidden-attribute; `symbols`: weak-symbol | none |
+| `witness-copy-skipped` | none (the per-module skip works): role implementer, a rewritten `util` witness and a byte-identical copy of the head's `core`, whose tests leave survivors | `mutants`: survived-mutant, once. `mutants-witness` passes with `witness-module-equals-head` for `core` (`contains`) | none |
+| `witness-copy-weak-tests` | role `test-author`: the author weakens the tests of a module he did not stub, whose witness is a copy of the head (head `mutants` is not applicable, so the copy must still be mutated) | `mutants-witness`: witness-survived-mutant | none |
 
 ## Canaries added by T105 (`c_catalog`)
 | canary | bypass | fails | NOT_RUN |
