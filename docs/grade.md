@@ -205,6 +205,11 @@ W = {} is `no-new-tests`, and a module of W without a bundle entry is `witness-m
   copy's survivors: canary `witness-copy-weak-tests`); a module whose head mutants did not build is not skipped
   either. `witness-tests` and `witness-missing` are unchanged: the whole witness tree is built and every expected test
   must pass on it, and every module of W needs its bundle entry. The modules that differ are judged as before.
+  A module that is the head's code and is **not** skipped is mutated and judged here, and its survivors may be covered
+  by an `equivalent-mutant` approval as well as a `witness-equivalent-mutant` one (metadata `head_approvals_accepted`,
+  `approvals_used_by_kind`; `mutants_gate.run(..., extra_kinds)`): the mutant id is bound to the function body, so for
+  identical code it is the mutant the head approval names. Why that is sound, and why a survivor of weakened tests
+  still fails: `docs/witness.md`, "A module whose witness is the head's code".
 - **No source text.** Mutant findings and survivor summaries lose `original` and `replacement`; full reports stay in
   `<work>/witness/mutants-reports/`.
 
@@ -300,8 +305,9 @@ nightly` exists for a bot that needs the whole grade.
   anywhere re-ran them all (business-apps: 92 % of the module/test pairs were another package's, about 21,000 mutant
   actions and 71 minutes for one edit, and 3 % of the live mutants were killed only by such a test). Now an edit in
   module A re-runs the mutants of module B only if a test in B's own package links A. The same selection serves
-  `mutants-witness` and `tools/mutants` (they call `grade_mutants.plan`). The witness scope W is unchanged: it still
-  follows every test that lists a module (`docs/witness.md`), because `witness-tests` runs them all.
+  `mutants-witness` and `tools/mutants` (they call `grade_mutants.plan`). The witness scope W follows the same rule: a
+  module's test surface is its own package plus the kits its own-package tests link (`docs/witness.md`, "impl paths,
+  test surface and W").
 - **The generated package.** After the product was copied, the step writes `gate-mutants/BUCK` (one `c_mutants` call
   per module, target `m_<module>_<sha8 of the label>`, never a position: T121) and a root `PACKAGE` (`package(visibility = ["PUBLIC"], inherit = True)`;
   without it the product's test targets, which are package-private, are invisible to another package). Both are

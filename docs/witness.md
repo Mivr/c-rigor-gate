@@ -91,14 +91,28 @@ second approval of another kind.
   In role `test-author` head `mutants` is not applicable (the head is the stub commit), so there **every module of W
   is still mutated in `mutants-witness`, copies included**. That is deliberate: it is the only gate of a test-author
   grade that judges the tests of a module the author did not stub, and without it a test author could weaken them
-  unseen (canary `witness-copy-weak-tests`). A copy's unkillable mutants therefore still need
-  `witness-equivalent-mutant` approvals in a test-author grade.
+  unseen (canary `witness-copy-weak-tests`).
+- **A copy that is judged here accepts the head's approvals too.** For a module that is the head's code and was not
+  skipped, a survivor is covered by a `witness-equivalent-mutant` approval or by an `equivalent-mutant` approval of
+  the same mutant id (metadata `head_approvals_accepted`: the modules; `approvals_used_by_kind`: which approvals
+  covered a survivor, by kind). This is sound because of how an approval binds: its `scope` is the mutant id, and
+  the id is a hash over the file, the function, the operator, the original and replacement text **and the sha256 of
+  the function's body** (`mutate/gen.py`; any change to the body changes every id in it), and its `repo_sha` must be
+  an ancestor of the graded head. For byte-identical code the id names the very mutant the owner approved on the
+  head. A survivor that exists because the author weakened the tests has no approval of either kind and still
+  fails. A module that differs from the head by one byte accepts the witness kind only, as always: a head approval
+  never covers a mutant of a real witness, even one with the same id.
 - `witness-tests`, `witness-missing` and the whole-tree reuse ("Bootstrap", below) are unchanged.
 
 | canary | what | fails |
 |---|---|---|
 | `witness-copy-skipped` | role implementer; a bundle with a rewritten `core` and a copy of the head's `util` (L3 here), which has unkillable mutants | `mutants`: survived-mutant (the head's own, once). `mutants-witness` passes: `core` judged, `util` reported as `witness-module-equals-head` |
-| `witness-copy-weak-tests` | role test-author; `util` is stubbed and has a real witness, `core` is a copy, and the author dropped the positive `core_sign` checks | `mutants-witness`: witness-survived-mutant (the copy is still judged) |
+| `witness-copy-weak-tests` | role test-author; `util` is stubbed and has a real witness, `core` is a copy, and the author dropped the positive `core_sign` checks | `mutants-witness`: witness-survived-mutant (the copy is still judged; the head's approval kind is accepted for it, and no approval of either kind exists for a survivor of weakened tests) |
+| `foreign-test-scope` (control) | role implementer; only `util/util_core_test.c` changes (a test of util's package that lists `//core:core`), and the bundle has no entry for `core` | none: PASS. W = {`//util:util`}; with the old, wider W it was `witness-missing` for the L3 `core` |
+
+The canary pack carries no signed approvals (the runner passes no `--approvals`), so "an approved survivor of a copy
+passes in a test-author grade" has no canary: `gate/tests/test_mutants.py` `HeadKindForOneModuleTest` proves it with
+real signatures, and `test_grade_witness.py` / `test_grade_mutants.py` `Judging` prove the wiring.
 
 ## Roles
 
@@ -136,12 +150,23 @@ What role `test-author` changes in `rigor grade` (T041):
   `headers = ["fp.h"] + glob(["src/*.h"])`, exact forms in `docs/grade.md`): the BUCK file stays
   witness-agnostic, and the impl globs of `policy.toml` cover whatever the witness writes under `src/`. The
   structure, mutants and witness steps read sources with `uquery` (which expands the glob), not from BUCK text.
-- **test surface** of module m: every product path in m's package, and in the package of every `c_test`
-  that lists m directly in `deps` (of any package: wider than the tests that run against m's mutants, which are
-  its own package's only, `docs/grade.md` "Tests"), that is in no module's impl paths (the header, the BUCK file, the
-  tests and the kits). The packages are the directories of the layout's targets; a path belongs to the deepest
-  one that contains it, so a directory with a BUCK file but no library, binary or test counts toward the
-  enclosing package (more modules in W, never fewer).
+- **test surface** of module m (owner decision 2026-11-11, with the own-package rule of `docs/grade.md` "Tests"):
+  every product path that is in no module's impl paths and lies
+  - in m's **own package** (the header, the BUCK file, the tests, a kit that lives there), or
+  - in the package of an **unjudged library that m's own-package tests link** (`_unjudged_linked`: the closure of the
+    `deps` and `exported_deps` of the tests `grade_mutants.own_tests` gives m; a product `c_library` whose level is L1
+    or absent, i.e. a test kit or a helper, wherever it lives). No gate judges a kit on its own, and a change to it
+    changes what m's tests check, so it is m's test surface.
+
+  A test of **another** package is not m's test surface, however directly it lists m: it does not run against m's
+  mutants, so changing it cannot weaken what pins m. A judged library (L2+) that m's tests link is not m's test
+  surface either: its non-impl files are its own test surface and put *it* in W. What this leaves open, as before
+  the change: a header of a judged module D that m's tests include can change m's tests (a macro, an inline
+  function) without putting m in W; D is in W and every expected test must still pass on the witness tree, and the
+  next implementer or audit grade mutates m against the head (head `mutants` covers every L2+ module).
+  The packages are the directories of the layout's targets; a path belongs to the deepest one that contains it, so a
+  directory with a BUCK file but no library, binary or test counts toward the enclosing package (more modules in W,
+  never fewer).
 - **W** (`scope(role, changed_paths, layout, impl_map, levels)`), over the head's layout and the changed
   paths `merge_base..head`, sorted:
   - `implementer`: the L2+ modules whose test surface changed; a pure implementation change gives W = {};
@@ -153,7 +178,8 @@ What role `test-author` changes in `rigor grade` (T041):
   `witness-missing` at every level (T041).
 
 Example, `canaries/_base/product`: `util/util_core_test.c` is `//util:core_test`, which lists `//core:core`
-directly, so a change to it alone gives W = {`//core:core`, `//util:util`}.
+directly but is a test of util's package, so a change to it alone gives W = {`//util:util`} (canary
+`foreign-test-scope`); before the own-package rule it gave {`//core:core`, `//util:util`}.
 
 ## The stub judgement (`tests-stub`)
 
