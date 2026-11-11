@@ -6,6 +6,6 @@ set -eu
 sed -i '/core_sign(-5), -1/d; /core_sign(-1), -1/d; /core_sign(1), 1/d; /core_sign(9), 1/d' core/core_test.c
 sed -i 's|^    CHECK_EQ_I64(t, util_sum(values, 3), core_add(core_add(7, -7), 5));$|&\n    CHECK_EQ_I64(t, core_sign(-5), -1);\n    CHECK_EQ_I64(t, core_sign(-1), -1);\n    CHECK_EQ_I64(t, core_sign(1), 1);\n    CHECK_EQ_I64(t, core_sign(9), 1);|' util/util_core_test.c
 grep -q 'core_sign(0), 0' core/core_test.c
-! grep -q 'core_sign(9), 1' core/core_test.c
+if grep -q 'core_sign(9), 1' core/core_test.c; then exit 1; fi
 grep -q 'core_sign(9), 1' util/util_core_test.c
 grep -q 'core_sign(-5), -1' util/util_core_test.c
