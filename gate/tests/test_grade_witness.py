@@ -387,8 +387,9 @@ class MutantsWitness(Setup):
         summary = {"total": 1, "survivors": [{"id": "m1", "at": "x:1", "operator": "op", "replacement": "SRC"}]}
         calls = {}
 
-        def fake_judge(grading, run, modules, built, kind, renames):
-            calls.update(kind=kind, renames=renames, modules=[m.label for m in modules])
+        def fake_judge(grading, run, modules, built, kind, renames, extra_kinds, used_by_kind):
+            calls.update(kind=kind, renames=renames, modules=[m.label for m in modules], extra_kinds=extra_kinds)
+            used_by_kind[kind] = ["ap"]
             return judged, {"//core:core": summary}, ["ap"]
         mutants = grade_witness.grade_mutants
         with mock.patch.object(mutants, "write_package", return_value="sha"), \
@@ -400,6 +401,9 @@ class MutantsWitness(Setup):
         self.assertEqual(calls["kind"], approvals.KIND_WITNESS_EQUIVALENT_MUTANT)
         self.assertEqual(calls["renames"], grade_witness.MUTANT_RENAMES)
         self.assertEqual(calls["modules"], ["//core:core"])
+        self.assertEqual(calls["extra_kinds"], {})   # a module that differs from the head: the witness kind alone
+        self.assertEqual(result.metadata["head_approvals_accepted"], [])
+        self.assertEqual(result.metadata["approvals_used_by_kind"], {approvals.KIND_WITNESS_EQUIVALENT_MUTANT: ["ap"]})
         dumped = json.dumps([result.findings, result.metadata])
         for secret in ("SECRET", "SRC", "a >= 0", "a > 0"):
             self.assertNotIn(secret, dumped)
@@ -423,8 +427,9 @@ class MutantsWitness(Setup):
             seen["built"] = [m.label for m in modules]
             return [], {"executed_actions": 4, "cached_actions": 0}, list(range(len(modules)))
 
-        def fake_judge(grading, run, modules, built, kind, renames):
+        def fake_judge(grading, run, modules, built, kind, renames, extra_kinds, used_by_kind):
             seen["judged"] = [modules[i].label for i in built]
+            seen["kind"], seen["extra_kinds"] = kind, extra_kinds
             found = [finding("witness-survived-mutant", **dict(self.SURVIVOR, module=modules[i].label)) for i in built]
             return found, {modules[i].label: {"total": 1, "survivors": []} for i in built}, []
         with mock.patch.object(mutants, "write_package", side_effect=fake_write), \
@@ -462,6 +467,7 @@ class MutantsWitness(Setup):
         self.assertEqual(list(result.metadata["modules"]), ["//core:core"])
         self.assertEqual(result.metadata["targets"].keys(), {"//core:core"})
         self.assertEqual(result.status, "FAIL")              # the changed module is judged exactly as before
+        self.assertEqual((seen["extra_kinds"], result.metadata["head_approvals_accepted"]), ({}, []))
 
     def test_an_equal_module_is_still_mutated_when_the_head_gate_did_not_judge_it(self):
         """Role test-author: head `mutants` is not applicable (no module summaries). Skipping there would leave the
@@ -479,6 +485,10 @@ class MutantsWitness(Setup):
                 self.assertEqual(seen["judged"], list(self.BOTH))
                 self.assertEqual(self.survivors(result), list(self.BOTH))
                 self.assertEqual((self.skipped(result), result.metadata["equal_to_head"]), ([], []))
+                # judged here, with the head's approval kind accepted too, for the identical module alone
+                self.assertEqual(seen["kind"], approvals.KIND_WITNESS_EQUIVALENT_MUTANT)
+                self.assertEqual(seen["extra_kinds"], {"//util:util": (approvals.KIND_EQUIVALENT_MUTANT,)})
+                self.assertEqual(result.metadata["head_approvals_accepted"], ["//util:util"])
         g = self.grading(status={"witness-tests": "PASS", "mutants": "PASS"})   # a status, but no result file
         os.unlink(os.path.join(g.results, "mutants.json"))
         self.state(g, judged=self.BOTH, same=("//util:util",))
