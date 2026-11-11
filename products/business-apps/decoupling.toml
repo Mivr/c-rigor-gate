@@ -2,7 +2,10 @@
 # The entries are layers of architecture.toml; its [testkit] modules are the fakes and test kits.
 [modules]
 contract = ["app-contract"]
-component = ["app-reactors", "app-adapters", "app-sim", "app-ui"]
+# app-ui is listed by package: lkui/catalog is a generated message catalog (c_catalog: const text tables, no
+# behaviour), so it is data that every layer may use directly, like a library. A new lkui package must be added here.
+component = ["app-reactors", "app-adapters", "app-sim",
+             "//apps/lockers/lkui/input:*", "//apps/lockers/lkui/notices:*", "//apps/lockers/lkui/screens:*"]
 composition = ["app-root"]
 
 [contract]
