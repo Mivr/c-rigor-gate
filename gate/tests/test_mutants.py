@@ -692,6 +692,65 @@ class ApprovalTest(TempDirTestCase):
         self.assertEqual(sorted(f["rule"] for f in result["findings"]), ["missing-run"])
 
 
+class HeadKindForOneModuleTest(ApprovalTest):
+    """`run(..., extra_kinds)`: `mutants-witness` accepts the head's approval kind for a witness module that is the
+    head's code, and for no other module. Two modules, each with the survivor of id 2; COPY is the identical one."""
+    COPY, OTHER = LABEL, "//gate-mutants:m_other"
+    WITNESS, HEAD = "witness-equivalent-mutant", "equivalent-mutant"
+
+    def setUp(self):
+        super().setUp()
+        (self.tmp / "policy.toml").write_text(
+            "".join('[module."%s"]\nlevel = "L3"\n' % label for label in (self.COPY, self.OTHER)), encoding="utf-8")
+        (self.results / "other.json").write_text(json.dumps(
+            report([mutant(1), mutant(2, runs={"t": PASS})], label=self.OTHER)), encoding="utf-8")
+
+    def judged(self, extra_kinds):
+        from argparse import Namespace
+        from rigor_lib import mutants_gate
+        result = mutants_gate.run(Namespace(
+            results=str(self.results), policy=str(self.tmp / "policy.toml"), perf_results=None, approvals=str(self.dir),
+            repo=str(self.repo.root), head=self.head, allowed_signers=str(self.allowed)), self.WITNESS, extra_kinds)
+        survivors = sorted(f["module"] for f in result.findings if f["rule"] == "survived-mutant")
+        self.assertEqual([f for f in result.findings if f["rule"] not in ("survived-mutant",)], [])
+        return survivors, result.metadata
+
+    def test_a_head_approval_covers_the_identical_module_s_mutant_and_no_other_module_s(self):
+        self.approve("%016x" % 2, kind=self.HEAD)
+        survivors, metadata = self.judged({self.COPY: (self.HEAD,)})
+        self.assertEqual(survivors, [self.OTHER])   # the same id in a module that is not the head's code: not covered
+        self.assertEqual(list(metadata["approvals_used_by_kind"]), [self.HEAD])
+        self.assertEqual(metadata["approvals_used_by_kind"][self.HEAD], metadata["approvals_used"])
+        self.assertEqual(len(metadata["approvals_used"]), 1)
+
+    def test_without_the_extra_kind_a_head_approval_covers_no_witness_mutant(self):
+        self.approve("%016x" % 2, kind=self.HEAD)
+        for extra in (None, {}, {self.COPY: ()}):
+            survivors, metadata = self.judged(extra)
+            self.assertEqual(survivors, sorted([self.COPY, self.OTHER]))
+            self.assertEqual((metadata["approvals_used"], metadata["approvals_used_by_kind"]), ([], {}))
+
+    def test_an_unapproved_survivor_of_the_identical_module_still_fails(self):
+        """Weakened tests: the survivor has no approval of either kind; one of another id does not help."""
+        self.assertEqual(self.judged({self.COPY: (self.HEAD,)})[0], sorted([self.COPY, self.OTHER]))
+        self.approve("%016x" % 3, kind=self.HEAD)
+        self.assertEqual(self.judged({self.COPY: (self.HEAD,)})[0], sorted([self.COPY, self.OTHER]))
+
+    def test_a_head_approval_that_does_not_apply_to_the_graded_head_covers_nothing(self):
+        self.approve("%016x" % 2, kind=self.HEAD, repo_sha="a" * 40)
+        self.assertEqual(self.judged({self.COPY: (self.HEAD,)})[0], sorted([self.COPY, self.OTHER]))
+
+    def test_the_witness_kind_still_covers_every_module_and_is_recorded_as_such(self):
+        self.approve("%016x" % 2, kind=self.WITNESS)
+        survivors, metadata = self.judged({self.COPY: (self.HEAD,)})
+        self.assertEqual(survivors, [])
+        self.assertEqual(list(metadata["approvals_used_by_kind"]), [self.WITNESS])
+
+    def test_another_approval_kind_is_never_accepted_for_a_mutant(self):
+        self.approve("%016x" % 2, kind="suppression")
+        self.assertEqual(self.judged({self.COPY: (self.HEAD,)})[0], sorted([self.COPY, self.OTHER]))
+
+
 if __name__ == "__main__":
     import unittest
     unittest.main()

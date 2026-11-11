@@ -16,7 +16,8 @@ of W without a bundle entry is `witness-missing` (an error at every level), so s
 (info `witness-equals-head`, zero actions). One module whose witness files are byte-identical to the head's
 impl files is not mutated again by `mutants-witness` when the head's `mutants` gate judged that module in this
 grade (info `witness-module-equals-head`); in role test-author the head gate judges nothing, so nothing is
-skipped there. No finding carries source text of the witness (Q1, point 4):
+skipped there, and such a module's survivors may then be covered by the head's approval kind as well as the
+witness's. No finding carries source text of the witness (Q1, point 4):
 mutant findings lose `original`/`replacement`, and compiler output of a failed witness build stays out of
 the metadata.
 """
@@ -296,9 +297,18 @@ def _mutants(g, state):
     found.extend(build_found)
     metadata.update(_without_compiler_output(build_metadata))
     metadata["targets"] = {m.label: grade_mutants.target_label(m) for m in modules}
+    # A module that is the head's code but was not skipped (role test-author, where the head gate judges nothing)
+    # is mutated and judged here like any other, and its survivors may also be covered by the head's approval
+    # kind: a mutant id is bound to the function's body (mutate/gen.py), so an `equivalent-mutant` approval that
+    # matches is the approval of this very mutant of this very code. A survivor that weakened tests let through has
+    # no approval of either kind. Every other module: the witness kind alone.
+    head_kind = [m.label for m in modules if m.label in state.same]
+    metadata["head_approvals_accepted"] = head_kind
+    metadata["approvals_used_by_kind"] = {}
     if built:
         judged, summaries, used = grade_mutants.judge(
-            g, state.run, modules, built, approvals.KIND_WITNESS_EQUIVALENT_MUTANT, MUTANT_RENAMES)
+            g, state.run, modules, built, approvals.KIND_WITNESS_EQUIVALENT_MUTANT, MUTANT_RENAMES,
+            {label: (approvals.KIND_EQUIVALENT_MUTANT,) for label in head_kind}, metadata["approvals_used_by_kind"])
         found.extend(redact_finding(item) for item in judged)
         metadata["modules"] = {label: redact_summary(s) for label, s in summaries.items()}
         metadata["approvals_used"] = used
