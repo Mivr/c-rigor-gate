@@ -13,7 +13,10 @@ judge the modules W (`witness_scope.scope`, from the head's layout and the paths
 Both are applicable only when W holds a module with a bundle entry; otherwise they pass with info
 `witness-scope`, except in role test-author, where they are required: W = {} is `no-new-tests` and a module
 of W without a bundle entry is `witness-missing` (an error at every level), so such a grade never passes. A witness byte-identical to the head is the head: its test results and mutants are reused
-(info `witness-equals-head`, zero actions). No finding carries source text of the witness (Q1, point 4):
+(info `witness-equals-head`, zero actions). One module whose witness files are byte-identical to the head's
+impl files is not mutated again by `mutants-witness` when the head's `mutants` gate judged that module in this
+grade (info `witness-module-equals-head`); in role test-author the head gate judges nothing, so nothing is
+skipped there. No finding carries source text of the witness (Q1, point 4):
 mutant findings lose `original`/`replacement`, and compiler output of a failed witness build stays out of
 the metadata.
 """
@@ -23,7 +26,7 @@ from argparse import Namespace
 from dataclasses import dataclass
 
 from rigor_lib import approval_args, approvals, contract, gitrun, grade_build, grade_context, grade_mutants
-from rigor_lib import grade_policy, grade_steps, grade_tier, jsonio, tests_gate, witness_scope
+from rigor_lib import globs, grade_policy, grade_steps, grade_tier, jsonio, tests_gate, witness_bundle, witness_scope
 from rigor_lib import mutants_gate as rigor_mutants
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, finding
@@ -45,6 +48,7 @@ class State:
     levels: dict
     run: object           # grade_build.TreeRun of the witness tree, or None when nothing was judged
     equals_head: bool     # the witness tree has exactly the head's product files
+    same: tuple = ()      # the modules of `judged` whose witness files are exactly the head's impl files (sorted)
 
 
 def _severity(level):
@@ -79,6 +83,27 @@ def _head_manifest_sha(g):
     if len(shas) != 1:
         raise InternalError("assemble.json has no single product-manifest")
     return shas[0]
+
+
+def _head_files(g):
+    """{path: sha256} of the head's product files, as the `assemble` gate committed to them."""
+    document = jsonio.strict_loads(jsonio.read_bytes(os.path.join(g.results, "assemble.json")))
+    listed = document["metadata"]["manifest"]
+    product = set(g.product_paths)
+    return {path: sha for path, sha in listed if path in product}
+
+
+def modules_equal_to_head(head_files, witness_files, impl_globs):
+    """The modules of `impl_globs` ({label: impl globs}) that are the same code in both trees: the files under
+    the module's impl paths are the same paths with the same sha256 in `head_files` and `witness_files`
+    ({path: sha256} of each tree's product files). A file missing on either side, an extra one, or one differing
+    byte makes the module different; so does a module with no file at all. Sorted."""
+    compiled = witness_bundle.compile_impl_map(impl_globs)
+
+    def own(files, label):
+        return {path: sha for path, sha in files.items() if any(globs.matches(g, path) for g in compiled[label])}
+    return tuple(label for label in sorted(compiled)
+                 if own(head_files, label) and own(head_files, label) == own(witness_files, label))
 
 
 def _expected_path(g):
@@ -165,6 +190,7 @@ def _build_and_judge(g, mapping, judged, found, metadata):
                               mutants_reports=os.path.join(work, "mutants-reports"))
     state.run = run
     state.equals_head = manifest_sha == _head_manifest_sha(g) and set(g.built) == set(grade_context.MODES)
+    state.same = modules_equal_to_head(_head_files(g), manifest, {label: mapping[label] for label in judged})
     metadata["manifest_sha256"] = manifest_sha
     if state.equals_head:
         # The witness is the head: its results are the head's (zero actions).
@@ -215,6 +241,19 @@ def _head_mutants(g, labels):
     return found, {label: redact_summary(summaries[label]) for label in labels}
 
 
+def _judged_by_head(g, labels):
+    """Those of `labels` that the head's `mutants` gate judged in this grade: the gate ran and its result has
+    a summary for the module. In role test-author it is not applicable and has none (`grade_mutants`), and a
+    module whose head mutants did not build has none either: such a module is never skipped here."""
+    path = os.path.join(g.results, rigor_mutants.GATE_ID + ".json")
+    if g.status.get(rigor_mutants.GATE_ID) is None or not os.path.isfile(path):
+        return []
+    summaries = jsonio.strict_loads(jsonio.read_bytes(path))["metadata"].get("modules")
+    if not isinstance(summaries, dict):
+        return []
+    return [label for label in labels if label in summaries]
+
+
 def mutants_witness_gate(g):
     state = getattr(g, STATE_ATTR, None)
     if g.status.get(TESTS_ID) != "PASS" or state is None:
@@ -244,6 +283,15 @@ def _mutants(g, state):
         metadata.update(modules=reused[1], executed_actions=0, cached_actions=0, equals_head=True)
         return GateResult(MUTANTS_ID, found, metadata)
     metadata["equals_head"] = False
+    # A module whose witness is byte for byte the head's code was judged by the head's `mutants` gate in this
+    # grade, against the same tests: it is not mutated a second time (and needs no second, witness-kind approval).
+    skipped = _judged_by_head(g, [m.label for m in modules if m.label in state.same])
+    found.extend(finding("witness-module-equals-head", severity=SEVERITY_INFO, module=label,
+                         level=state.levels[label], judged_by=rigor_mutants.GATE_ID) for label in skipped)
+    metadata["equal_to_head"] = skipped
+    modules = [m for m in modules if m.label not in skipped]
+    if not modules:
+        return GateResult(MUTANTS_ID, found, metadata)
     metadata["package_sha256"] = grade_mutants.write_package(state.run, modules)
     build_found, build_metadata, built = grade_mutants.build_reports(state.run, g.args.uncached, modules)
     found.extend(build_found)
