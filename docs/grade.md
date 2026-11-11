@@ -154,6 +154,18 @@ W = {} is `no-new-tests`, and a module of W without a bundle entry is `witness-m
   the head built in both modes, `witness-tests` judges the head's results (info `witness-equals-head`, zero actions)
   and `mutants-witness` reuses the head's per-module `mutants` findings and summaries (also zero actions) unless the
   head result used an approval, whose kind is the implementer's.
+- **Identical module** (owner decision 2026-11-11). Otherwise `mutants-witness` leaves out every module of W whose
+  witness is the head's code **and** that the head's `mutants` gate judged in this grade: info
+  `witness-module-equals-head` (module, level, `judged_by = "mutants"`) per module and metadata `equal_to_head` (the
+  list); it is neither mutated nor judged a second time and needs no `witness-equivalent-mutant` approval for a mutant
+  the head gate already judged with `equivalent-mutant`. "The head's code" (`grade_witness.modules_equal_to_head`): the
+  files under the module's impl paths are the same paths with the same sha256 in the head tree and in the witness tree,
+  nothing missing and nothing extra. "Judged in this grade": the head `mutants` gate ran and its result has a summary
+  for the module. So the skip never leaves a module unjudged: in role `test-author` head `mutants` is not applicable
+  and **nothing is skipped** (a test author who weakens the tests of a module he did not touch is still caught by the
+  copy's survivors: canary `witness-copy-weak-tests`); a module whose head mutants did not build is not skipped
+  either. `witness-tests` and `witness-missing` are unchanged: the whole witness tree is built and every expected test
+  must pass on it, and every module of W needs its bundle entry. The modules that differ are judged as before.
 - **No source text.** Mutant findings and survivor summaries lose `original` and `replacement`; full reports stay in
   `<work>/witness/mutants-reports/`.
 
@@ -185,16 +197,30 @@ so the gate reads the head's results of both modes and builds nothing.
   `semantic-suppressions` gates read the same file whole (T055): the symbols gate uses the `level` to arm its
   `exports` check (an L3 module without an `exports` list is `exports-missing`, an error).
 - **Nothing mutated is a failure.** No module at L2 or above is `no-mutated-modules`; a module whose sources
-  produce no mutant at all is `no-mutants` (also inside `rigor mutants`); a module without tests is
-  `module-without-tests`; a build that does not produce a report is `mutants-build-failed`.
+  produce no mutant at all is `no-mutants` (also inside `rigor mutants`); a module that no test of its own package
+  lists directly is `module-without-tests` (an error at every mutated level, L2 included; it is not mutated, so it can
+  never pass by having nothing judged; the field `foreign_tests` counts the tests of other packages that list it, which
+  do not count: see "Tests"); a build that does not produce a report is `mutants-build-failed`.
   Perf kills (T090): a module with perf targets in the policy gets `c_mutants(..., perf = [...])` (the targets' binaries'
   libraries are linked in too, `gate//ctest:perf` never), its `[perf]` output is copied to `<work>/mutants-perf/` and judged with
   the reports; `killed-perf` is a separate verdict that counts as killed (`docs/mutate.md`, "Perf kills"). A perf target the
   layout does not know is `perf-target-unknown`; `perf-build-failed` if the evidence did not build.
-- **Tests.** For a module, every product `c_test` that lists it directly in `deps`, found with `buck2 uquery` in
-  the tree (the `test` attribute of the `ctest_results` targets, and the `deps` of libraries and tests). The
-  product declares no `c_mutants`. The other libraries the tests link (the closure of their `deps` and the
-  module's, without the module, dependents first) are passed as `deps`. See "Link dependencies of the mutants (T070)".
+- **Tests: the module's own package only** (owner decision 2026-11-11). For a module, the product `c_test`s **of the
+  module's own package** (same cell, same package: `//lib/fmt/jw:jw` and `//lib/fmt/jw:jw_test`, not a parent, child
+  or sibling package) that list it directly in `deps` (`grade_mutants.own_tests`; `rules/mutate.bzl` `_own_package` is
+  the same notion), found with `buck2 uquery` in the tree (the `test` attribute of the `ctest_results` targets, and the
+  `deps` of libraries and tests). The product declares no `c_mutants`. The other libraries those tests link (the
+  closure of their `deps` and the module's, without the module, dependents first) are passed as `deps`. See "Link
+  dependencies of the mutants (T070)". A test of another package never runs against the module's mutants and cannot
+  kill one, however directly it lists the module: a mutant that only such a test would kill is a survivor
+  (`survived-mutant` at L3 and above), and a module with no own-package test that lists it is `module-without-tests`.
+  Why: a module's `mutant_run` actions are keyed on every archive its tests link. When every test that lists a module
+  counted, a composition test made each module's mutants depend on nearly every other module, and a one-line edit
+  anywhere re-ran them all (business-apps: 92 % of the module/test pairs were another package's, about 21,000 mutant
+  actions and 71 minutes for one edit, and 3 % of the live mutants were killed only by such a test). Now an edit in
+  module A re-runs the mutants of module B only if a test in B's own package links A. The same selection serves
+  `mutants-witness` and `tools/mutants` (they call `grade_mutants.plan`). The witness scope W is unchanged: it still
+  follows every test that lists a module (`docs/witness.md`), because `witness-tests` runs them all.
 - **The generated package.** After the product was copied, the step writes `gate-mutants/BUCK` (one `c_mutants` call
   per module, target `m_<module>_<sha8 of the label>`, never a position: T121) and a root `PACKAGE` (`package(visibility = ["PUBLIC"], inherit = True)`;
   without it the product's test targets, which are package-private, are invisible to another package). Both are
@@ -217,7 +243,8 @@ so the gate reads the head's results of both modes and builds nothing.
   `chunks`, `retried` (chunk indexes) and `stderr_tail` (last failing chunk) are added. `--no-remote-cache` with
   `--uncached`.
   **Stop at the first kill (T121).** A mutant's tests run in a fixed order (the tests of the module's own package, then the
-  others, each sorted by label) and its runs stop at the first test that fails a check; the rest are recorded as skipped
+  others, each sorted by label; a grade hands a module its own package's tests only, the others exist for a `c_mutants`
+  target written by hand) and its runs stop at the first test that fails a check; the rest are recorded as skipped
   (`killed_by`), never as passes (`rigor mutants`: `bad-skip` unless an earlier run of that mutant fails a check). A crash
   does not stop the runs: the verdict is killed-assert if any test fails a check, so every verdict stays what it was. See
   `docs/mutate.md`.
@@ -226,7 +253,8 @@ so the gate reads the head's results of both modes and builds nothing.
   grade executes none. The key holds no work dir, time or nonce; the one per-grade thing that was in it, the target
   name's position (`m<NNN>_`, part of every output path), is gone. The verdict is read from the cached action output; no
   verdict is stored anywhere else. A module whose link deps changed re-runs (tests link every library the module's
-  tests link). `selftest/mutants_cache.sh` (a step of `selftest/grade.sh`) proves it. The reports are copied and `rigor mutants` runs in process over
+  own-package tests link, and nothing else: a library that only another package's test links is no input).
+  `selftest/mutants_cache.sh` (a step of `selftest/grade.sh`) proves it, step (d) for the last point. The reports are copied and `rigor mutants` runs in process over
   a policy the gate writes. Findings and the per-module summary (`total`, `verdicts`, `operators`, `survivors`)
   are reported with the product's module labels; metadata also has the executed/cached action counts and the
   sha256 of the generated `BUCK`.

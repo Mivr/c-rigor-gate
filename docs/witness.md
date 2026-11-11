@@ -75,6 +75,31 @@ The bundle is bound like `policy.toml` (T021's rules: copy once, hash the copy),
   mutant of the implementer's code. `mutants-witness` (T039) judges its survivors with it. Prefer rewriting the
   witness; approve only spec-required defensive code.
 
+## A module whose witness is the head's code (owner decision 2026-11-11)
+
+A bundle often carries a real re-implementation for the few modules a task changes and `from-commit` copies for the
+rest of W (each needs an entry, else `witness-missing`). A copy is the head's code, and in the roles `implementer`
+and `audit` the head's `mutants` gate judges that same code against the same tests in the same grade, with the
+`equivalent-mutant` approvals. So `mutants-witness` leaves such a module out (info `witness-module-equals-head` per
+module, metadata `equal_to_head`): its survivors are the head gate's findings, not a second set that would need a
+second approval of another kind.
+
+- **Equal** means, per module: the files under its impl paths are the same paths with the same bytes (sha256) in the
+  head tree and in the witness tree; a missing file, an extra file or one differing byte makes it a different module,
+  which is mutated and judged as always.
+- **Only when the head gate judged it in this grade**: head `mutants` ran and its result has a summary for the module.
+  In role `test-author` head `mutants` is not applicable (the head is the stub commit), so there **every module of W
+  is still mutated in `mutants-witness`, copies included**. That is deliberate: it is the only gate of a test-author
+  grade that judges the tests of a module the author did not stub, and without it a test author could weaken them
+  unseen (canary `witness-copy-weak-tests`). A copy's unkillable mutants therefore still need
+  `witness-equivalent-mutant` approvals in a test-author grade.
+- `witness-tests`, `witness-missing` and the whole-tree reuse ("Bootstrap", below) are unchanged.
+
+| canary | what | fails |
+|---|---|---|
+| `witness-copy-skipped` | role implementer; a bundle with a rewritten `core` and a copy of the head's `util` (L3 here), which has unkillable mutants | `mutants`: survived-mutant (the head's own, once). `mutants-witness` passes: `core` judged, `util` reported as `witness-module-equals-head` |
+| `witness-copy-weak-tests` | role test-author; `util` is stubbed and has a real witness, `core` is a copy, and the author dropped the positive `core_sign` checks | `mutants-witness`: witness-survived-mutant (the copy is still judged) |
+
 ## Roles
 
 `role` is an optional key of the task contract (`TASK.toml`), read by `contract.load_contract` as
@@ -112,8 +137,9 @@ What role `test-author` changes in `rigor grade` (T041):
   witness-agnostic, and the impl globs of `policy.toml` cover whatever the witness writes under `src/`. The
   structure, mutants and witness steps read sources with `uquery` (which expands the glob), not from BUCK text.
 - **test surface** of module m: every product path in m's package, and in the package of every `c_test`
-  that lists m directly in `deps`, that is in no module's impl paths (the header, the BUCK file, the tests
-  and the kits). The packages are the directories of the layout's targets; a path belongs to the deepest
+  that lists m directly in `deps` (of any package: wider than the tests that run against m's mutants, which are
+  its own package's only, `docs/grade.md` "Tests"), that is in no module's impl paths (the header, the BUCK file, the
+  tests and the kits). The packages are the directories of the layout's targets; a path belongs to the deepest
   one that contains it, so a directory with a BUCK file but no library, binary or test counts toward the
   enclosing package (more modules in W, never fewer).
 - **W** (`scope(role, changed_paths, layout, impl_map, levels)`), over the head's layout and the changed
