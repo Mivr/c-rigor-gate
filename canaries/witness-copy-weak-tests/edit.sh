@@ -10,4 +10,4 @@ sed -i '/core_sign(1), 1/d; /core_sign(9), 1/d' core/core_test.c
 grep -q 'int util_pos(int value);' util/util.h
 grep -q '{ "pos", t_pos }' util/util_test.c
 grep -q 'return -12345;' util/util.c
-! grep -q 'core_sign(9), 1' core/core_test.c
+if grep -q 'core_sign(9), 1' core/core_test.c; then exit 1; fi

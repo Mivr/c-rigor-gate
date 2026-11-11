@@ -5,8 +5,8 @@
 
 int util_sum(const int *values, size_t count) {
     int total = 0;
-    for (size_t left = count; left > 0; left--) {
-        total = core_add(values[left - 1], total);
+    for (size_t i = 0; i < count; i++) {
+        total = core_add(values[i], total);
     }
     return total;
 }
