@@ -6,6 +6,9 @@
 #   (a) the same head graded twice in two work dirs: ZERO mutant_run actions execute, every digest is identical;
 #   (b) a head that changes one module (an independent one): only that module's mutant_run actions execute;
 #   (c) a head with a surviving mutant, graded twice: the second grade executes nothing and reports the same survivors.
+#   (d) a head that changes util, which only ANOTHER package's test links into core (//util:core_test lists //core:core):
+#       only util's mutant_run actions execute. A module's mutants run against its own package's tests, so what a
+#       foreign test links is no input of them (docs/grade.md, "Tests").
 # Needs bash, git, python3 (stdlib) and tools/buck2. Scratch lives under $TMPDIR (default /var/tmp), removed on exit
 # (RIGOR_GRADE_KEEP=1 keeps it).
 set -uo pipefail
@@ -32,8 +35,8 @@ export GIT_COMMITTER_NAME=selftest GIT_COMMITTER_EMAIL=selftest@example.invalid
 
 mkdir -p "$repo"
 cp -r selftest/grade_product/. "$repo/"
-# core and util are coupled (util's tests link core and core's mutants link what util's test links), so a third module
-# that nothing else links is added: the canary `new-module` has exactly that (//core:extra) and the policy gets its entry.
+# util's tests link core, so a change of core re-runs util's mutants; a third module that nothing else links is added
+# for (b): the canary `new-module` has exactly that (//core:extra) and the policy gets its entry.
 (cd "$repo" && bash "$root/canaries/new-module/edit.sh")
 mkdir -p "$work/product"
 cp products/selftest/product.toml products/selftest/policy.toml "$work/product/"
@@ -147,5 +150,25 @@ rules = {json.loads(f)["rule"] for f in a}
 assert "survived-mutant" in rules, rules
 assert a == b, "findings differ"
 print("  %d findings, identical on the cache hit, rules %s" % (len(a), sorted(rules)))
+PY
+
+# (d) util changes: core's mutants do not link it (only //util:core_test, a test of another package, does)
+echo "[d] a change to a module that only another package's test links into core"
+salt=$((RANDOM * 32768 + RANDOM))
+h_util="$(head_of util "sed -i 's/ramp\[i\] = (int)i;/ramp[i] = (int)i + (count > 1000000 ? $salt : 0);/' util/util.c")"
+git -C "$repo" diff --quiet "$base" "$h_util" -- util/util.c && fail "(d) the edit changed nothing"
+grade d "$h_util"
+ran d > "$work/d.ran"
+python3 -I - "$work/d.ran" <<'PY' || fail "(d) a mutant_run action of core executed after a change to util, or util's did not"
+import json, sys
+d = json.load(open(sys.argv[1]))
+executed = {k for k, v in d.items() if v[0] != "Cache"}
+own = [k for k in d if "_util_util_" in k]
+others = [k for k in d if "_util_util_" not in k]
+assert own and others, (len(own), len(others))
+assert any("_core_core_" in k for k in others), sorted(others)[:3]
+assert not executed & set(others), sorted(executed & set(others))
+assert executed and executed <= set(own), sorted(executed)
+print("  executed %d of %d mutant_run actions of util, 0 of %d of core and extra" % (len(executed), len(own), len(others)))
 PY
 echo "mutants cache selftest: PASS"
