@@ -1,0 +1,9 @@
+product = "canary"
+
+[module."//core:core"]
+origin = "canaries/witness-copy-weak-tests (a copy of the head)"
+written_against = "0000000000000000000000000000000000000000"
+
+[module."//util:util"]
+origin = "canaries/witness-copy-weak-tests"
+written_against = "0000000000000000000000000000000000000000"

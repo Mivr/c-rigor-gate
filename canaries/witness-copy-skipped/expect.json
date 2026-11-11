@@ -1,0 +1,12 @@
+{
+  "bypass": "none: a witness module that is a copy of the head is judged once, by the head gate (owner decision 2026-11-11)",
+  "description": "Role implementer. The head drops the positive core_sign checks, so core has surviving mutants: the head's mutants gate fails for them. The bundle carries a rewritten util and a byte-identical copy of the head's core. mutants-witness judges util only and reports core as witness-module-equals-head; before the rule it failed a second time with witness-survived-mutant for the copy.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ]
+  },
+  "contains": {
+    "mutants-witness": "witness-module-equals-head"
+  }
+}
