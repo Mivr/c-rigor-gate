@@ -1,0 +1,1 @@
+{"control": true, "description": "only a test of util's package that lists //core:core changes, and the bundle has no core entry: W is {//util:util} (a module's test surface is its own package), so both witness gates run on util and pass. With the wider W of before it failed witness-tests with witness-missing for //core:core."}

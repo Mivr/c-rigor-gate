@@ -1,0 +1,5 @@
+product = "canary"
+
+[module."//util:util"]
+origin = "canaries/foreign-test-scope"
+written_against = "0000000000000000000000000000000000000000"

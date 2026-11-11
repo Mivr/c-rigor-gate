@@ -3,8 +3,11 @@
 * **impl paths**: `impl = ["core/core.c"]` per module in the gate-owned `policy.toml`; the paths an
   implementer may write and a witness replaces. An L2+ module without them is `impl-missing` (error
   at L3 and above, info at L2).
-* **test surface** of module m: every product path in m's package, and in the package of every
-  `c_test` that lists m directly in `deps`, that is in no module's impl paths.
+* **test surface** of module m: every product path that is in no module's impl paths and lies in m's
+  own package, or in the package of an unjudged library (level L1 or none: a test kit, a helper) that
+  m's own-package tests link. Those tests are the only ones that run against m's mutants
+  (`grade_mutants.own_tests`), so a test of another package is not m's test surface; a kit they link
+  is, wherever it lives, because no gate judges a kit on its own.
 * **W**: by role, over the head's layout and the changed paths `merge_base..head`:
   `implementer` - the L2+ modules whose test surface changed; `test-author` - those plus the L2+
   modules whose impl paths changed; `audit` - every L2+ module that has tests.
@@ -118,9 +121,28 @@ def _direct_tests(layout, module):
     return list(grade_mutants.direct_tests(layout, module))
 
 
-def test_surface(layout, impl_map_, paths_):
-    """{module: [paths of `paths_` in its test surface]} for every library and binary of the layout."""
+def _unjudged_linked(layout, module, levels):
+    """The product libraries that MODULE's own-package tests link (the closure of their deps) and that no
+    gate judges on their own: level L1 or none. Test kits and helpers; a change to one changes what the
+    module's tests check. A judged library (L2+) is not one of them: its own package puts it in W."""
+    links = layout.deps if layout.links is None else layout.links
+    seen = set()
+    stack = [d for t in grade_mutants.own_tests(layout, module) for d in links[t]]
+    while stack:
+        label = stack.pop()
+        if label in seen or not label.startswith("//"):
+            continue
+        seen.add(label)
+        stack.extend(links.get(label, ()))
+    return sorted(d for d in seen if d != module and d in layout.libs and levels.get(d) not in JUDGED_LEVELS)
+
+
+def test_surface(layout, impl_map_, paths_, levels=None):
+    """{module: [paths of `paths_` in its test surface]} for every library and binary of the layout.
+    `levels` tells which libraries are judged (L2+); without it every linked library counts as a kit
+    (more paths, never fewer)."""
     _check_layout(layout)
+    levels = levels or {}
     compiled = witness_bundle.compile_impl_map(impl_map_)
     candidates = [p for p in _check_paths(paths_, "paths")
                   if not any(globs.matches(g, p) for patterns in compiled.values() for g in patterns)]
@@ -128,7 +150,7 @@ def test_surface(layout, impl_map_, paths_):
     owner = {p: _owning_package(packages, p) for p in candidates}
     surface = {}
     for module in _modules(layout):
-        wanted = {package_of(module)} | {package_of(t) for t in _direct_tests(layout, module)}
+        wanted = {package_of(module)} | {package_of(d) for d in _unjudged_linked(layout, module, levels)}
         surface[module] = [p for p in candidates if owner[p] in wanted]
     return surface
 
@@ -143,7 +165,7 @@ def scope(role, changed_paths, layout, impl_map_, levels):
         raise InternalError("unknown role %r" % (role,))
     _check_levels(levels)
     changed = _check_paths(changed_paths, "changed paths")
-    surface = test_surface(layout, impl_map_, changed)
+    surface = test_surface(layout, impl_map_, changed, levels)
     compiled = witness_bundle.compile_impl_map(impl_map_)
     judged = [m for m in _modules(layout) if levels.get(m) in JUDGED_LEVELS]
     if role == contract.ROLE_AUDIT:
