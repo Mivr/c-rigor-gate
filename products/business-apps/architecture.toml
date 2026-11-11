@@ -93,7 +93,7 @@ modules = ["//apps/lockers/lk/**"]
 
 # The contracts (interface modules; gate decoupling): no module yet. The first one adds its package here.
 [layer."app-contract"]
-modules = []
+modules = ["//apps/lockers/lkc/**"]
 
 [layer."app-safety"]
 modules = ["//apps/lockers/relay/**"]
@@ -814,3 +814,54 @@ from = "//apps/lockers/lkui/input:input"
 to = "//lib/rt/rxwire:rxwire"
 kind = "pure"
 
+# P007 contracts (business-apps plan/P007-decoupling.md): what a contract may include (decoupling.toml may_use), and
+# who may include a contract. All `data`: a header-only contract defines no symbol.
+[[edge]]
+from = "app-contract"
+to = "lib-base"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//lib/rt/ev:ev"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/types:types"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-safety"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-reactors"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-adapters"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-sim"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-ui"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-root"
+to = "app-contract"
+kind = "data"

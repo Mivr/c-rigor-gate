@@ -4,7 +4,14 @@
 contract = ["app-contract"]
 # app-ui is listed by package: lkui/catalog is a generated message catalog (c_catalog: const text tables, no
 # behaviour), so it is data that every layer may use directly, like a library. A new lkui package must be added here.
-component = ["app-reactors", "app-adapters", "app-sim",
+# app-reactors is listed by package too: lkrx/catalog is the event catalogue's const tables (LK_EV_TYPES, and LK_WIRING
+# whose fold and reactor entries are no-op placeholders that lkapp/wire replaces); its types are the contract
+# lkc/events. Data, used directly. A new lkrx package must be added here.
+component = ["//apps/lockers/lkrx/boot:*", "//apps/lockers/lkrx/codes:*", "//apps/lockers/lkrx/fold_core:*",
+             "//apps/lockers/lkrx/fold_status:*", "//apps/lockers/lkrx/notice:*", "//apps/lockers/lkrx/pad:*",
+             "//apps/lockers/lkrx/shift:*", "//apps/lockers/lkrx/sync:*", "//apps/lockers/lkrx/view:*",
+             "//apps/lockers/lkrx/visit:*", "//apps/lockers/lkrx/vstate:*",
+             "app-adapters", "app-sim",
              "//apps/lockers/lkui/input:*", "//apps/lockers/lkui/notices:*", "//apps/lockers/lkui/screens:*"]
 composition = ["app-root"]
 
