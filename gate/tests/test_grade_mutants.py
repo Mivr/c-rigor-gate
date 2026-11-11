@@ -761,5 +761,31 @@ class Gate(TempDirTestCase):
         self.assertIn("mutants-build-failed", [f["rule"] for f in result.findings])
 
 
+class Judging(TempDirTestCase):
+    """`judge` hands `rigor mutants` the gate's own target labels: the extra approval kinds of a module too."""
+
+    def judged(self, **more):
+        modules = [grade_mutants.Module("//a:a", "L3", ("//a:t",), ()), grade_mutants.Module("//b:b", "L3", ("//b:t",), ())]
+        g = SimpleNamespace(src="repo", head="h", args=SimpleNamespace(approvals=None, allowed_signers="s"))
+        run = SimpleNamespace(work=str(self.sub("work")), mutants_reports=str(self.tmp / "reports"))
+        result = SimpleNamespace(findings=[], metadata={"modules": {}, "approvals_used": ["x"],
+                                                        "approvals_used_by_kind": {"equivalent-mutant": ["x"]}})
+        with mock.patch.object(grade_mutants.rigor_mutants, "run", return_value=result) as ran:
+            out = grade_mutants.judge(g, run, modules, [0, 1], **more)
+        return out, ran.call_args.args, [grade_mutants.target_label(m) for m in modules]
+
+    def test_the_head_gate_passes_one_kind_and_no_extra(self):
+        out, args, _ = self.judged()
+        self.assertEqual(args[1:], ("equivalent-mutant", {}))
+        self.assertEqual(out[2], ["x"])
+
+    def test_extra_kinds_are_keyed_by_the_module_s_target_and_only_for_the_modules_named(self):
+        used = {}
+        _, args, targets = self.judged(approval_kind="witness-equivalent-mutant",
+                                       extra_kinds={"//b:b": ("equivalent-mutant",)}, used_by_kind=used)
+        self.assertEqual(args[1:], ("witness-equivalent-mutant", {targets[1]: ("equivalent-mutant",)}))
+        self.assertEqual(used, {"equivalent-mutant": ["x"]})
+
+
 if __name__ == "__main__":
     unittest.main()

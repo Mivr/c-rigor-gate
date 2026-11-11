@@ -461,12 +461,14 @@ def _relabel(found, names):
             for item in found]
 
 
-def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, renames=None):
+def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, renames=None, extra_kinds=None,
+          used_by_kind=None):
     """`rigor mutants` over the reports of the modules that built, with a policy the gate writes.
 
     Returns (findings, per-module summaries, approvals used), all in terms of the product's labels.
     `approval_kind` is the approval that covers a survivor; `renames` maps a finding rule to the rule
-    it is reported as (empty for the head).
+    it is reported as (empty for the head). `extra_kinds` maps a module (product label) to further approval
+    kinds accepted for it alone; `used_by_kind`, a dict, receives {kind: [approvals used]}.
     """
     policy = os.path.join(run.work, "tmp", "mutants-policy.toml")
     os.makedirs(os.path.dirname(policy), exist_ok=True)
@@ -475,7 +477,10 @@ def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT
     perf_dir = os.path.join(os.path.dirname(run.mutants_reports), PERF_DIR)
     result = rigor_mutants.run(Namespace(
         results=run.mutants_reports, policy=policy, perf_results=perf_dir, approvals=g.args.approvals,
-        repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind)
+        repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind,
+        {target_label(modules[i]): kinds for i in built for kinds in [(extra_kinds or {}).get(modules[i].label)] if kinds})
+    if used_by_kind is not None:
+        used_by_kind.update(result.metadata["approvals_used_by_kind"])
     names = {target_label(modules[i]): modules[i].label for i in built}
     summaries = {names.get(label, label): summary for label, summary in result.metadata["modules"].items()}
     found = [dict(item, rule=renames.get(item["rule"], item["rule"])) for item in
