@@ -1,0 +1,3 @@
+# Both modules are implementations: a unit test of one may not link the other.
+[modules]
+component = ["//core:*", "//util:*"]

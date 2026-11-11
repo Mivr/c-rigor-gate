@@ -1,0 +1,9 @@
+{
+  "bypass": "a frozen interface edited in place",
+  "description": "//core:core is a contract and //util depends on it, so core.h is frozen. The head renames a parameter of core_add in the header: an existing declaration changed. interface-changed (a new module next to it is the way).",
+  "fail": {
+    "decoupling": [
+      "interface-changed"
+    ]
+  }
+}

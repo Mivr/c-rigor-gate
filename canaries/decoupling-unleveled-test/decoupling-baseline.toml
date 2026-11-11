@@ -1,0 +1,3 @@
+unused-dep = [
+    "//util:util_test -> //core:core",
+]

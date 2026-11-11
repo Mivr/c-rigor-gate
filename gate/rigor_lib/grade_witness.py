@@ -71,7 +71,7 @@ def _changed_paths(g):
 def _head_layout(g):
     """The layout of the head tree. The head's daemon is stopped again: `witness-tests` has its own tree."""
     try:
-        return grade_mutants.read_layout(grade_build.TreeRun(g.tree, g.work))
+        return grade_mutants.read_graded_layout(g, grade_build.TreeRun(g.tree, g.work))
     finally:
         grade_context.kill_daemon(g.tree)
 

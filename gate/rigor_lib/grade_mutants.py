@@ -20,10 +20,12 @@ import os
 import re
 from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, grade_tier, jsonio, perf_package, perf_policy
+from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_decoupling, grade_policy, grade_tier
+from rigor_lib import jsonio
 from rigor_lib import mutants_gate as rigor_mutants
+from rigor_lib import perf_package, perf_policy
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 from rigor_lib.grade_tree import write_file
@@ -57,6 +59,7 @@ class Layout:
     deps: dict           # label -> tuple of direct dependency labels of the product's own cell
     external: frozenset = frozenset()  # libraries of other cells ("gate//third_party/..:x"), linkable like libs
     links: dict = None   # label -> direct `deps` + `exported_deps` of every cell: what the tests link (T070)
+    apart: frozenset = frozenset()  # the tests of declared integration and simulation packages: no module's own tests
 
 
 @dataclass(frozen=True)
@@ -223,8 +226,10 @@ def own_tests(layout, module):
     """The tests MODULE's mutants run against: the `c_test`s of the module's own package (same cell, same
     package: what `rules/mutate.bzl` `_own_package` calls the module's own tests) that list it directly in
     `deps`, sorted. A test of another package is not one of them, however directly it lists the module: the
-    module's mutant runs would then be keyed on everything that test links."""
-    return tuple(t for t in direct_tests(layout, module) if _package(t) == _package(module))
+    module's mutant runs would then be keyed on everything that test links. A test of a package the product
+    declares an integration or simulation package (`layout.apart`, docs/decoupling.md) is never one of them."""
+    return tuple(t for t in direct_tests(layout, module)
+                 if _package(t) == _package(module) and t not in layout.apart)
 
 
 def perf_binary(target):
@@ -504,6 +509,13 @@ def mutants_gate(g):
         grade_context.kill_daemon(run.tree)
 
 
+def read_graded_layout(g, run):
+    """`read_layout` plus the product's test levels (`grade_decoupling.apart_tests`): the layout every mutant
+    selection of a grade starts from."""
+    layout = read_layout(run)
+    return replace(layout, apart=grade_decoupling.apart_tests(g, layout.tests))
+
+
 def build_plan(g, run):
     """(Plan, perf shared) of the product in `run.tree`: what the grade measures, and what the lane command
     (`lane_mutants`) measures for the modules it is asked about, comes from this one function."""
@@ -512,7 +524,7 @@ def build_plan(g, run):
     if targets:   # the perf binaries must be in the tree before the layout is read
         write_shared_package_file(run.tree)
         perf_package.write(run.tree, targets)
-    return plan(read_layout(run), levels, perf_policy.by_module(targets)), bool(targets)
+    return plan(read_graded_layout(g, run), levels, perf_policy.by_module(targets)), bool(targets)
 
 
 def _run(g, run):

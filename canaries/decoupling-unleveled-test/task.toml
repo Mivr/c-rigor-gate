@@ -1,0 +1,2 @@
+id = "canary"
+allowed = ["core/**", "util/**", "flow/**"]

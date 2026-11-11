@@ -1,0 +1,3 @@
+# util is declared an interface module; it is not one.
+[modules]
+contract = ["//util:*"]

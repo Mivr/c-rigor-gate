@@ -301,6 +301,25 @@ whose red gate depends on it would miss in that pass; the pass is a second run o
 The one known case is `third-party-link` (an L2 control whose `contains` pins a finding of the L2 module's mutants): in the merge
 pass `canaries/runner.py` (`MERGE_DEFERS_CONTAINS`) skips that pin, nothing else of its expectation.
 
+## Canaries of gate `decoupling`
+All use the shared base product with a `decoupling.toml` beside `product.toml` (and a `decoupling-baseline.toml` where
+named). In the common declaration `//core:core` is the contract and `//util:util` the component.
+
+| canary | what the head or the declaration does | fails | NOT_RUN |
+|---|---|---|---|
+| `decoupling-control` (control) | a test in the new module-less package `//flow` (declared integration), a new declaration in the frozen `core.h` (info `interface-extended`), and an unused dep on `//util:util_test` that the baseline lists | none: PASS | none |
+| `decoupling-unused-dep` | `//util:util_test` gains the dep `//core:core` and uses nothing of it; no baseline | `decoupling`: unused-dep | none |
+| `decoupling-stale-baseline` | no edit; the baseline lists `//util:util_test -> //core:core`, which the tree does not have | `decoupling`: stale-baseline | none |
+| `decoupling-missing-export` | `util.h` includes `core/core.h`, core stays in `deps` of util; `util_test` has to list core to compile and does not use it | `decoupling`: missing-export, unused-dep | none |
+| `decoupling-needless-export` | util moves core to `exported_deps`; no public header of util includes it | `decoupling`: needless-export | none |
+| `decoupling-test-links-component` | no edit; both modules are declared components, so the unit tests of util link another component | `decoupling`: unit-test-links-component | none |
+| `decoupling-unleveled-test` | the head of the control, but no `[tests]` declaration: `//flow:flow_test` has no level | `decoupling`: unleveled-test | none |
+| `decoupling-library-in-test-package` | no edit; `//util` is declared an integration package although it holds a library; its tests are then no module's own tests | `decoupling`: library-in-test-package; `mutants`: module-without-tests | none |
+| `decoupling-contract-behaviour` | no edit; util is declared a contract: it depends on a non-contract and calls `malloc` (`contains`) | `decoupling`: contract-has-behaviour | none |
+| `decoupling-interface-changed` | a parameter of `core_add` is renamed in the frozen `core.h` | `decoupling`: interface-changed | none |
+
+Every canary without a `decoupling.toml` (all the others) gets `decoupling` PASS with info `not-applicable`.
+
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
