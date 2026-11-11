@@ -8,7 +8,7 @@ remaining steps do not run. Every gate that compiles is wrapped in `needs_toolch
 after the `toolchain` gate passed (grade_toolchain), otherwise it is NOT_RUN.
 """
 
-from rigor_lib import grade_build, grade_checks, grade_mutants, grade_steps, grade_structure
+from rigor_lib import grade_build, grade_checks, grade_decoupling, grade_mutants, grade_steps, grade_structure
 from rigor_lib import grade_toolchain, grade_witness, perf_gate
 
 
@@ -27,6 +27,7 @@ GATES = (
     _compiling("semantic-suppressions", grade_checks.semantic_gate),
     _compiling("symbols", grade_checks.symbols_gate),
     ("layering", grade_checks.layering_gate),  # compiles only with an architecture.toml (it wraps itself)
+    ("decoupling", grade_decoupling.decoupling_gate),  # compiles only with a decoupling.toml (it wraps itself)
     _compiling("build", grade_build.build_gate),
     _compiling("structure", grade_structure.structure_gate),
     _compiling("mode-divergence", grade_structure.modes_gate),

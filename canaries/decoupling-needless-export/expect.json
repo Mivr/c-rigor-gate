@@ -1,0 +1,9 @@
+{
+  "bypass": "an export no public header needs",
+  "description": "//util:util moves //core:core from `deps` to `exported_deps`; util.h includes no core header (only util.c does), so the export widens every dependent for nothing. needless-export.",
+  "fail": {
+    "decoupling": [
+      "needless-export"
+    ]
+  }
+}

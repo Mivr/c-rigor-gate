@@ -1,0 +1,9 @@
+{
+  "bypass": "a declared dependency nothing uses",
+  "description": "//util:util_test gains the dep //core:core: no file of the test includes a core header and its object references no core symbol. No baseline lists it: unused-dep.",
+  "fail": {
+    "decoupling": [
+      "unused-dep"
+    ]
+  }
+}

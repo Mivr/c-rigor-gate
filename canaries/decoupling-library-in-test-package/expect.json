@@ -1,0 +1,12 @@
+{
+  "bypass": "a library hidden in an integration package",
+  "description": "decoupling.toml declares //util an integration package although it holds the library //util:util: library-in-test-package. Its tests are integration tests, so they are no module's own tests and util (L2) has nothing that may kill its mutants: module-without-tests.",
+  "fail": {
+    "decoupling": [
+      "library-in-test-package"
+    ],
+    "mutants": [
+      "module-without-tests"
+    ]
+  }
+}

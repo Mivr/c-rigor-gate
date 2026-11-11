@@ -7,6 +7,7 @@ buckfiles
 semantic-suppressions
 symbols
 layering
+decoupling
 build
 structure
 mode-divergence

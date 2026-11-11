@@ -365,4 +365,10 @@ The module boundaries of a monorepo product are a gate-owned contract, `products
 as `symbols` (direct `deps`, undefined symbols, exports). Findings: `ungoverned-module`, `undeclared-edge`, `upward-edge`,
 `edge-kind-violation`, `contract-stale`. Format, edge kinds and limits: [layering.md](layering.md).
 
+## 5. Gate `decoupling`
+Declared dependencies equal used ones, exports equal what the public headers include, unit tests link no foreign component,
+contracts hold no behaviour and frozen interfaces are versioned instead of edited, all under a gate-owned baseline that
+only shrinks (`products/<p>/decoupling.toml`, `decoupling-baseline.toml`). It reads the tree and the same facts as `symbols`.
+Rules, files, the tool and the blind spots: [decoupling.md](decoupling.md).
+
 Self-test: `selftest/product_checks.sh`.
