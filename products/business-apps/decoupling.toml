@@ -7,10 +7,13 @@ contract = ["app-contract"]
 # app-reactors is listed by package too: lkrx/catalog is the event catalogue's const tables (LK_EV_TYPES, and LK_WIRING
 # whose fold and reactor entries are no-op placeholders that lkapp/wire replaces); its types are the contract
 # lkc/events. Data, used directly. A new lkrx package must be added here.
+# lkrx/vstate is not listed either: it is the ViewState value type with three pure functions over it (lk_view_at,
+# lk_view_check, lk_view_canonical) and no events, state machine or IO, so it is a value module used directly, like
+# the lk/* domain modules (owner decision Q1, 2026-11-11); its header is the view's interface and could be frozen.
 component = ["//apps/lockers/lkrx/boot:*", "//apps/lockers/lkrx/codes:*", "//apps/lockers/lkrx/fold_core:*",
              "//apps/lockers/lkrx/fold_status:*", "//apps/lockers/lkrx/notice:*", "//apps/lockers/lkrx/pad:*",
              "//apps/lockers/lkrx/shift:*", "//apps/lockers/lkrx/sync:*", "//apps/lockers/lkrx/view:*",
-             "//apps/lockers/lkrx/visit:*", "//apps/lockers/lkrx/vstate:*",
+             "//apps/lockers/lkrx/visit:*",
              "app-adapters", "app-sim",
              "//apps/lockers/lkui/input:*", "//apps/lockers/lkui/notices:*", "//apps/lockers/lkui/screens:*"]
 composition = ["app-root"]
