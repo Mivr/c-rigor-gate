@@ -3,7 +3,7 @@
 # Layers with no module yet are empty; they are listed so the order is fixed before the first module lands.
 [layers]
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
-         "app-domain", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root"]
+         "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -90,6 +90,10 @@ modules = ["//lib/sim/**"]
 # catalogs, lkapp = composition root and shells. A dependency on a higher layer is an upward-edge whatever the edges say.
 [layer."app-domain"]
 modules = ["//apps/lockers/lk/**"]
+
+# The contracts (interface modules; gate decoupling): no module yet. The first one adds its package here.
+[layer."app-contract"]
+modules = []
 
 [layer."app-safety"]
 modules = ["//apps/lockers/relay/**"]

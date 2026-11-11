@@ -1,0 +1,9 @@
+# Decoupling declarations for business-apps (gate decoupling, docs/decoupling.md). Gate-owned.
+# The entries are layers of architecture.toml; its [testkit] modules are the fakes and test kits.
+[modules]
+contract = ["app-contract"]
+component = ["app-reactors", "app-adapters", "app-sim", "app-ui"]
+composition = ["app-root"]
+
+[contract]
+may_use = ["lib-base", "//lib/rt/ev:ev", "//apps/lockers/lk/types:types"]
