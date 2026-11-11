@@ -3,8 +3,10 @@
 Everything that decides what is mutated and against which tests is gate-owned:
   * the modules and their levels come from `products/<p>/policy.toml` (`grade_policy`); a library or
     binary of the product without a level is a finding, and a grading that would mutate nothing fails;
-  * the tests of a module are every product `c_test` that lists the module directly in its `deps`,
-    found with `buck2 uquery` in the grading tree, never declared by the product;
+  * the tests of a module are the product `c_test`s of the module's own package that list the module directly
+    in their `deps` (`own_tests`), found with `buck2 uquery` in the grading tree, never declared by the product.
+    A test of another package never runs against the module's mutants, so neither it nor a library only it
+    links is an input of the module's mutant runs;
   * the `c_mutants` targets live in a generated package (`gate-mutants/BUCK`, one gate macro call per
     module) that is written after the product was copied, so `buckfiles` never sees it. A root `PACKAGE`
     file (the product may not carry one, `buckfiles` flags it) makes the product's targets visible to it.
@@ -61,7 +63,7 @@ class Layout:
 class Module:
     label: str
     level: str
-    tests: tuple   # c_tests that depend on the module directly
+    tests: tuple   # c_tests of the module's own package that depend on the module directly (`own_tests`)
     deps: tuple    # libraries linked into those tests besides the module (any cell), dependents first
     perf: tuple = ()   # ((`//x:y_perf` target, class), ...) the policy declares for the module (T090), sorted
 
@@ -207,6 +209,24 @@ def _link_deps(layout, module, tests, extra=(), skip=()):
     return tuple(reversed(order)), tuple(sorted(unresolved))
 
 
+def _package(label):
+    """`//pkg:name` -> `//pkg` (the cell and the package of a label)."""
+    return label[:label.index(":")]
+
+
+def direct_tests(layout, module):
+    """Every `c_test` of the product that lists MODULE directly in its `deps`, sorted."""
+    return tuple(sorted(t for t in layout.tests if module in layout.deps[t]))
+
+
+def own_tests(layout, module):
+    """The tests MODULE's mutants run against: the `c_test`s of the module's own package (same cell, same
+    package: what `rules/mutate.bzl` `_own_package` calls the module's own tests) that list it directly in
+    `deps`, sorted. A test of another package is not one of them, however directly it lists the module: the
+    module's mutant runs would then be keyed on everything that test links."""
+    return tuple(t for t in direct_tests(layout, module) if _package(t) == _package(module))
+
+
 def perf_binary(target):
     """The `c_perf` binary behind a `<name>_perf` target label."""
     return target[:-len(perf_policy.SUFFIX)]
@@ -234,7 +254,7 @@ def plan(layout, levels, perf=None):
             found.append(finding("unmutatable-module", module=label, level=level))
         else:
             wanted += 1
-            tests = tuple(sorted(t for t in layout.tests if label in layout.deps[t]))
+            tests = own_tests(layout, label)
             if tests:
                 classes = perf.get(label, {})
                 for target in sorted(classes):
@@ -247,7 +267,10 @@ def plan(layout, levels, perf=None):
                 if not unresolved:
                     modules.append(Module(label, level, tests, linked, tuple(sorted(classes.items()))))
             else:
-                found.append(finding("module-without-tests", module=label, level=level))
+                # No test of the module's own package lists it: nothing may kill its mutants. `foreign_tests`
+                # counts the tests of other packages that list it; they do not count.
+                foreign = len(direct_tests(layout, label))
+                found.append(finding("module-without-tests", module=label, level=level, foreign_tests=foreign))
     if not wanted:
         found.append(finding("no-mutated-modules"))
     return Plan(modules, found)
