@@ -5037,6 +5037,15 @@ exports = ["add_node", "fonts_open", "k_col", "lf_add", "lf_add_corpus", "lf_add
     "same_text", "style_a", "style_b", "style_close", "style_f", "style_fp", "style_look", "style_open",
     "style_secs", "want_fill", "want_text"]
 
+[module."//lib/ui/lvrender:lvr_wrap_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
+
 [module."//lib/ui/lvrender:lvrender"]
 level = "L2"
 impl = ["lib/ui/lvrender/src/**"]
