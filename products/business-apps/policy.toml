@@ -2057,6 +2057,11 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkrx/visit:unitkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkrx/visit:visit"]
 level = "L3"
 impl = ["apps/lockers/lkrx/visit/src/**"]
@@ -2097,6 +2102,10 @@ exports = ["main"]
 
 [module."//apps/lockers/lkrx/visit:vs_saveopen_test"]
 allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/visit:vs_unit_test"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/vstate:testkit"]
