@@ -2391,10 +2391,10 @@ exports = []
 level = "L3"
 impl = ["apps/lockers/lkui/screens/src/**"]
 allow = []
-exports = ["lkui_about", "lkui_build", "lkui_build_choose", "lkui_build_opened",
-    "lkui_build_welcome", "lkui_button", "lkui_countdown", "lkui_has_countdown",
-    "lkui_lang", "lkui_licenses", "lkui_panel", "lkui_rect", "lkui_root", "lkui_text",
-    "lkui_text_int", "lkui_top", "lkui_warning"]
+exports = ["lkui_about", "lkui_build", "lkui_build2", "lkui_build_choose", "lkui_build_opened", "lkui_build_screen",
+    "lkui_build_shift_col", "lkui_build_welcome", "lkui_button", "lkui_countdown", "lkui_countdown_at",
+    "lkui_done_staff", "lkui_has_countdown", "lkui_lang", "lkui_licenses", "lkui_panel", "lkui_rect", "lkui_root",
+    "lkui_text", "lkui_text_int", "lkui_top", "lkui_warning"]
 
 [module."//apps/lockers/lkui/screens:screens_choose_test"]
 allow = ["memset", "snprintf", "strlen"]
@@ -2418,6 +2418,10 @@ exports = ["main"]
 
 [module."//apps/lockers/lkui/screens:screens_shift_test"]
 allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/screens:screens_v2_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lkui/screens:screens_static_test"]
