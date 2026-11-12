@@ -2131,11 +2131,24 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkrx/view:unitkit2"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkrx/view:view"]
 level = "L3"
 impl = ["apps/lockers/lkrx/view/src/**"]
-allow = ["memcpy"]
-exports = ["lk_view_memo_init", "lk_view_select"]
+allow = ["memcpy", "memset"]
+exports = ["lk_view2_select", "lk_view_memo_init", "lk_view_select"]
+
+[module."//apps/lockers/lkrx/view:vw2_report_test"]
+allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/view:vw2_select_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
 
 [module."//apps/lockers/lkrx/view:vw_unit_test"]
 allow = ["bcmp", "memcpy", "memset"]
