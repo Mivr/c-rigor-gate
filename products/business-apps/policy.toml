@@ -1903,7 +1903,7 @@ exports = []
 level = "L3"
 impl = ["apps/lockers/lkrx/fold_core/src/**"]
 allow = ["bcmp", "memcpy", "memset"]
-exports = ["fc_live", "lk_book_slice_init", "lk_book_was_uncertain", "lk_clock_init", "lk_config_init",
+exports = ["fc_live", "lk_book_slice_init", "lk_clock_init", "lk_config_init",
     "lk_fold_book", "lk_fold_clock", "lk_fold_config", "lk_fold_inventory", "lk_fold_session",
     "lk_inventory_init", "lk_session_init"]
 
@@ -1952,7 +1952,7 @@ exports = []
 level = "L3"
 impl = ["apps/lockers/lkrx/fold_status/src/**"]
 allow = ["bcmp", "memset"]
-exports = ["lk_codes_slice_active", "lk_codes_slice_init", "lk_codes_slice_init_refs",
+exports = ["lk_codes_slice_init", "lk_codes_slice_init_refs",
     "lk_fold_codes", "lk_fold_health", "lk_fold_notice", "lk_fold_relay", "lk_fold_secret",
     "lk_fold_shift", "lk_health_slice_init", "lk_notice_slice_init", "lk_relay_slice_init",
     "lk_secret_slice_init", "lk_shift_slice_init"]
