@@ -97,6 +97,10 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/notices:notices_keys_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/itest/pad:pad_lockout_test"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
@@ -2314,10 +2318,6 @@ allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkui/notices:notices_golden_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkui/notices:notices_keys_test"]
 allow = ["memset"]
 exports = ["main"]
 
