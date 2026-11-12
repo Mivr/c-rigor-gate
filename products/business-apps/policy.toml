@@ -117,6 +117,30 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/shift:sh_gaps_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_inspect_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_misc_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_release_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_report_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_shift_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
 [module."//apps/lockers/itest/sync:sy_misc_test"]
 allow = ["memcmp", "memcpy", "memset"]
 exports = ["main"]
@@ -2043,30 +2067,6 @@ exports = ["main"]
 level = "L1"
 allow = []
 exports = []
-
-[module."//apps/lockers/lkrx/shift:sh_gaps_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/shift:sh_inspect_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/shift:sh_misc_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/shift:sh_release_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/shift:sh_report_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/shift:sh_shift_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
 
 [module."//apps/lockers/lkrx/shift:sh_unit_test"]
 allow = ["bcmp", "memcpy", "memset"]
