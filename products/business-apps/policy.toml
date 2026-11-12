@@ -2359,6 +2359,10 @@ exports = ["main"]
 allow = ["memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
 
+[module."//apps/lockers/lkui/screens:screens_sweep_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lkui/screens:screens_shift_test"]
 allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
