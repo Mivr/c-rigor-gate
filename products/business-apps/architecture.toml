@@ -874,6 +874,14 @@ from = "app-reactors"
 to = "app-contract"
 kind = "data"
 
+# The two pure helpers over the slice types that moved into lkc/slices (P007 C2 helper move, manager 2026-11-12):
+# lkrx/shift calls lk_book_was_uncertain, lkrx/codes calls lk_codes_slice_active. Nothing else of a contract is called.
+[[edge]]
+from = "app-reactors"
+to = "//apps/lockers/lkc/slices:slices"
+kind = "port"
+symbols = ["lk_book_was_uncertain", "lk_codes_slice_active"]
+
 [[edge]]
 from = "app-adapters"
 to = "app-contract"

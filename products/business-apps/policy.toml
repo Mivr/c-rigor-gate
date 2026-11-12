@@ -1628,9 +1628,14 @@ allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lkc/slices:slices"]
-level = "L1"
+level = "L2"
+impl = ["apps/lockers/lkc/slices/src/**"]
 allow = []
-exports = []
+exports = ["lk_book_was_uncertain", "lk_codes_slice_active"]
+
+[module."//apps/lockers/lkc/slices:slices_helpers_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
 
 [module."//apps/lockers/lkc/slices:slices_layout_test"]
 allow = []
