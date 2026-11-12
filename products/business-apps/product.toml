@@ -6,6 +6,7 @@ name = "business-apps"
 include = ["apps/lockers/itest/notice/**",
            "apps/lockers/itest/pad/**",
            "apps/lockers/itest/sync/**",
+           "apps/lockers/itest/view/**",
            "apps/lockers/lk/audit/**",
            "apps/lockers/lk/auditplan/**",
            "apps/lockers/lk/book/**",

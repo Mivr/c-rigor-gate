@@ -65,6 +65,38 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/view:vw_arg_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_banner_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_count_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_flow2_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_flow_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_memo_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_notice_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_screen_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lk/audit:audit"]
 level = "L3"
 impl = ["apps/lockers/lk/audit/src/**"]
@@ -2024,38 +2056,6 @@ level = "L3"
 impl = ["apps/lockers/lkrx/view/src/**"]
 allow = ["memcpy"]
 exports = ["lk_view_memo_init", "lk_view_select"]
-
-[module."//apps/lockers/lkrx/view:vw_arg_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_banner_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_count_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_flow2_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_flow_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_memo_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_notice_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_screen_test"]
-allow = ["memset"]
-exports = ["main"]
 
 [module."//apps/lockers/lkrx/view:vw_unit_test"]
 allow = ["bcmp", "memcpy", "memset"]
