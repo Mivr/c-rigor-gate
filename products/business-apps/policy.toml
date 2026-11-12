@@ -1627,6 +1627,15 @@ exports = []
 allow = []
 exports = ["main"]
 
+[module."//apps/lockers/lkc/slices:slices"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkc/slices:slices_layout_test"]
+allow = []
+exports = ["main"]
+
 [module."//apps/lockers/lkrx/boot:boot"]
 level = "L3"
 impl = ["apps/lockers/lkrx/boot/src/**"]

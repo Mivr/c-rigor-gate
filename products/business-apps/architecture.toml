@@ -831,6 +831,28 @@ from = "app-contract"
 to = "//apps/lockers/lk/types:types"
 kind = "data"
 
+# P007 C2 (owner decision 2026-11-12): a contract may include the domain value modules lk/book, lk/codeset,
+# lk/inventory and lk/report for their types (decoupling.toml may_use).
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/book:book"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/codeset:codeset"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/inventory:inventory"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/report:report"
+kind = "data"
+
 [[edge]]
 from = "app-contract"
 to = "app-contract"
