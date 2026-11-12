@@ -25,3 +25,7 @@ frozen = ["//apps/lockers/lkrx/vstate:vstate"]
 # contract lkc/slices embeds lk_book_t, lk_inventory_t, lk_report_note_t and points to lk_codeset_t.
 may_use = ["lib-base", "//lib/rt/ev:ev", "//apps/lockers/lk/types:types", "//apps/lockers/lk/book:book",
            "//apps/lockers/lk/codeset:codeset", "//apps/lockers/lk/inventory:inventory", "//apps/lockers/lk/report:report"]
+
+[tests]
+# Packages without a module whose tests run the real folds and reactors together (P007 test moves, manager 2026-11-12).
+integration = ["//apps/lockers/itest/**"]
