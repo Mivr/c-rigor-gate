@@ -1899,7 +1899,16 @@ exports = ["main"]
 allow = ["memset", "strlen"]
 exports = ["main"]
 
+[module."//apps/lockers/lkrx/codes:codes_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lkrx/codes:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/codes:unitkit"]
 level = "L1"
 allow = []
 exports = []
