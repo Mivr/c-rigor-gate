@@ -1973,6 +1973,15 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkrx/sync:sy_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/sync:unitkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkrx/view:testkit"]
 level = "L1"
 allow = []
