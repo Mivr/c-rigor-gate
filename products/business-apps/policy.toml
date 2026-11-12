@@ -2068,6 +2068,10 @@ exports = ["main"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
 
+[module."//apps/lockers/lkrx/shift:sh_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lkrx/shift:shift"]
 level = "L3"
 impl = ["apps/lockers/lkrx/shift/src/**"]
@@ -2075,6 +2079,11 @@ allow = []
 exports = ["lk_react_shift"]
 
 [module."//apps/lockers/lkrx/shift:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/shift:unitkit"]
 level = "L1"
 allow = []
 exports = []
