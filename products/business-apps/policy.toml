@@ -141,6 +141,42 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/visit:vs_gaps_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_misc_test"]
+allow = ["memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_new_test"]
+allow = ["memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_outcome_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_post_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_return_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_rust_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_saga_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_saveopen_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lk/audit:audit"]
 level = "L3"
 impl = ["apps/lockers/lk/audit/src/**"]
@@ -2084,42 +2120,6 @@ level = "L3"
 impl = ["apps/lockers/lkrx/visit/src/**"]
 allow = []
 exports = ["lk_react_visit"]
-
-[module."//apps/lockers/lkrx/visit:vs_gaps_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_misc_test"]
-allow = ["memcmp", "memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_new_test"]
-allow = ["memcmp", "memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_outcome_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_post_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_return_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_rust_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_saga_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_saveopen_test"]
-allow = ["memset"]
-exports = ["main"]
 
 [module."//apps/lockers/lkrx/visit:vs_unit_test"]
 allow = ["bcmp", "memcpy", "memset", "strlen"]
