@@ -1666,11 +1666,10 @@ exports = []
 level = "L2"
 impl = ["apps/lockers/lkapp/runtime/src/**"]
 allow = ["bcmp", "memcpy", "memset"]
-exports = ["lkrt_audit_map", "lkrt_core_init", "lkrt_core_stats", "lkrt_core_step", "lkrt_effect",
-    "lkrt_mk", "lkrt_net_init", "lkrt_net_stats", "lkrt_net_step", "lkrt_opener_init",
-    "lkrt_opener_stats", "lkrt_opener_step", "lkrt_post_codes", "lkrt_post_opener",
-    "lkrt_post_sync", "lkrt_result", "lkrt_scene", "lkrt_ui_dropped", "lkrt_ui_init",
-    "lkrt_ui_post", "lkrt_warn"]
+exports = ["lkrt_audit_map", "lkrt_core_init", "lkrt_core_stats", "lkrt_core_step", "lkrt_effect", "lkrt_mk",
+    "lkrt_net_init", "lkrt_net_stats", "lkrt_net_step", "lkrt_opener_init", "lkrt_opener_stats", "lkrt_opener_step",
+    "lkrt_post_codes", "lkrt_post_opener", "lkrt_post_sync", "lkrt_result", "lkrt_scene", "lkrt_scroll_event",
+    "lkrt_scroll_in", "lkrt_ui_dropped", "lkrt_ui_init", "lkrt_ui_post", "lkrt_warn"]
 
 [module."//apps/lockers/lkapp/runtime:testkit"]
 level = "L1"
@@ -4874,6 +4873,10 @@ allow = ["memcpy", "memmove", "memset", "snprintf"]
 exports = ["main"]
 
 [module."//apps/lockers/lkapp/runtime:scene_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:scroll_test"]
 allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
