@@ -4,6 +4,7 @@ name = "business-apps"
 # Every module directory of the monorepo (one entry per module directory on main; apps/lockers/** modules are listed one directory each; T104). Coverage (B14) makes a missing one a
 # finding (ungraded-path), and an entry that matches nothing a finding (stale-include).
 include = ["apps/lockers/itest/notice/**",
+           "apps/lockers/itest/sync/**",
            "apps/lockers/lk/audit/**",
            "apps/lockers/lk/auditplan/**",
            "apps/lockers/lk/book/**",

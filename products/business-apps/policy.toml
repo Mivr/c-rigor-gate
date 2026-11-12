@@ -29,6 +29,22 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/sync:sy_misc_test"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/sync:sy_result_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/sync:sy_two_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/sync:sy_wake_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lk/audit:audit"]
 level = "L3"
 impl = ["apps/lockers/lk/audit/src/**"]
@@ -1972,18 +1988,6 @@ exports = ["lk_react_shift"]
 level = "L1"
 allow = []
 exports = []
-
-[module."//apps/lockers/lkrx/sync:sy_misc_test"]
-allow = ["memcmp", "memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/sync:sy_result_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/sync:sy_wake_test"]
-allow = ["memset"]
-exports = ["main"]
 
 [module."//apps/lockers/lkrx/sync:sync"]
 level = "L3"
@@ -4886,10 +4890,6 @@ exports = ["main"]
 
 [module."//apps/lockers/lkrx/fold_status:fs_sync2_test"]
 allow = []
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/sync:sy_two_test"]
-allow = ["memset"]
 exports = ["main"]
 
 [module."//lib/ui/fontdata:liberation_sans"]
