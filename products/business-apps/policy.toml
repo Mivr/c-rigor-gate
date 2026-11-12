@@ -5015,6 +5015,28 @@ exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect",
     "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
     "lf_rscene", "lf_settle", "lf_step", "main"]
 
+[module."//lib/ui/lvrender:lvr_style_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["add_node", "fonts_open", "lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect",
+    "lf_base", "lf_cat", "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main", "rd", "rd_key", "render_one", "same_all", "same_text", "style_a",
+    "style_b", "style_close", "style_f", "style_fp", "style_look", "style_open", "style_secs", "want_fill",
+    "want_text"]
+
+[module."//lib/ui/lvrender:lvr_style2_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["add_node", "fonts_open", "lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect",
+    "lf_base", "lf_cat", "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main", "rd", "rd_key", "render_one", "same_all", "same_text", "style_a",
+    "style_b", "style_close", "style_f", "style_fp", "style_look", "style_open", "style_secs", "want_fill",
+    "want_text"]
+
 [module."//lib/ui/lvrender:lvrender"]
 level = "L2"
 impl = ["lib/ui/lvrender/src/**"]
@@ -5023,8 +5045,8 @@ allow = ["memset"]
 exports = ["lvr_applied", "lvr_apply", "lvr_count", "lvr_do_create", "lvr_do_move", "lvr_do_remove",
     "lvr_do_update", "lvr_dropped", "lvr_fields", "lvr_fix_all", "lvr_init", "lvr_mapped", "lvr_next_sibling",
     "lvr_obj", "lvr_on_click", "lvr_part_of", "lvr_place", "lvr_place_after", "lvr_prev_sibling", "lvr_ready",
-    "lvr_relayout", "lvr_reset", "lvr_row_new", "lvr_row_removed", "lvr_secs_of", "lvr_take_intents",
-    "lvr_text_of"]
+    "lvr_relayout", "lvr_reset", "lvr_row_new", "lvr_row_removed", "lvr_secs_of", "lvr_set_look",
+    "lvr_style_apply", "lvr_style_card_changed", "lvr_take_intents", "lvr_text_of"]
 
 [module."//lib/ui/lvrender:testkit"]
 level = "L1"
