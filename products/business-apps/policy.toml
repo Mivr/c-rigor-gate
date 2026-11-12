@@ -1628,7 +1628,7 @@ allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lkc/slices:slices"]
-level = "L2"
+level = "L3"
 impl = ["apps/lockers/lkc/slices/src/**"]
 allow = []
 exports = ["lk_book_was_uncertain", "lk_codes_slice_active"]
