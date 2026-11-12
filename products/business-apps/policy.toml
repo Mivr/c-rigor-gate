@@ -1749,6 +1749,15 @@ exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame"
     "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
     "k_world_reset", "main"]
 
+[module."//apps/lockers/lkapp/uiloop:uil_look_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["bcmp", "memcpy", "memset", "strcmp", "strlen", "strncmp"]
+exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame", "k_frame_clear", "k_hash",
+    "k_ink", "k_is", "k_is_scanned", "k_mem", "k_obj_centre", "k_open", "k_open_raw", "k_pool",
+    "k_pub_banner_notice", "k_pub_dialog", "k_pub_lang", "k_pub_screen", "k_pub_snackbar", "k_pub_snap",
+    "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
+    "k_world_reset", "main"]
+
 [module."//apps/lockers/lkapp/uiloop:uil_wedge_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["bcmp", "memcpy", "memset", "strlen"]
