@@ -1996,6 +1996,11 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkrx/view:unitkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkrx/view:view"]
 level = "L3"
 impl = ["apps/lockers/lkrx/view/src/**"]
@@ -2032,6 +2037,10 @@ exports = ["main"]
 
 [module."//apps/lockers/lkrx/view:vw_screen_test"]
 allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/view:vw_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/visit:testkit"]
