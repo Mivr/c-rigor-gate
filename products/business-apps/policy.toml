@@ -1597,6 +1597,11 @@ exports = ["main"]
 allow = ["memcpy", "memmove", "memset"]
 exports = ["main"]
 
+[module."//apps/lockers/lkapp/runtime:realkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkapp/runtime:runtime"]
 level = "L2"
 impl = ["apps/lockers/lkapp/runtime/src/**"]
