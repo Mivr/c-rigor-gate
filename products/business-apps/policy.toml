@@ -17,6 +17,50 @@ deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace",
 # The ctest runtime forks, kills and exits by design; it is the gate's own code.
 trusted = ["gate//ctest:ctest"]
 
+[module."//apps/lockers/itest/boot:boot_codes_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_eos_flow_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_eos_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_flow_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_gaps_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_misc_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_refresh_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_relay_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_round3_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_selftest_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_start_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/itest/notice:nt_dismiss_test"]
 allow = ["memset"]
 exports = ["main"]
@@ -1735,42 +1779,6 @@ level = "L3"
 impl = ["apps/lockers/lkrx/boot/src/**"]
 allow = []
 exports = ["lk_react_boot"]
-
-[module."//apps/lockers/lkrx/boot:boot_codes_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_eos_flow_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_eos_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_flow_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_gaps_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_misc_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_relay_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_selftest_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_start_test"]
-allow = ["memset"]
-exports = ["main"]
 
 [module."//apps/lockers/lkrx/boot:boot_unit_test"]
 allow = ["bcmp", "memcpy", "memset"]
@@ -4871,14 +4879,6 @@ exports = ["lk_wire_core_step", "lk_wire_fatal", "lk_wire_init", "lk_wire_net_st
     "lkw_load_inventory", "lkw_nap", "lkw_now", "lkw_objects", "lkw_open_dirs", "lkw_relay_close",
     "lkw_relay_open", "lkw_runtime", "lkw_sat32", "lkw_say", "lkw_say_buf", "lkw_set_stop",
     "lkw_split_path", "lkw_watch_codes"]
-
-[module."//apps/lockers/lkrx/boot:boot_refresh_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_round3_test"]
-allow = ["memset"]
-exports = ["main"]
 
 [module."//apps/lockers/lkrx/fold_status:fs_boot3_test"]
 allow = []
