@@ -4677,7 +4677,7 @@ impl = ["lib/ui/uikit/src/**"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = []
 exports = ["kit_button_create", "kit_button_label", "kit_button_set_text", "kit_code", "kit_countdown_create",
-    "kit_countdown_set", "kit_font_open", "kit_fonts_close", "kit_is_enabled", "kit_key_create",
+    "kit_countdown_set", "kit_font_open", "kit_font_open_w", "kit_fonts_close", "kit_is_enabled", "kit_key_create",
     "kit_label_create", "kit_label_set_text", "kit_notice_add_row", "kit_notice_card",
     "kit_notice_clear_countdown", "kit_notice_countdown", "kit_notice_create", "kit_notice_delete",
     "kit_notice_dismiss", "kit_notice_is_fixed", "kit_notice_remove_row", "kit_notice_row",
@@ -4919,6 +4919,11 @@ exports = ["main"]
 level = "L1"
 allow = []
 exports = ["fontdata_liberation_sans", "fontdata_liberation_sans_len"]
+
+[module."//lib/ui/fontdata:liberation_sans_bold"]
+level = "L1"
+allow = []
+exports = ["fontdata_liberation_sans_bold", "fontdata_liberation_sans_bold_len"]
 
 [module."//lib/ui/lvrender:lvr_init_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]

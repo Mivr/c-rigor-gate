@@ -797,6 +797,11 @@ to = "//lib/ui/fontdata:liberation_sans"
 kind = "pure"
 
 [[edge]]
+from = "//lib/ui/uikit:uikit"
+to = "//lib/ui/fontdata:liberation_sans_bold"
+kind = "pure"
+
+[[edge]]
 from = "//lib/ui/lvrender:lvrender"
 to = "//lib/ui/scenediff:scenediff"
 kind = "pure"
