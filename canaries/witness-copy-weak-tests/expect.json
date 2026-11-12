@@ -1,0 +1,12 @@
+{
+  "bypass": "a test author weakens the tests of a module he did not stub, whose witness is a copy of the head",
+  "description": "Role test-author: util gets a new stubbed function, a strong test and a real witness; the author also drops the positive core_sign checks. core's witness is a byte-identical copy of the head. Head mutants is not applicable in this role, so the copy is NOT skipped by mutants-witness (the skip needs the head gate to have judged the module in this grade): it is mutated, the head's approval kind is accepted for it besides the witness's, and the survivors of its unpinned `> 0` branch have no approval of either kind.",
+  "fail": {
+    "mutants-witness": [
+      "witness-survived-mutant"
+    ]
+  },
+  "contains": {
+    "mutants-witness": "\"head_approvals_accepted\":[\"//core:core\"]"
+  }
+}

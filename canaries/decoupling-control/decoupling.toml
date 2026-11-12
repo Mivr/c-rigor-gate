@@ -1,0 +1,7 @@
+# core is the interface module, util the implementation that uses it.
+[modules]
+contract = ["//core:*"]
+component = ["//util:*"]
+
+[tests]
+integration = ["//flow:*"]

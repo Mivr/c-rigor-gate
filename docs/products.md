@@ -1,7 +1,8 @@
 # Registered products
 
 Each product has a gate-owned directory `products/<name>/` (`product.toml`, `policy.toml`, `expected-tests.json`,
-`tasks/`). Products never edit it; see [grade.md](grade.md) and [product-checks.md](product-checks.md).
+`tasks/`; optional `architecture.toml`, [layering.md](layering.md), and `decoupling.toml` with its
+`decoupling-baseline.toml`, [decoupling.md](decoupling.md)). Products never edit it; see [grade.md](grade.md) and [product-checks.md](product-checks.md).
 
 | Product | Repo | Layout `include` | Notes |
 |---|---|---|---|

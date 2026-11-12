@@ -1,8 +1,8 @@
 """Unit tests of the `mutants` step of `rigor grade` that need no Buck2 (selftest/grade.sh has the rest).
 
 The step decides three things the product must not be able to influence: which modules are mutated
-(the gate-owned policy levels), which tests run against a module's mutants (the product's tests that
-depend on it directly, found by a query in the tree), and whether "nothing was mutated" passes (never).
+(the gate-owned policy levels), which tests run against a module's mutants (the tests of the module's own
+package that depend on it directly, found by a query in the tree), and whether "nothing was mutated" passes (never).
 """
 
 import json
@@ -35,15 +35,46 @@ def rules(found):
 
 
 class Planning(unittest.TestCase):
-    def test_tests_are_the_ones_that_depend_on_the_module_directly(self):
+    def test_tests_are_the_ones_of_the_module_s_own_package_that_depend_on_it_directly(self):
         lay = layout(libs=["//a:a", "//b:b"],
-                     tests={"//a:t1": ["//a:a"], "//b:t2": ["//b:b"], "//b:t3": ["//a:a", "//b:b"]},
+                     tests={"//a:t1": ["//a:a"], "//a:t0": [], "//b:t2": ["//b:b"], "//b:t3": ["//a:a", "//b:b"]},
                      deps={"//b:b": ("//a:a",)})
         plan = grade_mutants.plan(lay, {"//a:a": "L3", "//b:b": "L2"})
         self.assertEqual(plan.findings, [])
         by_label = {m.label: m for m in plan.modules}
-        self.assertEqual(by_label["//a:a"].tests, ("//a:t1", "//b:t3"))   # not //b:t2: it needs b, not a
+        # not //b:t3: it lists a directly, but from another package; not //a:t0: own package, but it does not list a
+        self.assertEqual(by_label["//a:a"].tests, ("//a:t1",))
         self.assertEqual(by_label["//b:b"].tests, ("//b:t2", "//b:t3"))
+        self.assertEqual(grade_mutants.direct_tests(lay, "//a:a"), ("//a:t1", "//b:t3"))
+
+    def test_own_package_means_the_same_package_exactly_not_a_parent_child_or_prefix(self):
+        tests = {"//a:t": ["//a:a"], "//a/sub:t": ["//a:a"], "//ab:t": ["//a:a"], "//:t": ["//a:a"]}
+        lay = layout(libs=["//a:a", "//a/sub:s"], tests=dict(tests, **{"//a/sub:own": ["//a/sub:s"], "//a:up": ["//a/sub:s"]}))
+        self.assertEqual(grade_mutants.own_tests(lay, "//a:a"), ("//a:t",))
+        self.assertEqual(grade_mutants.own_tests(lay, "//a/sub:s"), ("//a/sub:own",))
+
+    def test_a_module_listed_only_by_tests_of_other_packages_is_a_module_without_tests(self):
+        lay = layout(libs=["//a:a", "//b:b"], tests={"//b:t": ["//a:a", "//b:b"], "//c:t": ["//a:a"]})
+        plan = grade_mutants.plan(lay, {"//a:a": "L3", "//b:b": "L3"})
+        self.assertEqual([(f["rule"], f["severity"], f["module"], f["foreign_tests"]) for f in plan.findings],
+                         [("module-without-tests", "error", "//a:a", 2)])
+        self.assertEqual([m.label for m in plan.modules], ["//b:b"])   # never mutated without a test that counts
+
+    def test_a_foreign_test_and_what_only_it_links_are_no_input_of_the_module_s_mutants(self):
+        """An edit in //big:big must not change the `c_mutants` call of //a:a (its action keys): only the foreign
+        test links it. //own:dep is linked by a's own test, so it stays."""
+        def planned(big_deps):
+            lay = layout(libs=["//a:a", "//big:big", "//own:dep", "//far:far"],
+                         tests={"//a:t": ["//a:a", "//own:dep"], "//big:t": ["//big:big", "//a:a"]},
+                         deps={"//big:big": big_deps})
+            return grade_mutants.plan(lay, {"//a:a": "L3", "//big:big": "L3", "//own:dep": "L1", "//far:far": "L1"})
+        first, second = planned(("//a:a",)), planned(("//a:a", "//far:far"))
+        module = {m.label: m for m in first.modules}["//a:a"]
+        self.assertEqual((module.tests, module.deps), (("//a:t",), ("//own:dep",)))
+        text = [grade_mutants.build_file_text([m for m in p.modules if m.label == "//a:a"]) for p in (first, second)]
+        self.assertEqual(text[0], text[1])
+        self.assertNotIn("big", text[0])
+        self.assertIn("//b", grade_mutants.build_file_text([m for m in first.modules if m.label == "//big:big"]))
 
     def test_a_test_that_reaches_the_module_only_through_another_library_is_not_selected(self):
         lay = layout(libs=["//a:a", "//b:b"], tests={"//b:t": ["//b:b"]}, deps={"//b:b": ("//a:a",)})
@@ -175,7 +206,7 @@ class GeneratedPackage(unittest.TestCase):
         self.assertEqual(text, (
             'load("@gate//rules:c.bzl", "c_mutants")\n\n'
             'c_mutants(\n    name = "%s",\n    module = "//core:core",\n'
-            '    tests = [\n        "//core:t",\n        "//url:t",\n    ],\n    deps = [\n        "//url:url",\n    ],\n)\n\n'
+            '    tests = [\n        "//core:t",\n    ],\n    deps = [\n    ],\n)\n\n'
             'c_mutants(\n    name = "%s",\n    module = "//url:url",\n'
             '    tests = [\n        "//url:t",\n    ],\n    deps = [\n        "//core:core",\n    ],\n)\n')
             % (named("//core:core"), named("//url:url")))
@@ -728,6 +759,32 @@ class Gate(TempDirTestCase):
             result = grade_mutants.mutants_gate(g)
         self.assertEqual(result.status, "FAIL")
         self.assertIn("mutants-build-failed", [f["rule"] for f in result.findings])
+
+
+class Judging(TempDirTestCase):
+    """`judge` hands `rigor mutants` the gate's own target labels: the extra approval kinds of a module too."""
+
+    def judged(self, **more):
+        modules = [grade_mutants.Module("//a:a", "L3", ("//a:t",), ()), grade_mutants.Module("//b:b", "L3", ("//b:t",), ())]
+        g = SimpleNamespace(src="repo", head="h", args=SimpleNamespace(approvals=None, allowed_signers="s"))
+        run = SimpleNamespace(work=str(self.sub("work")), mutants_reports=str(self.tmp / "reports"))
+        result = SimpleNamespace(findings=[], metadata={"modules": {}, "approvals_used": ["x"],
+                                                        "approvals_used_by_kind": {"equivalent-mutant": ["x"]}})
+        with mock.patch.object(grade_mutants.rigor_mutants, "run", return_value=result) as ran:
+            out = grade_mutants.judge(g, run, modules, [0, 1], **more)
+        return out, ran.call_args.args, [grade_mutants.target_label(m) for m in modules]
+
+    def test_the_head_gate_passes_one_kind_and_no_extra(self):
+        out, args, _ = self.judged()
+        self.assertEqual(args[1:], ("equivalent-mutant", {}))
+        self.assertEqual(out[2], ["x"])
+
+    def test_extra_kinds_are_keyed_by_the_module_s_target_and_only_for_the_modules_named(self):
+        used = {}
+        _, args, targets = self.judged(approval_kind="witness-equivalent-mutant",
+                                       extra_kinds={"//b:b": ("equivalent-mutant",)}, used_by_kind=used)
+        self.assertEqual(args[1:], ("witness-equivalent-mutant", {targets[1]: ("equivalent-mutant",)}))
+        self.assertEqual(used, {"equivalent-mutant": ["x"]})
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+{
+  "bypass": "a test outside every test level",
+  "description": "The head of decoupling-control (a test in the module-less package //flow), but decoupling.toml declares no integration package: the test is neither a module's unit test nor a declared integration or simulation test. unleveled-test.",
+  "fail": {
+    "decoupling": [
+      "unleveled-test"
+    ]
+  }
+}

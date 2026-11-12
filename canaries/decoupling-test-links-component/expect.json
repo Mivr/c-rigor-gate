@@ -1,0 +1,9 @@
+{
+  "bypass": "a unit test that links another component",
+  "description": "Both //core:core and //util:util are declared components. The unit tests of util link core (through util, and //util:core_test directly): unit-test-links-component, with nothing baselined. The violation is the declaration, not an edit.",
+  "fail": {
+    "decoupling": [
+      "unit-test-links-component"
+    ]
+  }
+}

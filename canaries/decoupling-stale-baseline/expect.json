@@ -1,0 +1,9 @@
+{
+  "bypass": "a tolerated violation that is gone stays on the list",
+  "description": "The baseline still lists //util:util_test -> //core:core, which the tree does not have: the list must shrink with the fix, so the entry is stale-baseline.",
+  "fail": {
+    "decoupling": [
+      "stale-baseline"
+    ]
+  }
+}

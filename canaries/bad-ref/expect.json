@@ -18,6 +18,7 @@
     "build",
     "structure",
     "layering",
+    "decoupling",
     "mode-divergence",
     "tests-release",
     "tests-san",
