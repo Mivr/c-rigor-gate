@@ -209,14 +209,6 @@ unit-test-links-component = [
     "//apps/lockers/lkrx/visit:vs_saga_test -> //apps/lockers/lkrx/fold_status:fold_status",
     "//apps/lockers/lkrx/visit:vs_saveopen_test -> //apps/lockers/lkrx/fold_core:fold_core",
     "//apps/lockers/lkrx/visit:vs_saveopen_test -> //apps/lockers/lkrx/fold_status:fold_status",
-    "//apps/lockers/lkui/input:input_intent_test -> //apps/lockers/lkui/notices:notices",
-    "//apps/lockers/lkui/input:input_intent_test -> //apps/lockers/lkui/screens:screens",
-    "//apps/lockers/lkui/input:input_refuse_test -> //apps/lockers/lkui/notices:notices",
-    "//apps/lockers/lkui/input:input_refuse_test -> //apps/lockers/lkui/screens:screens",
-    "//apps/lockers/lkui/input:input_wedge_keys_test -> //apps/lockers/lkui/notices:notices",
-    "//apps/lockers/lkui/input:input_wedge_keys_test -> //apps/lockers/lkui/screens:screens",
-    "//apps/lockers/lkui/input:input_wedge_test -> //apps/lockers/lkui/notices:notices",
-    "//apps/lockers/lkui/input:input_wedge_test -> //apps/lockers/lkui/screens:screens",
     "//apps/lockers/lkui/notices:notices_keys_test -> //apps/lockers/lkui/screens:screens",
 ]
 
