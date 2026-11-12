@@ -61,6 +61,10 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/catalog:catalog_names_test"]
+allow = []
+exports = ["main"]
+
 [module."//apps/lockers/itest/codes:codes_hash_test"]
 allow = ["memset", "strlen"]
 exports = ["main"]
@@ -1893,10 +1897,6 @@ allow = ["strncmp"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/catalog:catalog_folds_test"]
-allow = []
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/catalog:catalog_names_test"]
 allow = []
 exports = ["main"]
 

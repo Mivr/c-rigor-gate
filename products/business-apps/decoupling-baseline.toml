@@ -11,8 +11,6 @@ unit-test-links-component = [
     "//apps/lockers/lkapp/commission:board_test -> //apps/lockers/lksim/board:board",
     "//apps/lockers/lkapp/commission:gapboard_test -> //apps/lockers/lksim/board:board",
     "//apps/lockers/lkapp/commission:initboard_test -> //apps/lockers/lksim/board:board",
-    "//apps/lockers/lkrx/catalog:catalog_names_test -> //apps/lockers/lkrx/fold_core:fold_core",
-    "//apps/lockers/lkrx/catalog:catalog_names_test -> //apps/lockers/lkrx/fold_status:fold_status",
     "//apps/lockers/lkui/notices:notices_keys_test -> //apps/lockers/lkui/screens:screens",
 ]
 
