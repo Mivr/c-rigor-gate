@@ -41,8 +41,16 @@ exports = ["main"]
 allow = ["memcpy", "memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/boot:boot_frames_test"]
+allow = ["memcpy", "memmove", "memset"]
+exports = ["main"]
+
 [module."//apps/lockers/itest/boot:boot_refresh_test"]
 allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_recover_test"]
+allow = ["memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/lockers/itest/boot:boot_relay_test"]
