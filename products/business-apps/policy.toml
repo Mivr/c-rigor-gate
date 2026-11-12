@@ -1915,6 +1915,15 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkrx/pad:pad_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/pad:unitkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkrx/shift:sh_gaps_test"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
