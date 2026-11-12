@@ -93,6 +93,10 @@ exports = ["main"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/runtime:chain_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/itest/sync:sy_misc_test"]
 allow = ["memcmp", "memcpy", "memset"]
 exports = ["main"]
@@ -1568,10 +1572,6 @@ deny_exempt = ["getenv", "open", "socket"]
 exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count", "kit_get", "kit_is_dir",
     "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
     "kit_tmpdir", "main"]
-
-[module."//apps/lockers/lkapp/runtime:chain_test"]
-allow = ["memset"]
-exports = ["main"]
 
 [module."//apps/lockers/lkapp/runtime:core_audit_test"]
 allow = ["memcpy", "memset"]
