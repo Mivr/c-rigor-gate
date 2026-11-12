@@ -1495,8 +1495,8 @@ exports = ["main"]
 level = "L2"
 impl = ["apps/lockers/lkapp/e2e/src/**"]
 allow = ["memchr", "memset"]
-exports = ["e2e_classify", "e2e_refresh", "lk_e2e_announce", "lk_e2e_close", "lk_e2e_init",
-    "lk_e2e_requested", "lk_e2e_set_lang", "lk_e2e_step"]
+exports = ["e2e_classify", "e2e_has_dialog", "e2e_mute_dismiss", "e2e_refresh", "lk_e2e_announce",
+    "lk_e2e_close", "lk_e2e_init", "lk_e2e_requested", "lk_e2e_set_lang", "lk_e2e_step"]
 
 [module."//apps/lockers/lkapp/e2e:e2e_digest_test"]
 allow = ["bcmp", "memcpy", "memset", "strlen"]
