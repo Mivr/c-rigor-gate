@@ -29,6 +29,26 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/pad:pad_lockout_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_misc_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_phase_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_scan_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_submit_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
 [module."//apps/lockers/itest/sync:sy_misc_test"]
 allow = ["memcmp", "memcpy", "memset"]
 exports = ["main"]
@@ -1919,26 +1939,6 @@ level = "L3"
 impl = ["apps/lockers/lkrx/pad/src/**"]
 allow = []
 exports = ["lk_react_pad"]
-
-[module."//apps/lockers/lkrx/pad:pad_lockout_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/pad:pad_misc_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/pad:pad_phase_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/pad:pad_scan_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/pad:pad_submit_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
 
 [module."//apps/lockers/lkrx/pad:testkit"]
 level = "L1"
