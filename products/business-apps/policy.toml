@@ -2187,6 +2187,37 @@ exports = ["main"]
 allow = ["memcpy", "snprintf", "strlen"]
 exports = ["main"]
 
+[module."//apps/lockers/lkrx/vstate2:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/vstate2:vstate2"]
+level = "L3"
+impl = ["apps/lockers/lkrx/vstate2/src/**"]
+allow = ["memset"]
+exports = ["lk_view2_at", "lk_view2_canonical", "lk_view2_check"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_at_test"]
+allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_buffer_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_canon_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_check_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_inspect_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lksim/board:board"]
 level = "L3"
 impl = ["apps/lockers/lksim/board/src/**"]
