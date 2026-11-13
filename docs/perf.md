@@ -15,7 +15,7 @@ c_perf(name = "parse_perf", module = ":parse", srcs = ["gen.c", "drv.c"], deps =
 - `module` is the `c_library` under test; `srcs` are the gate-held generator and driver sources (plain `.c` names,
   same checks as `c_binary`); `deps` are further libraries.
 - Targets: `<name>` (the binary) and `<name>_perf` (the action; its output is `perf.jsonl`).
-- **Release only** (`target_compatible_with = toolchains//:release`): `-O2`, the sealed warnings. The rule adds the
+- **Release only** (`target_compatible_with = toolchains//:release`): `-O2` and the hardened release flags (`docs/toolchain.md`, T139), the sealed warnings. The rule adds the
   `-Wl,--wrap=` flags for the libc list below; the product never sets them.
 - `sizes` (2 to 8 positive ints, normally `[n, 4n]`) and `seed` are attributes. Nothing comes from the environment.
 - The action succeeds whenever the harness ran and wrote records. It fails only when the harness could not run at
@@ -46,9 +46,10 @@ function of its input; any state it keeps must not change its cost).
 | `status` | `ok`, `gen-overflow` (generator returned more than `cap` or wrote past it), `run-error` (`perf_run` returned `PERF_ERR`), `crash` (signal in `signal`, or `exit_code`), `timeout` (100 s alarm) | yes |
 | `counter` / `errno` | `perf_event_open`/0, or `unavailable` with the errno (and `"why":"multiplexed"` if the PMU time-sliced the event). The action still succeeds so the gate can report `perf-counter-unavailable` | yes (per worker) |
 | `input_len` | bytes the generator produced | yes |
-| `instructions` | user-mode retired instructions (`exclude_kernel`, `exclude_hv`) of one `perf_run`; `null` when unavailable | yes (see below) |
+| `instructions` | user-mode retired instructions (`exclude_kernel`, `exclude_hv`) of one `perf_run`; `null` when unavailable | within a stated bound (see "Determinism") |
 | `libc_bytes` | sum of `len` over the wrapped libc calls during one `perf_run` | yes |
 | `result` | what `perf_run` returned | yes |
+| `cpu`, `reps` | the CPU model string of the machine, and the 7 per-run instruction counts in run order | **no**: metadata only, nothing reads them for a verdict |
 | `wall_ns_median` | median of the 7 runs, wall clock | **no**: depends on the worker and its load; an informational cross-check only |
 
 When `status` is not `ok` the record carries `input_len` (and `signal`/`exit_code`) and **no counts**: never a zero.
@@ -56,12 +57,78 @@ When `status` is not `ok` the record carries `input_len` (and `signal`/`exit_cod
 ## Determinism
 
 `instructions` and `libc_bytes` are the **median of 7 counted runs**. The first run is cold (lazy symbol binding and
-first page touches add about 1.5e3 instructions) and is never the median; the warm runs differ by at most 1
-instruction (counter skid), so the median is stable. `selftest/perf.sh` builds each fixture twice (two copies whose
+first page touches add about 1.5e3 instructions) and is never the median; the warm runs differ by a few
+instructions at most (counter skid, see below), so the median is stable. `selftest/perf.sh` builds each fixture twice (two copies whose
 sources differ in a comment, so compile, link and run all re-execute) and requires identical `n`, `input_len`,
-`instructions`, `libc_bytes` and `result`. R011 measured identical ratios across 10 actions on two farm workers.
-Counts are from the same binary on the same CPU model; a different CPU model or libc build may shift absolute counts
-by a small constant, never the ratio.
+`libc_bytes` and `result`, and `instructions` by `run_differences` (below) (the nonce is a string constant in each `.c` file, so the
+binary differs and the perf run really executes again). R011 measured identical ratios across 10 actions on two farm workers.
+Counts are from the same binary; a different CPU model or libc build may shift absolute counts by a small
+constant, never the ratio.
+
+**Mixed farm (T130, B35).** Measured 2026-11-10, uncached runs of the selftest fixtures (each run builds a binary
+that has not run before, so it executes on whichever worker is free). The record carries, as metadata, the
+`cpu` model string of the machine that ran it and `reps`, the instruction count of each of the 7 runs. Every
+execution that reached the measurement reported `Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz` (the Zen 4 worker was
+never scheduled in these runs, and the counter is not readable on the Zen 4 workstation, so no Zen count was measured):
+
+| fixture, n | median over executions | spread over executions | per-rep spread inside one run |
+|---|---|---|---|
+| `lin` 20000 | 115051 | 0 | 0 |
+| `lin` 80000 | 460051 | 0 | 0 (one rep 460052) |
+| `mmove` 10000 | 3596112 | 0 | 0 (rep 0, the cold one, +1566) |
+| `mmove` 40000 | 4927376 to 4927378 | 2 | 0 to 1 |
+| `quad` 3000 | 21452986 | 0 | 0 to 1 |
+| `quad` 12000 | 342312025 to 342312029 | 4 | up to 4 |
+
+Answers. The count is not constant per CPU model: the same binary on the same model moves by a few instructions from
+one execution to the next, so the one-instruction difference between cold runs that failed the selftest (342312029
+against 342312028) is not a CPU-family difference we could attribute. The difference is absolute, not proportional to
+`n`: windows that last microseconds (`lin`) never move; windows that last tens of milliseconds and more
+(`mmove` 40000: 16 ms, `quad` 12000: 46 ms) move by 2 to 4, in both directions, about 1e-8 of the count. That fits an
+interrupt or the PMU's own skid landing inside the window (a timer tick every few ms), which no counter attribute removes
+(`exclude_kernel`, `exclude_hv` are already set, and the kernel time of the interrupt is not what moves). The enable and
+disable edges are not the cause: an empty window (`RESET`, `ENABLE`, `DISABLE`, `read` with nothing between) counted 31
+instructions in each of 7 reps of every run, and the cold first rep adds about 1.5e3 (the median skips it).
+
+**Across CPU models (T136, B35 reopened).** The selftest still failed now and then (`mmove: instructions differ beyond
+the bound between cold runs: 4927378 vs 4927410`, 32 apart against a bound of 20). The hypothesis was two different CPU
+models. Measured 2026-11-10, 200 uncached executions of every fixture (8 and 24 cold copies per build, 9 builds, all on
+the farm): **every one reported `Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz`; no Zen 4 execution happened, so there is
+no cross-model count and the 32 difference was not between models.** It was the same-model drift, whose tail the T130
+data (a few dozen executions) had not reached. Per CPU model and per fixture (one model, 200 executions each):
+
+| fixture, n | min | median | max | max - min | wall (median) | old bound | new bound |
+|---|---|---|---|---|---|---|---|
+| `lin` 20000 | 115051 | 115051 | 115054 | 3 | 0.0 ms | 16 | 19 |
+| `lin` 80000 | 460051 | 460051 | 460051 | 0 | 0.1 ms | 16 | 30 |
+| `mmove` 10000 | 3596112 | 3596112 | 3596114 | 2 | 0.9 ms | 19 | 125 |
+| `mmove` 40000 | 4927377 | 4927378 | 4927429 | **52** | 16.7 ms | **20** | 166 |
+| `quad` 3000 | 21452986 | 21452986 | 21452988 | 2 | 2.9 ms | 36 | 670 |
+| `quad` 12000 | 342312025 | 342312029 | 342312143 | 118 | 45.8 ms | 342 | 10462 |
+
+Between models (not measured; the rule below does not need the numbers): none.
+
+The spread is a few instructions per timer tick that lands in the window (2 to 3 per wall millisecond at the maximum,
+a heavy tail: for `mmove` 40000 the median deviation is 1, the 99th percentile 46), so it grows with the time of the
+window, not with the count; a window with few instructions and a long time (a libc `memmove` loop) has the largest
+relative spread (1.1e-5). The old bound, 16 + 2^-20 of the count, was 2.6 times too small there. **New bound:
+`COUNT_ABS + max(a, b) >> COUNT_REL_SHIFT` with `COUNT_ABS = 16`, `COUNT_REL_SHIFT = 15`** (`perf_judge.count_bound`:
+16 plus 3.05e-5 of the count). Margin: at least 3 times the largest measured spread in every fixture (`mmove` 40000:
+166 against 52; `lin` 20000: 19 against 3, 6 times), and still 3000 times smaller than the 10 % margin of the complexity
+classes, so it cannot hide a class change. `libc_bytes`, `result` and `input_len` stay exactly equal.
+
+**The rule.** `perf_judge.run_differences(run_a, run_b)` compares two runs of the same measurement:
+- **same `cpu` string**: every `instructions` within `count_bound`, `libc_bytes` equal;
+- **different `cpu` strings** (or a record without `cpu`, which is never the same model): raw counts are not compared.
+  Per counter, the complexity class (the smallest class that allows the count at the last size) must be the same, and
+  the ratio between the first and last size must agree within 1.10, the judge's own margin (`CROSS_MODEL_MARGIN`).
+
+`counts_agree`/`run_differences` are used only by the selftest identity check. A verdict never compares two runs:
+`perf-class-exceeded` and `killed-perf` read the records of one `perf.jsonl` (one action, so one CPU model; `judge_target`,
+`mutants_perf`), one count per size, and judge the ratio. `tests/test_perf_judge.py` (`VerdictPath`) checks that the
+verdict does not depend on the `cpu` field, that targets are judged on their own records, and that no verdict module
+mentions the comparison functions. Nothing in the gate compares raw counts across actions, so no other place needed the
+rule. The findings carry no counts (see "Findings of the `perf` gate"), so they are byte-identical whichever worker ran the action.
 
 ## libc bulk bytes: the wrap list and its limits
 
@@ -187,12 +254,12 @@ the honest 64 lookups grow 6.8 % from 2000 to 8000 keys; a driver for an O(1) cl
 probe lengths do not depend on the load (or declare O(log n)).
 
 **Findings of the `perf` gate** (`gate/rigor_lib/perf_gate.py`, after the test gates, before `mutants`):
-`perf-class-exceeded` (error: `module`, `target`, `class`, `counter`, `n1`, `n2`, `count1`, `count2`, `ratio`, `limit`),
+`perf-class-exceeded` (error: `module`, `target`, `class`, `counter`, `n1`, `n2`; the counts, `ratio` and `limit` are in the metadata, `targets.<label>.exceeded`, because a count can move by a few instructions between workers),
 `perf-counter-unavailable` (error: the counter could not be read on the worker, so there is no verdict without counts),
 `perf-record-bad` (error: `status` of the first record that is not `ok`, or fewer than two records),
 `perf-build-failed` (error). No perf targets: PASS with info `no-perf-targets`. The step writes `gate-perf/` and the root
 `PACKAGE` file into the grading tree, builds the targets in `toolchains//:linux_release` (`--no-remote-cache` with
-`--uncached`) and removes both again. Metadata: the summarised records of every target.
+`--uncached`) and removes both again. Metadata: the summarised records of every target, the `exceeded` evidence and the `cpu` of the run.
 
 **Perf kills.** The same targets run for the mutants that survive the tests: `docs/mutate.md`, "Perf kills".
 Canary `perf-class-exceeded`: an O(n^2) driver declared O(n) (`canaries/perf-class-exceeded/policy.toml`), red in

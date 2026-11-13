@@ -6,7 +6,7 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf android
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes android
 # "all" is shorthand for every one of them.
 
 # ---- 0. The Android shared object rule (first match wins, so these come before `rules/**` and `examples/**`) -------
@@ -78,10 +78,10 @@ selftests = ["trajectory_real"]
 # ---- 3. The kernel library, by family ---------------------------------------------------------------------------------
 [[rule]]
 glob = "gate/rigor_lib/facts*"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/buckfiles.py"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 # The byte-array generator of `c_embed` (T112): its selftest is selftest/embed.sh, run with the ctest group.
 [[rule]]
 glob = "gate/rigor_lib/bin2c.py"
@@ -91,10 +91,14 @@ glob = "gate/rigor_lib/product_checks.py"
 selftests = ["product_checks", "grade", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/semantic_table.py"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/structure*"
-selftests = ["structure", "grade", "canaries"]
+selftests = ["structure", "grade", "canaries", "require"]
+# T128: layering reads the same facts and must accept gate//rt:require; the rest of the library is below.
+[[rule]]
+glob = "gate/rigor_lib/layering*"
+selftests = ["grade", "product_checks", "structure", "mutate", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/mutants*"
 selftests = ["mutate", "grade", "canaries"]
@@ -102,8 +106,29 @@ selftests = ["mutate", "grade", "canaries"]
 glob = "gate/rigor_lib/perf_*"
 selftests = ["perf", "mutate", "grade", "canaries"]
 [[rule]]
+glob = "gate/rigor_lib/fuzz_gate.py"
+selftests = ["fuzz"]
+[[rule]]
 glob = "gate/rigor_lib/results_parse.py"
 selftests = ["ctest", "mutate", "product_checks", "third_party", "fuzz", "grade", "canaries"]
+# T127: the profile library and judge read facts and policy only; no existing gate calls them.
+[[rule]]
+glob = "gate/rigor_lib/profiles.py"
+selftests = ["product_checks", "profiles"]
+[[rule]]
+glob = "gate/rigor_lib/policy_check.py"
+selftests = ["product_checks", "profiles"]
+# T132: the ledger library and the signer roles file; only `rigor ledger` and the optional approvals arguments use them.
+[[rule]]
+glob = "gate/rigor_lib/ledger.py"
+selftests = ["grade"]
+[[rule]]
+glob = "gate/signer_roles.toml"
+selftests = ["grade", "canaries"]
+# T131: the guard judge reads facts, structure facts and policy only; its selftest is the require one.
+[[rule]]
+glob = "gate/rigor_lib/guards_gate.py"
+selftests = ["require"]
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
@@ -131,7 +156,11 @@ glob = "mutate/**"
 selftests = ["mutate", "grade", "canaries"]
 [[rule]]
 glob = "ctest/**"
-selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure"]
+selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure", "require"]
+# T128: the gate-owned header `gate//rt:require`; every gate that reads dependencies and headers meets it.
+[[rule]]
+glob = "rt/**"
+selftests = ["require", "product_checks", "structure", "mutate", "grade", "canaries"]
 [[rule]]
 glob = "examples/**"
 selftests = ["toolchain", "ctest", "product_checks"]
@@ -175,6 +204,12 @@ selftests = ["grade"]
 glob = "selftest/mutants_lane.sh"
 selftests = ["grade"]
 [[rule]]
+glob = "selftest/profiles.sh"
+selftests = ["product_checks", "profiles"]
+[[rule]]
+glob = "selftest/profiles_product/**"
+selftests = ["product_checks", "profiles"]
+[[rule]]
 glob = "selftest/grade_product/**"
 selftests = ["grade"]
 [[rule]]
@@ -207,6 +242,12 @@ selftests = ["ctest", "product_checks"]
 [[rule]]
 glob = "selftest/perf.sh"
 selftests = ["perf"]
+[[rule]]
+glob = "selftest/require.sh"
+selftests = ["require"]
+[[rule]]
+glob = "selftest/require_product/**"
+selftests = ["require"]
 [[rule]]
 glob = "selftest/fuzz.sh"
 selftests = ["fuzz"]
@@ -255,3 +296,9 @@ selftests = []
 [[rule]]
 glob = "tools/job*"
 selftests = []
+[[rule]]
+glob = "selftest/sanmodes.sh"
+selftests = ["sanmodes"]
+[[rule]]
+glob = "selftest/sanmodes/**"
+selftests = ["sanmodes"]

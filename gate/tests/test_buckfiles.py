@@ -26,6 +26,17 @@ class BuckFilesCase(TempDirTestCase):
     def test_green_build_file(self):
         self.assertEqual(self.check({"core/BUCK": GOOD, "BUCK": GOOD, "core/a.c": "int x;"}, 0), [])
 
+    def test_threads_is_a_boolean_literal_of_c_test_only(self):
+        loads = 'load("@gate//rules:c.bzl", "c_library", "c_test")\n'
+        for value in ("True", "False"):
+            self.assertEqual(self.check({"BUCK": loads + 'c_test(name = "t", srcs = ["t.c"], threads = %s)\n' % value}, 0), [])
+        for value in ('"yes"', "1", "None", "flag", "not False", "[True]"):
+            with self.subTest(value=value):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": loads + 'c_test(name = "t", threads = %s)\n' % value}, 1), ["bad-argument"])
+        self.setUp()
+        self.assertEqual(self.check({"BUCK": loads + 'c_library(name = "l", threads = True)\n'}, 1), ["bad-argument"])
+
     def test_green_empty_and_comment_only(self):
         self.assertEqual(self.check({"BUCK": "# nothing here\n"}, 0), [])
 
@@ -111,6 +122,24 @@ class BuckFilesCase(TempDirTestCase):
         from rigor_lib import product_layout
         text = self.lib(srcs='glob(["src/*.c"])', headers='["a.h"] + glob(["src/*.h"])')
         self.assertEqual(product_layout.named_files([("BUCK", text)], {"src/a.c", "a.h", "x"}), {"a.h"})
+
+    def test_fuzz_corpus_and_runs(self):
+        """T135: `corpus` (string literals) and `runs` (an int literal) on a `c_fuzz`, and nowhere else."""
+        head = LOADS + 'c_fuzz(name = "f", srcs = ["f_fuzz.c"], '
+        self.assertEqual(self.check({"BUCK": head + 'corpus = ["corpus/a", "corpus/b"], runs = 5000)\n'}, 0), [])
+        for tail in ('corpus = glob(["src/*.c"]))', 'corpus = ["a"] + ["b"])', 'corpus = [1])', 'corpus = None)',
+                     'corpus = select({"DEFAULT": []}))', 'runs = "5")', 'runs = 5.0)',
+                     'runs = True)', 'runs = -5)', 'runs = 2 * 5)', 'runs = [5])', 'runs = N)', 'runs = None)',
+                     'corpus = ["a"], seeds = ["a"])'):
+            with self.subTest(tail=tail):
+                self.setUp()
+                self.red(head + tail + "\n", "bad-argument")
+        for macro in ("c_library", "c_binary", "c_test"):
+            for tail in ('corpus = ["a"]', "runs = 5"):
+                with self.subTest(macro=macro, tail=tail):
+                    self.setUp()
+                    self.red('load("@gate//rules:c.bzl", "%s")\n%s(name = "x", %s)\n' % (macro, macro, tail),
+                             "bad-argument")
 
     def test_concatenation_value(self):
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"] + ["b.c"])\n', "bad-argument")
@@ -383,7 +412,7 @@ class TestOnlyLabelCase(TempDirTestCase):
                                  [("bad-argument", "dep")])
 
     def test_a_library_may_not_depend_on_a_test_or_on_what_a_test_derives(self):
-        for dep in (":t", ":t_facts", ":t_results", ":t_coverage", "//pkg/p:t", "//other/pkg/p:t_results", "//pkg/p:t_facts"):
+        for dep in (":t", ":t_facts", ":t_facts_san", ":t_facts_msan", ":t_facts_tsan", ":t_results", ":t_coverage", "//pkg/p:t", "//other/pkg/p:t_results", "//pkg/p:t_facts"):
             with self.subTest(dep=dep):
                 self.setUp()
                 files = {"p/BUCK": LOADS + 'c_test(name = "t", deps = ["%s"])\n' % PEER,

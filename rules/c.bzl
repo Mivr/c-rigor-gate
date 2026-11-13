@@ -11,12 +11,13 @@ load("@gate//rules:apk.bzl", "apk", "apk_check")
 load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:embed.bzl", "c_embed_gen")
-load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
-load("@gate//rules:facts.bzl", "c_android_facts", "c_facts", "c_san_facts")
+load("@gate//rules:ctest.bzl", "MSAN_ENV_LINES", "TSAN_ENV_LINES", "ctest_results")
+load("@gate//rules:facts.bzl", "c_android_facts", "c_facts", "c_msan_facts", "c_san_facts", "c_tsan_facts")
+load("@gate//rules:fuzz.bzl", "fuzz_corpus", "fuzz_run", "fuzz_runs")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
 
-_SEALED = [
+_SEALED_HEAD = [
     "-std=c17",
     "-Wall",
     "-Wextra",
@@ -27,8 +28,16 @@ _SEALED = [
     "-Wshadow",
     "-Wcast-qual",
     "-Wvla",
-    # clang has no -Wstack-usage (a GCC flag); -Wframe-larger-than is its equivalent.
-    "-Wframe-larger-than=512",
+]
+
+# clang has no -Wstack-usage (a GCC flag); -Wframe-larger-than is its equivalent. The msan mode alone leaves it out:
+# origin tracking inflates the frames of instrumented code, which is never shipped (docs/toolchain.md).
+_FRAME_LIMIT = select({
+    "toolchains//:msan": [],
+    "DEFAULT": ["-Wframe-larger-than=512"],
+})
+
+_SEALED_TAIL = [
     "-Wformat=2",
     "-Wnull-dereference",
     "-Wimplicit-fallthrough",
@@ -51,10 +60,20 @@ _SEALED = [
 
 _SAN = "-fsanitize=address,undefined,leak"
 _FUZZ = "-fsanitize=fuzzer,address,undefined"
+_MSAN = ["-fsanitize=memory", "-fsanitize-memory-track-origins=2"]
+_TSAN = "-fsanitize=thread"
+
+# The hardened release profile (T139, P003 §6, D5; docs/toolchain.md): the flags of the shipped build that stay under 3%
+# instructions on every declared c_perf target AND that the other gates accept today. Left out because they move a
+# target by more: `-fsanitize=bounds -fsanitize-trap=bounds` (+21% to +35%) and `-D_FORTIFY_SOURCE=3` (+5.4%, and it
+# hides libc calls from `libc_bytes`). Left out for now although under 3%: `-fstack-protector-strong`, whose
+# `__stack_chk_fail` import the `symbols` gate reports as `undeclared-symbol` (docs/toolchain.md). Release only: the
+# other modes are not shipped, and the sanitizer modes would conflict with some of these flags.
+_HARDENED_RELEASE = ["-ftrivial-auto-var-init=zero", "-fstrict-flex-arrays=3"]
 
 # One list for the optimised modes: the android mode IS the release list (not a copy of it), so a flag added to
 # the release profile (a hardening profile, T139) reaches the Android objects in the same change.
-_RELEASE_COMPILE = ["-O2"]
+_RELEASE_COMPILE = ["-O2"] + _HARDENED_RELEASE
 _RELEASE_LINK = []
 
 _COMPILE_BY_MODE = {
@@ -62,6 +81,8 @@ _COMPILE_BY_MODE = {
     "toolchains//:san": ["-O1", "-g", _SAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:cov": ["-fprofile-instr-generate", "-fcoverage-mapping", "-fcoverage-mcdc"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:msan": ["-O1", "-g"] + _MSAN + ["-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:tsan": ["-O1", "-g", _TSAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:android": _RELEASE_COMPILE,
 }
 
@@ -70,11 +91,13 @@ _LINK_BY_MODE = {
     "toolchains//:san": [_SAN],
     "toolchains//:cov": ["-fprofile-instr-generate"],
     "toolchains//:fuzz": [_FUZZ],
+    "toolchains//:msan": _MSAN,
+    "toolchains//:tsan": [_TSAN],
     "toolchains//:android": _RELEASE_LINK,
 }
 
 def _compile_flags():
-    return select(_COMPILE_BY_MODE) + _SEALED
+    return select(_COMPILE_BY_MODE) + _SEALED_HEAD + _FRAME_LIMIT + _SEALED_TAIL
 
 def _link_flags():
     return select(_LINK_BY_MODE)
@@ -110,15 +133,51 @@ def _check(macro, srcs, headers):
 # actions are read. `rigor facts --modes` compares the two (T023).
 _RELEASE_ONLY = ["toolchains//:release"]
 _SAN_ONLY = ["toolchains//:san"]
+_MSAN_ONLY = ["toolchains//:msan"]
+_TSAN_ONLY = ["toolchains//:tsan"]
 
 _RELEASE_OR_SAN = select({
     "toolchains//:release": [],
     "toolchains//:san": [],
+    "toolchains//:msan": [],
+    "toolchains//:tsan": [],
+    "DEFAULT": ["toolchains//:never"],
+})
+
+# MemorySanitizer needs every object of the program instrumented, and the pinned sysroot has no instrumented system
+# library. A `c_library` that links a sysroot library other than libc and pthread (today: X11) is therefore
+# incompatible with the msan mode, and so is everything that depends on it: its tests have no msan `_results`.
+_NOT_IN_MSAN = select({
+    "toolchains//:msan": ["toolchains//:never"],
+    "DEFAULT": [],
+})
+
+# `<name>_results` of a `c_test`: release, san and msan (a test with an uninstrumented dependency is already
+# incompatible with msan through that dependency), tsan only for `threads = True`.
+_RESULTS_EVERY_MODE = select({
+    "toolchains//:release": [],
+    "toolchains//:san": [],
+    "toolchains//:msan": [],
+    "DEFAULT": ["toolchains//:never"],
+})
+
+_RESULTS_THREADED = select({
+    "toolchains//:release": [],
+    "toolchains//:san": [],
+    "toolchains//:msan": [],
+    "toolchains//:tsan": [],
     "DEFAULT": ["toolchains//:never"],
 })
 
 def _facts(name, kind, srcs, deps, unit = None, system_libs = [], generated = []):
-    for suffix, mode, rule in (("_facts", _RELEASE_ONLY, c_facts), ("_facts_san", _SAN_ONLY, c_san_facts)):
+    # A twin per mode the gate compares with release (T138): san, msan and tsan. A module with a sysroot library beyond
+    # libc and pthread in its closure has no msan twin (its unit is incompatible with the msan mode).
+    for suffix, mode, rule in (
+        ("_facts", _RELEASE_ONLY, c_facts),
+        ("_facts_san", _SAN_ONLY, c_san_facts),
+        ("_facts_msan", _MSAN_ONLY, c_msan_facts),
+        ("_facts_tsan", _TSAN_ONLY, c_tsan_facts),
+    ):
         rule(
             name = name + suffix,
             unit = unit if unit else ":" + name,
@@ -193,6 +252,7 @@ def c_library(name, srcs = [], headers = [], deps = [], visibility = [], system_
         compiler_flags = _compile_flags(),
         exported_post_linker_flags = link_flags,
         link_style = "static",
+        target_compatible_with = _NOT_IN_MSAN if [l for l in system_libs if l != "pthread"] else [],
     )
     _facts(name, "c_library", srcs, deps + exported_deps, system_libs = system_libs)
 
@@ -319,10 +379,14 @@ def c_binary(name, srcs = [], deps = []):
     )
     _facts(name, "c_binary", srcs, deps)
 
-# `<name>_results` is built in release and san only (cov and fuzz do not produce verdicts).
+# `<name>_results` is built in release and san (cov and fuzz do not produce verdicts), and in msan unless the link
+# closure has a system library beyond libc and pthread, and in tsan only for `threads = True`.
 
-def c_test(name, srcs = [], deps = []):
+def c_test(name, srcs = [], deps = [], threads = False):
+    """A ctest binary and its `<name>_results`. `threads = True`: the test starts threads, so it also has a tsan result."""
     _check("c_test", srcs, [])
+    if type(threads) != "bool":
+        fail("c_test: `threads` must be True or False, got {!r}".format(threads))
     native.cxx_test(
         name = name,
         srcs = srcs,
@@ -338,7 +402,13 @@ def c_test(name, srcs = [], deps = []):
     ctest_results(
         name = name + "_results",
         test = ":" + name,
-        target_compatible_with = _RELEASE_OR_SAN,
+        threads = threads,
+        target_compatible_with = _RESULTS_THREADED if threads else _RESULTS_EVERY_MODE,
+        env_lines = select({
+            "toolchains//:msan": MSAN_ENV_LINES,
+            "toolchains//:tsan": TSAN_ENV_LINES,
+            "DEFAULT": [],
+        }),
     )
 
     # `<name>_coverage` renders the line/branch/MC-DC report; only built in the cov mode.
@@ -381,12 +451,15 @@ def c_perf(name, module, srcs = [], deps = [], sizes = [1000, 4000], seed = 1):
         target_compatible_with = _RELEASE_ONLY,
     )
 
-def c_fuzz(name, srcs = [], deps = []):
+def c_fuzz(name, srcs = [], deps = [], corpus = [], runs = None):
+    """A libFuzzer target. `corpus`: files of the product (a `glob`) replayed first; `runs`: the budget (docs/fuzz.md)."""
     _check("c_fuzz", srcs, [])
+    corpus = fuzz_corpus("c_fuzz", corpus)
+    runs = fuzz_runs("c_fuzz", runs)
 
-    # `<name>__bin` is the libFuzzer binary; `<name>` runs it (-seed=1 -runs=200000) as a cacheable
-    # action with declared outputs and is the test: `<name>[crash]` is the reproducer, `<name>[report]`
-    # the symbolized report.
+    # `<name>__bin` is the libFuzzer binary; `<name>` replays the corpus, then runs it (-seed=1 -runs=N) as a
+    # cacheable action with declared outputs and is the test: `<name>[crash]` is the reproducer, `<name>[report]`
+    # the symbolized report, `<name>[stats]` the numbers `rigor fuzz` judges.
     native.cxx_binary(
         name = name + "__bin",
         srcs = srcs,
@@ -398,6 +471,8 @@ def c_fuzz(name, srcs = [], deps = []):
     fuzz_run(
         name = name,
         binary = ":" + name + "__bin",
+        corpus = corpus,
+        runs = runs,
         target_compatible_with = _ONLY_FUZZ,
     )
 

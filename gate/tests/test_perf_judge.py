@@ -120,6 +120,122 @@ class Parse(unittest.TestCase):
                 perf_judge.parse_records("p", bad)
 
 
+class Agreement(unittest.TestCase):
+    def test_equal_counts_agree(self):
+        self.assertTrue(perf_judge.counts_agree(342312029, 342312029))
+        self.assertTrue(perf_judge.counts_agree(0, 0))
+
+    def test_counts_inside_the_bound_agree(self):
+        self.assertTrue(perf_judge.counts_agree(342312029, 342312028))    # the farm's one-instruction difference
+        self.assertTrue(perf_judge.counts_agree(115051, 115051 + perf_judge.count_bound(115051, 115051)))
+        edge = perf_judge.count_bound(342312029, 342312029)
+        self.assertTrue(perf_judge.counts_agree(342312029, 342312029 - edge))
+
+    def test_counts_outside_the_bound_differ(self):
+        self.assertFalse(perf_judge.counts_agree(115051, 115051 + perf_judge.count_bound(115051, 115051) + 1))
+        self.assertFalse(perf_judge.counts_agree(342312029, 342312029 - perf_judge.count_bound(342312029, 0) - 400))
+        self.assertFalse(perf_judge.counts_agree(1000, 1100))
+
+    def test_agreement_is_symmetric_and_the_bound_is_tiny_against_a_class_step(self):
+        self.assertEqual(perf_judge.counts_agree(5, 30), perf_judge.counts_agree(30, 5))
+        for count in (100, 10 ** 6, 10 ** 9):
+            self.assertLess(perf_judge.count_bound(count, count), count // 10000 + 17)
+
+    def test_a_real_class_change_is_not_agreement_and_still_judged_on_ratios(self):
+        linear, quadratic = [rec(1000, 1000), rec(4000, 4000)], [rec(1000, 1000), rec(4000, 16000)]
+        self.assertFalse(perf_judge.counts_agree(4000, 16000))
+        self.assertEqual(perf_judge.exceeded("O(n)", linear), [])
+        self.assertEqual(len(perf_judge.exceeded("O(n)", quadratic)), 1)
+        jittered = [rec(1000, 1001), rec(4000, 4003)]
+        self.assertEqual(perf_judge.exceeded("O(n)", jittered), [])
+
+
+XEON = "Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz"
+ZEN = "AMD EPYC 9R14 96-Core Processor"
+
+
+def run(cpu, i1, i2, b1=0, b2=0, n1=1000, n2=4000):
+    return [rec(n1, i1, b1, cpu=cpu), rec(n2, i2, b2, cpu=cpu)]
+
+
+class AcrossCpuModels(unittest.TestCase):
+    def test_same_model_inside_the_bound_agrees(self):
+        self.assertEqual(perf_judge.run_differences(run(XEON, 4927377, 4927378), run(XEON, 4927402, 4927378)), [])
+        edge = 4927378 + perf_judge.count_bound(4927378, 4927378)
+        self.assertEqual(perf_judge.run_differences(run(XEON, 100, edge), run(XEON, 100, 4927378)), [])
+
+    def test_same_model_outside_the_bound_differs(self):
+        past = 4927378 + perf_judge.count_bound(4927378, 4927378) + 1
+        (why,) = perf_judge.run_differences(run(XEON, 100, 4927378), run(XEON, 100, past))
+        self.assertIn("beyond the bound", why)
+        self.assertEqual(len(perf_judge.run_differences(run(XEON, 100, 200, 0, 5), run(XEON, 100, 200, 0, 6))), 1)
+
+    def test_the_measured_same_model_spread_is_inside_the_bound(self):
+        for low, spread in ((115051, 3), (3596112, 2), (4927377, 52), (21452986, 2), (342312025, 118)):
+            self.assertTrue(perf_judge.counts_agree(low, low + spread), low)
+            self.assertGreaterEqual(perf_judge.count_bound(low, low + spread), 3 * spread)
+
+    def test_different_models_with_one_class_agree_whatever_the_raw_counts(self):
+        a, b = run(XEON, 3596112, 4927378), run(ZEN, 3100000, 4300000)
+        self.assertGreater(abs(a[1]["instructions"] - b[1]["instructions"]), 10 ** 5)
+        self.assertEqual(perf_judge.run_differences(a, b), [])
+        lin_a, lin_b = run(XEON, 10000, 40000), run(ZEN, 10400, 41000)
+        self.assertEqual(perf_judge.run_differences(lin_a, lin_b), [])
+
+    def test_different_models_with_different_classes_differ(self):
+        linear, quadratic = run(XEON, 10000, 40000), run(ZEN, 10000, 160000)
+        reasons = perf_judge.run_differences(linear, quadratic)
+        self.assertTrue(any("class" in r for r in reasons), reasons)
+        self.assertTrue(perf_judge.run_differences(run(XEON, 10000, 10000), run(ZEN, 10000, 40000)))
+
+    def test_different_models_with_one_class_but_ratios_beyond_the_margin_differ(self):
+        reasons = perf_judge.run_differences(run(XEON, 10000, 20000), run(ZEN, 10000, 40000))   # both O(n): 2.0 vs 4.0
+        self.assertEqual([r for r in reasons if "class" in r], [])
+        self.assertTrue(any("ratios" in r for r in reasons), reasons)
+
+    def test_an_unnamed_model_is_never_the_same_model(self):
+        self.assertFalse(perf_judge.same_model(rec(1, 1), rec(1, 1)))
+        self.assertFalse(perf_judge.same_model(rec(1, 1, cpu=""), rec(1, 1, cpu="")))
+        near = perf_judge.run_differences(run(XEON, 10000, 40000), [rec(1000, 10000), rec(4000, 40001)])
+        self.assertEqual(near, [])          # compared by class and ratio, not raw
+        far = perf_judge.run_differences(run(XEON, 10000, 40000), [rec(1000, 10000), rec(4000, 160000)])
+        self.assertTrue(far)
+
+    def test_unusable_or_mismatched_runs_differ(self):
+        bad = [rec(1000, 1, cpu=XEON, status="crash"), rec(4000, 1, cpu=XEON)]
+        self.assertEqual(perf_judge.run_differences(bad, run(XEON, 1, 1)), ["records are not usable"])
+        self.assertEqual(perf_judge.run_differences(run(XEON, 1, 1), run(XEON, 1, 1, n2=8000)), ["sizes differ"])
+
+
+class VerdictPath(unittest.TestCase):
+    """A class is judged from the records of one run (one action): no raw count of one action meets another's."""
+
+    def test_the_verdict_ignores_which_model_produced_the_records(self):
+        for cost_class in perf_judge.CLASSES:
+            for pair in ((10000, 40000), (10000, 160000), (10000, 10000)):
+                self.assertEqual(perf_judge.exceeded(cost_class, run(XEON, *pair)), perf_judge.exceeded(cost_class, run(ZEN, *pair)))
+
+    def test_a_target_is_judged_on_its_own_records_only(self):
+        inside, outside = run(XEON, 10000, 40000), run(ZEN, 10000, 160000)
+        self.assertEqual(perf_gate.judge_target("//x:a_perf", "//x:a", "O(n)", inside), [])
+        (item,) = perf_gate.judge_target("//x:b_perf", "//x:b", "O(n)", outside)
+        self.assertEqual(item["rule"], "perf-class-exceeded")
+        self.assertEqual(perf_gate.judge_target("//x:a_perf", "//x:a", "O(n)", inside), [])   # b's records changed nothing
+
+    def test_no_verdict_code_compares_counts_across_runs(self):
+        import os
+        lib = os.path.join(GATE_DIR, "rigor_lib")
+        banned = ("counts_agree", "run_differences", "count_bound", "same_model")
+        for name in ("perf_gate.py", "mutants_perf.py", "perf_policy.py", "perf_bundle.py", "perf_package.py"):
+            path = os.path.join(lib, name)
+            if not os.path.exists(path):
+                continue
+            with open(path, encoding="utf-8") as fh:
+                source = fh.read()
+            for word in banned:
+                self.assertNotIn(word, source, "%s uses %s" % (name, word))
+
+
 class Judge(unittest.TestCase):
     def judge(self, cost_class, records):
         return perf_gate.judge_target("//x:y_perf", "//x:y", cost_class, records)
@@ -131,7 +247,16 @@ class Judge(unittest.TestCase):
         (item,) = self.judge("O(n)", [rec(10, 100), rec(40, 1600)])
         self.assertEqual((item["rule"], item["severity"], item["target"], item["class"], item["module"]),
                          ("perf-class-exceeded", "error", "//x:y_perf", "O(n)", "//x:y"))
-        self.assertEqual((item["count1"], item["count2"], item["ratio"], item["counter"]), (100, 1600, "16.000", "instructions"))
+        self.assertEqual((item["counter"], item["n1"], item["n2"]), ("instructions", 10, 40))
+        self.assertFalse({"count1", "count2", "ratio", "limit"} & set(item))
+        (shown,) = perf_gate.evidence("O(n)", [rec(10, 100), rec(40, 1600)])
+        self.assertEqual((shown["count1"], shown["count2"], shown["ratio"]), (100, 1600, "16.000"))
+
+    def test_findings_are_identical_when_the_counts_move_by_a_few_instructions(self):
+        a = self.judge("O(n)", [rec(10, 100), rec(40, 1600)])
+        b = self.judge("O(n)", [rec(10, 101), rec(40, 1603)])
+        self.assertEqual(a, b)
+        self.assertEqual(perf_gate.evidence("O(n)", [rec(10, 100), rec(40, 400)]), [])
 
     def test_unavailable_counter_is_an_error(self):
         (item,) = self.judge("O(n)", [rec(10, None, counter="unavailable", errno=1), rec(40, None, counter="unavailable", errno=1)])
@@ -252,7 +377,7 @@ class Step(TempDirTestCase):
 
     def test_it_is_registered_after_the_tests_and_before_mutants_and_is_in_the_order_file(self):
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
-        self.assertEqual(ids[ids.index("tests-stub") + 1:ids.index("mutants")], ["perf"])
+        self.assertEqual(ids[ids.index("tests-stub") + 1:ids.index("mutants")], ["fuzz", "perf"])
         self.assertEqual(verdict.read_order(str(GATE_DIR / "order.txt")), ids)
 
     def test_a_product_without_perf_entries_passes_with_info(self):

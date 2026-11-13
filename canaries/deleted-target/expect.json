@@ -8,6 +8,9 @@
     "tests-san": [
       "missing-test"
     ],
+    "tests-msan": [
+      "missing-test"
+    ],
     "symbols": [
       "policy-module-without-facts"
     ],
@@ -16,6 +19,7 @@
     ]
   },
   "not_run": [
+    "fuzz",
     "mutants",
     "mutants-witness"
   ]

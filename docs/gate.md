@@ -99,6 +99,21 @@ A file named like an approval (`<64 hex>.json` or `.json.sig`) anywhere in the g
 Gates that take `--approvals` need `--repo` and `--head` (for the ancestry check); the run is exit 2
 without them. Existence of ssh-keygen is only required when the approvals directory is non-empty.
 
+### Signer roles (`gate/signer_roles.toml`, T132)
+`[principal.<name>] kinds = [...]` lists the approval kinds a signer may sign; the name is the principal of
+`allowed_signers` as `ssh-keygen -Y find-principals` reports it. With `--signer-roles FILE` an approval counts only
+if its signer's principal is listed with the approval's kind; otherwise it is a `forged-approval` finding with
+reason `kind-not-allowed-for-signer`. A principal in `allowed_signers` that the file does not list may sign nothing.
+The shipped file gives `orchestrator` the five kinds that exist (`suppression`, `test-removal`, `ratchet`,
+`equivalent-mutant`, `witness-equivalent-mutant`), so it reproduces today's rule. **The flag is off by default and no
+gate passes it yet** (a later task wires it); `approvals.load_approvals(..., roles_path=None, ledger=None)` is the
+library surface. `--ledger DIR` likewise switches on the tighten-only rule of `docs/trust.md`
+(reason `tighten-only`). Both are accepted wherever `--approvals` is.
+
+### `ledger append|verify|claims`
+`ledger append --ledger DIR --kind K --subject S [--evidence FILE] --at N`, `ledger verify --ledger DIR [--head SHA]`
+(prints the head; exit 1 if the chain is broken), `ledger claims --ledger DIR`. See `docs/trust.md`.
+
 ## Known limits
 - Pattern scanning is a line regex. Line splices (a backslash-newline inside a token) and macro
   token-pasting still evade it. A semantic scan over the preprocessed source and the object

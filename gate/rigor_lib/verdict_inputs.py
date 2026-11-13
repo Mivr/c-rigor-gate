@@ -12,7 +12,7 @@ import os
 import re
 import stat
 
-from rigor_lib import approval_args, approvals, grade_context, grade_policy, jsonio, perf_bundle, witness_bundle
+from rigor_lib import approval_args, approvals, grade_context, grade_policy, grade_tier, jsonio, perf_bundle, witness_bundle
 from rigor_lib.errors import InternalError
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
@@ -29,16 +29,20 @@ WITNESS_NAME = "witness"
 PERF_NAME = "perf"
 # Files beside product.toml that the grade reads; the name is kept so path arithmetic still works.
 PRODUCT_FILES = ("product.toml", "policy.toml", "expected-tests.json", "expected-tests.previous.json",
-                 "ram-budget.toml", "architecture.toml", "decoupling.toml", "decoupling-baseline.toml")
+                 "ram-budget.toml", "architecture.toml", "fuzz-regressions.json", "decoupling.toml",
+                 "decoupling-baseline.toml")
 
 SHA_KEYS = ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
             "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
             "order_sha256", "buckconfig_sha256", "toolchain_buck_sha256", "llvm_sha256",
-            "sysroot_sha256", "buck2_sha256", "witness_sha256", "perf_sha256")
+            "sysroot_sha256", "buck2_sha256", "witness_sha256", "perf_sha256",
+            "fuzz_regressions_sha256")
 COMMIT_KEYS = ("gate_sha", "head", "base", "merge_base")
-INPUT_KEYS = frozenset(SHA_KEYS + COMMIT_KEYS + ("gate_clean", "product", "uncached"))
-# Absent on purpose in many grades: no approvals bundle, no previous expected-tests file, no witness, no perf bundle.
-OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256", "ram_budget_sha256", "witness_sha256", "perf_sha256"})
+INPUT_KEYS = frozenset(SHA_KEYS + COMMIT_KEYS + ("gate_clean", "product", "uncached", "tier"))
+# Absent on purpose in many grades: no approvals bundle, no previous expected-tests file, no witness, no perf bundle,
+# no fuzz regression list.
+OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256", "ram_budget_sha256", "witness_sha256",
+                           "perf_sha256", "fuzz_regressions_sha256"})
 
 
 # ---------------------------------------------------------------- snapshot (read once, use the copy)
@@ -110,6 +114,7 @@ def snapshot_inputs(args, work):
     hashes["expected_tests_sha256"] = copies["expected-tests.json"]
     hashes["expected_tests_previous_sha256"] = copies["expected-tests.previous.json"]
     hashes["ram_budget_sha256"] = copies["ram-budget.toml"]
+    hashes["fuzz_regressions_sha256"] = copies["fuzz-regressions.json"]
     approvals_copy = os.path.join(base, APPROVALS_NAME)
     hashes["approvals_sha256"] = snapshot_approvals(args.approvals, approvals_copy)
     if args.approvals is not None:
@@ -264,6 +269,7 @@ def build_inputs(g, documents):
         "head": _commit(clone, "head"), "base": _commit(clone, "base"),
         "merge_base": _commit(clone, "merge_base"),
         "product": g.product.name, "uncached": bool(g.args.uncached),
+        "tier": grade_tier.tier_of(g),
         "buckconfig_sha256": manifest.get(".buckconfig"),
         "toolchain_buck_sha256": pins[0], "llvm_sha256": pins[1],
         "sysroot_sha256": pins[2], "buck2_sha256": pins[3],
@@ -280,6 +286,8 @@ def missing_inputs(inputs):
         value = inputs.get(key)
         if key in ("gate_clean", "uncached"):
             ok = isinstance(value, bool)
+        elif key == "tier":
+            ok = value in grade_tier.TIERS
         elif key == "product":
             ok = isinstance(value, str) and value != ""
         elif key in COMMIT_KEYS:
@@ -297,7 +305,7 @@ def missing_inputs(inputs):
 
 # ---------------------------------------------------------------- rigor verify
 
-def check_verdict(data, signature_path, allowed_signers, expect, require_uncached=False):
+def check_verdict(data, signature_path, allowed_signers, expect, require_uncached=False, require_tier=None):
     """Reasons this verdict must not be trusted as a PASS; an empty list means it can be.
 
     Order: the signature over the exact bytes, then the document, `core_sha256` recomputed from
@@ -331,6 +339,8 @@ def check_verdict(data, signature_path, allowed_signers, expect, require_uncache
         problems.append("core.uncached disagrees with inputs.uncached")
     if require_uncached and inputs["uncached"] is not True:
         problems.append("not an --uncached grade")
+    if require_tier is not None and inputs["tier"] != require_tier:
+        problems.append("tier is %s, expected %s" % (inputs["tier"], require_tier))
     for option, key in (("head", "head"), ("gate", "gate_sha"), ("policy_sha", "policy_sha256")):
         wanted = expect.get(option)
         if wanted is not None and inputs[key] != wanted:
@@ -350,13 +360,24 @@ def check_verdict(data, signature_path, allowed_signers, expect, require_uncache
     return problems
 
 
+def verdict_tier(data):
+    """The tier a verdict says it was graded at, or `unknown` when it does not say (or is not a verdict)."""
+    try:
+        tier = jsonio.strict_loads(data)["core"]["inputs"]["tier"]
+    except (ValueError, KeyError, TypeError):
+        return "unknown"
+    return tier if tier in grade_tier.TIERS else "unknown"
+
+
 def run_verify(args):
     data = jsonio.read_bytes(args.verdict)
     signature = args.signature or args.verdict + ".sig"
     expect = {"head": args.expect_head, "gate": args.expect_gate,
               "policy_sha": args.expect_policy_sha, "witness_sha": args.expect_witness_sha,
               "perf_sha": args.expect_perf_sha}
-    problems = check_verdict(data, signature, args.allowed_signers, expect, args.require_uncached)
+    problems = check_verdict(data, signature, args.allowed_signers, expect, args.require_uncached,
+                             args.require_tier)
+    print("rigor verify: tier %s" % verdict_tier(data))
     for problem in problems:
         print("rigor verify: REJECTED: %s" % problem)
     if problems:
@@ -384,5 +405,7 @@ def add_verify_parser(subparsers):
                         help="perf_sha256 of the perf bundle it must have been graded with, or `none` for a "
                              "grade without --perf; a verdict graded without --perf is rejected for a sha")
     parser.add_argument("--require-uncached", action="store_true")
+    parser.add_argument("--require-tier", choices=grade_tier.TIERS,
+                        help="reject a verdict graded at another tier (a merge-tier PASS is not a nightly one)")
     parser.set_defaults(handler=run_verify, gate_id=None)
 

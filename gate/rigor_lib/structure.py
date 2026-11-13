@@ -33,7 +33,7 @@ Tests and fuzz targets (kind c_test, c_fuzz) must be present but are not graded.
 
 import tomllib
 
-from rigor_lib import jsonio, structure_data, structure_graph, structure_limits, structure_types
+from rigor_lib import facts_rt, jsonio, structure_data, structure_graph, structure_limits, structure_types
 from rigor_lib.errors import InternalError
 from rigor_lib.facts_data import LABEL
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
@@ -124,7 +124,8 @@ def consistency_findings(structures, levels, trusted):
         if label not in levels:
             found.append(finding("module-not-in-policy", module=label))
         for dep in structures[label].deps:
-            if dep not in structures and dep not in trusted and not dep.startswith(GATE_OWNED):
+            if dep not in structures and dep not in trusted and not dep.startswith(GATE_OWNED) \
+                    and not facts_rt.is_require(dep):
                 found.append(finding("missing-dep-facts", module=label, dep=dep))
     for label in sorted(levels):
         if label not in structures and label not in trusted:

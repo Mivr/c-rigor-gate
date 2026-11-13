@@ -17,8 +17,15 @@ Python, run on RE) writes one JSON file:
 {"schema":1,"label":"//pkg:name","kind":"c_library","deps":["//pkg:dep",...],
  "units":[{"name":"a.c.o","defined":[..],"weak":[..],"undefined":[..],
            "pragmas":[{"file","line","text"}],"attributes":[{"name","file","line"}],
-           "identifiers":[{"name","file","line"}]}]}
+           "identifiers":[{"name","file","line","gate"}],"guards":[{"file","line","function"}]}]}
 ```
+`gate` and `guards` (T131) are optional for the reader: older facts lack them (nothing is the gate's then). `gate` says
+whether the compiler read the identifier's file from the gate's own tree: a file of `buck-out/<v>/{gen,art}/<cell>/` under
+a cell other than the product's `root` (the notion `mutate/gen.py` uses for "a header of another cell"), or under the
+header tree `rules/facts.bzl` names with `--gate-marker` (`/<cell>/<package>/__require__/`, for a gate that is the root cell).
+It comes from the path of the line marker, never from the include spelling or the display path (`rt/require.h` is the
+same text for the gate's header and for a product's header of that name). `guards` lists every call of `rigor_require` in
+product text (not in the gate's file) with the function it is in (docs/require.md).
 * **Preprocessed text:** every `#pragma` line (so `_Pragma`, splices, pasting and digraphs all show up as
   pragma lines), every *watched* identifier outside strings (`cscan.WATCHED_IDENTIFIERS`: `asm`, `__asm`,
   `__asm__`, `_Pragma`, `__pragma`, the alloca spellings and the measured prefix-less builtins below; and
@@ -29,12 +36,14 @@ Python, run on RE) writes one JSON file:
   expansions count. Text from a file below the toolchain's own header directories
   (`toolchains//:system-roots`, decided by path, not by the system-header flag a product could set with a
   pragma) is skipped as product text; so are `<built-in>` and `<command line>`, and (T108) the exported header
-  trees of the gate-owned third-party libraries (path contains `/art/<gate cell>/third_party/`, passed by
+  trees of the gate-owned third-party libraries (path is `buck-out/<version>/art/<gate cell>/third_party/...`, anchored right after the version, T133; passed by
   `rules/facts.bzl` as `--vendor-marker`; a macro such a header defines counts like a toolchain macro for
   `reserved-macro`). Config hashes are removed
   from reported paths. Three more kinds of fact are reported as identifiers (the schema-1 facts file has
   no other place for them; see "Builtins" below): `#define X` / `#undef X` for a product macro directive
-  on a reserved name, and `#include <h>` for a toolchain header entered inside a product brace.
+  on a reserved name, and `#include <h>` for a toolchain header entered inside a product brace. A fourth (T131): the name
+  `rigor_require` itself for a product use that is not a call (a declaration, a definition, an address), and `#define
+  rigor_require` / `#undef rigor_require` of a product (reported whatever the name's status in the toolchain).
 * **Symbols:** `llvm-nm -g --format=posix` of the object: defined, weak/indirect defined (`W V i I u`) and
   undefined (`U w v`) external symbols.
 
@@ -63,6 +72,7 @@ latter), each with its own `--out` like every other gate.
 | `banned-builtin` | `alloca`, `__alloca`, `_alloca`, and every `__builtin_alloca*` (`_with_align`, `_uninitialized`, ...). No policy can allow it (`allow_builtins` naming one is exit 2) |
 | `forbidden-builtin` | any other builtin (a watched prefix, or a measured prefix-less builtin) that is not in `ALLOWED_BUILTINS`; except `__builtin_trap`/`__builtin_unreachable`/`__builtin_debugtrap`/`__atomic_load_n`/`__atomic_store_n` (the lock-free flag primitive; no other `__atomic_*`, `__sync_*` or `__c11_atomic_*`; the memory-order argument is not checked, the facts carry identifier names only) where the module's `allow_builtins` lists it, and `__builtin_setjmp`/`__builtin_longjmp` where the module may reference `setjmp`/`longjmp` (`deny_exempt`, or `allow` when the symbol is not denied) |
 | `reserved-macro` | a product `#define`/`#undef` of a reserved identifier (`__x`, `_X`), a C keyword, or a name a toolchain or gate-owned third-party header (or `<built-in>`/`<command line>`) also defines or undefines in that unit. Feature-test macros (`semantic_table.FEATURE_TEST_MACROS`: `_GNU_SOURCE`, `_POSIX_C_SOURCE`, ...; not `_FORTIFY_SOURCE`) are fine |
+| `reserved-identifier` | the name `rigor_require` in product code (a file that is not the gate's) other than called: a `#define` or `#undef` of it, a declaration or definition of a function or object with that name, taking its address. Calling it is the only use (docs/require.md). Fields: name, file, line |
 | `block-scope-include` | a toolchain header entered while a product brace is open (inside a function body or a struct) |
 
 An identifier the scanner reports but the table does not know is exit 2 (table and scanner drifted).
@@ -199,7 +209,7 @@ Products with a static-memory rule (`Mivr/business-apps`) need to see state that
   (library modules with no writable data, so green on the real toolchain) and `ram-over-budget` (its module has
   `allow_mutable_data = true` and only the budget fails) cover both sides.
 
-## Modes: `<name>_facts_san` and `rigor facts --modes` (T023)
+## Modes: `<name>_facts_san`, `_facts_msan`, `_facts_tsan` and `rigor facts --modes` (T023, T138)
 The semantic scan reads the **release** compile, but the `san` tests run the `san` compile. Code that exists in
 one of them only (`#if __has_feature(address_sanitizer)`, `__has_feature(undefined_behavior_sanitizer)`, a macro
 from a product header that tests either) is invisible to a release-only scan. So every `c_library`, `c_binary`,
@@ -210,7 +220,17 @@ sub-target, `calls.json`: the functions the preprocessed text calls, per unit (`
 an identifier followed by `(` in product text, keywords excluded; a declaration counts, so a function that exists
 in one mode only is found).
 
-`rigor facts --modes RELEASE_DIR SAN_DIR [--out F]` (gate `mode-divergence`). Each directory holds, per target,
+T138: every one of those targets also has a `<name>_facts_msan` (`c_msan_facts`, `toolchains//:msan`) and a
+`<name>_facts_tsan` (`c_tsan_facts`, `toolchains//:tsan`), the same rule and scanner on the compile of that mode, so code under
+`__has_feature(memory_sanitizer)`, `__has_feature(thread_sanitizer)` or `__SANITIZE_*__` is compared exactly like the san
+facts. The gate compares release with each mode in turn (`only_in` is `release`, `san`, `msan` or `tsan`). The comparison is on
+the preprocessed text of each mode, so a product macro that wraps `__has_feature` (canaries `mode-divergent`,
+`msan-guarded-code`) is seen in every mode: the macro is already expanded. A target whose link closure has a sysroot library
+beyond libc and pthread has no msan twin and is left out of the msan comparison. What is still not seen: a difference that
+changes no watched item (a different constant in one branch, no call, pragma, attribute or reserved identifier in it).
+
+`rigor facts --modes RELEASE_DIR SAN_DIR [--out F]` (gate `mode-divergence`; the CLI compares two directories, `facts_modes.run`
+takes the name of the second mode as `mode_name`, default `san`). Each directory holds, per target,
 `<name>.json` (the facts file) and `<name>.calls.json`. For every unit, each semantic item present in one
 mode and not in the other is a finding `mode-divergent-code` with `target`, `unit`, `only_in` (`release`|`san`),
 `item_kind` (`pragma`, `attribute`, `line-directive`, `identifier` (asm, builtins, `#define`/`#undef` of reserved
@@ -235,7 +255,16 @@ What this toolchain does and does not make differ (measured): `__has_feature(add
 clang 19 does not define under `-fsanitize=address`, so code under it is dead in both modes (not a divergence).
 `NDEBUG` is defined in neither mode and both modes optimise (`__OPTIMIZE__` is defined at `-O1` and `-O2`), so
 code under `#ifndef NDEBUG` or `#ifdef __OPTIMIZE__` is the same text in both (and visible to the release scan).
-Wiring into `rigor grade` is a later task.
+
+### `gate//rt:require` (T128)
+The one gate library besides `ctest` and the third-party libraries that a product `c_library`, `c_binary` or `c_test`
+may list in `deps` (and a `c_library` in `exported_deps`): `buckfiles` accepts exactly that label, `symbols` and `layering`
+treat it as gate code (no facts needed, no policy entry, never a module), `structure` needs no facts for it, and the
+semantic scan accepts the `__builtin_trap` that sits in `rt/require.h` in a unit of a target that depends on it, with no
+`allow_builtins`, **only when the scanner's `gate` flag says the compiler read the file from the gate's own tree**: a
+product's own `rt/require.h` with a trap in it, next to the dependency, is `forbidden-builtin` (T131). A `__builtin_trap`
+anywhere else is judged as before. `rigor_require` is a reserved name (`reserved-identifier`). `rigor guards` counts
+the call sites and judges the declared guard budget. See docs/require.md.
 
 ## 3. `rigor buckfiles --root DIR [--out F]` (gate `buckfiles`)
 Each `BUCK` is parsed (never executed) with `ast`. Allowed: `load("@gate//rules:c.bzl", ...)` naming only
@@ -336,6 +365,8 @@ step "the GNU line-marker form ... does not compile"), so a product cannot forge
 (also spliced) always produces a flag-less marker and is reported.
 
 ## Known limits
+* A product directory named like the gate's third-party tree (`x/art/gate/third_party/`) is not exempt: the vendor marker
+  matches only at the start of the output-tree path, and an unrecognised layout is product code (T133, canary `vendor-path-spoof`).
 * A `#line N` that only moves forward in the same file is indistinguishable from the compiler's own
   resynchronisation and is not reported (it only changes the line numbers of later findings; it cannot
   rename the file). Backward moves and renames are reported.

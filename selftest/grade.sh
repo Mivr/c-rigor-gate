@@ -75,11 +75,12 @@ got = {g["id"]: g["status"] for g in core["gates"]}
 bad = {g for g, s in got.items() if s == "FAIL"}
 not_run = {g for g, s in got.items() if s == "NOT_RUN"}
 # A failed build means there are no results or facts to judge: those gates are NOT_RUN (still a failure).
-# Mutation testing needs a clean tree and green tests: it is NOT_RUN after any of these failed.
-want_not_run = ({"tests-release", "tests-san", "semantic-suppressions", "symbols", "structure", "mode-divergence"}
+# Mutation testing and fuzzing need a clean tree and green tests: they are NOT_RUN after any of these failed.
+want_not_run = ({"tests-release", "tests-san", "tests-msan", "tests-tsan", "semantic-suppressions", "symbols", "structure",
+                 "mode-divergence"}
                 if "build" in expected else set())
 if expected & {"assemble", "buckfiles", "build", "tests-release", "tests-san"}:
-    want_not_run.add("mutants")
+    want_not_run.update(("mutants", "fuzz"))
 want_code = 1 if expected else 0
 print("  " + " ".join("%s=%s" % (g, s) for g, s in got.items()) + "  overall=" + core["overall"])
 ok = bad == expected and not_run == want_not_run and code == want_code and (core["overall"] == "PASS") == (not expected)
@@ -189,10 +190,27 @@ assert mods["//core:core"]["total"] > 0 and mods["//core:core"]["survivors"] == 
 assert m["targets"].keys() == mods.keys(), m["targets"]
 assert m["executed_actions"] > 0, m
 EOF2
-for gate in structure mode-divergence; do
+for gate in structure mode-divergence tests-msan; do
   [ "$(jget "$cold_verdict" metadata gate_metadata "$gate" executed_actions)" -gt 0 ] \
     || fail "cold run executed no $gate actions: the nonce did not reach them"
 done
+# T138: tests-msan builds and judges every test of the selftest product; it has no threaded test, so tests-tsan builds nothing.
+python3 -I - "$work/clean/results" "$cold_secs" <<'EOF3' || fail "cold: tests-msan or tests-tsan"
+import json, sys
+msan, tsan = [json.load(open("%s/%s.json" % (sys.argv[1], g))) for g in ("tests-msan", "tests-tsan")]
+assert msan["status"] == "PASS" and tsan["status"] == "PASS", (msan["status"], tsan["status"])
+m, t = msan["metadata"], tsan["metadata"]
+assert m["mode"] == "msan" and m["expected_count"] == 5 and len(m["targets"]) == 3, m
+assert m["executed_actions"] > 0 and m["exit_code"] == 0, m
+assert [f["rule"] for f in tsan["findings"]] == ["no-threaded-tests"], tsan["findings"]
+assert "executed_actions" not in t, t
+md = json.load(open("%s/mode-divergence.json" % sys.argv[1]))["metadata"]
+print("  mode-divergence cold: %d executed + %d cached actions, %.1fs; of them the msan twins %d + %d, the tsan twins %d + %d"
+      % (md["executed_actions"], md["cached_actions"], md["seconds"], md["msan"]["executed_actions"], md["msan"]["cached_actions"],
+         md["tsan"]["executed_actions"], md["tsan"]["cached_actions"]))
+print("  cold cost of the two gates: tests-msan %d executed + %d cached actions, %.1fs; tests-tsan 0 actions, %.1fs (cold grade %ss)"
+      % (m["executed_actions"], m["cached_actions"], m["seconds"], t["seconds"], sys.argv[2]))
+EOF3
 
 # ---------------------------------------------------------------------------------------
 # Witness steps (T039). A test-surface change (a comment in core_test.c) puts //core:core in the witness
@@ -375,10 +393,14 @@ step_warm() {  # same head in a fresh work dir: nothing executes; the verdict is
   echo "  exit $code, $(elapsed "$started")s"
   check_verdict "$work/warm.verdict.json" "" "$code" || { tail -n 30 "$work/warm.log" >&2; fail "warm"; }
   echo "  build actions executed: cold $exec_cold, warm $(jget "$work/warm.verdict.json" metadata gate_metadata build executed_actions)"
-  for gate in build symbols mutants structure mode-divergence; do
+  for gate in build symbols mutants structure mode-divergence tests-msan; do
     n="$(jget "$work/warm.verdict.json" metadata gate_metadata "$gate" executed_actions)"
     [ "$n" = 0 ] || fail "warm run executed $n $gate actions"
   done
+  [ "$(jget "$work/warm.verdict.json" metadata gate_metadata tests-msan cached_actions)" -gt 0 ] \
+    || fail "warm run: tests-msan found nothing in the cache"
+  grep -q '"no-threaded-tests"' "$work/warm/results/tests-tsan.json" || fail "warm run: tests-tsan did not pass as no-threaded-tests"
+  echo "  tests-msan executed 0 actions, tests-tsan none"
   [ "$sha_cold" = "$(jget "$work/warm.verdict.json" core_sha256)" ] || fail "core_sha256 differs between two runs of the same inputs"
   echo "  core_sha256 identical: $sha_cold"
   ssh-keygen -Y check-novalidate -n c-rigor-gate-verdict -s "$work/warm.verdict.json.sig" < "$work/warm.verdict.json" >/dev/null 2>&1 \
@@ -386,6 +408,18 @@ step_warm() {  # same head in a fresh work dir: nothing executes; the verdict is
   ssh-keygen -Y check-novalidate -n c-rigor-gate -s "$work/warm.verdict.json.sig" < "$work/warm.verdict.json" >/dev/null 2>&1 \
     && fail "verdict signature verifies under the wrong namespace"
   echo "  signature verifies (namespace c-rigor-gate-verdict only)"
+}
+
+step_tier() {  # T137: tier merge defers the L2 module's mutation (the checks run after the parallel steps)
+  local started code
+  started="$(now)"
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$last_head" --task "$work/task.toml" \
+      --product "$product" --work "$work/tier-merge" --out "$work/tier-merge.verdict.json" --tier merge \
+      > "$work/tier-merge.log" 2>&1
+  code=$?
+  echo "  exit $code, $(elapsed "$started")s"
+  check_verdict "$work/tier-merge.verdict.json" "" "$code" "$work/tier-merge" || { tail -n 30 "$work/tier-merge.log" >&2; fail "tier merge"; }
+  [ -z "$(find_daemons "$work/tier-merge")" ] || fail "tier merge: a process is still running"
 }
 
 step_hostile() {  # the pipeline ignores the inherited environment, down to core_sha256
@@ -582,11 +616,153 @@ EOF10
   [ -z "$(find_daemons "$work/extra-export")" ] || fail "extra-export: a process is still running"
 }
 
-names=(warm hostile uncached internal witness_na witness_strong witness_equal extra_export
+# ---------------------------------------------------------------------------------------
+# The fuzz gate (T129). `products/selftest/` has no fuzz target and `products/**` is not ours to extend, so the step
+# below grades a product of its own: the selftest product plus `fz/` (a c_fuzz harness that calls //core:core), a
+# gate-owned input directory made from the selftest one (layout, task contract and policy gain `fz`; `//core:core`
+# must be fuzzed, with a budget of 5000 runs). The harness depends on core.c, which carries the run's nonce, so the
+# cold grade really runs the fuzz action and the repeat grade must execute none.
+# ---------------------------------------------------------------------------------------
+fuzz_in="$work/fuzz-inputs"
+mkdir -p "$fuzz_in"
+cp products/selftest/product.toml products/selftest/policy.toml products/selftest/expected-tests.json "$fuzz_in/"
+sed -i 's|include = \["core/\*\*",|include = ["core/**", "fz/**",|' "$fuzz_in/product.toml"
+sed -i '/^exports = \["core_add", "core_sign"\]$/a fuzz = true\nfuzz_runs = 5000' "$fuzz_in/policy.toml"
+sed 's|"core/\*\*",|"core/**", "fz/**",|' "$work/task.toml" > "$work/task-fuzz.toml"
+cat >> "$fuzz_in/policy.toml" <<'EOF'
+
+[module."//fz:core_fuzz"]
+allow = []
+exports = ["LLVMFuzzerTestOneInput"]
+EOF
+grep -q '"fz/\*\*"' "$fuzz_in/product.toml" && grep -q '^fuzz_runs = 5000$' "$fuzz_in/policy.toml" && grep -q '"fz/\*\*"' "$work/task-fuzz.toml" \
+  || fail "fuzz: the gate-owned inputs were not prepared"
+git -C "$repo" checkout -q -f -B case-fuzz "$base"
+git -C "$repo" clean -q -fdx
+mkdir -p "$repo/fz"
+cat > "$repo/fz/BUCK" <<'EOF'
+load("@gate//rules:c.bzl", "c_fuzz")
+
+c_fuzz(name = "core_fuzz", srcs = ["core_fuzz.c"], deps = ["//core:core"])
+EOF
+cat > "$repo/fz/core_fuzz.c" <<'EOF'
+#include <stddef.h>
+#include <stdint.h>
+
+#include "core/core.h"
+
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
+
+/* Adds the input bytes in pairs; the sum is only kept so that the calls stay. */
+int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+{
+    size_t i;
+    int total = 0;
+    for (i = 0; i + 1U < size; i += 2U) {
+        total += core_add(data[i], data[i + 1U]);
+    }
+    return total == -1 ? -1 : 0;
+}
+EOF
+git -C "$repo" add -A
+git -C "$repo" commit -q -m "fuzz target"
+fuzz_head="$(git -C "$repo" rev-parse HEAD)"
+
+# T135: a graded c_fuzz target with a corpus and a budget. Four more heads on top of the fuzz one (the same harness):
+# the corpus holds the input of the gate-owned `fuzz-regressions.json` (PASS, replayed), that input removed from the corpus
+# (fuzz-regression-missing), a harness that crashes on it (fuzz-crash in phase replay) and `runs` below the policy (fuzz-short).
+mkdir -p "$work/fuzz-reg-inputs"
+cp "$fuzz_in/product.toml" "$fuzz_in/policy.toml" "$fuzz_in/expected-tests.json" "$work/fuzz-reg-inputs/"
+fuzz_head_of() {  # fuzz_head_of <branch> <c_fuzz extra args> <files to write: seed regress>: a commit on top of $fuzz_head; sets $made
+  git -C "$repo" checkout -q -f -B "$1" "$fuzz_head"
+  git -C "$repo" clean -q -fdx
+  mkdir -p "$repo/fz/corpus"
+  case "$3" in *seed*) printf 'SEED\001' > "$repo/fz/corpus/seed";; esac
+  case "$3" in *regress*) printf 'BOOM\007' > "$repo/fz/corpus/regress";; esac
+  printf '%s\n' 'load("@gate//rules:c.bzl", "c_fuzz")' '' "c_fuzz(name = \"core_fuzz\", srcs = [\"core_fuzz.c\"], deps = [\"//core:core\"]$2)" > "$repo/fz/BUCK"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "fuzz corpus case $1"
+  made="$(git -C "$repo" rev-parse HEAD)"
+}
+regress_sha="$(printf 'BOOM\007' | sha256sum | cut -d' ' -f1)"
+printf '{"//fz:core_fuzz": ["%s"]}\n' "$regress_sha" > "$work/fuzz-reg-inputs/fuzz-regressions.json"
+both=', corpus = ["corpus/seed", "corpus/regress"]'
+fuzz_head_of case-fuzz-corpus "$both" "seed regress"; corpus_head="$made"
+fuzz_head_of case-fuzz-dropped ', corpus = ["corpus/seed"]' "seed"; dropped_head="$made"
+# The crash head: the harness reads a 4-byte table at the index in byte 4 of an input that starts with 'B'.
+fuzz_head_of case-fuzz-crash "$both" "seed regress"
+sed -i 's|^    return total == -1 ? -1 : 0;|    if (size == 5U \&\& data[0] == 66) {\n        total += table[data[4]];\n    }\n&|; s|^int LLVMFuzzerTestOneInput(const uint8_t \*data, size_t size)$|static const uint8_t table[4] = {1, 2, 3, 4};\n\n&|' "$repo/fz/core_fuzz.c"
+git -C "$repo" commit -q -a -m "fuzz corpus case crash: the harness reads out of bounds"
+crash_head="$(git -C "$repo" rev-parse HEAD)"
+fuzz_head_of case-fuzz-budget ', runs = 1000' ""; budget_head="$made"
+git -C "$repo" cat-file -e "$corpus_head" && git -C "$repo" cat-file -e "$dropped_head" && git -C "$repo" cat-file -e "$crash_head" \
+  && grep -q "total += table" <(git -C "$repo" show "$crash_head:fz/core_fuzz.c") || fail "fuzz corpus: the heads were not prepared"
+
+grade_fuzz() {  # grade_fuzz <work name> [head [inputs dir [expected tokens]]]: the fuzz product; sets $code
+  local head="${2:-$fuzz_head}" inputs="${3:-$fuzz_in}"
+  "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$head" --task "$work/task-fuzz.toml" \
+      --product "$inputs/product.toml" --work "$work/$1" --out "$work/$1.verdict.json" > "$work/$1.log" 2>&1
+  code=$?
+  check_verdict "$work/$1.verdict.json" "${4:-}" "$code" "$work/$1" || { tail -n 30 "$work/$1.log" >&2; return 1; }
+  [ -z "$(find_daemons "$work/$1")" ] || { echo "$1: a process is still running" >&2; return 1; }
+}
+
+step_fuzz() {  # a clean fuzz target: the gate passes and runs it; the same head again executes no fuzz action
+  grade_fuzz fuzz-cold || fail "fuzz (cold)"
+  python3 -I - "$work/fuzz-cold/results/fuzz.json" <<'EOF11' || fail "fuzz: wrong result of the cold grade"
+import json, sys
+r = json.load(open(sys.argv[1]))
+m = r["metadata"]
+t = m["targets"]["//fz:core_fuzz"]
+print("  fuzz: %s, executed %d, cached %d, runs_done %d, corpus %d" % (r["status"], m["executed_actions"], m["cached_actions"], t["runs_done"], t["corpus_files"]))
+assert r["status"] == "PASS" and m["required_modules"] == ["//core:core"], r
+assert sorted(m["targets"]) == ["//fz:core_fuzz"] and t["runs_done"] >= 5000 and t["phase"] == "budget", m
+assert m["executed_actions"] > 0, "the nonce did not reach the fuzz action"
+assert [f["rule"] for f in r["findings"]] == ["fuzz-empty-corpus"] and r["findings"][0]["severity"] == "info", r["findings"]
+EOF11
+  grade_fuzz fuzz-warm || fail "fuzz (warm)"
+  python3 -I - "$work/fuzz-cold.verdict.json" "$work/fuzz-warm.verdict.json" <<'EOF12' || fail "fuzz: the repeat grade ran fuzz actions"
+import json, sys
+c, w = (json.load(open(p)) for p in sys.argv[1:])
+m = w["metadata"]["gate_metadata"]["fuzz"]
+print("  fuzz repeat grade: executed %d, cached %d" % (m["executed_actions"], m["cached_actions"]))
+assert m["executed_actions"] == 0 and m["cached_actions"] > 0, m
+assert m["targets"] == c["metadata"]["gate_metadata"]["fuzz"]["targets"], m
+assert c["core_sha256"] == w["core_sha256"], "core_sha256 differs between two runs of the same inputs"
+EOF12
+}
+
+step_fuzz_corpus() {  # T135: corpus and `runs` of a graded c_fuzz target, end to end through `rigor grade`
+  local r="$work/fuzz-reg-inputs"
+  grade_fuzz fuzzc-replayed "$corpus_head" "$r" || fail "fuzz corpus (replayed)"
+  python3 -I - "$work/fuzzc-replayed/results/fuzz.json" "$work/fuzzc-replayed.verdict.json" <<'EOF13' || fail "fuzz corpus: the regression input was not replayed"
+import json, sys
+r = json.load(open(sys.argv[1]))
+t = r["metadata"]["targets"]["//fz:core_fuzz"]
+print("  fuzz corpus: %s, corpus %d, replayed %d, phase %s" % (r["status"], t["corpus_files"], t["replayed"], t["phase"]))
+assert r["status"] == "PASS" and r["findings"] == [], r
+assert t["corpus_files"] == 2 and t["replayed"] == 2 and t["phase"] == "budget" and t["runs_done"] >= 5000, t
+assert json.load(open(sys.argv[2]))["core"]["inputs"]["fuzz_regressions_sha256"], "the regression list is not bound into the verdict"
+EOF13
+  grade_fuzz fuzzc-dropped "$dropped_head" "$r" "fuzz:fuzz-regression-missing" || fail "fuzz corpus (dropped)"
+  grade_fuzz fuzzc-crash "$crash_head" "$r" "fuzz:fuzz-crash" || fail "fuzz corpus (crash)"
+  grade_fuzz fuzzc-budget "$budget_head" "$fuzz_in" "fuzz:fuzz-short" || fail "fuzz corpus (budget)"
+  python3 -I - "$work/fuzzc-crash/results/fuzz.json" "$work/fuzzc-budget/results/fuzz.json" <<'EOF14' || fail "fuzz corpus: wrong findings"
+import json, sys
+c, b = (json.load(open(p)) for p in sys.argv[1:])
+assert [(f["rule"], f["phase"]) for f in c["findings"]] == [("fuzz-crash", "replay")], c["findings"]
+assert [f["rule"] for f in b["findings"]] == ["fuzz-empty-corpus", "fuzz-short"] or [f["rule"] for f in b["findings"]] == ["fuzz-short", "fuzz-empty-corpus"], b["findings"]
+print("  fuzz corpus: crash in phase replay, runs below the policy budget is fuzz-short")
+EOF14
+}
+
+names=(warm hostile uncached tier internal witness_na witness_strong witness_equal extra_export fuzz fuzz_corpus
        ta_green ta_release_pass ta_san_pass ta_timeout ta_no_new ta_a018 ta_no_previous)
-labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "internal-error"
+labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "clean, --tier merge (the L2 module is deferred)" "internal-error"
         "pure impl change with a witness bundle (witness gates not applicable)" "test-surface change with a strong witness" "test-surface change with a witness identical to the head (cold, warm)"
         "clean module plus an unlisted exported function (unexpected-export)"
+        "a clean c_fuzz target (the fuzz gate runs it), the same head again (no fuzz action)"
+        "c_fuzz with a corpus: replayed (PASS), regression input dropped, crash in the replay, runs below the policy budget"
         "test-author: a stub head with a correct witness" "test-author: a new test passes on the stub in release" "test-author: a new test passes on the stub in san only"
         "test-author: a stub that times out (info stub-timeout)" "test-author: no new ids" "test-author: old tests fail on a stubbed function, the witness passes them (A018)"
         "test-author without expected-tests.previous.json (exit 2)")
@@ -631,6 +807,23 @@ assert w["metadata"]["gate_metadata"]["toolchain"]["verified"] is False
 print("  toolchain: verified in the uncached grade, not verified (cached grade) in the warm one")
 assert u["core_sha256"] != w["core_sha256"]
 EOF4
+
+python3 -I - "$work/warm.verdict.json" "$work/tier-merge.verdict.json" <<'EOF15' || fail "tier merge: wrong mutants gate or verdict"
+import json, sys
+n, m = (json.load(open(p)) for p in sys.argv[1:])
+gn, gm = n["metadata"]["gate_metadata"]["mutants"], m["metadata"]["gate_metadata"]["mutants"]
+fm = json.load(open(sys.argv[2].replace(".verdict.json", "/results/mutants.json")))["findings"]
+assert n["core"]["inputs"]["tier"] == "nightly" and m["core"]["inputs"]["tier"] == "merge"
+assert n["core_sha256"] != m["core_sha256"], "a merge PASS and a nightly PASS have the same core_sha256"
+assert set(gn["modules"]) == {"//core:core", "//util:util"} and "tier" not in gn and "deferred" not in gn, gn
+assert set(gm["modules"]) == {"//core:core"} and gm["tier"] == "merge" and gm["deferred"] == 1, gm
+assert gm["modules"]["//core:core"]["total"] > 0 and gm["modules"]["//core:core"]["survivors"] == [], gm
+assert set(gm["targets"]) == {"//core:core"}, gm["targets"]
+assert [(f["rule"], f["module"], f["severity"]) for f in fm] == [("mutation-deferred", "//util:util", "info")], fm
+an, am = gn["executed_actions"] + gn["cached_actions"], gm["executed_actions"] + gm["cached_actions"]
+print("  mutants actions (executed + cached): nightly %d, merge %d; deferred %s" % (an, am, fm[0]["reason"]))
+assert 0 < am < an, (am, an)
+EOF15
 
 python3 -I - "$work/warm.verdict.json" "$work/witness-na.verdict.json" <<'EOF8' || fail "witness-na: the head gates differ from the grading without --witness"
 import json, sys
@@ -686,8 +879,8 @@ result = json.load(open(sys.argv[2]))
 code, flipped = int(sys.argv[3]), sys.argv[4]
 got = {g["id"]: g["status"] for g in core["gates"]}
 print("  " + " ".join("%s=%s" % kv for kv in got.items()) + "  overall=" + core["overall"])
-compiling = {"semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "mutants",
-             "witness-tests", "mutants-witness"}
+compiling = {"semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "tests-msan", "tests-tsan",
+             "fuzz", "mutants", "witness-tests", "mutants-witness"}
 assert code == 1 and core["overall"] == "FAIL" and core["uncached"] is True, (code, core["overall"])
 assert {g for g, s in got.items() if s == "FAIL"} == {"toolchain"}, got
 assert {g for g, s in got.items() if s == "NOT_RUN"} == compiling | {"tests-release", "tests-san"}, got
@@ -707,5 +900,5 @@ echo "[mutants-cache] repeat grade, one-module change, survivor on a cache hit (
 bash selftest/mutants_cache.sh > "$work/mutants_cache.log" 2>&1 || { tail -n 30 "$work/mutants_cache.log" >&2; fail "mutants cache"; }
 cat "$work/mutants_cache.log"
 
-echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, 7 test-author) ${parallel_secs}s"
+echo "SUMMARY: cold ${cold_secs}s (executed $exec_cold build actions); parallel steps (warm, hostile, uncached, internal, 3 witness, extra-export, fuzz, fuzz corpus, 7 test-author) ${parallel_secs}s"
 echo "selftest/grade.sh: all $step steps passed"

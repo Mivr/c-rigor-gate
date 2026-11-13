@@ -251,6 +251,38 @@ class ScanError(Exception):
     """The scan cannot be trusted; the action fails."""
 
 
+OUTPUT_KINDS = ("gen", "art")   # Buck2 output layout `buck-out/<version>/<kind>/<cell>/...` (as in cscan.py)
+
+
+def output_tree(path):
+    """(kind, cell, the components after the cell) of `buck-out/<version>/{gen,art}/<cell>/...`, or None when the path
+    does not have that layout (the first `buck-out` is the real one; the output kind stands one or two components
+    after it). The one path walk: every decision "is this the gate's file" starts here."""
+    parts = os.path.normpath(path).split("/")
+    if "buck-out" not in parts:
+        return None
+    rest = parts[parts.index("buck-out") + 1:]
+    for index, part in enumerate(rest[:-2]):
+        if part in OUTPUT_KINDS and 0 < index <= 2:
+            return part, rest[index + 1], rest[index + 2:]
+    return None
+
+
+def vendor_tail(path, markers):
+    """The part of `path` after the vendor marker (`mbedtls/ssl.h` for `/art/gate/third_party/`), or None. A file
+    is gate third-party code only when its output tree starts, right after the version, with the marker. A
+    fragment anywhere deeper (a product directory `x/art/gate/third_party/`) is the product's."""
+    tree = output_tree(path)
+    if tree is None:
+        return None
+    kind, cell, tail = tree
+    start = "/" + "/".join((kind, cell) + tuple(tail)) + "/"
+    for marker in markers:
+        if start.startswith(marker):
+            return start[len(marker):]
+    return None
+
+
 def display_file(path):
     """A path with Buck's configuration hashes removed, so facts do not depend on them."""
     if "/buck-headers/" in path:
@@ -276,8 +308,8 @@ class SourceFile:
 
 
 class Files:
-    """`system_roots` are the toolchain's own header directories; `vendor_markers` are path fragments of
-    gate-owned third-party libraries (`/art/<gate cell>/third_party/`). Code in either is not the product's."""
+    """`system_roots` are the toolchain's own header directories; `vendor_markers` are path prefixes (after
+    `buck-out/<version>`, see `vendor_tail`) of gate-owned third-party libraries (`/art/<gate cell>/third_party/`). Code in either is not the product's."""
 
     def __init__(self, system_roots, vendor_markers=()):
         self.roots = [os.path.normpath(root) + "/" for root in system_roots]
@@ -288,17 +320,14 @@ class Files:
         if name.startswith("<"):
             return True
         norm = os.path.normpath(name) + "/"
-        return any(norm.startswith(root) for root in self.roots) or any(m in norm for m in self.vendor)
+        return any(norm.startswith(root) for root in self.roots) \
+            or vendor_tail(name, self.vendor) is not None
 
     def vendor_lib(self, name):
         """The directory name of the gate-owned third-party library a file belongs to (`mbedtls` for
         `.../art/<cell>/third_party/mbedtls/...`), or None."""
-        norm = os.path.normpath(name) + "/"
-        for marker in self.vendor:
-            if marker in norm:
-                lib = norm.split(marker, 1)[1].split("/")[0]
-                return lib or None
-        return None
+        lib = vendor_tail(name, self.vendor)
+        return (lib.split("/")[0] or None) if lib is not None else None
 
     def get(self, name):
         """SourceFile of a real file, or None for `<scratch space>`, `<built-in>` and the like."""

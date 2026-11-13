@@ -1,7 +1,9 @@
-"""Gate `mode-divergence` (T023): the release and the `san` compile of a product must contain the same code.
+"""Gate `mode-divergence` (T023, T138): the release compile of a product and its `san`, `msan` and `tsan` compiles
+must contain the same code. (Below, `san` stands for each of the three; `rigor grade` compares the release facts
+with each twin in turn, `run` takes the name of the mode as `mode_name`.)
 
 `cscan.py` reads the `clang -E` output of one compile. Code under `__SANITIZE_ADDRESS__`,
-`__has_feature(address_sanitizer)`, `NDEBUG` or `__OPTIMIZE__` is in that output in one mode only, so a
+`__has_feature(address_sanitizer)` (or `memory_sanitizer`, `thread_sanitizer`), `__SANITIZE_*__`, `NDEBUG` or `__OPTIMIZE__` is in that output in one mode only, so a
 scan of the release compile alone cannot see what the `san` tests run. Every library, binary, test and
 fuzz target therefore has a `<name>_facts_san` twin (rules/c.bzl), built from the `san` compile with the
 very same scanner. This module compares the two, per unit, item by item.
@@ -64,8 +66,8 @@ def _call_collector(cscan):
             self.pending = None
             self.skip = cscan.KEYWORDS | NOT_CALLS
 
-        def scan_line(self, raw, where, attributes):
-            super().scan_line(raw, where, attributes)
+        def scan_line(self, raw, where, attributes, gate=False):
+            super().scan_line(raw, where, attributes, gate)
             for kind, tok in cscan.tokens(raw):
                 if tok == "(" and self.pending is not None:
                     self.calls.add((self.pending,) + where)
@@ -183,8 +185,9 @@ def load_mode_dir(directory):
     return loaded
 
 
-def compare(release, san):
-    """Findings for two `load_mode_dir` results; anything that does not line up is InternalError."""
+def compare(release, san, mode="san"):
+    """Findings for two `load_mode_dir` results (`san` is the directory of the mode named `mode`: san, msan or tsan);
+    anything that does not line up is InternalError."""
     from rigor_lib.errors import InternalError
     from rigor_lib.findings import finding
     if set(release) != set(san):
@@ -196,7 +199,7 @@ def compare(release, san):
                                 % (label, sorted(set(release[label]) ^ set(san[label]))))
         for unit in sorted(release[label]):
             for mode, only in (("release", release[label][unit] - san[label][unit]),
-                               ("san", san[label][unit] - release[label][unit])):
+                               (mode, san[label][unit] - release[label][unit])):
                 for kind, item, file, line in sorted(only):
                     found.append(finding("mode-divergent-code", target=label, unit=unit, only_in=mode,
                                          item_kind=kind, item=item, file=file, line=line))
@@ -204,10 +207,11 @@ def compare(release, san):
 
 
 def run(args):
+    """`args.modes`: the release and the other mode's directory; `args.mode_name` (default `san`) names the other."""
     from rigor_lib.findings import GateResult
     release = load_mode_dir(args.modes[0])
     san = load_mode_dir(args.modes[1])
-    found = compare(release, san)
+    found = compare(release, san, getattr(args, "mode_name", "san"))
     units = sum(len(units) for units in release.values())
     return GateResult(GATE_ID, found, {"targets": len(release), "units": units})
 

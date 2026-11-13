@@ -7,9 +7,13 @@
     ],
     "tests-san": [
       "test-not-pass"
+    ],
+    "tests-msan": [
+      "test-not-pass"
     ]
   },
   "not_run": [
+    "fuzz",
     "mutants"
   ]
 }

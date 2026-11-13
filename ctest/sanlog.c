@@ -49,6 +49,10 @@ static int is_hex(char c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
+static int is_word(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
 /* A shadow-memory row: optional "=>" then "0x<hex>:". Its bytes depend on the heap layout. */
 static int is_shadow_row(const char *l, const char *end) {
     while (l < end && (*l == ' ' || *l == '=' || *l == '>')) {
@@ -64,11 +68,33 @@ static int is_shadow_row(const char *l, const char *end) {
     return l < end && *l == ':';
 }
 
-/* Copies one line, rewriting pids and hex numbers; returns the number of bytes written. */
+/* TSan prints "(pid=7703)" and "(tid=7708, running)": the number of "pid=" or "tid=" at `l`, as the length of
+ * "pid=" plus its digits, or 0. The ids differ on every run. */
+static size_t id_field_len(const char *l, const char *end) {
+    const char *q = l + 4;
+    if (end - l < 5 || (memcmp(l, "pid=", 4) != 0 && memcmp(l, "tid=", 4) != 0)) {
+        return 0;
+    }
+    while (q < end && *q >= '0' && *q <= '9') {
+        q++;
+    }
+    return q > l + 4 ? (size_t)(q - l) : 0;
+}
+
+/* Copies one line, rewriting pids, tids and hex numbers; returns the number of bytes written. */
 static size_t copy_line(char *dst, const char *l, const char *end) {
     size_t w = 0;
     while (l < end) {
         const char *q = l + 1;
+        size_t id_len = id_field_len(l, end);
+        if (id_len != 0 && (w == 0 || !is_word(dst[w - 1]))) { /* not the tail of a longer word */
+            for (int i = 0; i < 4; i++) { /* "pid=" or "tid=", one byte at a time: dst may be src */
+                dst[w++] = l[i];
+            }
+            dst[w++] = 'N';
+            l += id_len; /* past the digits */
+            continue;
+        }
         if (l[0] == '=' && l + 1 < end && l[1] == '=') { /* ==<pid>== */
             q = l + 2;
             while (q < end && q[0] >= '0' && q[0] <= '9') {

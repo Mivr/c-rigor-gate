@@ -2,8 +2,8 @@ load("@gate//rules:c.bzl", "c_library")
 
 c_library(
     name = "ctest",
-    srcs = ["ctest.c", "sanlog.c"],
-    headers = ["ctest.h", "sanlog.h"],
+    srcs = ["ctest.c", "sanlog.c", "traps.c"],
+    headers = ["ctest.h", "sanlog.h", "traps.h"],
     visibility = ["PUBLIC"],
 )
 

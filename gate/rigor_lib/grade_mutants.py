@@ -22,7 +22,7 @@ from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
-from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_decoupling, grade_policy, jsonio
+from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_decoupling, grade_policy, grade_tier, jsonio
 from rigor_lib import mutants_gate as rigor_mutants
 from rigor_lib import perf_package, perf_policy
 from rigor_lib.errors import InternalError
@@ -167,6 +167,12 @@ def read_layout(run):
     attributes = jsonio.strict_loads(query(
         ["kind('^(cxx_library|cxx_binary|cxx_test|mutsrc)$', //...)"] + attribute + ["^(deps|exported_deps)$"]).encode("utf-8"))
     binaries = [line.strip() for line in query(["kind(cxx_binary, //...)"]).splitlines() if line.strip()]
+    # The libFuzzer binary behind a `c_fuzz` (`<name>__bin`) is the fuzz target's, not a module: no level, no mutants.
+    fuzz = jsonio.strict_loads(query(["kind(fuzz_run, //...)"] + attribute + ["^binary$"]).encode("utf-8"))
+    if not isinstance(fuzz, dict) or not all(isinstance(entry, dict) for entry in fuzz.values()):
+        raise InternalError("odd query output from buck2")
+    behind_fuzz = {entry.get("binary") for entry in fuzz.values()}
+    binaries = [label for label in binaries if label not in behind_fuzz]
     if not isinstance(attributes, dict):
         raise InternalError("odd query output from buck2")
     return parse_layout(results, add_external(attributes, libraries), binaries)
@@ -523,17 +529,20 @@ def build_plan(g, run):
 def _run(g, run):
     chosen, shared = build_plan(g, run)
     found = list(chosen.findings)
-    if not chosen.modules:
-        return GateResult(rigor_mutants.GATE_ID, found, {"modules": {}})
-    package_sha = write_package(run, chosen.modules, shared)
-    build_found, metadata, built = build_reports(run, g.args.uncached, chosen.modules)
+    modules, deferred = grade_tier.split(g, chosen.modules)  # tier merge: the mutation that can only report waits
+    found.extend(grade_tier.findings(deferred))
+    if not modules:
+        return GateResult(rigor_mutants.GATE_ID, found, dict(grade_tier.metadata(g, deferred), modules={}))
+    package_sha = write_package(run, modules, shared)
+    build_found, metadata, built = build_reports(run, g.args.uncached, modules)
     found.extend(build_found)
+    metadata.update(grade_tier.metadata(g, deferred))
     metadata["package_sha256"] = package_sha
-    metadata["targets"] = {m.label: target_label(m) for m in chosen.modules}
+    metadata["targets"] = {m.label: target_label(m) for m in modules}
     metadata["modules"], metadata["approvals_used"] = {}, []
     if built:
         # The policy names only the modules that built: a missing one already has its own finding.
-        judged, summaries, used = judge(g, run, chosen.modules, built)
+        judged, summaries, used = judge(g, run, modules, built)
         found.extend(judged)
         metadata["modules"], metadata["approvals_used"] = summaries, used
     return GateResult(rigor_mutants.GATE_ID, found, metadata)

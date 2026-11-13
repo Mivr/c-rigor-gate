@@ -8,11 +8,15 @@
     "tests-san": [
       "missing-test"
     ],
+    "tests-msan": [
+      "missing-test"
+    ],
     "witness-tests": [
       "missing-test"
     ]
   },
   "not_run": [
+    "fuzz",
     "mutants",
     "mutants-witness"
   ]

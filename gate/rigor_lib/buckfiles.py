@@ -13,7 +13,7 @@ import ast
 import os
 import re
 
-from rigor_lib import facts_third_party, jsonio
+from rigor_lib import facts_rt, facts_third_party, jsonio
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
 from rigor_lib.runner import gate_handler
@@ -24,8 +24,11 @@ LOAD_PATH = "@gate//rules:c.bzl"
 MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog", "c_embed", "c_android_so", "c_apk")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
+# T135: `c_fuzz` takes `corpus` (the form `srcs` has on a `c_fuzz`: string literals, never a glob; the macro checks the paths)
+# and `runs` (an int literal).
+MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps"), "c_fuzz": ("corpus", "runs"), "c_test": ("threads",),
+                  "c_android_so": ("system_libs", "exports")}
 # `c_android_so` (T-G2) names the symbols it exports and the system libraries it links.
-MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps"), "c_android_so": ("system_libs", "exports")}
 # T105: `c_catalog` has keywords of its own and no `srcs`/`headers`. `pots`, `langs`, `source_lang` and `symbol`
 # are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
 # is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).
@@ -51,8 +54,10 @@ DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+
 GATE_THIRD_PARTY = re.compile(r"//third_party[/:]")
 TEST_MACRO = "c_test"
 ANDROID_MACRO = "c_android_so"   # nothing depends on a shared object (or on what it derives): it is a product output only
+# T128: `gate//rt:require` (facts_rt) is the one more gate label, for a library, a binary or a test only.
+REQUIRE_MACROS = ("c_library", "c_binary", TEST_MACRO)
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
-TEST_DERIVED = ("", "_facts", "_facts_san", "_results", "_coverage", "__lib", "__map", "_check")
+TEST_DERIVED = ("", "_facts", "_facts_san", "_facts_msan", "_facts_tsan", "_results", "_coverage", "__lib", "__map", "_check")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.
 FORBIDDEN_NAMES = ("TARGETS", "PACKAGE", ".buckconfig", ".buckconfig.local", ".buckroot",
@@ -133,6 +138,8 @@ def _dep_problem(node, allowed, test_allowed, macro):
     problem = None
     for element in node.elts:
         label = element.value
+        if label == facts_rt.LABEL and macro in REQUIRE_MACROS:
+            continue
         if label in allowed or (macro == TEST_MACRO and label in test_allowed):
             continue
         if label in test_allowed:
@@ -171,7 +178,9 @@ def _value_ok(macro, keyword):
         return _is_string_dict(node)
     if macro == EMBED_MACRO and arg == "max_bytes":
         return _is_int(node)
-    if macro == EMBED_MACRO and arg == "nul":
+    if macro == "c_fuzz" and arg == "runs":
+        return _is_int(node)
+    if (macro == EMBED_MACRO and arg == "nul") or (macro == TEST_MACRO and arg == "threads"):
         return _is_bool(node)
     if macro == EMBED_MACRO and arg in ("src", "symbol"):
         return _is_string(node)

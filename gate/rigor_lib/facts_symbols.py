@@ -12,7 +12,7 @@ reserved prefixes (`mbedtls_`, `psa_`, `srv_`, `tls_peer_`), so no product can d
 A library that only tests may use (`ALLOWED_TEST_LABELS`) must not be reached by anything but a `c_test`.
 """
 
-from rigor_lib import facts_third_party, ram_budget
+from rigor_lib import facts_rt, facts_third_party, ram_budget
 from rigor_lib.facts_data import WRITABLE
 from rigor_lib.facts_policy import Module
 from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, finding
@@ -39,6 +39,8 @@ def exports_of(facts):
 def dep_exports(facts, facts_by_label, libs, module, found):
     exports = {}   # symbol -> the first dep (in label order) that defines it
     for dep in sorted(facts.deps):
+        if facts_rt.is_require(dep):
+            continue    # gate//rt:require (T128): exports nothing and needs no facts or policy entry
         if dep in libs:
             if facts_third_party.canonical(dep) in module.third_party:
                 owner = libs[dep]

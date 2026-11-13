@@ -102,6 +102,8 @@ third_party_symbols = rule(
 
 _SAN = "-fsanitize=address,undefined,leak"
 _FUZZ = "-fsanitize=fuzzer-no-link,address,undefined"
+_MSAN = ["-fsanitize=memory", "-fsanitize-memory-track-origins=2"]
+_TSAN = "-fsanitize=thread"
 
 # The vendored code's own flags. No warning is an error here; nothing of the sealed product
 # profile applies. The sanitizer modes instrument it, cov does not (vendor lines are not ours).
@@ -111,6 +113,8 @@ _MODE_FLAGS = {
     "toolchains//:cov": ["-O2"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:android": ["-O2"],
+    "toolchains//:msan": ["-O1", "-g"] + _MSAN + ["-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:tsan": ["-O1", "-g", _TSAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
 }
 
 _SAN_MODES = ["toolchains//:san", "toolchains//:fuzz"]
@@ -123,6 +127,8 @@ _MODE_FLAGS_PLAIN = {
     "toolchains//:cov": ["-O2"],
     "toolchains//:fuzz": ["-O1", "-g"],
     "toolchains//:android": ["-O2"],
+    "toolchains//:msan": ["-O1", "-g"],
+    "toolchains//:tsan": ["-O1", "-g"],
 }
 
 def c_third_party(

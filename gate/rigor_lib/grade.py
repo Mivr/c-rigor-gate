@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-from rigor_lib import approvals, grade_context, grade_pipeline, grade_policy, jsonio, product_layout, runner, verdict
+from rigor_lib import approvals, grade_context, grade_pipeline, grade_policy, grade_tier, jsonio, product_layout, runner, verdict
 from rigor_lib import verdict_inputs
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
@@ -175,6 +175,9 @@ def add_parser(subparsers):
     parser.add_argument("--allow-dirty-gate", action="store_true",
                         help="grade although tracked gate files differ from HEAD; the verdict records "
                              "gate_clean=false, is never signed and never verifies")
+    parser.add_argument("--tier", choices=grade_tier.TIERS, default=grade_tier.DEFAULT,
+                        help="nightly (default): the whole grade; merge: report-only mutation is deferred "
+                             "(docs/grade.md); bound into the verdict")
     parser.add_argument("--uncached", action="store_true",
                         help="no remote action-cache reads or writes: every action runs on a worker")
     # Not `dest="out"`: cli.report_internal_error deletes args.out, but a failed grading must

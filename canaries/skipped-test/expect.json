@@ -10,12 +10,17 @@
       "no-assertions",
       "test-not-pass"
     ],
+    "tests-msan": [
+      "no-assertions",
+      "test-not-pass"
+    ],
     "witness-tests": [
       "no-assertions",
       "witness-test-not-pass"
     ]
   },
   "not_run": [
+    "fuzz",
     "mutants",
     "mutants-witness"
   ]

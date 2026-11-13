@@ -257,6 +257,52 @@ All five share `canaries/_catalog/files/` (a canary-local `i18n` runtime with th
 here is `i18n/`, `cat/` next to `core/`, `util/`. `expect.json` `contains` pins the exact `po2c` message in `build.json`, so a
 canary that fails for another reason is a miss.
 
+## Canary added by T133
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `vendor-path-spoof` | `core/art/gate/third_party/spoof.h` with a diagnostic pragma and `no_sanitize`; the directory name must not pass as gate third-party code | `semantic-suppressions`: forbidden-attribute, pragma; `suppressions`: forbidden-pattern; `mutants`: unmutated-function | none |
+
+Before T133 `semantic-suppressions` passed it (the vendor marker was matched anywhere in the path).
+
+## Canaries added by T129 (the `fuzz` gate)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `fuzz-crash` | a parser (profile `parser`) whose `parse_run` reads `buf[data[4] % 8]` from a 4-byte buffer behind the magic `PA`; the fixed seed and budget of the `c_fuzz` run reach it | `fuzz`: fuzz-crash | none |
+| `fuzz-missing` | the policy gives `//parse:parse` the `parser` profile and the product has the library and no `c_fuzz` target | `fuzz`: fuzz-missing | none |
+| `fuzz-vacuous-harness` | the `c_fuzz` target lists the parser in `deps`, runs clean, and its harness never calls it | `fuzz`: fuzz-harness-no-call | none |
+| `fuzz-regression-dropped` | `fuzz-regressions.json` (gate-owned, beside `policy.toml`) names the sha256 of an input that once crashed `//parse:fz`; since T135 the product has a `corpus` and the input is removed from it, so it is not among the replayed files | `fuzz`: fuzz-regression-missing | none |
+| `fuzz-green` (control) | the same shape with the fixed parser and a harness that calls it | none: PASS | none |
+
+They share `canaries/_fuzz/files/` (the parser in two variants, the two harnesses, the BUCK files), copied in by each `edit.sh`; the
+policy of each adds an L1 `//parse:parse` (`profile = ["parser"]`, `allow = ["malloc", "free"]`) and, where there is a target, a
+`//parse:fz` entry that exports `LLVMFuzzerTestOneInput`. `fuzz` is also a NOT_RUN gate wherever `mutants` is (they need the same
+gates to have passed): every `not_run` list that named `mutants` names `fuzz` now, in the canaries and the tripwires.
+
+## Canaries added by T135 (a corpus and a budget in a graded `c_fuzz`)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `fuzz-corpus-replayed` (control) | the fixed parser, a corpus of a seed and the input `fuzz-regressions.json` names; `contains` pins `corpus_files` 2, `replayed` 2 | none: PASS | none |
+| `fuzz-regression-crashes` | the same corpus, the parser still has the bug: the replay of the corpus file crashes (`contains` pins phase `replay` and the sha256) | `fuzz`: fuzz-crash | none |
+| `fuzz-budget-lowered` | `runs = 1000` on the target; the policy's `parser` profile demands 200000 | `fuzz`: fuzz-short | none |
+
+`fuzz-regression-dropped` is reworked (above). All share `canaries/_fuzz/files/` (`BUCK.corpus`, `BUCK.corpus-dropped`, `BUCK.runs`
+and `corpus/`). `fuzz` is the last gate, so no `not_run` list changes.
+
+## Canary added by T137 (grade tiers)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `tier-forged` | a verdict graded at tier `merge` presented as a nightly one: the control product graded `--tier merge`, signed with a throwaway key, then `rigor verify --require-tier nightly` | none at grade time; `verify` must exit 1 with `tier is merge, expected nightly` (and exit 0 with `--require-tier merge`, so it is refused for its tier alone) | none |
+
+Its `expect.json` has `verify` instead of `fail`: `require_tier` is the tier that must be refused, `refused` the text of the
+refusal; the runner grades at the other tier, whatever `--tier` says.
+
+**The tier `merge` pass.** `selftest/canaries.sh --jobs 8 --tier merge` grades every canary at tier `merge` against the same
+`expect.json`: a canary that is red on `mutants` at an L3 or L4 module (the base product's `//core:core` is L3) must be red
+there at merge, in the same gate and rule. The L2 module of the base product (`//util:util`) is deferred at merge, so a canary
+whose red gate depends on it would miss in that pass; the pass is a second run of the same pack, not a second pack.
+The one known case is `third-party-link` (an L2 control whose `contains` pins a finding of the L2 module's mutants): in the merge
+pass `canaries/runner.py` (`MERGE_DEFERS_CONTAINS`) skips that pin, nothing else of its expectation.
+
 ## Canaries of gate `decoupling`
 All use the shared base product with a `decoupling.toml` beside `product.toml` (and a `decoupling-baseline.toml` where
 named). In the common declaration `//core:core` is the contract and `//util:util` the component.
@@ -279,3 +325,21 @@ Every canary without a `decoupling.toml` (all the others) gets `decoupling` PASS
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
+
+## Canaries added by T138 (`tests-msan`, `tests-tsan`)
+Every expectation that lists `tests-san` in `not_run` now lists `tests-msan` and `tests-tsan` too (they need the same
+clean build, run by the pack, not guessed); every canary whose test fails in release and san (`failing-test`,
+`removed-test`, `skipped-test`, `results-fd`, `deleted-target`) also fails `tests-msan` with the same rules (the same
+test fails in msan; no threaded test exists in the base product, so `tests-tsan` passes). The tripwire `unproducible-test-id` fails `tests-msan` as well.
+
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `uninit-read` | a branch decided by a struct field nobody wrote (read in another unit, so the compiler cannot fold it) | `tests-msan`: no-assertions, test-not-pass | none |
+| `threads-undeclared` | a test that calls `pthread_create` without `threads = True` (so it has no tsan result) | `symbols`: threads-undeclared | none |
+| `msan-guarded-code` | code under `__has_feature(memory_sanitizer)` behind a product macro | `mode-divergence`: mode-divergent-code | none |
+| `threads-through-library` | the library calls `pthread_create`, the test only calls the library; no declaration | `symbols`: threads-undeclared | none |
+| `data-race` | two threads write one counter without a lock, in a test declared `threads = True` | `tests-tsan`: no-assertions, test-not-pass | none |
+| `threads-vacuous` | `threads = True` on a test whose closure starts no thread | `symbols`: threads-vacuous | none |
+
+`buckfiles` accepts `threads` on `c_test` as a boolean literal only, and refuses the derived `_facts_msan` / `_facts_tsan`
+names as deps like the other derived names. Every gate has a live canary again.

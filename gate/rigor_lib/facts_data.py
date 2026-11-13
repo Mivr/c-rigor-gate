@@ -32,6 +32,8 @@ class Unit:
     line_directives: tuple  # of (name, file, line): a user `#line` that renames the file
     mutable: frozenset = frozenset()  # defined external objects in a writable data/bss section (T033)
     data: tuple = ()    # of (name, size, section, local): every defined data object, `static` ones too (T089)
+    gate_identifiers: frozenset = frozenset()   # of (name, file, line): the identifier facts whose file is the gate's (T131)
+    guards: tuple = ()  # of (file, line, function): every call of `rigor_require` in product code (T131)
 
 
 @dataclass(frozen=True)
@@ -114,13 +116,45 @@ def _data(path, entries):
     return tuple(found)
 
 
+def _identifiers(path, entries):
+    """`identifiers`: {name, file, line} and, since T131, `gate` (the file is the gate's own). Older facts lack
+    the key: nothing is the gate's then. Returns (all facts, the gate's)."""
+    if not isinstance(entries, list):
+        _fail(path, "identifier must be a list")
+    found, gate = [], set()
+    for entry in entries:
+        keys = ("name", "file", "line") + (("gate",) if isinstance(entry, dict) and "gate" in entry else ())
+        _exact(path, entry, keys, "identifier")
+        fact = (_text(path, entry["name"], "identifier"), _text(path, entry["file"], "identifier"),
+                _int(path, entry["line"], "identifier"))
+        found.append(fact)
+        if "gate" in entry:
+            if type(entry["gate"]) is not bool:
+                _fail(path, "identifier gate must be a boolean")
+            if entry["gate"]:
+                gate.add(fact)
+    return tuple(found), frozenset(gate)
+
+
+def _guards(path, entries):
+    """`guards` (T131): [{file, line, function}], one per call site of `rigor_require` in product code."""
+    if not isinstance(entries, list):
+        _fail(path, "guards must be a list")
+    found = []
+    for entry in entries:
+        _exact(path, entry, ("file", "line", "function"), "guard")
+        found.append((_text(path, entry["file"], "guard"), _int(path, entry["line"], "guard"),
+                      _text(path, entry["function"], "guard")))
+    return tuple(found)
+
+
 UNIT_KEYS = ("name", "defined", "weak", "undefined", "pragmas", "attributes", "identifiers", "line_directives")
 
 
 def parse_unit(path, unit):
     # `mutable` (T033) is written by every product scan; only the gate's own third-party facts lack it.
     # `data` (T089) is written next to it; the gate-owned third-party facts may omit `mutable`.
-    keys = UNIT_KEYS + tuple(k for k in ("mutable", "data") if isinstance(unit, dict) and k in unit)
+    keys = UNIT_KEYS + tuple(k for k in ("mutable", "data", "guards") if isinstance(unit, dict) and k in unit)
     _exact(path, unit, keys, "unit")
     defined = _strings(path, unit["defined"], "defined")
     weak = _strings(path, unit["weak"], "weak")
@@ -130,16 +164,19 @@ def parse_unit(path, unit):
     if not mutable <= defined:
         _fail(path, "mutable symbols must be defined symbols")
     data = _data(path, unit["data"]) if "data" in unit else ()
+    identifiers, gate = _identifiers(path, unit["identifiers"])
     return Unit(
         name=_text(path, unit["name"], "unit name"),
         defined=defined, weak=weak,
         undefined=_strings(path, unit["undefined"], "undefined"),
         pragmas=_pragmas(path, unit["pragmas"]),
         attributes=_located(path, unit["attributes"], "name", "attribute"),
-        identifiers=_located(path, unit["identifiers"], "name", "identifier"),
+        identifiers=identifiers,
         line_directives=_located(path, unit["line_directives"], "name", "line directive"),
         mutable=mutable,
         data=data,
+        gate_identifiers=gate,
+        guards=_guards(path, unit["guards"]) if "guards" in unit else (),
     )
 
 

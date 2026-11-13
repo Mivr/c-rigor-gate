@@ -206,6 +206,63 @@ PY
 rm -rf "$flip"
 done
 
+begin "hardened release profile (T139): automatic variables start zeroed; an array overrun is NOT trapped"
+mkdir -p "$scratch"
+cat > "$scratch/BUCK" <<'BUCK'
+load("@gate//rules:c.bzl", "c_test")
+c_test(name = "hx", srcs = ["hx.c"])
+BUCK
+cat > "$scratch/hx.c" <<'C'
+#include <stddef.h>
+#include <string.h>
+#include "ctest/ctest.h"
+
+static volatile size_t g_idx = 4;
+struct box { int a[4]; int b; };
+
+/* An index that is one past a fixed array inside a struct: written through, it lands in the neighbour. */
+__attribute__((noinline)) static void t_overrun(ctest_t *t) {
+    struct box s;
+    s.b = 0;
+    memset(s.a, 0, sizeof s.a);
+    s.a[g_idx] = 7;
+    CHECK_EQ_I64(t, s.b, 0);
+}
+
+__attribute__((noinline)) static void dirty(void) {
+    unsigned char junk[256];
+    size_t i;
+    for (i = 0; i < sizeof junk; i++) { junk[i] = 0xA5; }
+    __asm__ volatile("" : : "r"(junk) : "memory");
+}
+__attribute__((noinline)) static void leave(unsigned char *p) { __asm__ volatile("" : : "r"(p) : "memory"); }
+__attribute__((noinline)) static long sum_uninit(void) {
+    unsigned char buf[256];
+    long s = 0;
+    size_t i;
+    leave(buf);
+    for (i = 0; i < sizeof buf; i++) { s += buf[i]; }
+    return s;
+}
+/* Reads an automatic array nobody wrote, right after a call left 0xA5 on that part of the stack. */
+static void t_uninit(ctest_t *t) { dirty(); CHECK_EQ_I64(t, sum_uninit(), 0); }
+
+CTEST_SUITE("hx", { "overrun", t_overrun }, { "uninit", t_uninit })
+C
+log="$out/$step.log"
+run "$log" build //selftest/scratch:hx_results --show-output || fail "$CUR: build failed" "$log"
+res="$(awk '/hx_results/ && /buck-out/ {print $2}' "$log" | tail -1)"
+[ -f "$res" ] || fail "$CUR: no results file" "$log"
+python3 -I -c '
+import json, sys
+rows = {r["id"]: r for r in (json.loads(l) for l in open(sys.argv[1])) if "id" in r}
+assert sorted(rows) == ["hx/overrun", "hx/uninit"], rows
+assert rows["hx/uninit"]["status"] == "pass", rows["hx/uninit"]  # -ftrivial-auto-var-init=zero
+# not covered: -fsanitize=bounds is not in the release profile (docs/toolchain.md), so the write lands in the neighbour
+assert rows["hx/overrun"]["status"] == "fail" and "signal" not in rows["hx/overrun"]["reason"] and "s.b" in rows["hx/overrun"]["reason"], rows["hx/overrun"]
+' "$res" || fail "$CUR: results are not the expected two" "$res"
+rm -rf "$scratch"
+
 begin "remote: compile, link and test all execute on RE (fresh, uncached sources)"
 mkdir -p "$scratch"
 nonce="$(date +%s%N)-$$"

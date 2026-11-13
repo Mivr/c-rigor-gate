@@ -2,7 +2,7 @@
 
 ```
 gate/rigor grade --product-repo R --base B --head H --task TASK.toml --product products/<p>/product.toml \
-                 [--approvals DIR] [--sign-key KEY] [--uncached] [--allow-dirty-gate] --work DIR --out verdict.json
+                 [--approvals DIR] [--sign-key KEY] [--tier merge|nightly] [--uncached] [--allow-dirty-gate] --work DIR --out verdict.json
 ```
 Exit 0 = overall PASS, 1 = FAIL, 2 = internal error (the verdict, if written, is FAIL). `--work` is
 emptied (`src`, `tree`, `results`, `test-results`, `facts`, `mutants-reports`, `mutants-perf`) at the start, so re-grading into the same `--work` never reads or collides with a previous run's files; `R` must be a local directory.
@@ -22,20 +22,59 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `clone` | `git clone --no-local --no-hardlinks` of R into `<work>/src` with the hardened git environment of `gitrun` (no replace objects, grafts, fsmonitor, hooks, global config); resolves B and H **in the clone** (commit ids or refs the clone has, e.g. `origin/x`); detached checkout of H. Every later git gate reads the clone, never R. |
 | `contract`, `suppressions` | the existing gates, in process, against the clone, `--task` and `--approvals`. `suppressions` also scans **every file the layout grades at H** (the same file set `assemble` copies; T054, R001 R5) with the same patterns, line by line, so a suppression committed before B (an ungraded ancestor, e.g. under a sanitizer macro) is found. A hit that is in the diff is reported once, as `forbidden-pattern`; any other hit is `forbidden-pattern-in-tree` (error, with path, line, pattern). Approvals use the same scope text and cover both. |
 | `assemble` | builds `<work>/tree` from scratch (below). Findings: `bad-path`, `unsupported-entry` (symlink or gitlink that the layout would copy); info `ignored-by-gate` (a product path that matched `include` but is always excluded), info `product-manifest` (sha256 of the copied product files, so the verdict hash commits to them). An error here means no tree: `build` and `tests-*` are NOT_RUN. |
-| `toolchain` | grader integrity (T073, B33 a; below): is the toolchain the one `toolchains/*.manifest` pins? In an `--uncached` grade it verifies the cached LLVM and sysroot trees once, before anything compiles: PASS with info `toolchain-verified` (`manifests`: path and sha256 of each manifest), or FAIL with error `toolchain-mismatch`. A cached grade: PASS with info `toolchain-not-verified` (`reason: cached grade`). NOT_RUN in an uncached grade without a tree (`assemble` failed). Unless it passed, the gates that compile (`semantic-suppressions`, `symbols`, `build`, `structure`, `mode-divergence`, `mutants`, `witness-tests`, `mutants-witness`) are NOT_RUN (the log names the reason: `<gate> not run: gate toolchain is FAIL`). |
-| `buckfiles` | `rigor buckfiles` over a copy of the product files of the tree only (never the gate's own `BUCK` files). A macro keyword is a string or a list of strings; `c_apk` (T-G3, `docs/products.md`) has keywords of its own (the manifest declaration: strings, `version_code` one int, `permissions` and `assets` lists; `so` must be `:name` of a `c_android_so` of the same BUCK file, no `__`; no `deps`, no flags, no signing keyword, `bad-argument` why `so` or `keyword`); `c_embed` (T112, below) has keywords of its own too (`src`, `symbol` strings, `max_bytes` one int literal, `nul` one `True`/`False` literal, no `srcs`, `headers` or `deps`); `c_catalog` (T105, below) has keywords of its own (no `srcs` or `headers`, but `deps` as usual) and takes one dict, `po`, of language -> list of strings; its `runtime` is one string checked like a `deps` entry (same-cell label, or `bad-argument` why `dep`; a test or a test-derived target is `test-target`); the only computed value (T102) is a package-local source glob, in `srcs` or `headers` of `c_library`, `c_binary` and `c_test`: (1) `glob(["<pat>", ...])`, or (2) one literal non-empty string list and one such glob joined by a single `+`, in either order (`["fp.h"] + glob(["src/*.h"])`). A pattern is `src/<stem>.c` or `src/<stem>.h` (the headers use `.h`), where the stem is a plain name or has exactly one `*` (`src/*.c`, `src/a.c`); no `..`, no leading `/`, no `**`, no other subdirectory. `glob` takes one list and nothing else (no `exclude`, no keyword). Everything else (a glob in `deps`, `tests/**`, `glob + glob`, a variable, a comprehension, any other `+`) stays `bad-argument` (why `value`). The layout check (below) needs nothing: a glob matches only `.c`/`.h` files, which are code by extension and so already covered, and a pattern is not a named file. |
-| `semantic-suppressions`, `symbols` | one Buck2 build (release, `--no-remote-cache` with `--uncached`) of every `kind(c_facts, //...)` target, `gate//ctest:ctest_facts` and `toolchains//:libc_symbols`; then `rigor facts` logic with `products/<p>/policy.toml` (gate-owned, next to `product.toml`; trusted module is `gate//ctest:ctest`, and test targets need their own `[module]` entries). If the facts cannot be built (e.g. the product does not compile) both are NOT_RUN and `build` says why. Metadata has executed/cached action counts. |
+| `toolchain` | grader integrity (T073, B33 a; below): is the toolchain the one `toolchains/*.manifest` pins? In an `--uncached` grade it verifies the cached LLVM and sysroot trees once, before anything compiles: PASS with info `toolchain-verified` (`manifests`: path and sha256 of each manifest), or FAIL with error `toolchain-mismatch`. A cached grade: PASS with info `toolchain-not-verified` (`reason: cached grade`). NOT_RUN in an uncached grade without a tree (`assemble` failed). Unless it passed, the gates that compile (`semantic-suppressions`, `symbols`, `build`, `structure`, `mode-divergence`, `fuzz`, `mutants`, `witness-tests`, `mutants-witness`) are NOT_RUN (the log names the reason: `<gate> not run: gate toolchain is FAIL`). |
+| `buckfiles` | `rigor buckfiles` over a copy of the product files of the tree only (never the gate's own `BUCK` files). A macro keyword is a string or a list of strings; `c_apk` (T-G3, `docs/products.md`) has keywords of its own (the manifest declaration: strings, `version_code` one int, `permissions` and `assets` lists; `so` must be `:name` of a `c_android_so` of the same BUCK file, no `__`; no `deps`, no flags, no signing keyword, `bad-argument` why `so` or `keyword`);; `c_embed` (T112, below) has keywords of its own too (`src`, `symbol` strings, `max_bytes` one int literal, `nul` one `True`/`False` literal, no `srcs`, `headers` or `deps`); `c_catalog` (T105, below) has keywords of its own (no `srcs` or `headers`, but `deps` as usual) and takes one dict, `po`, of language -> list of strings; its `runtime` is one string checked like a `deps` entry (same-cell label, or `bad-argument` why `dep`; a test or a test-derived target is `test-target`); the only computed value (T102) is a package-local source glob, in `srcs` or `headers` of `c_library`, `c_binary` and `c_test`: (1) `glob(["<pat>", ...])`, or (2) one literal non-empty string list and one such glob joined by a single `+`, in either order (`["fp.h"] + glob(["src/*.h"])`). A pattern is `src/<stem>.c` or `src/<stem>.h` (the headers use `.h`), where the stem is a plain name or has exactly one `*` (`src/*.c`, `src/a.c`); no `..`, no leading `/`, no `**`, no other subdirectory. `glob` takes one list and nothing else (no `exclude`, no keyword). Everything else (a glob in `deps`, `tests/**`, `glob + glob`, a variable, a comprehension, any other `+`) stays `bad-argument` (why `value`). The layout check (below) needs nothing: a glob matches only `.c`/`.h` files, which are code by extension and so already covered, and a pattern is not a named file. |
+| `semantic-suppressions`, `symbols` | one Buck2 build (release, `--no-remote-cache` with `--uncached`) of every `kind(c_facts, //...)` target, `gate//ctest:ctest_facts` and `toolchains//:libc_symbols`; then `rigor facts` logic with `products/<p>/policy.toml` (gate-owned, next to `product.toml`; trusted module is `gate//ctest:ctest`, and test targets need their own `[module]` entries). If the facts cannot be built (e.g. the product does not compile) both are NOT_RUN and `build` says why. Metadata has executed/cached action counts. T138: `symbols` also owns the `threads` declaration of every `c_test` (the test facts are its): `threads-undeclared` (error: the test's own objects, or any library in its link closure, reference `pthread_create` or `thrd_create` without `threads = True`, so it has no tsan result; `via` names the modules) and `threads-vacuous` (error: `threads = True` and nothing in the closure references one). A test that links a threading library without starting a thread is treated as threaded on purpose (the facts say what the closure can do, not what a run does); the declaration is read from the `threads` attribute of the test's `ctest_results` target (one `uquery`, only when the product has a test). |
 | `layering` | the architecture contract (T087, `docs/layering.md`): the facts of the `symbols` gate against `products/<p>/architecture.toml`. No such file: PASS with info `no-architecture`. Otherwise it runs only after `toolchain` and `assemble` passed. |
 | `decoupling` | the decoupling rules under a baseline ratchet ([decoupling.md](decoupling.md); why: [lessons-decoupling.md](lessons-decoupling.md)): the `BUCK` files and `#include` lines of the tree plus the facts of the `symbols` gate (no build of its own), against `products/<p>/decoupling.toml` (module kinds and test packages) and `products/<p>/decoupling-baseline.toml` (the violations still tolerated). No `decoupling.toml`: PASS with info `not-applicable`, nothing read. Otherwise NOT_RUN unless `toolchain`, `assemble` and `buckfiles` passed and the facts built. Errors: `unused-dep`, `missing-export`, `needless-export`, `unit-test-links-component`, `unleveled-test`, `library-in-test-package`, `contract-has-behaviour` (each only for a violation the baseline does not list; `entry` is the baseline key), `stale-baseline` (a listed violation that is gone: the fix lands with a gate whose list dropped it) and `interface-changed` (a frozen header of the merge base lost or changed a declaration at the head; never baselined). Info: `interface-extended`, `decoupling-inputs` (sha256 of the two files, so the verdict commits to them). Metadata: per rule `violations`/`new`/`stale`, tests per level, the frozen modules, the fan-out report. |
 | `build` | in the tree: `uquery 'kind(ctest_results, //...)'`, then `build --keep-going --build-report` of all of them in `release` and in `toolchains//:linux_san`. Findings: `build-failed` (target, mode), `missing-output`, `query-failed`, `no-results-targets`. Always ends with `buck2 kill` in the tree. Metadata: executed/cached action counts (from `buck2 log what-ran`, column 3 `cache` = hit), stderr tail. |
 | `structure` | recursion and size/complexity limits (T011, B1, B2; `docs/structure.md`) from clang AST facts. `gate/rigor_lib/grade_structure.py` reads the modules with `uquery` over the `c_facts` and `mutsrc` targets (never from the product's words) and appends one `c_structure` call per module that has sources to the BUCK file of the module's package in the tree (a source can only be named from its own package; the original bytes come back when the step ends, and `buckfiles` has already read the product's files). Header-only modules get no target and are no dependency edge. Tests and fuzz targets have facts and are not graded. The policy is written by the gate from the built modules: the `level` of `products/<p>/policy.toml` (L1, L2, L3; the mutation levels L4 and L5 are L3, the strictest structure level) or none (L3, with a note). A module that does not build is `structure-build-failed`, a policy level for a module the tree does not have is `policy-module-without-facts`, no module at all is `no-structure-modules`; a malformed facts file is exit 2. Needs `assemble` and `build` to have passed (a product that does not compile has no facts), otherwise NOT_RUN. Release build, `--no-remote-cache` with `--uncached`, executed/cached counts in the metadata. |
-| `mode-divergence` | `rigor facts --modes` (T023, B3; `docs/product-checks.md` "Modes") over the release facts of every `kind(c_facts, //...)` target and the `san` twins `kind(c_san_facts, //...)`, each with its `[calls]` output. A target without a twin (either way) is `missing-san-twin` / `missing-release-twin`, one that does not build is `modes-build-failed`; in both cases no comparison is made. Malformed or one-sided directories are exit 2. Same preconditions, caching and metadata as `structure`. Both gates sit right after `build` and before the tests: they only need a tree that compiles, they are cheap next to `mutants`, and a failing test does not hide them. |
+| `mode-divergence` | `rigor facts --modes` (T023, B3; `docs/product-checks.md` "Modes") over the release facts of every `kind(c_facts, //...)` target and the `san`, `msan` and `tsan` twins (`kind(c_san_facts, //...)`, `c_msan_facts`, `c_tsan_facts`; T138), each with its `[calls]` output, release against each mode in turn (`only_in` names the mode). A target without a twin (either way) is `missing-san-twin` / `missing-msan-twin` / `missing-tsan-twin` / `missing-release-twin`, except a target with a sysroot library beyond libc and pthread in its closure, which has no msan twin and is left out of the msan comparison; one that does not build is `modes-build-failed`; in both cases no comparison is made. Malformed or one-sided directories are exit 2. Same preconditions, caching and metadata as `structure`. Both gates sit right after `build` and before the tests: they only need a tree that compiles, they are cheap next to `mutants`, and a failing test does not hide them. |
 | `tests-release`, `tests-san` | the `tests` gate over the results artifacts of that mode, with `products/<p>/expected-tests.json` and, if present, `expected-tests.previous.json` (both next to `product.toml`, gate-owned). NOT_RUN if the build of that mode was not clean. In role `test-author` (T041) only presence is judged (`tests --presence-only`: `missing-test`, `duplicate-test`, parse problems, `test-removed`, empty lists), not pass/fail or assertions: the head is the stub commit; metadata `statuses_judged: false`. |
+| `tests-msan`, `tests-tsan` | (T138, P003 §7.1; `grade_sanmodes.py`, below) the `tests` rules over the results of the msan and tsan modes. Each builds the results targets its mode has, in one Buck2 build of the head tree (`--no-remote-cache` with `--uncached`), NOT_RUN under the conditions of `tests-san` (no clean release and san results; the release results say which ids each target holds) and, like every gate that compiles, until `toolchain` passed. `tests-msan` expects every expected id except those of a test whose link closure has a sysroot library beyond libc and pthread (no msan results target): info `msan-not-applicable` (`target`, `library`) for each; anything else missing is `missing-test`. `tests-tsan` expects exactly the ids of the tests declared `threads = True`; a product with none passes with info `no-threaded-tests`. Results that the farm could not produce because the sanitizer runtime died at start-up are the one error `sanitizer-startup` (`mode`, `prerequisite`: the RE worker must allow `personality(ADDR_NO_RANDOMIZE)`), never a list of missing tests, and never retried. Other build failures are `build-failed` (`mode`, `target`). In role `test-author` they judge presence only, as `tests-san` does. Both tiers run both gates. |
 | `tests-stub` | role `test-author` only (T041, P002 Q2; below): every new expected id fails on the stubs in both modes. Any other role: PASS with info `not-applicable`. |
+| `fuzz` | the fuzz runs of every `c_fuzz` target of the product, judged by `rigor fuzz` in process (T129, P003 §7.2; "Fuzz in the pipeline" below, `docs/fuzz.md`). Findings of the judge (`fuzz-crash`, `fuzz-missing`, `fuzz-harness-no-call`, `fuzz-not-run`, `fuzz-short`, `fuzz-regression-missing`) and `fuzz-build-failed` (a target that did not build or lacks an output). A product without a `c_fuzz` target and without a module that must be fuzzed passes with info `no-fuzz-targets`, role `test-author` with `not-applicable`. NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed (and the facts built). |
 | `perf` | the cost counts of the perf targets of the policy and of the perf bundle, judged against their complexity classes (T090, `docs/perf.md` "Judging"). Findings `perf-class-exceeded`, `perf-counter-unavailable`, `perf-record-bad`, `perf-build-failed`; a product without perf targets passes with info `no-perf-targets`, role `test-author` with `not-applicable`. NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. It writes `gate-perf/` into the tree, builds the `<name>_perf` targets in the release platform and removes the package again. |
 | `mutants` | mutation testing of every product module the policy puts at L2 or above (below). NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. In role `test-author`: PASS with info `not-applicable` (mutating stubs only gives `baseline-red`). |
 | `witness-tests`, `mutants-witness` | the witness gates (T039; `docs/witness.md`, P002), below. |
 | verdict | `rigor verdict` over `gate/order.txt`, plus `inputs`; with `--sign-key` (and a clean gate), `ssh-keygen -Y sign -n c-rigor-gate-verdict` writes `verdict.json.sig`. |
+
+## Fuzz in the pipeline (T129, P003 §7.2, G23)
+The `fuzz` gate runs after `tests-stub` and before `perf`. It needs `assemble`, `buckfiles`, `build` and both `tests-*` to have
+passed and the facts to exist, otherwise NOT_RUN; it runs only after `toolchain` passed like every gate that compiles
+(`grade_fuzz.py`).
+
+1. **Targets.** `uquery 'kind(fuzz_run, //...)'` in the grading tree lists every product `c_fuzz` target (never the product's
+   words about them). One `build --target-platforms toolchains//:linux_fuzz --keep-going --build-report` builds the five outputs of
+   all of them (`[verdict]`, `[report]`, `[crash]`, `[stats]`, `[replayed]`). A transport failure of Buck2 (the text of
+   `grade_build.transport_failure`) that leaves a target unbuilt is retried once, as the mutants build does; nothing else is
+   retried. A target that does not build, or builds without one of its outputs, is `fuzz-build-failed` (error, `target`).
+2. **Judging.** The outputs are copied into `<work>/fuzz/` in the layout `rigor fuzz` reads (`index.json` and `t<N>.*` per target)
+   and judged in process with the policy and the facts of the `symbols` gate and, if present, `fuzz-regressions.json`.
+3. **What must be fuzzed** (gate-owned, `products/<p>/policy.toml`): a module with `fuzz = true`, or whose `profile` list
+   contains `parser` (T127), needs a `c_fuzz` target that lists it in `deps` (`fuzz-missing` otherwise); `fuzz_runs` is its budget
+   (default 200000, at most 2000000). Every reader of the policy accepts `fuzz`, `fuzz_runs` and `profile` (a unit test loads one
+   policy with the three keys through each of them).
+4. **Regression inputs.** `products/<p>/fuzz-regressions.json` (`{"<target label>": ["<sha256>", ...]}`, optional, next to
+   `expected-tests.json`) is snapshotted into `<work>/inputs/product` and bound into the verdict as `inputs.fuzz_regressions_sha256`
+   (null without the file), like the other gate-owned inputs.
+5. **Cache.** The run is deterministic (fixed seed, a number of runs, never a time), so the action cache answers a repeat grade:
+   `executed_actions` is 0 the second time. `--uncached` adds `--no-remote-cache` as for every build. Metadata: `executed_actions`,
+   `cached_actions`, `exit_code`, `required_modules` and per target `runs_done`, `corpus_files`, `replayed`, `phase`.
+6. **Roles.** `test-author`: PASS with info `not-applicable` (the stubs are not fuzzed), as for `mutants`.
+
+A graded `c_fuzz` may name a `corpus` and a `runs` (T135): `buckfiles` accepts `corpus` (a list of string literals, the form `srcs`
+has on a `c_fuzz`; no `glob`) and `runs` (an integer literal) on `c_fuzz` only. The corpus files are product files: the layout
+must include them (a copied `BUCK` that names one makes it a named file, so outside `layout.include` it is `ungraded-path`, see
+"Layout coverage"), and the replay and the budget run as in `docs/fuzz.md`. The policy's budget still wins: `runs` below it is
+`fuzz-short`. An input that once crashed is committed into the corpus and its sha256 into the gate-owned `fuzz-regressions.json`
+(beside `policy.toml`, bound into `core.inputs.fuzz_regressions_sha256`); the gate's metadata shows it under `replayed`. The
+canaries `fuzz-crash`, `fuzz-missing`, `fuzz-vacuous-harness`, `fuzz-regression-dropped` (the corpus without the input),
+`fuzz-regression-crashes` (replay crash) and `fuzz-budget-lowered` and the controls `fuzz-green` and `fuzz-corpus-replayed` are red
+or green on this gate only; `selftest/grade.sh` grades a product with a clean target (gate PASS), the same head again (0 fuzz actions)
+and the four corpus and budget cases above.
+Because the libFuzzer binary of a `c_fuzz` (`<name>__bin`) is a `cxx_binary`, the mutants gate's layout query leaves out the
+binaries that a `fuzz_run` target names in its `binary` attribute (otherwise it would ask for a `level`).
 
 ## `c_catalog`: translations as a const C catalog (T105, G9)
 ```
@@ -194,6 +233,48 @@ so the gate reads the head's results of both modes and builds nothing.
   tests may fail on the head (the A018 shape). A contract without `role` is `implementer`: a stubbed head graded so
   fails `test-not-pass`.
 
+## Grade tiers: `--tier merge|nightly` (T137, P003 §9, D2)
+`rigor grade --tier merge|nightly`, default `nightly`. **`nightly` is the whole grade, exactly what `rigor grade` was
+before tiers.** `merge` is the grade a merge bot can afford: it differs in one place today, the mutation of the modules
+whose mutation can only report (below). The tier is bound into the verdict (`inputs.tier`, in the hashed `core`), so a
+merge PASS and a nightly PASS of the same inputs have different `core_sha256` and cannot be confused; `rigor verify`
+prints the tier and `--require-tier TIER` refuses a verdict of the other one.
+
+| gate | `nightly` | `merge` |
+|---|---|---|
+| every gate but the two below | runs | runs, unchanged |
+| `tests-msan`, `tests-tsan` (T138) | run | run, unchanged (both tiers run both gates) |
+| `mutants` | every module at L2 or above is built, run and judged | the modules that can only report are **deferred** (not built, not run); the others as in `nightly` |
+| `mutants-witness` | every module of the witness scope | the same deferral rule |
+
+**No other gate changes with the tier.** Later tasks add a row to this table for what they move; they do not invent a
+second mechanism (the tier is one string, `grade_tier.tier_of`, read from `args.tier`).
+
+**The deferral rule** (`gate/rigor_lib/grade_tier.py`). A module is deferred at tier `merge` when no finding of its
+mutation can be an error:
+- a module whose policy table declares no `profile`: level L2 (a surviving mutant is an info finding there). L3, L4 and L5
+  are mutated, judged as today;
+- a module that declares `profile` is judged by the technique matrix (`profiles.required`, P003 §4.1): it is deferred
+  unless `mutation_zero_survivors` is a `gate` for its profiles at its level (`pure` and `parser` gate from L3, `safety`
+  at every level; `adapter` and `concurrent` only report; `wiring` and `ui` have no mutation cell; with several
+  profiles one gating profile is enough). A profiled `adapter` at L3 is therefore deferred at merge even though a module
+  without a profile at L3 is not. An unknown profile or level is never deferred (the `policy-check` gate reports it).
+
+Each deferred module is an info finding `mutation-deferred` (`module`, `level`, `reason`) of the gate; the gate metadata
+has `tier` and `deferred` (the count). The metadata of a nightly grade has neither, and its findings are what they were.
+If every module is deferred the gate passes with the infos; `no-mutated-modules` still means the product has no module at
+L2 or above at all, in either tier. Findings that come from the plan, before a module is deferred (`level-missing`,
+`module-without-tests`, `unresolved-link-dep`, `unmutatable-module`, ...), are raised in both tiers.
+
+**What a deferred module can no longer raise at merge** (the nightly tier still raises all of them): `no-mutants` (an
+error at every level: a source with functions but no mutants), `all-unviable`, `mutants-build-failed` and
+`perf-build-failed` for it (nothing is built), the missing or malformed run reports of its mutants, and, for a profiled
+module at L3 or above whose profile only reports mutation, `survived-mutant`, `unviable-ratio`, `unmutated-function` and
+the other level-dependent errors (`rigor mutants` still judges every level L3 and above strictly, and the nightly grade
+does so as before). At L2 `unviable-ratio`, `unmutated-function` and survivors were info findings already; what is lost
+there is the report itself. A merge PASS is thus no evidence about these, which is why `rigor verify --require-tier
+nightly` exists for a bot that needs the whole grade.
+
 ## Mutation testing in the pipeline (`mutants`, T008)
 `gate/rigor_lib/grade_mutants.py`. What is mutated, and against which tests, is decided by the gate alone:
 - **Levels.** `products/<p>/policy.toml` (gate-owned) has `level = "L1".."L5"` per module table. Every `c_library`
@@ -334,6 +415,7 @@ the same `core_sha256`, whether the build was cold or fully cached; changing any
 | `buckconfig_sha256` | the generated `.buckconfig` (from the `assemble` manifest) |
 | `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | `toolchains/BUCK`, the LLVM and sysroot archive pins in it, and the Buck2 binary pin (`tools/buck2.version`), all from the assembled tree and checked against the manifest |
 | `uncached` | the `--uncached` flag (also kept as `core.uncached`) |
+| `tier` | `merge` or `nightly` (`--tier`, T137); a verdict of one tier never has the `core_sha256` of the other |
 
 **Unused approvals (T068).** `core.unused_approvals` is a verdict-level list (hashed with the rest of `core`, so it cannot
 be dropped silently; always present, `[]` without `--approvals`). After all gates ran, every *valid* approval (signed,
@@ -367,13 +449,15 @@ error (exit 2) before `clone`. `verdict.metadata.order_file` is now the snapshot
 ```
 gate/rigor verify --verdict verdict.json --allowed-signers SIGNERS \
     --expect-head <40-hex head> --expect-gate <40-hex gate commit> --expect-policy-sha <sha256 of policy.toml> \
-    [--require-uncached] [--signature verdict.json.sig]
+    [--require-uncached] [--require-tier merge|nightly] [--signature verdict.json.sig]
 ```
 Exit 0 only for a trustworthy PASS; exit 1 prints every reason it was rejected (`REJECTED: ...`); exit 2 is an
 internal error (unreadable file, no `ssh-keygen`). It checks, in order: the SSH signature over the exact file bytes
 (`ssh-keygen -Y verify`, namespace `c-rigor-gate-verdict`; `SIGNERS` must allow that namespace, the approvals
 `gate/allowed_signers` does not), then `core_sha256` recomputed from `core`, `overall == PASS`, every required input
 present and well formed, `gate_clean == true`, `core.uncached == inputs.uncached`, and the `--expect-*` values.
+`--require-tier TIER` rejects a verdict graded at another tier (`tier is merge, expected nightly`); the tier of the verdict is
+printed on every run (`rigor verify: tier merge`), also when it is rejected.
 `--expect-policy-sha` is the sha256 of the policy file the merge bot trusts (`sha256sum products/<p>/policy.toml`).
 Trust is keyed on `core_sha256` only together with these expectations.
 
