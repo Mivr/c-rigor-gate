@@ -105,7 +105,7 @@ flags: no flag had to match across objects to link.
 `Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz`, so counts are compared on one CPU model as `docs/perf.md` requires). Each cell
 is the larger change of the two sizes, against the build with no flag. `*`: `libc_bytes` also changed. The first six rows are
 the declared targets (the fixtures that exist for the gate's `c_perf` selftests); the last three are stress fixtures added by
-T139 for the shapes the flags touch, reported, not part of the decision.
+T139 for the shapes the flags touch, reported, not part of the decision. `abuf` is not in `selftest/perf.sh`: with auto-init on, two builds of the same code that differ only in a nonce string constant counted 123550 and 125741 instructions (1.8%), a code-layout effect that the agreement rule of `docs/perf.md` rightly refuses, so its row was measured once, from a fixture that is not kept.
 
 | fixture | instructions, no flag (small n, large n) | auto-init | bounds | stack-prot. | fortify | flex-arrays | all five | the three under 3% |
 |---|---|---|---|---|---|---|---|---|
