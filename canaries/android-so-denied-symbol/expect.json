@@ -1,0 +1,9 @@
+{
+  "bypass": "a denied symbol in a shared object that has no Linux build",
+  "description": "T-G2/B1: a c_android_so whose own source calls getenv(). Its sources compile only in the android mode, so the Linux facts never see it; the android facts must reach the symbols gate.",
+  "fail": {
+    "symbols": [
+      "denied-symbol"
+    ]
+  }
+}

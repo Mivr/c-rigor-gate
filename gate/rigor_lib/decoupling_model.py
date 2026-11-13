@@ -15,7 +15,7 @@ from rigor_lib import buckfiles, decoupling_scan
 from rigor_lib.errors import InternalError
 
 LIBRARY_KINDS = ("c_library", "c_catalog", "c_embed")
-JUDGED_KINDS = ("c_library", "c_binary", "c_test", "c_fuzz")   # the kinds whose dependency lists are judged
+JUDGED_KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_android_so")   # the kinds whose dependency lists are judged
 GENERATED_KINDS = ("c_catalog", "c_embed")                     # their header is `<package>/<name>.h`, made by the build
 PRIVATE_DIR = "src/"                                           # headers under it are not public (the gate's glob form)
 

@@ -31,10 +31,14 @@ from rigor_lib.findings import GateResult, finding
 BUILD_FILE = "BUCK"
 LOAD_LINE = 'load("@gate//rules:structure.bzl", "c_structure")\n'
 RELEASE = "toolchains//:linux_release"
+ANDROID = "toolchains//:android_release"
 SAN = "toolchains//:linux_san"
 FACTS_RULE = "c_facts"
+STRUCTURE_FACTS_RULE = "^(c_facts|c_android_facts)$"   # a c_android_so's facts are read in the android mode (T-G2)
+ANDROID_KIND = "c_android_so"
+ANDROID_LOAD_LINE = 'load("@gate//rules:structure.bzl", "c_android_structure")\n'
 SAN_RULE = "c_san_facts"
-KINDS = ("c_library", "c_binary", "c_test", "c_fuzz")
+KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", ANDROID_KIND)
 MAX_STRUCTURE_LEVEL = "L3"
 _ROOT = "root//"
 _GATE = "gate//"
@@ -143,6 +147,11 @@ def _quoted(text):
 
 def call_text(module):
     """The `c_structure` call of one module, written in the BUCK file of its package."""
+    if module.kind == ANDROID_KIND:
+        return ("c_android_structure(\n    name = %s,\n    module = %s,\n    srcs = %s,\n    headers = %s,\n"
+                "    deps = %s,\n    facts_name = %s,\n)\n"
+                % (_quoted(target_name(module)), _quoted(":" + module.unit.rpartition(":")[2]), _list(module.srcs),
+                   _list(module.headers), _list(module.deps), _quoted(module.label.rpartition(":")[2])))
     return ("c_structure(\n    name = %s,\n    module = %s,\n    srcs = %s,\n    headers = %s,\n"
             "    deps = %s,\n    kind = %s,\n    facts_name = %s,\n)\n"
             % (_quoted(target_name(module)), _quoted(":" + module.unit.rpartition(":")[2]), _list(module.srcs),
@@ -152,7 +161,8 @@ def call_text(module):
 
 def extended_text(original, modules):
     """The BUCK file with the load first and the calls after it."""
-    return LOAD_LINE.encode("utf-8") + original + b"\n" + "\n".join(call_text(m) for m in modules).encode("utf-8")
+    loads = LOAD_LINE + (ANDROID_LOAD_LINE if any(m.kind == ANDROID_KIND for m in modules) else "")
+    return loads.encode("utf-8") + original + b"\n" + "\n".join(call_text(m) for m in modules).encode("utf-8")
 
 
 def structure_level(level):
@@ -221,7 +231,7 @@ def query_labels(tree, expression):
 
 
 def read_modules(tree):
-    facts = query_json(tree, "kind(%s, //...)" % FACTS_RULE, "^(kind|srcs|facts_deps|unit|facts_name)$")
+    facts = query_json(tree, "kind(%s, //...)" % STRUCTURE_FACTS_RULE, "^(kind|srcs|facts_deps|unit|facts_name)$")
     mutsrc = query_json(tree, "kind(mutsrc, //...)", "^headers$")
     return parse_modules(facts, mutsrc)
 
@@ -291,7 +301,18 @@ def _structure(g, originals):
         return GateResult(structure.GATE_ID, found, {"modules": {}})
     originals.update(extend_build_files(g.tree, modules))
     labels = [target_label(m) for m in modules]
-    results, metadata = run_build(g, RELEASE, labels, "structure")
+    linux = [target_label(m) for m in modules if m.kind != ANDROID_KIND]
+    results, metadata = run_build(g, RELEASE, linux, "structure") if linux else ({}, {"executed_actions": 0, "cached_actions": 0, "exit_code": 0})
+    android = [target_label(m) for m in modules if m.kind == ANDROID_KIND]
+    if android:
+        # A c_android_so has no Linux build: its structure facts come from the android mode (NDK clang, NDK headers).
+        more, extra = run_build(g, ANDROID, android, "structure-android")
+        results = {**results, **more}
+        for key in ("executed_actions", "cached_actions"):
+            metadata[key] += extra[key]
+        metadata["exit_code"] = metadata["exit_code"] or extra["exit_code"]
+        if "stderr_tail" in extra:
+            metadata["stderr_tail"] = metadata.get("stderr_tail", "") + extra["stderr_tail"]
     directory = fresh_dir(g, "structure-facts")
     built = []
     for index, label in enumerate(labels):
