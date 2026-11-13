@@ -118,7 +118,7 @@ allow = ["memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/lockers/itest/pad:pad_phase_test"]
-allow = ["memset"]
+allow = ["memset", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/itest/pad:pad_scan_test"]
@@ -510,7 +510,7 @@ exports = ["main"]
 [module."//apps/lockers/lk/codesfile:codesfile"]
 level = "L3"
 impl = ["apps/lockers/lk/codesfile/src/**"]
-allow = []
+allow = ["memset"]
 exports = ["cf_num_too_big", "lk_cache_decode", "lk_cache_encode", "lk_codes_begin", "lk_codes_feed",
     "lk_codes_parse", "lk_offline_start"]
 
@@ -709,7 +709,7 @@ allow = ["bcmp", "memcmp", "strlen", "strncmp"]
 exports = ["main"]
 
 [module."//apps/lockers/lk/preflight:pf_check_test"]
-allow = ["bcmp", "strlen", "strncmp"]
+allow = ["bcmp", "memset", "strlen", "strncmp"]
 exports = ["main"]
 
 [module."//apps/lockers/lk/preflight:pf_codes_test"]
@@ -868,7 +868,7 @@ exports = ["main"]
 [module."//apps/lockers/lk/syncbody:syncbody"]
 level = "L3"
 impl = ["apps/lockers/lk/syncbody/src/**"]
-allow = []
+allow = ["memset"]
 exports = ["jdec_next", "jobj_scan", "lk_sync_batch", "lk_sync_batch_body_len", "lk_sync_batch_count",
     "lk_sync_batch_finish", "lk_sync_batch_last_seq", "lk_sync_batcher_init", "lk_sync_parse_acked",
     "lk_sync_parse_stored", "lk_sync_parse_whoami", "lk_sync_snapshot", "lk_sync_status", "sb_emit",
@@ -1575,7 +1575,7 @@ exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count",
     "kit_tmpdir", "main"]
 
 [module."//apps/lockers/lkapp/posixio:out_test"]
-allow = ["__xstat", "accept", "bind", "close", "closedir", "fchmod", "fcntl", "getsockname",
+allow = ["__errno_location", "__xstat", "accept", "bind", "close", "closedir", "fchmod", "fcntl", "getsockname",
     "in6addr_loopback", "listen", "memset", "mkdtemp", "opendir", "poll", "read", "readdir", "setitimer",
     "sigemptyset", "snprintf", "write"]
 deny_exempt = ["getenv", "open", "pipe", "sigaction", "socket"]
@@ -2627,7 +2627,7 @@ allow = ["strcmp", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/relay/pulse:lockpath_v6_test"]
-allow = []
+allow = ["memcpy", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/relay/pulse:pulse"]
