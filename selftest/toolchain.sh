@@ -144,7 +144,7 @@ for m in release san; do
 done
 rm -rf "$xs"
 
-begin "hardened release profile (T139): automatic variables start zeroed, a smashed stack aborts; an array overrun is NOT trapped"
+begin "hardened release profile (T139): automatic variables start zeroed; an array overrun is NOT trapped"
 mkdir -p "$scratch"
 cat > "$scratch/BUCK" <<'BUCK'
 load("@gate//rules:c.bzl", "c_test")
@@ -156,7 +156,6 @@ cat > "$scratch/hx.c" <<'C'
 #include "ctest/ctest.h"
 
 static volatile size_t g_idx = 4;
-static volatile size_t g_len = 32;
 struct box { int a[4]; int b; };
 
 /* An index that is one past a fixed array inside a struct: written through, it lands in the neighbour. */
@@ -186,16 +185,7 @@ __attribute__((noinline)) static long sum_uninit(void) {
 /* Reads an automatic array nobody wrote, right after a call left 0xA5 on that part of the stack. */
 static void t_uninit(ctest_t *t) { dirty(); CHECK_EQ_I64(t, sum_uninit(), 0); }
 
-__attribute__((noinline)) static void smash(size_t n) {
-    char buf[8];
-    size_t i;
-    memset(buf, 'A', sizeof buf);
-    __asm__ volatile("" : : "r"(buf) : "memory");
-    for (i = 0; i < n; i++) { ((volatile char *)buf)[i] = 'B'; }
-}
-static void t_smash(ctest_t *t) { smash(g_len); CHECK(t, 1); }
-
-CTEST_SUITE("hx", { "overrun", t_overrun }, { "smash", t_smash }, { "uninit", t_uninit })
+CTEST_SUITE("hx", { "overrun", t_overrun }, { "uninit", t_uninit })
 C
 log="$out/$step.log"
 run "$log" build //selftest/scratch:hx_results --show-output || fail "$CUR: build failed" "$log"
@@ -204,12 +194,11 @@ res="$(awk '/hx_results/ && /buck-out/ {print $2}' "$log" | tail -1)"
 python3 -I -c '
 import json, sys
 rows = {r["id"]: r for r in (json.loads(l) for l in open(sys.argv[1])) if "id" in r}
-assert sorted(rows) == ["hx/overrun", "hx/smash", "hx/uninit"], rows
+assert sorted(rows) == ["hx/overrun", "hx/uninit"], rows
 assert rows["hx/uninit"]["status"] == "pass", rows["hx/uninit"]  # -ftrivial-auto-var-init=zero
-assert rows["hx/smash"]["status"] == "fail" and "signal 6" in rows["hx/smash"]["reason"], rows["hx/smash"]  # -fstack-protector-strong: abort
 # not covered: -fsanitize=bounds is not in the release profile (docs/toolchain.md), so the write lands in the neighbour
 assert rows["hx/overrun"]["status"] == "fail" and "signal" not in rows["hx/overrun"]["reason"] and "s.b" in rows["hx/overrun"]["reason"], rows["hx/overrun"]
-' "$res" || fail "$CUR: results are not the expected three" "$res"
+' "$res" || fail "$CUR: results are not the expected two" "$res"
 rm -rf "$scratch"
 
 begin "remote: compile, link and test all execute on RE (fresh, uncached sources)"

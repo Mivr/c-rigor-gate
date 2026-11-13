@@ -81,8 +81,12 @@ The shipped binary is the `release` build, and the sanitizers run in other modes
 pinned LLVM 19.1.7 and sysroot (glibc 2.31) on the `c_perf` targets and adopted the ones the owner's rule allows: **adopt
 a flag only if every declared `c_perf` target moves by under 3% in instructions** (D5; the threshold is not tuned).
 
-**Adopted (release mode only; `_HARDENED_RELEASE` in `rules/c.bzl`):** `-ftrivial-auto-var-init=zero`,
-`-fstack-protector-strong`, `-fstrict-flex-arrays=3`. **Not adopted:** `-fsanitize=bounds -fsanitize-trap=bounds`
+**Adopted (release mode only; `_HARDENED_RELEASE` in `rules/c.bzl`):** `-ftrivial-auto-var-init=zero` and
+`-fstrict-flex-arrays=3`. **Under 3% but deferred:** `-fstack-protector-strong`: every function with a stack array then
+imports `__stack_chk_fail`, which the `symbols` gate (`gate/rigor_lib/facts_symbols.py`, `facts_data.py`) reports as
+`undeclared-symbol`, so `selftest/product_checks.sh` and `selftest/third_party.sh` fail with it. Adopting it needs that
+gate to know the compiler-implied import (outside T139's paths); the flag is measured and verified below, not on.
+**Not adopted:** `-fsanitize=bounds -fsanitize-trap=bounds`
 (+21.2% on `bsearch`, +34.6% on `nlogn`) and `-D_FORTIFY_SOURCE=3` (+5.4% on `mmove`, and it hides libc calls from
 `libc_bytes`, see below). The other modes are untouched. Gate-owned third-party code (`rules/third_party.bzl`) keeps its own
 flags: no flag had to match across objects to link.
@@ -103,7 +107,7 @@ is the larger change of the two sizes, against the build with no flag. `*`: `lib
 the declared targets (the fixtures that exist for the gate's `c_perf` selftests); the last three are stress fixtures added by
 T139 for the shapes the flags touch, reported, not part of the decision.
 
-| fixture | instructions, no flag (small n, large n) | auto-init | bounds | stack-prot. | fortify | flex-arrays | all five | adopted three |
+| fixture | instructions, no flag (small n, large n) | auto-init | bounds | stack-prot. | fortify | flex-arrays | all five | the three under 3% |
 |---|---|---|---|---|---|---|---|---|
 | lin | 115051, 460051 | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% |
 | quad | 21452986, 342312026 | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% |
@@ -116,8 +120,8 @@ T139 for the shapes the flags touch, reported, not part of the decision.
 | mcpy (`memcpy` of a run-time length into a member) | 82463, 329963 | +0.00% | +24.24% | +0.00% | +21.21%* | +0.00% | +45.45%* | +0.00% |
 
 Worst move on the declared targets: auto-init 0.33%, stack protector 0.33%, flex-arrays 0%, fortify 5.38%, bounds
-34.56%, all five 34.56%, the adopted three 0%. **Decision by the rule:** the whole set fails (bounds, fortify); the largest
-subset under 3% on every declared target is auto-init + stack protector + flex-arrays, which is what is adopted. The
+34.56%, all five 34.56%, the three under 3% 0%. **Decision by the rule:** the whole set fails (bounds, fortify); the largest
+subset under 3% on every declared target is auto-init + stack protector + flex-arrays; the stack protector is held back only by the `symbols` gate (above), so auto-init + flex-arrays is what is adopted. The
 stress fixtures say what the declared targets cannot: `abuf` pays +20% for zeroing a 384-byte frame (the price of
 `-ftrivial-auto-var-init=zero` on a hot function with a big buffer), `stab` +23% for bounds checks on an array index the
 compiler cannot bound. A product whose own `c_perf` targets are of that shape sees those numbers; its targets are the
@@ -128,10 +132,10 @@ Two measurement notes. (1) `-D_FORTIFY_SOURCE=3` turns `memcpy`, `memmove` and `
 800020000 to 0). Adopting fortify later needs the `__*_chk` names added to `rules/perf.bzl` first. (2) The stack protector
 and auto-init each lower the `mmove` count by 0.3% (about 12 thousand instructions, a compiler code-layout effect), and the three together leave it unchanged.
 
-**What the adopted set covers:** a stack overrun that reaches the canary aborts; an automatic variable is never
+**What the adopted set covers:** an automatic variable is never
 indeterminate (a read of one yields zero, and the sanitizer modes still find the read, in their own build). **What it does
 not cover:** an array index past the end of a fixed array inside a struct is NOT trapped (the neighbour is read or written;
-`selftest/toolchain.sh` pins that this is today's behaviour); an overflowing `memcpy` into a sized object is not stopped
+`selftest/toolchain.sh` pins that this is today's behaviour); a stack overrun is not caught until the stack protector is adopted; an overflowing `memcpy` into a sized object is not stopped
 (a stack canary may catch it by layout luck, not by design); a pointer plus a separate length is not bounds-checked, with
 or without `-fsanitize=bounds`; heap objects do not exist in product code; uninitialised static data is already zero.
 `-fbounds-safety`, which would check every pointer-plus-length pair, is not complete in upstream Clang and is not in the
