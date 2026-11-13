@@ -39,7 +39,7 @@ def _compile_prefix(ctx, headers, toolchain):
     info = ctx.attrs.module[DefaultInfo].sub_targets["argsfiles"][DefaultInfo]
     argsfile = None
     for item in info.other_outputs:
-        if type(item) == "Artifact" and item.basename.endswith(".cxx_compile_argsfile") and (".pic." in item.basename) == ctx.attrs.pic:
+        if type(item) == "Artifact" and item.basename.endswith(".cxx_compile_argsfile") and (ctx.attrs.pic or ".pic." not in item.basename):
             argsfile = item
     if argsfile == None:
         fail("{}: no compile argsfile found".format(ctx.attrs.module.label))
