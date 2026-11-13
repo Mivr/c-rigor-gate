@@ -1,0 +1,12 @@
+{
+  "bypass": "an interface module with behaviour",
+  "description": "//util:util is declared a contract, but it depends on //core:core (not a contract, not in may_use) and its object calls malloc. contract-has-behaviour (reasons dep and symbol).",
+  "fail": {
+    "decoupling": [
+      "contract-has-behaviour"
+    ]
+  },
+  "contains": {
+    "decoupling": "malloc"
+  }
+}

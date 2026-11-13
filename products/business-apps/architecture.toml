@@ -3,7 +3,7 @@
 # Layers with no module yet are empty; they are listed so the order is fixed before the first module lands.
 [layers]
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
-         "app-domain", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root"]
+         "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -54,21 +54,32 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/lkapp/checkconfig:testkit",
            "//apps/lockers/lkapp/e2e:testkit",
            "//apps/lockers/lkapp/posixio:testkit",
+           "//apps/lockers/lkapp/runtime:realkit",
            "//apps/lockers/lkapp/runtime:testkit",
            "//apps/lockers/lkapp/winpolicy:testkit",
            "//apps/lockers/lkapp/wire:testkit",
            "//apps/lockers/lkrx/boot:testkit",
+           "//apps/lockers/lkrx/boot:unitkit",
            "//apps/lockers/lkrx/catalog:testkit",
            "//apps/lockers/lkrx/codes:testkit",
+           "//apps/lockers/lkrx/codes:unitkit",
            "//apps/lockers/lkrx/fold_core:testkit",
            "//apps/lockers/lkrx/fold_status:testkit",
            "//apps/lockers/lkrx/notice:testkit",
+           "//apps/lockers/lkrx/notice:unitkit",
            "//apps/lockers/lkrx/pad:testkit",
+           "//apps/lockers/lkrx/pad:unitkit",
            "//apps/lockers/lkrx/shift:testkit",
+           "//apps/lockers/lkrx/shift:unitkit",
            "//apps/lockers/lkrx/sync:testkit",
+           "//apps/lockers/lkrx/sync:unitkit",
            "//apps/lockers/lkrx/view:testkit",
+           "//apps/lockers/lkrx/view:unitkit",
+           "//apps/lockers/lkrx/view:unitkit2",
            "//apps/lockers/lkrx/visit:testkit",
+           "//apps/lockers/lkrx/visit:unitkit",
            "//apps/lockers/lkrx/vstate:testkit",
+           "//apps/lockers/lkrx/vstate2:testkit",
            "//apps/lockers/lksim/board:testkit",
            "//apps/lockers/lkui/notices:testkit",
            "//apps/lockers/lkui/input:testkit",
@@ -90,6 +101,10 @@ modules = ["//lib/sim/**"]
 # catalogs, lkapp = composition root and shells. A dependency on a higher layer is an upward-edge whatever the edges say.
 [layer."app-domain"]
 modules = ["//apps/lockers/lk/**"]
+
+# The contracts (interface modules; gate decoupling): no module yet. The first one adds its package here.
+[layer."app-contract"]
+modules = ["//apps/lockers/lkc/**"]
 
 [layer."app-safety"]
 modules = ["//apps/lockers/relay/**"]
@@ -784,6 +799,11 @@ to = "//lib/ui/fontdata:liberation_sans"
 kind = "pure"
 
 [[edge]]
+from = "//lib/ui/uikit:uikit"
+to = "//lib/ui/fontdata:liberation_sans_bold"
+kind = "pure"
+
+[[edge]]
 from = "//lib/ui/lvrender:lvrender"
 to = "//lib/ui/scenediff:scenediff"
 kind = "pure"
@@ -810,3 +830,84 @@ from = "//apps/lockers/lkui/input:input"
 to = "//lib/rt/rxwire:rxwire"
 kind = "pure"
 
+# P007 contracts (business-apps plan/P007-decoupling.md): what a contract may include (decoupling.toml may_use), and
+# who may include a contract. All `data`: a header-only contract defines no symbol.
+[[edge]]
+from = "app-contract"
+to = "lib-base"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//lib/rt/ev:ev"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/types:types"
+kind = "data"
+
+# P007 C2 (owner decision 2026-11-12): a contract may include the domain value modules lk/book, lk/codeset,
+# lk/inventory and lk/report for their types (decoupling.toml may_use).
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/book:book"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/codeset:codeset"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/inventory:inventory"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "//apps/lockers/lk/report:report"
+kind = "data"
+
+[[edge]]
+from = "app-contract"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-safety"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-reactors"
+to = "app-contract"
+kind = "data"
+
+# The two pure helpers over the slice types that moved into lkc/slices (P007 C2 helper move, manager 2026-11-12):
+# lkrx/shift calls lk_book_was_uncertain, lkrx/codes calls lk_codes_slice_active. Nothing else of a contract is called.
+[[edge]]
+from = "app-reactors"
+to = "//apps/lockers/lkc/slices:slices"
+kind = "port"
+symbols = ["lk_book_was_uncertain", "lk_codes_slice_active"]
+
+[[edge]]
+from = "app-adapters"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-sim"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-ui"
+to = "app-contract"
+kind = "data"
+
+[[edge]]
+from = "app-root"
+to = "app-contract"
+kind = "data"

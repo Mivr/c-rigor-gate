@@ -1,0 +1,15 @@
+{
+  "bypass": "a module pinned only by another package's tests (own-package rule, owner decision 2026-11-11)",
+  "description": "The core_sign checks move from //core:core_test to //util:core_test, which lists //core:core directly. A module's mutants run against its own package's tests only, so the core_sign mutants survive although a product test would kill each of them; core_add (own test) and util (own tests) are killed as always. The base witness is the head, so mutants-witness reports the same survivors.",
+  "fail": {
+    "mutants": [
+      "survived-mutant"
+    ],
+    "mutants-witness": [
+      "witness-survived-mutant"
+    ]
+  },
+  "contains": {
+    "mutants": "core/core.c"
+  }
+}

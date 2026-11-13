@@ -1,0 +1,12 @@
+{
+  "bypass": "a module tested only from another package (own-package rule, owner decision 2026-11-11)",
+  "description": "A new L2 module //far:far with a strong test, but in another package (//util:far_test). No test of its own package lists it, so it is module-without-tests (foreign_tests = 1): never mutated, never a silent pass.",
+  "fail": {
+    "mutants": [
+      "module-without-tests"
+    ]
+  },
+  "contains": {
+    "mutants": "foreign_tests"
+  }
+}

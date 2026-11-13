@@ -1,0 +1,4 @@
+{
+  "control": true,
+  "description": "Green control of gate decoupling: a product with decoupling.toml (a contract, a component, an integration package). The head adds an integration test in a module-less package, a declaration to the frozen contract header (info interface-extended) and an unused dep that the baseline lists. Every rule is armed and the grade is PASS."
+}
