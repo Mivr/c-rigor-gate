@@ -168,5 +168,55 @@ class ModesFindings(TempDirTestCase):
         self.assertEqual(result.status, "FAIL")
 
 
+class MsanBlockedTwins(unittest.TestCase):
+    """`_twins_of` skips a module `msan_blockers` names, by the label form buck2 prints (`root//pkg:name_facts`)."""
+    RELEASE = ["root//p:a_facts", "root//x:t_facts"]
+    BLOCKERS = {"//p:a": None, "//x:t": "X11"}
+
+    def test_a_blocked_module_is_skipped_and_the_rest_keep_their_twin(self):
+        twins, found = grade_structure._twins_of(self.RELEASE, "msan", ["root//p:a_facts_msan"], self.BLOCKERS)
+        self.assertEqual((twins, found), (["root//p:a_facts_msan"], []))
+
+    def test_a_blocked_module_is_not_skipped_in_another_mode(self):
+        for mode in ("san", "tsan"):
+            twins, found = grade_structure._twins_of(self.RELEASE, mode, ["root//p:a_facts_" + mode], self.BLOCKERS)
+            self.assertEqual(twins, ["root//p:a_facts_" + mode])
+            self.assertEqual([(f["rule"], f["target"]) for f in found], [("missing-%s-twin" % mode, "root//x:t_facts")])
+
+    def test_an_unblocked_module_without_a_twin_still_fails(self):
+        twins, found = grade_structure._twins_of(self.RELEASE, "msan", [], self.BLOCKERS)
+        self.assertEqual(twins, [])
+        self.assertEqual([(f["rule"], f["target"]) for f in found], [("missing-msan-twin", "root//p:a_facts")])
+
+    def test_a_module_the_blockers_do_not_name_still_needs_its_twin(self):
+        _, found = grade_structure._twins_of(self.RELEASE, "msan", ["root//p:a_facts_msan"], {"//p:a": None})
+        self.assertEqual([f["target"] for f in found], ["root//x:t_facts"])
+
+    def test_a_label_not_ending_in_facts_is_internal_error(self):
+        with self.assertRaises(grade_structure.InternalError):
+            grade_structure._twins_of(["root//p:a"], "msan", [], {})
+
+
+class MsanBlockedModes(TempDirTestCase):
+    def test_a_blocked_module_is_not_built_in_msan_and_does_not_fail(self):
+        grading = SimpleNamespace(status={"assemble": "PASS", "build": "PASS"}, tree="/t", work=str(self.tmp),
+                                  args=SimpleNamespace(uncached=False))
+        both = ["root//p:a_facts", "root//x:t_facts"]
+        labels = {"c_facts": both, "c_san_facts": [x + "_san" for x in both],
+                  "c_msan_facts": ["root//p:a_facts_msan"], "c_tsan_facts": [x + "_tsan" for x in both]}
+        built = []
+
+        def build(g, platform, wanted, tag, directory):
+            built.append((tag, list(wanted)))
+            return list(wanted), {"executed_actions": 0, "cached_actions": 0}
+        with mock.patch.object(grade_structure, "query_labels", lambda tree, expr: labels[expr.split("(")[1].split(",")[0]]), \
+                mock.patch.object(grade_structure.grade_sanmodes, "msan_blockers", lambda tree: {"//p:a": None, "//x:t": "X11"}), \
+                mock.patch.object(grade_structure, "_build_mode", lambda g, platform, wanted, tag, directory: build(g, platform, wanted, tag, directory)), \
+                mock.patch.object(grade_structure, "_compared", lambda *a: "compared"):
+            result = grade_structure._modes(grading)
+        self.assertEqual(result, "compared")
+        self.assertEqual(dict(built)["modes-msan"], ["root//p:a_facts_msan"])
+
+
 if __name__ == "__main__":
     unittest.main()

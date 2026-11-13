@@ -52,6 +52,14 @@ def _module(label):
     return "//" + label[len(_ROOT):]
 
 
+def facts_module(label):
+    """`root//pkg:name_facts` -> `//pkg:name`: the one form `msan_blockers` keys by (and `_scope` looks up)."""
+    module = _module(label)
+    if not module.endswith("_facts"):
+        raise InternalError("odd c_facts label from buck2: %r" % (label,))
+    return module[:-len("_facts")]
+
+
 def results_attributes(tree):
     """{`ctest_results` label: (the module of its test, whether the test declares `threads = True`)}."""
     found = {}

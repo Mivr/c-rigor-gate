@@ -364,7 +364,7 @@ def _twins_of(release, mode, existing, blockers):
     in `tests-msan` names the library for tests): it is left out of the msan comparison."""
     found, twins = [], []
     for label in release:
-        if mode == "msan" and blockers.get(label[:-len("_facts")]) is not None:
+        if mode == "msan" and blockers.get(grade_sanmodes.facts_module(label)) is not None:
             continue
         if twin(label, mode) in existing:
             twins.append(twin(label, mode))
