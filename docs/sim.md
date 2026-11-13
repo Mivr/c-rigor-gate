@@ -65,3 +65,17 @@ a policy entry (`module-not-in-policy` otherwise), its sources go through the se
 `world_init(cfg, seed, tap, ctx)` (the one static world instance, re-initialised), `world_run_until(t_ms)`, `world_now_ms`, `world_apply(intent)`,
 `world_fault(fault)`, `world_crash_restart`, `world_stats`, `world_state_hash`. All time is virtual; no function reads a real clock,
 the environment, a file or a socket. P330 §1.2 has the full contract; this header is the T2G1 subset (the fault catalogue grows in T2G3).
+
+## Nothing depends on a `c_sim`
+
+`rigor buckfiles` refuses (`bad-argument`, why `sim-target`) any dep, from any macro, on a `c_sim` target or a target it derives
+(`__bin`, `__shard<k>`, `__facts_unit`, `_facts`, `_facts_san`, `_facts_msan`, `_facts_tsan`). Resolution is the one used for `c_test` targets.
+
+## Canaries
+
+`canaries/sim-crash` and `canaries/sim-nondeterministic` (shared files in `canaries/_sim/files`) put a one-file world into the
+base product. They carry `"pending": "T2G2"`: today the grade passes them (every existing gate accepts the world, which also
+proves a world is graded like a library: running them found that `c_structure` did not know kind `c_sim`, fixed here), and they
+turn red in gate `sim` once T2G2 wires it into `rigor grade`. There is no `sim-no-seeds` canary: the macro refuses `seeds < 1` at load time and the
+runner/merge produce `sim-no-seeds` only for a run that did not execute, which a product cannot author; that rule is covered by
+`gate/tests/test_sim_merge.py` and `selftest/sim.sh` (`--count 0`). T2G2 owns `sim-seeds-short` and `sim-missing-target`.
