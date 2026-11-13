@@ -58,7 +58,7 @@ A mode is a target platform. The default (`[parser] target_platform_detector_spe
 
 | Mode | Command | Flags |
 |---|---|---|
-| release | `tools/buck2 test //...` | `-O2` |
+| release | `tools/buck2 test //...` | `-O2 -ftrivial-auto-var-init=zero -fstack-protector-strong -fstrict-flex-arrays=3` (T139, below) |
 | san | `tools/buck2 test --target-platforms toolchains//:linux_san //...` | `-O1 -g -fsanitize=address,undefined,leak -fno-sanitize-recover=all -fno-omit-frame-pointer` |
 | cov | `tools/buck2 test --target-platforms toolchains//:linux_cov //...` | `-fprofile-instr-generate -fcoverage-mapping -fcoverage-mcdc` |
 | fuzz | `tools/buck2 test --target-platforms toolchains//:linux_fuzz //...` | `-fsanitize=fuzzer,address,undefined` (+ `-O1 -g -fno-sanitize-recover=all -fno-omit-frame-pointer`) |
@@ -74,6 +74,72 @@ tools/buck2 build --target-platforms toolchains//:linux_cov //examples/hello:hel
 `c_binary` and `c_test` are incompatible with `fuzz` (libFuzzer supplies `main`); `c_fuzz` is only built in `fuzz`.
 `c_fuzz` is a test that runs `-seed=1 -runs=200000` as a cacheable RE action (see "Fuzz runs" below); it fails when
 the fuzzer finds a crash.
+
+## The hardened release profile (T139, P003 §6, D5)
+
+The shipped binary is the `release` build, and the sanitizers run in other modes only. T139 measured five flags of the
+pinned LLVM 19.1.7 and sysroot (glibc 2.31) on the `c_perf` targets and adopted the ones the owner's rule allows: **adopt
+a flag only if every declared `c_perf` target moves by under 3% in instructions** (D5; the threshold is not tuned).
+
+**Adopted (release mode only; `_HARDENED_RELEASE` in `rules/c.bzl`):** `-ftrivial-auto-var-init=zero` and
+`-fstrict-flex-arrays=3`. **Under 3% but deferred:** `-fstack-protector-strong`: every function with a stack array then
+imports `__stack_chk_fail`, which the `symbols` gate (`gate/rigor_lib/facts_symbols.py`, `facts_data.py`) reports as
+`undeclared-symbol`, so `selftest/product_checks.sh` and `selftest/third_party.sh` fail with it. Adopting it needs that
+gate to know the compiler-implied import (outside T139's paths); the flag is measured and verified below, not on.
+**Not adopted:** `-fsanitize=bounds -fsanitize-trap=bounds`
+(+21.2% on `bsearch`, +34.6% on `nlogn`) and `-D_FORTIFY_SOURCE=3` (+5.4% on `mmove`, and it hides libc calls from
+`libc_bytes`, see below). The other modes are untouched. Gate-owned third-party code (`rules/third_party.bzl`) keeps its own
+flags: no flag had to match across objects to link.
+
+**What each flag does here (checked with the pinned compiler, release binary, `selftest/toolchain.sh`):**
+
+| flag | effect, verified |
+|---|---|
+| `-ftrivial-auto-var-init=zero` | an automatic array nobody wrote reads as zero (0xA5 left on the stack by an earlier call otherwise) |
+| `-fstack-protector-strong` | a write past a stack array that reaches the canary ends in `SIGABRT` ("stack smashing detected") instead of a corrupted return address (`SIGSEGV`) |
+| `-fstrict-flex-arrays=3` | only a trailing `[]` is a flexible array. **Inert on its own**: it matters to `-fsanitize=bounds` and to object-size checks, neither of which is on; it is in the profile because it costs nothing and keeps a later bounds flag honest |
+| `-fsanitize=bounds` + `-fsanitize-trap=bounds` (rejected) | works: the out-of-range write into a struct's array member ends in `SIGILL` |
+| `-D_FORTIFY_SOURCE=3` (rejected) | works: a `memcpy` of 12 bytes into an 8-byte object aborts (`SIGABRT`). glibc 2.31 knows levels 1 and 2, so level 3 acts as level 2; the check is against the whole object, not the member (an overflow of one struct member into the next is not caught) |
+
+**Measurement** (2026-11-13, `selftest/perf.sh` fixtures built with each flag set on the farm; every record is from
+`Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz`, so counts are compared on one CPU model as `docs/perf.md` requires). Each cell
+is the larger change of the two sizes, against the build with no flag. `*`: `libc_bytes` also changed. The first six rows are
+the declared targets (the fixtures that exist for the gate's `c_perf` selftests); the last three are stress fixtures added by
+T139 for the shapes the flags touch, reported, not part of the decision. `abuf` is not in `selftest/perf.sh`: with auto-init on, two builds of the same code that differ only in a nonce string constant counted 123550 and 125741 instructions (1.8%), a code-layout effect that the agreement rule of `docs/perf.md` rightly refuses, so its row was measured once, from a fixture that is not kept.
+
+| fixture | instructions, no flag (small n, large n) | auto-init | bounds | stack-prot. | fortify | flex-arrays | all five | the three under 3% |
+|---|---|---|---|---|---|---|---|---|
+| lin | 115051, 460051 | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% |
+| quad | 21452986, 342312026 | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% |
+| mmove | 3596112, 4927378 | -0.33% | +0.00% | -0.33% | **+5.38%*** | +0.00% | **+5.14%*** | +0.00% |
+| flat | 1473, 1573 | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% |
+| bsearch | 7816, 9053 | +0.00% | **+21.24%** | +0.00% | +0.00% | +0.00% | **+21.24%** | +0.00% |
+| nlogn | 401506, 1915509 | +0.00% | **+34.56%** | +0.00% | +0.00%* | +0.00% | **+34.56%*** | +0.00% |
+| stab (index into `struct { u32 cell[256]; }`) | 260149, 1040149 | +0.00% | +23.07% | +0.00% | +0.00% | +0.00% | +23.07% | +0.00% |
+| abuf (384-byte automatic buffer, filled in part) | 106022, 423809 | +16.53%* | +65.82%* | +1.48% | +0.00% | +0.00% | +84.41%* | +20.08%* |
+| mcpy (`memcpy` of a run-time length into a member) | 82463, 329963 | +0.00% | +24.24% | +0.00% | +21.21%* | +0.00% | +45.45%* | +0.00% |
+
+Worst move on the declared targets: auto-init 0.33%, stack protector 0.33%, flex-arrays 0%, fortify 5.38%, bounds
+34.56%, all five 34.56%, the three under 3% 0%. **Decision by the rule:** the whole set fails (bounds, fortify); the largest
+subset under 3% on every declared target is auto-init + stack protector + flex-arrays; the stack protector is held back only by the `symbols` gate (above), so auto-init + flex-arrays is what is adopted. The
+stress fixtures say what the declared targets cannot: `abuf` pays +20% for zeroing a 384-byte frame (the price of
+`-ftrivial-auto-var-init=zero` on a hot function with a big buffer), `stab` +23% for bounds checks on an array index the
+compiler cannot bound. A product whose own `c_perf` targets are of that shape sees those numbers; its targets are the
+ones the rule is applied to when it declares them.
+
+Two measurement notes. (1) `-D_FORTIFY_SOURCE=3` turns `memcpy`, `memmove` and `memset` of a checked object into
+`__memcpy_chk` and friends, which `PERF_WRAPS` (`-Wl,--wrap=`) does not name, so `libc_bytes` reads 0 for them (`mmove`:
+800020000 to 0). Adopting fortify later needs the `__*_chk` names added to `rules/perf.bzl` first. (2) The stack protector
+and auto-init each lower the `mmove` count by 0.3% (about 12 thousand instructions, a compiler code-layout effect), and the three together leave it unchanged.
+
+**What the adopted set covers:** an automatic variable is never
+indeterminate (a read of one yields zero, and the sanitizer modes still find the read, in their own build). **What it does
+not cover:** an array index past the end of a fixed array inside a struct is NOT trapped (the neighbour is read or written;
+`selftest/toolchain.sh` pins that this is today's behaviour); a stack overrun is not caught until the stack protector is adopted; an overflowing `memcpy` into a sized object is not stopped
+(a stack canary may catch it by layout luck, not by design); a pointer plus a separate length is not bounds-checked, with
+or without `-fsanitize=bounds`; heap objects do not exist in product code; uninitialised static data is already zero.
+`-fbounds-safety`, which would check every pointer-plus-length pair, is not complete in upstream Clang and is not in the
+pinned 19.1.7; revisit it at the next toolchain bump (G20).
 
 ## The msan and tsan modes (T125; graded by `tests-msan` and `tests-tsan` since T138)
 
