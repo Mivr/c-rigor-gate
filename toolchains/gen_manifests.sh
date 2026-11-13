@@ -3,16 +3,17 @@
 #
 #   toolchains/gen_manifests.sh            (from the repository root; needs the RE farm)
 #
-# The trees are built with --no-remote-cache from a fresh private daemon (`--isolation-dir gen_manifests`; only that daemon is stopped), so `tar` really runs on a
+# The trees are built with --no-remote-cache from a daemon that has not built them (see below), so `tar` really runs on a
 # worker on the sha256-pinned download and nothing planted in the action cache can reach the
 # manifest. The output is deterministic: running it twice must leave `git diff` empty.
 # Review any change to a manifest line by line: it is the root of trust of every cached toolchain.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# A private daemon (its own isolation dir), so no shared daemon is ever stopped and the unpack really runs on a worker.
-B=(tools/buck2 --isolation-dir gen_manifests)
-"${B[@]}" kill >/dev/null 2>&1 || true
-"${B[@]}" build --no-remote-cache --materializations all toolchains//:llvm toolchains//:sysroot toolchains//:ndk toolchains//:android_build_tools toolchains//:android_platform toolchains//:jdk --show-output |
+# This script never stops a daemon: the pinned Buck2 forbids a private one (`--isolation-dir`, ADR 0039) and a lane must not kill
+# the shared one. Run it from a daemon that has not built these trees yet (the orchestrator stops its own first); `--no-remote-cache`
+# then makes every unpack run on a worker. A daemon that already holds them reuses the trees it has, and the output is the same
+# only if those trees are the real ones.
+tools/buck2 build --no-remote-cache --materializations all toolchains//:llvm toolchains//:sysroot toolchains//:ndk toolchains//:android_build_tools toolchains//:android_platform toolchains//:jdk --show-output |
   while read -r label path; do
     case "$label" in
       toolchains//:llvm) name=llvm ;;
@@ -27,4 +28,3 @@ B=(tools/buck2 --isolation-dir gen_manifests)
     mv "toolchains/$name.manifest.new" "toolchains/$name.manifest"
     echo "$name: $(wc -l < "toolchains/$name.manifest") lines"
   done
-"${B[@]}" kill >/dev/null 2>&1 || true
