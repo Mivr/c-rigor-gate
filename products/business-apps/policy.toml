@@ -17,6 +17,230 @@ deny = ["kill", "fork", "vfork", "execve", "execv", "execvp", "execl", "ptrace",
 # The ctest runtime forks, kills and exits by design; it is the gate's own code.
 trusted = ["gate//ctest:ctest"]
 
+[module."//apps/lockers/itest/boot:boot_codes_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_eos_flow_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_eos_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_flow_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_gaps_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_misc_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_frames_test"]
+allow = ["memcpy", "memmove", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_refresh_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_recover_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_relay_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_round3_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_selftest_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/boot:boot_start_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/catalog:catalog_names_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/itest/codes:codes_hash_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/codes:codes_lookup_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/codes:codes_misc_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/codes:codes_salt_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/codes:codes_streak_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/notice:nt_dismiss_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/notice:nt_misc_test"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/notice:nt_tick_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/notices:notices_keys_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_lockout_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_misc_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_phase_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_scan_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/pad:pad_submit_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/runtime:chain_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_gaps_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_inspect_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_misc_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_release_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_report_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/shift:sh_shift_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/sync:sy_misc_test"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/sync:sy_result_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/sync:sy_two_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/sync:sy_wake_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_arg_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_banner_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_count_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_flow2_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_flow_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_memo_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_notice_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/view:vw_screen_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_gaps_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_misc_test"]
+allow = ["memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_new_test"]
+allow = ["memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_outcome_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_post_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_return_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_rust_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_saga_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_saveopen_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lk/audit:audit"]
 level = "L3"
 impl = ["apps/lockers/lk/audit/src/**"]
@@ -1279,8 +1503,8 @@ exports = ["main"]
 level = "L2"
 impl = ["apps/lockers/lkapp/e2e/src/**"]
 allow = ["memchr", "memset"]
-exports = ["e2e_classify", "e2e_refresh", "lk_e2e_announce", "lk_e2e_close", "lk_e2e_init",
-    "lk_e2e_requested", "lk_e2e_set_lang", "lk_e2e_step"]
+exports = ["e2e_classify", "e2e_has_dialog", "e2e_mute_dismiss", "e2e_refresh", "lk_e2e_announce",
+    "lk_e2e_close", "lk_e2e_init", "lk_e2e_requested", "lk_e2e_set_lang", "lk_e2e_step"]
 
 [module."//apps/lockers/lkapp/e2e:e2e_digest_test"]
 allow = ["bcmp", "memcpy", "memset", "strlen"]
@@ -1409,10 +1633,6 @@ exports = ["kit_accept", "kit_addr", "kit_cfg", "kit_dead_port", "kit_fd_count",
     "kit_join", "kit_listen", "kit_mode", "kit_pause_ms", "kit_put", "kit_read_exact", "kit_readable",
     "kit_tmpdir", "main"]
 
-[module."//apps/lockers/lkapp/runtime:chain_test"]
-allow = ["memset"]
-exports = ["main"]
-
 [module."//apps/lockers/lkapp/runtime:core_audit_test"]
 allow = ["memcpy", "memset"]
 exports = ["main"]
@@ -1436,6 +1656,11 @@ exports = ["main"]
 [module."//apps/lockers/lkapp/runtime:opener_test"]
 allow = ["memcpy", "memmove", "memset"]
 exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:realkit"]
+level = "L1"
+allow = []
+exports = []
 
 [module."//apps/lockers/lkapp/runtime:runtime"]
 level = "L2"
@@ -1532,6 +1757,15 @@ exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame"
     "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
     "k_world_reset", "main"]
 
+[module."//apps/lockers/lkapp/uiloop:uil_look_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["bcmp", "memcpy", "memset", "strcmp", "strlen", "strncmp"]
+exports = ["k_centre", "k_click", "k_count", "k_digit_centre", "k_ev", "k_frame", "k_frame_clear", "k_hash",
+    "k_ink", "k_is", "k_is_scanned", "k_mem", "k_obj_centre", "k_open", "k_open_raw", "k_pool",
+    "k_pub_banner_notice", "k_pub_dialog", "k_pub_lang", "k_pub_screen", "k_pub_snackbar", "k_pub_snap",
+    "k_pub_view", "k_pub_welcome", "k_scene", "k_surface", "k_text", "k_type", "k_w", "k_wire",
+    "k_world_reset", "main"]
+
 [module."//apps/lockers/lkapp/uiloop:uil_wedge_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = ["bcmp", "memcpy", "memset", "strlen"]
@@ -1618,49 +1852,54 @@ allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strlen"]
 allow_builtins = ["__builtin_trap"]
 exports = ["main"]
 
+[module."//apps/lockers/lkc/events:events"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkc/events:events_layout_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkc/slices:slices"]
+level = "L3"
+impl = ["apps/lockers/lkc/slices/src/**"]
+allow = []
+exports = ["lk_book_was_uncertain", "lk_codes_slice_active"]
+
+[module."//apps/lockers/lkc/slices:slices_helpers_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkc/slices:slices_layout_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkc/uikeys:uikeys"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkc/uikeys:uikeys_layout_test"]
+allow = []
+exports = ["main"]
+
 [module."//apps/lockers/lkrx/boot:boot"]
 level = "L3"
 impl = ["apps/lockers/lkrx/boot/src/**"]
 allow = []
 exports = ["lk_react_boot"]
 
-[module."//apps/lockers/lkrx/boot:boot_codes_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_eos_flow_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_eos_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_flow_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_gaps_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_misc_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_relay_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_selftest_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_start_test"]
-allow = ["memset"]
+[module."//apps/lockers/lkrx/boot:boot_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/boot:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/boot:unitkit"]
 level = "L1"
 allow = []
 exports = []
@@ -1679,10 +1918,6 @@ allow = ["strncmp"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/catalog:catalog_folds_test"]
-allow = []
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/catalog:catalog_names_test"]
 allow = []
 exports = ["main"]
 
@@ -1709,27 +1944,16 @@ impl = ["apps/lockers/lkrx/codes/src/**"]
 allow = []
 exports = ["lk_react_codes"]
 
-[module."//apps/lockers/lkrx/codes:codes_hash_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/codes:codes_lookup_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/codes:codes_misc_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/codes:codes_salt_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/codes:codes_streak_test"]
-allow = ["memset", "strlen"]
+[module."//apps/lockers/lkrx/codes:codes_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/codes:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/codes:unitkit"]
 level = "L1"
 allow = []
 exports = []
@@ -1738,7 +1962,7 @@ exports = []
 level = "L3"
 impl = ["apps/lockers/lkrx/fold_core/src/**"]
 allow = ["bcmp", "memcpy", "memset"]
-exports = ["fc_live", "lk_book_slice_init", "lk_book_was_uncertain", "lk_clock_init", "lk_config_init",
+exports = ["fc_live", "lk_book_slice_init", "lk_clock_init", "lk_config_init",
     "lk_fold_book", "lk_fold_clock", "lk_fold_config", "lk_fold_inventory", "lk_fold_session",
     "lk_inventory_init", "lk_session_init"]
 
@@ -1787,7 +2011,7 @@ exports = []
 level = "L3"
 impl = ["apps/lockers/lkrx/fold_status/src/**"]
 allow = ["bcmp", "memset"]
-exports = ["lk_codes_slice_active", "lk_codes_slice_init", "lk_codes_slice_init_refs",
+exports = ["lk_codes_slice_init", "lk_codes_slice_init_refs",
     "lk_fold_codes", "lk_fold_health", "lk_fold_notice", "lk_fold_relay", "lk_fold_secret",
     "lk_fold_shift", "lk_health_slice_init", "lk_notice_slice_init", "lk_relay_slice_init",
     "lk_secret_slice_init", "lk_shift_slice_init"]
@@ -1831,19 +2055,16 @@ impl = ["apps/lockers/lkrx/notice/src/**"]
 allow = []
 exports = ["lk_react_notice"]
 
-[module."//apps/lockers/lkrx/notice:nt_dismiss_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/notice:nt_misc_test"]
-allow = ["memcmp", "memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/notice:nt_tick_test"]
-allow = ["memset"]
+[module."//apps/lockers/lkrx/notice:nt_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/notice:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/notice:unitkit"]
 level = "L1"
 allow = []
 exports = []
@@ -1854,53 +2075,22 @@ impl = ["apps/lockers/lkrx/pad/src/**"]
 allow = []
 exports = ["lk_react_pad"]
 
-[module."//apps/lockers/lkrx/pad:pad_lockout_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/pad:pad_misc_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/pad:pad_phase_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/pad:pad_scan_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/pad:pad_submit_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
-
 [module."//apps/lockers/lkrx/pad:testkit"]
 level = "L1"
 allow = []
 exports = []
 
-[module."//apps/lockers/lkrx/shift:sh_gaps_test"]
-allow = ["memcpy", "memset", "strlen"]
+[module."//apps/lockers/lkrx/pad:pad_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
-[module."//apps/lockers/lkrx/shift:sh_inspect_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
+[module."//apps/lockers/lkrx/pad:unitkit"]
+level = "L1"
+allow = []
+exports = []
 
-[module."//apps/lockers/lkrx/shift:sh_misc_test"]
-allow = ["memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/shift:sh_release_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/shift:sh_report_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/shift:sh_shift_test"]
-allow = ["memcpy", "memset", "strlen"]
+[module."//apps/lockers/lkrx/shift:sh_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/shift:shift"]
@@ -1914,17 +2104,10 @@ level = "L1"
 allow = []
 exports = []
 
-[module."//apps/lockers/lkrx/sync:sy_misc_test"]
-allow = ["memcmp", "memcpy", "memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/sync:sy_result_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/sync:sy_wake_test"]
-allow = ["memset"]
-exports = ["main"]
+[module."//apps/lockers/lkrx/shift:unitkit"]
+level = "L1"
+allow = []
+exports = []
 
 [module."//apps/lockers/lkrx/sync:sync"]
 level = "L3"
@@ -1937,7 +2120,26 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkrx/sync:sy_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/sync:unitkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkrx/view:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/view:unitkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/view:unitkit2"]
 level = "L1"
 allow = []
 exports = []
@@ -1945,42 +2147,27 @@ exports = []
 [module."//apps/lockers/lkrx/view:view"]
 level = "L3"
 impl = ["apps/lockers/lkrx/view/src/**"]
-allow = ["memcpy"]
-exports = ["lk_view_memo_init", "lk_view_select"]
-
-[module."//apps/lockers/lkrx/view:vw_arg_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_banner_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_count_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_flow2_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_flow_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/view:vw_memo_test"]
 allow = ["memcpy", "memset"]
+exports = ["lk_view2_select", "lk_view_memo_init", "lk_view_select"]
+
+[module."//apps/lockers/lkrx/view:vw2_report_test"]
+allow = ["bcmp", "memset"]
 exports = ["main"]
 
-[module."//apps/lockers/lkrx/view:vw_notice_test"]
-allow = ["memset"]
+[module."//apps/lockers/lkrx/view:vw2_select_test"]
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
-[module."//apps/lockers/lkrx/view:vw_screen_test"]
-allow = ["memset"]
+[module."//apps/lockers/lkrx/view:vw_unit_test"]
+allow = ["bcmp", "memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/visit:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/visit:unitkit"]
 level = "L1"
 allow = []
 exports = []
@@ -1991,40 +2178,8 @@ impl = ["apps/lockers/lkrx/visit/src/**"]
 allow = []
 exports = ["lk_react_visit"]
 
-[module."//apps/lockers/lkrx/visit:vs_gaps_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_misc_test"]
-allow = ["memcmp", "memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_new_test"]
-allow = ["memcmp", "memcpy", "memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_outcome_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_post_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_return_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_rust_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_saga_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/visit:vs_saveopen_test"]
-allow = ["memset"]
+[module."//apps/lockers/lkrx/visit:vs_unit_test"]
+allow = ["bcmp", "memcpy", "memset", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/vstate:testkit"]
@@ -2060,6 +2215,37 @@ exports = ["main"]
 
 [module."//apps/lockers/lkrx/vstate:vstate_screens_test"]
 allow = ["memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/lockers/lkrx/vstate2:vstate2"]
+level = "L3"
+impl = ["apps/lockers/lkrx/vstate2/src/**"]
+allow = ["memset"]
+exports = ["lk_view2_at", "lk_view2_canonical", "lk_view2_check"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_at_test"]
+allow = ["bcmp", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_buffer_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_canon_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_check_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/vstate2:vstate2_inspect_test"]
+allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lksim/board:board"]
@@ -2196,11 +2382,11 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
-[module."//apps/lockers/lkui/notices:notices_keys_test"]
+[module."//apps/lockers/lkui/notices:notices_nodes_test"]
 allow = ["memset"]
 exports = ["main"]
 
-[module."//apps/lockers/lkui/notices:notices_nodes_test"]
+[module."//apps/lockers/lkui/notices:notices_lines_test"]
 allow = ["memset"]
 exports = ["main"]
 
@@ -2217,10 +2403,10 @@ exports = []
 level = "L3"
 impl = ["apps/lockers/lkui/screens/src/**"]
 allow = []
-exports = ["lkui_about", "lkui_build", "lkui_build_choose", "lkui_build_opened",
-    "lkui_build_welcome", "lkui_button", "lkui_countdown", "lkui_has_countdown",
-    "lkui_lang", "lkui_licenses", "lkui_panel", "lkui_rect", "lkui_root", "lkui_text",
-    "lkui_text_int", "lkui_top", "lkui_warning"]
+exports = ["lkui_about", "lkui_build", "lkui_build2", "lkui_build_choose", "lkui_build_opened", "lkui_build_screen",
+    "lkui_build_shift_col", "lkui_build_welcome", "lkui_button", "lkui_countdown", "lkui_countdown_at",
+    "lkui_done_staff", "lkui_has_countdown", "lkui_lang", "lkui_licenses", "lkui_panel", "lkui_rect", "lkui_root",
+    "lkui_text", "lkui_text_int", "lkui_top", "lkui_warning"]
 
 [module."//apps/lockers/lkui/screens:screens_choose_test"]
 allow = ["memset", "snprintf", "strlen"]
@@ -2238,8 +2424,16 @@ exports = ["main"]
 allow = ["memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
 
+[module."//apps/lockers/lkui/screens:screens_sweep_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lkui/screens:screens_shift_test"]
 allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/screens:screens_v2_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lkui/screens:screens_static_test"]
@@ -3082,6 +3276,10 @@ impl = ["lib/fmt/jkidx/src/**"]
 allow = ["memcmp"]
 exports = ["jkidx_insert"]
 
+[module."//lib/fmt/jkidx:jkidx_rot_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/fmt/jkidx:jkidx_test"]
 allow = ["memcmp", "memcpy", "snprintf", "strlen"]
 exports = ["main"]
@@ -3176,6 +3374,10 @@ level = "L3"
 impl = ["lib/fmt/jstr/src/**"]
 allow = []
 exports = ["jstr_decode"]
+
+[module."//lib/fmt/jstr:jstr_limit_test"]
+allow = ["strlen"]
+exports = ["main"]
 
 [module."//lib/fmt/jstr:jstr_test"]
 allow = ["memcpy", "memset", "snprintf"]
@@ -3746,6 +3948,11 @@ exports = ["kit", "kit_ca_blank", "kit_ca_both", "kit_ca_garbage", "kit_ca_mixed
     "kit_peer_send", "kit_peer_start", "kit_peer_stop", "kit_peer_version", "kit_reset",
     "kit_same", "kit_split_next_recv", "main"]
 
+[module."//lib/io/tls_stream:pnet_ctx_test"]
+allow = ["bind", "close", "getsockname", "listen"]
+deny_exempt = ["socket"]
+exports = ["main"]
+
 [module."//lib/io/tls_stream:pnet_test"]
 allow = ["accept", "bind", "close", "getsockname", "in6addr_loopback", "listen", "memset", "poll",
     "read", "write"]
@@ -4222,9 +4429,17 @@ exports = ["sh_cond_broadcast", "sh_cond_destroy", "sh_cond_init", "sh_cond_sign
 allow = []
 exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
+[module."//lib/sim/simhost:simhost_due_test"]
+allow = []
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
+
 [module."//lib/sim/simhost:simhost_gap_test"]
 allow = []
 exports = ["main"]
+
+[module."//lib/sim/simhost:simhost_idle_test"]
+allow = []
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simhost:simhost_init_test"]
 allow = ["memset"]
@@ -4244,6 +4459,14 @@ exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "s
 
 [module."//lib/sim/simhost:simhost_seed_test"]
 allow = ["memcpy"]
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
+
+[module."//lib/sim/simhost:simhost_until_test"]
+allow = []
+exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
+
+[module."//lib/sim/simhost:simhost_wait_test"]
+allow = []
 exports = ["fx_clk", "fx_fnv", "fx_h", "fx_init", "fx_log", "fx_now", "main", "script_step"]
 
 [module."//lib/sim/simnet:simnet"]
@@ -4527,7 +4750,7 @@ impl = ["lib/ui/uikit/src/**"]
 third_party = ["gate//third_party/lvgl:lvgl"]
 allow = []
 exports = ["kit_button_create", "kit_button_label", "kit_button_set_text", "kit_code", "kit_countdown_create",
-    "kit_countdown_set", "kit_font_open", "kit_fonts_close", "kit_is_enabled", "kit_key_create",
+    "kit_countdown_set", "kit_font_open", "kit_font_open_w", "kit_fonts_close", "kit_is_enabled", "kit_key_create",
     "kit_label_create", "kit_label_set_text", "kit_notice_add_row", "kit_notice_card",
     "kit_notice_clear_countdown", "kit_notice_countdown", "kit_notice_create", "kit_notice_delete",
     "kit_notice_dismiss", "kit_notice_is_fixed", "kit_notice_remove_row", "kit_notice_row",
@@ -4753,14 +4976,6 @@ exports = ["lk_wire_core_step", "lk_wire_fatal", "lk_wire_init", "lk_wire_net_st
     "lkw_relay_open", "lkw_runtime", "lkw_sat32", "lkw_say", "lkw_say_buf", "lkw_set_stop",
     "lkw_split_path", "lkw_watch_codes"]
 
-[module."//apps/lockers/lkrx/boot:boot_refresh_test"]
-allow = ["memset"]
-exports = ["main"]
-
-[module."//apps/lockers/lkrx/boot:boot_round3_test"]
-allow = ["memset"]
-exports = ["main"]
-
 [module."//apps/lockers/lkrx/fold_status:fs_boot3_test"]
 allow = []
 exports = ["main"]
@@ -4773,14 +4988,15 @@ exports = ["main"]
 allow = []
 exports = ["main"]
 
-[module."//apps/lockers/lkrx/sync:sy_two_test"]
-allow = ["memset"]
-exports = ["main"]
-
 [module."//lib/ui/fontdata:liberation_sans"]
 level = "L1"
 allow = []
 exports = ["fontdata_liberation_sans", "fontdata_liberation_sans_len"]
+
+[module."//lib/ui/fontdata:liberation_sans_bold"]
+level = "L1"
+allow = []
+exports = ["fontdata_liberation_sans_bold", "fontdata_liberation_sans_bold_len"]
 
 [module."//lib/ui/lvrender:lvr_init_test"]
 third_party = ["gate//third_party/lvgl:lvgl"]
@@ -4872,6 +5088,37 @@ exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect",
     "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
     "lf_rscene", "lf_settle", "lf_step", "main"]
 
+[module."//lib/ui/lvrender:lvr_style_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["add_node", "fonts_open", "k_col", "lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect",
+    "lf_base", "lf_cat", "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "look_fill", "main", "rd", "rd_key", "render_one", "same_all",
+    "same_text", "style_a", "style_b", "style_close", "style_f", "style_fp", "style_look", "style_open",
+    "style_secs", "want_fill", "want_text"]
+
+[module."//lib/ui/lvrender:lvr_style2_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["add_node", "fonts_open", "k_col", "lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect",
+    "lf_base", "lf_cat", "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "look_fill", "main", "rd", "rd_key", "render_one", "same_all",
+    "same_text", "style_a", "style_b", "style_close", "style_f", "style_fp", "style_look", "style_open",
+    "style_secs", "want_fill", "want_text"]
+
+[module."//lib/ui/lvrender:lvr_wrap_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect", "lf_base", "lf_cat",
+    "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect", "lf_corpus_secs",
+    "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx", "lf_label_text",
+    "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene", "lf_rect",
+    "lf_rscene", "lf_settle", "lf_step", "main"]
+
 [module."//lib/ui/lvrender:lvrender"]
 level = "L2"
 impl = ["lib/ui/lvrender/src/**"]
@@ -4880,8 +5127,8 @@ allow = ["memset"]
 exports = ["lvr_applied", "lvr_apply", "lvr_count", "lvr_do_create", "lvr_do_move", "lvr_do_remove",
     "lvr_do_update", "lvr_dropped", "lvr_fields", "lvr_fix_all", "lvr_init", "lvr_mapped", "lvr_next_sibling",
     "lvr_obj", "lvr_on_click", "lvr_part_of", "lvr_place", "lvr_place_after", "lvr_prev_sibling", "lvr_ready",
-    "lvr_relayout", "lvr_reset", "lvr_row_new", "lvr_row_removed", "lvr_secs_of", "lvr_take_intents",
-    "lvr_text_of"]
+    "lvr_relayout", "lvr_reset", "lvr_row_new", "lvr_row_removed", "lvr_secs_of", "lvr_set_look",
+    "lvr_style_apply", "lvr_style_card_changed", "lvr_take_intents", "lvr_text_of"]
 
 [module."//lib/ui/lvrender:testkit"]
 level = "L1"
@@ -4895,3 +5142,23 @@ allow = ["bcmp", "fprintf", "memcpy", "memset", "stderr"]
 exports = ["kf_click", "kf_click_at", "kf_close", "kf_h", "kf_need", "kf_odd_tokens", "kf_open",
     "kf_open_bare", "kf_open_with", "kf_pixel", "kf_pool", "kf_rgb", "kf_screen", "kf_settle",
     "kf_w", "kf_watch", "kf_x1", "kf_x2", "kf_y1", "kf_y2", "main"]
+
+[module."//lib/fmt/jlex:jlex_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/jpnum:jpnum_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/httphdr:httphdr_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/sim/simfs_tab:simfs_tab_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/io/pfscript:pfscript_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]

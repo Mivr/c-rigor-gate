@@ -3,8 +3,10 @@
 Everything that decides what is mutated and against which tests is gate-owned:
   * the modules and their levels come from `products/<p>/policy.toml` (`grade_policy`); a library or
     binary of the product without a level is a finding, and a grading that would mutate nothing fails;
-  * the tests of a module are every product `c_test` that lists the module directly in its `deps`,
-    found with `buck2 uquery` in the grading tree, never declared by the product;
+  * the tests of a module are the product `c_test`s of the module's own package that list the module directly
+    in their `deps` (`own_tests`), found with `buck2 uquery` in the grading tree, never declared by the product.
+    A test of another package never runs against the module's mutants, so neither it nor a library only it
+    links is an input of the module's mutant runs;
   * the `c_mutants` targets live in a generated package (`gate-mutants/BUCK`, one gate macro call per
     module) that is written after the product was copied, so `buckfiles` never sees it. A root `PACKAGE`
     file (the product may not carry one, `buckfiles` flags it) makes the product's targets visible to it.
@@ -18,10 +20,11 @@ import os
 import re
 from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_policy, grade_tier, jsonio, perf_package, perf_policy
+from rigor_lib import approval_args, approvals, contract, grade_build, grade_context, grade_decoupling, grade_policy, grade_tier, jsonio
 from rigor_lib import mutants_gate as rigor_mutants
+from rigor_lib import perf_package, perf_policy
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 from rigor_lib.grade_tree import write_file
@@ -55,13 +58,14 @@ class Layout:
     deps: dict           # label -> tuple of direct dependency labels of the product's own cell
     external: frozenset = frozenset()  # libraries of other cells ("gate//third_party/..:x"), linkable like libs
     links: dict = None   # label -> direct `deps` + `exported_deps` of every cell: what the tests link (T070)
+    apart: frozenset = frozenset()  # the tests of declared integration and simulation packages: no module's own tests
 
 
 @dataclass(frozen=True)
 class Module:
     label: str
     level: str
-    tests: tuple   # c_tests that depend on the module directly
+    tests: tuple   # c_tests of the module's own package that depend on the module directly (`own_tests`)
     deps: tuple    # libraries linked into those tests besides the module (any cell), dependents first
     perf: tuple = ()   # ((`//x:y_perf` target, class), ...) the policy declares for the module (T090), sorted
 
@@ -207,6 +211,26 @@ def _link_deps(layout, module, tests, extra=(), skip=()):
     return tuple(reversed(order)), tuple(sorted(unresolved))
 
 
+def _package(label):
+    """`//pkg:name` -> `//pkg` (the cell and the package of a label)."""
+    return label[:label.index(":")]
+
+
+def direct_tests(layout, module):
+    """Every `c_test` of the product that lists MODULE directly in its `deps`, sorted."""
+    return tuple(sorted(t for t in layout.tests if module in layout.deps[t]))
+
+
+def own_tests(layout, module):
+    """The tests MODULE's mutants run against: the `c_test`s of the module's own package (same cell, same
+    package: what `rules/mutate.bzl` `_own_package` calls the module's own tests) that list it directly in
+    `deps`, sorted. A test of another package is not one of them, however directly it lists the module: the
+    module's mutant runs would then be keyed on everything that test links. A test of a package the product
+    declares an integration or simulation package (`layout.apart`, docs/decoupling.md) is never one of them."""
+    return tuple(t for t in direct_tests(layout, module)
+                 if _package(t) == _package(module) and t not in layout.apart)
+
+
 def perf_binary(target):
     """The `c_perf` binary behind a `<name>_perf` target label."""
     return target[:-len(perf_policy.SUFFIX)]
@@ -234,7 +258,7 @@ def plan(layout, levels, perf=None):
             found.append(finding("unmutatable-module", module=label, level=level))
         else:
             wanted += 1
-            tests = tuple(sorted(t for t in layout.tests if label in layout.deps[t]))
+            tests = own_tests(layout, label)
             if tests:
                 classes = perf.get(label, {})
                 for target in sorted(classes):
@@ -247,7 +271,10 @@ def plan(layout, levels, perf=None):
                 if not unresolved:
                     modules.append(Module(label, level, tests, linked, tuple(sorted(classes.items()))))
             else:
-                found.append(finding("module-without-tests", module=label, level=level))
+                # No test of the module's own package lists it: nothing may kill its mutants. `foreign_tests`
+                # counts the tests of other packages that list it; they do not count.
+                foreign = len(direct_tests(layout, label))
+                found.append(finding("module-without-tests", module=label, level=level, foreign_tests=foreign))
     if not wanted:
         found.append(finding("no-mutated-modules"))
     return Plan(modules, found)
@@ -438,12 +465,14 @@ def _relabel(found, names):
             for item in found]
 
 
-def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, renames=None):
+def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, renames=None, extra_kinds=None,
+          used_by_kind=None):
     """`rigor mutants` over the reports of the modules that built, with a policy the gate writes.
 
     Returns (findings, per-module summaries, approvals used), all in terms of the product's labels.
     `approval_kind` is the approval that covers a survivor; `renames` maps a finding rule to the rule
-    it is reported as (empty for the head).
+    it is reported as (empty for the head). `extra_kinds` maps a module (product label) to further approval
+    kinds accepted for it alone; `used_by_kind`, a dict, receives {kind: [approvals used]}.
     """
     policy = os.path.join(run.work, "tmp", "mutants-policy.toml")
     os.makedirs(os.path.dirname(policy), exist_ok=True)
@@ -452,7 +481,10 @@ def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT
     perf_dir = os.path.join(os.path.dirname(run.mutants_reports), PERF_DIR)
     result = rigor_mutants.run(Namespace(
         results=run.mutants_reports, policy=policy, perf_results=perf_dir, approvals=g.args.approvals,
-        repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind)
+        repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind,
+        {target_label(modules[i]): kinds for i in built for kinds in [(extra_kinds or {}).get(modules[i].label)] if kinds})
+    if used_by_kind is not None:
+        used_by_kind.update(result.metadata["approvals_used_by_kind"])
     names = {target_label(modules[i]): modules[i].label for i in built}
     summaries = {names.get(label, label): summary for label, summary in result.metadata["modules"].items()}
     found = [dict(item, rule=renames.get(item["rule"], item["rule"])) for item in
@@ -476,6 +508,13 @@ def mutants_gate(g):
         grade_context.kill_daemon(run.tree)
 
 
+def read_graded_layout(g, run):
+    """`read_layout` plus the product's test levels (`grade_decoupling.apart_tests`): the layout every mutant
+    selection of a grade starts from."""
+    layout = read_layout(run)
+    return replace(layout, apart=grade_decoupling.apart_tests(g, layout.tests))
+
+
 def build_plan(g, run):
     """(Plan, perf shared) of the product in `run.tree`: what the grade measures, and what the lane command
     (`lane_mutants`) measures for the modules it is asked about, comes from this one function."""
@@ -484,7 +523,7 @@ def build_plan(g, run):
     if targets:   # the perf binaries must be in the tree before the layout is read
         write_shared_package_file(run.tree)
         perf_package.write(run.tree, targets)
-    return plan(read_layout(run), levels, perf_policy.by_module(targets)), bool(targets)
+    return plan(read_graded_layout(g, run), levels, perf_policy.by_module(targets)), bool(targets)
 
 
 def _run(g, run):

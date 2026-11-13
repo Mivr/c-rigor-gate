@@ -252,6 +252,8 @@ def crash_ratio_findings(report, level, verdicts):
 
 
 def survivor_findings(report, level, verdicts, approval_set, used, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
+    """`approval_kind` is the kind that covers a survivor, or a tuple of kinds tried in order (`run`, `extra_kinds`)."""
+    kinds = (approval_kind,) if isinstance(approval_kind, str) else tuple(approval_kind)
     found = []
     for verdict in verdicts:
         if verdict.verdict != "survived":
@@ -260,7 +262,8 @@ def survivor_findings(report, level, verdicts, approval_set, used, approval_kind
         if level not in STRICT_LEVELS:
             found.append(finding("survivor", severity=SEVERITY_INFO, **fields))
             continue
-        approval = approval_set.covering(approval_kind, verdict.mutant.id)
+        approval = next((a for a in (approval_set.covering(kind, verdict.mutant.id) for kind in kinds)
+                         if a is not None), None)
         if approval is None:
             found.append(finding("survived-mutant", **fields))
         else:
@@ -305,7 +308,11 @@ def module_findings(report, level, approval_set, used, approval_kind=approvals.K
     return found, module_summary(report, verdicts, perf_summary)
 
 
-def run(args, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
+def run(args, approval_kind=approvals.KIND_EQUIVALENT_MUTANT, extra_kinds=None):
+    """`extra_kinds` maps a report label to further approval kinds accepted for that module's survivors, after
+    `approval_kind` (`mutants-witness`: a witness module that is the head's code, docs/witness.md). Every other
+    module is covered by `approval_kind` alone."""
+    extra_kinds = extra_kinds or {}
     reports = mutants_report.load_reports_dir(args.results)
     levels = load_policy(args.policy)
     approval_set = approval_args.load_from_args(args)
@@ -320,12 +327,18 @@ def run(args, approval_kind=approvals.KIND_EQUIVALENT_MUTANT):
             found.append(finding("module-not-in-policy", module=label))
             continue
         perf = (classes[label], evidence.get(label, {})) if label in classes else None
-        module, summaries[label] = module_findings(reports[label], levels[label], approval_set, used, approval_kind,
+        kinds = (approval_kind,) + tuple(extra_kinds.get(label, ()))
+        module, summaries[label] = module_findings(reports[label], levels[label], approval_set, used, kinds,
                                                    packages, perf)
         found.extend(module)
     for label in sorted(set(levels) - set(reports)):
         found.append(finding("policy-module-without-report", module=label))
-    return GateResult(GATE_ID, found, {"modules": summaries, "approvals_used": sorted(used)})
+    by_kind = {}
+    for approval in approval_set.valid:
+        if approval.stem in used:
+            by_kind.setdefault(approval.kind, []).append(approval.stem)
+    return GateResult(GATE_ID, found, {"modules": summaries, "approvals_used": sorted(used),
+                                       "approvals_used_by_kind": {kind: sorted(by_kind[kind]) for kind in sorted(by_kind)}})
 
 
 def add_parser(subparsers):

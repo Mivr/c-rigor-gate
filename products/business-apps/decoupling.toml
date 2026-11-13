@@ -1,0 +1,31 @@
+# Decoupling declarations for business-apps (gate decoupling, docs/decoupling.md). Gate-owned.
+# The entries are layers of architecture.toml; its [testkit] modules are the fakes and test kits.
+[modules]
+contract = ["app-contract"]
+# app-ui is listed by package: lkui/catalog is a generated message catalog (c_catalog: const text tables, no
+# behaviour), so it is data that every layer may use directly, like a library. A new lkui package must be added here.
+# app-reactors is listed by package too: lkrx/catalog is the event catalogue's const tables (LK_EV_TYPES, and LK_WIRING
+# whose fold and reactor entries are no-op placeholders that lkapp/wire replaces); its types are the contract
+# lkc/events. Data, used directly. A new lkrx package must be added here.
+# lkrx/vstate is not listed either: it is the ViewState value type with three pure functions over it (lk_view_at,
+# lk_view_check, lk_view_canonical) and no events, state machine or IO, so it is a value module used directly, like
+# the lk/* domain modules (owner decision Q1, 2026-11-11); its header is the view's interface and could be frozen.
+component = ["//apps/lockers/lkrx/boot:*", "//apps/lockers/lkrx/codes:*", "//apps/lockers/lkrx/fold_core:*",
+             "//apps/lockers/lkrx/fold_status:*", "//apps/lockers/lkrx/notice:*", "//apps/lockers/lkrx/pad:*",
+             "//apps/lockers/lkrx/shift:*", "//apps/lockers/lkrx/sync:*", "//apps/lockers/lkrx/view:*",
+             "//apps/lockers/lkrx/visit:*",
+             "app-adapters", "app-sim",
+             "//apps/lockers/lkui/input:*", "//apps/lockers/lkui/notices:*", "//apps/lockers/lkui/screens:*"]
+composition = ["app-root"]
+# lkrx/vstate (a value module, not a component) is frozen: other packages depend on its header (manager, 2026-11-12).
+frozen = ["//apps/lockers/lkrx/vstate:vstate"]
+
+[contract]
+# lk/book, lk/codeset, lk/inventory and lk/report for their types (owner decision on P007 C2, 2026-11-12): the slice
+# contract lkc/slices embeds lk_book_t, lk_inventory_t, lk_report_note_t and points to lk_codeset_t.
+may_use = ["lib-base", "//lib/rt/ev:ev", "//apps/lockers/lk/types:types", "//apps/lockers/lk/book:book",
+           "//apps/lockers/lk/codeset:codeset", "//apps/lockers/lk/inventory:inventory", "//apps/lockers/lk/report:report"]
+
+[tests]
+# Packages without a module whose tests run the real folds and reactors together (P007 test moves, manager 2026-11-12).
+integration = ["//apps/lockers/itest/**"]

@@ -9,6 +9,8 @@ source directories plus a sealed checkout of this repo at a pinned commit. Every
 lives here.
 
 Registered products and the allocation deny list: [docs/products.md](docs/products.md).
+Lessons from decoupling a real C codebase, and the gate rules they became (reusable by any product):
+[docs/lessons-decoupling.md](docs/lessons-decoupling.md), [docs/decoupling.md](docs/decoupling.md).
 
 Status: phase 1 under construction. See [plan/phase1.md](plan/phase1.md).
 

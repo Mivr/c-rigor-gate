@@ -1,0 +1,10 @@
+{
+  "bypass": "a public header includes a module the library does not export",
+  "description": "util.h now includes core/core.h while //core:core stays in `deps` of //util:util: missing-export. A dependent then compiles only if it lists core itself, as //util:util_test does here without using it: unused-dep. The pair is the cost of a missing export.",
+  "fail": {
+    "decoupling": [
+      "missing-export",
+      "unused-dep"
+    ]
+  }
+}

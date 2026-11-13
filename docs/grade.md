@@ -26,6 +26,7 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `buckfiles` | `rigor buckfiles` over a copy of the product files of the tree only (never the gate's own `BUCK` files). A macro keyword is a string or a list of strings; `c_embed` (T112, below) has keywords of its own too (`src`, `symbol` strings, `max_bytes` one int literal, `nul` one `True`/`False` literal, no `srcs`, `headers` or `deps`); `c_catalog` (T105, below) has keywords of its own (no `srcs` or `headers`, but `deps` as usual) and takes one dict, `po`, of language -> list of strings; its `runtime` is one string checked like a `deps` entry (same-cell label, or `bad-argument` why `dep`; a test or a test-derived target is `test-target`); the only computed value (T102) is a package-local source glob, in `srcs` or `headers` of `c_library`, `c_binary` and `c_test`: (1) `glob(["<pat>", ...])`, or (2) one literal non-empty string list and one such glob joined by a single `+`, in either order (`["fp.h"] + glob(["src/*.h"])`). A pattern is `src/<stem>.c` or `src/<stem>.h` (the headers use `.h`), where the stem is a plain name or has exactly one `*` (`src/*.c`, `src/a.c`); no `..`, no leading `/`, no `**`, no other subdirectory. `glob` takes one list and nothing else (no `exclude`, no keyword). Everything else (a glob in `deps`, `tests/**`, `glob + glob`, a variable, a comprehension, any other `+`) stays `bad-argument` (why `value`). The layout check (below) needs nothing: a glob matches only `.c`/`.h` files, which are code by extension and so already covered, and a pattern is not a named file. |
 | `semantic-suppressions`, `symbols` | one Buck2 build (release, `--no-remote-cache` with `--uncached`) of every `kind(c_facts, //...)` target, `gate//ctest:ctest_facts` and `toolchains//:libc_symbols`; then `rigor facts` logic with `products/<p>/policy.toml` (gate-owned, next to `product.toml`; trusted module is `gate//ctest:ctest`, and test targets need their own `[module]` entries). If the facts cannot be built (e.g. the product does not compile) both are NOT_RUN and `build` says why. Metadata has executed/cached action counts. T138: `symbols` also owns the `threads` declaration of every `c_test` (the test facts are its): `threads-undeclared` (error: the test's own objects, or any library in its link closure, reference `pthread_create` or `thrd_create` without `threads = True`, so it has no tsan result; `via` names the modules) and `threads-vacuous` (error: `threads = True` and nothing in the closure references one). A test that links a threading library without starting a thread is treated as threaded on purpose (the facts say what the closure can do, not what a run does); the declaration is read from the `threads` attribute of the test's `ctest_results` target (one `uquery`, only when the product has a test). |
 | `layering` | the architecture contract (T087, `docs/layering.md`): the facts of the `symbols` gate against `products/<p>/architecture.toml`. No such file: PASS with info `no-architecture`. Otherwise it runs only after `toolchain` and `assemble` passed. |
+| `decoupling` | the decoupling rules under a baseline ratchet ([decoupling.md](decoupling.md); why: [lessons-decoupling.md](lessons-decoupling.md)): the `BUCK` files and `#include` lines of the tree plus the facts of the `symbols` gate (no build of its own), against `products/<p>/decoupling.toml` (module kinds and test packages) and `products/<p>/decoupling-baseline.toml` (the violations still tolerated). No `decoupling.toml`: PASS with info `not-applicable`, nothing read. Otherwise NOT_RUN unless `toolchain`, `assemble` and `buckfiles` passed and the facts built. Errors: `unused-dep`, `missing-export`, `needless-export`, `unit-test-links-component`, `unleveled-test`, `library-in-test-package`, `contract-has-behaviour` (each only for a violation the baseline does not list; `entry` is the baseline key), `stale-baseline` (a listed violation that is gone: the fix lands with a gate whose list dropped it) and `interface-changed` (a frozen header of the merge base lost or changed a declaration at the head; never baselined). Info: `interface-extended`, `decoupling-inputs` (sha256 of the two files, so the verdict commits to them). Metadata: per rule `violations`/`new`/`stale`, tests per level, the frozen modules, the fan-out report. |
 | `build` | in the tree: `uquery 'kind(ctest_results, //...)'`, then `build --keep-going --build-report` of all of them in `release` and in `toolchains//:linux_san`. Findings: `build-failed` (target, mode), `missing-output`, `query-failed`, `no-results-targets`. Always ends with `buck2 kill` in the tree. Metadata: executed/cached action counts (from `buck2 log what-ran`, column 3 `cache` = hit), stderr tail. |
 | `structure` | recursion and size/complexity limits (T011, B1, B2; `docs/structure.md`) from clang AST facts. `gate/rigor_lib/grade_structure.py` reads the modules with `uquery` over the `c_facts` and `mutsrc` targets (never from the product's words) and appends one `c_structure` call per module that has sources to the BUCK file of the module's package in the tree (a source can only be named from its own package; the original bytes come back when the step ends, and `buckfiles` has already read the product's files). Header-only modules get no target and are no dependency edge. Tests and fuzz targets have facts and are not graded. The policy is written by the gate from the built modules: the `level` of `products/<p>/policy.toml` (L1, L2, L3; the mutation levels L4 and L5 are L3, the strictest structure level) or none (L3, with a note). A module that does not build is `structure-build-failed`, a policy level for a module the tree does not have is `policy-module-without-facts`, no module at all is `no-structure-modules`; a malformed facts file is exit 2. Needs `assemble` and `build` to have passed (a product that does not compile has no facts), otherwise NOT_RUN. Release build, `--no-remote-cache` with `--uncached`, executed/cached counts in the metadata. |
 | `mode-divergence` | `rigor facts --modes` (T023, B3; `docs/product-checks.md` "Modes") over the release facts of every `kind(c_facts, //...)` target and the `san`, `msan` and `tsan` twins (`kind(c_san_facts, //...)`, `c_msan_facts`, `c_tsan_facts`; T138), each with its `[calls]` output, release against each mode in turn (`only_in` names the mode). A target without a twin (either way) is `missing-san-twin` / `missing-msan-twin` / `missing-tsan-twin` / `missing-release-twin`, except a target with a sysroot library beyond libc and pthread in its closure, which has no msan twin and is left out of the msan comparison; one that does not build is `modes-build-failed`; in both cases no comparison is made. Malformed or one-sided directories are exit 2. Same preconditions, caching and metadata as `structure`. Both gates sit right after `build` and before the tests: they only need a tree that compiles, they are cheap next to `mutants`, and a failing test does not hide them. |
@@ -193,6 +194,23 @@ W = {} is `no-new-tests`, and a module of W without a bundle entry is `witness-m
   the head built in both modes, `witness-tests` judges the head's results (info `witness-equals-head`, zero actions)
   and `mutants-witness` reuses the head's per-module `mutants` findings and summaries (also zero actions) unless the
   head result used an approval, whose kind is the implementer's.
+- **Identical module** (owner decision 2026-11-11). Otherwise `mutants-witness` leaves out every module of W whose
+  witness is the head's code **and** that the head's `mutants` gate judged in this grade: info
+  `witness-module-equals-head` (module, level, `judged_by = "mutants"`) per module and metadata `equal_to_head` (the
+  list); it is neither mutated nor judged a second time and needs no `witness-equivalent-mutant` approval for a mutant
+  the head gate already judged with `equivalent-mutant`. "The head's code" (`grade_witness.modules_equal_to_head`): the
+  files under the module's impl paths are the same paths with the same sha256 in the head tree and in the witness tree,
+  nothing missing and nothing extra. "Judged in this grade": the head `mutants` gate ran and its result has a summary
+  for the module. So the skip never leaves a module unjudged: in role `test-author` head `mutants` is not applicable
+  and **nothing is skipped** (a test author who weakens the tests of a module he did not touch is still caught by the
+  copy's survivors: canary `witness-copy-weak-tests`); a module whose head mutants did not build is not skipped
+  either. `witness-tests` and `witness-missing` are unchanged: the whole witness tree is built and every expected test
+  must pass on it, and every module of W needs its bundle entry. The modules that differ are judged as before.
+  A module that is the head's code and is **not** skipped is mutated and judged here, and its survivors may be covered
+  by an `equivalent-mutant` approval as well as a `witness-equivalent-mutant` one (metadata `head_approvals_accepted`,
+  `approvals_used_by_kind`; `mutants_gate.run(..., extra_kinds)`): the mutant id is bound to the function body, so for
+  identical code it is the mutant the head approval names. Why that is sound, and why a survivor of weakened tests
+  still fails: `docs/witness.md`, "A module whose witness is the head's code".
 - **No source text.** Mutant findings and survivor summaries lose `original` and `replacement`; full reports stay in
   `<work>/witness/mutants-reports/`.
 
@@ -266,16 +284,33 @@ nightly` exists for a bot that needs the whole grade.
   `semantic-suppressions` gates read the same file whole (T055): the symbols gate uses the `level` to arm its
   `exports` check (an L3 module without an `exports` list is `exports-missing`, an error).
 - **Nothing mutated is a failure.** No module at L2 or above is `no-mutated-modules`; a module whose sources
-  produce no mutant at all is `no-mutants` (also inside `rigor mutants`); a module without tests is
-  `module-without-tests`; a build that does not produce a report is `mutants-build-failed`.
+  produce no mutant at all is `no-mutants` (also inside `rigor mutants`); a module that no test of its own package
+  lists directly is `module-without-tests` (an error at every mutated level, L2 included; it is not mutated, so it can
+  never pass by having nothing judged; the field `foreign_tests` counts the tests of other packages that list it, which
+  do not count: see "Tests"); a build that does not produce a report is `mutants-build-failed`.
   Perf kills (T090): a module with perf targets in the policy gets `c_mutants(..., perf = [...])` (the targets' binaries'
   libraries are linked in too, `gate//ctest:perf` never), its `[perf]` output is copied to `<work>/mutants-perf/` and judged with
   the reports; `killed-perf` is a separate verdict that counts as killed (`docs/mutate.md`, "Perf kills"). A perf target the
   layout does not know is `perf-target-unknown`; `perf-build-failed` if the evidence did not build.
-- **Tests.** For a module, every product `c_test` that lists it directly in `deps`, found with `buck2 uquery` in
-  the tree (the `test` attribute of the `ctest_results` targets, and the `deps` of libraries and tests). The
-  product declares no `c_mutants`. The other libraries the tests link (the closure of their `deps` and the
-  module's, without the module, dependents first) are passed as `deps`. See "Link dependencies of the mutants (T070)".
+- **Tests: the module's own package only** (owner decision 2026-11-11). For a module, the product `c_test`s **of the
+  module's own package** (same cell, same package: `//lib/fmt/jw:jw` and `//lib/fmt/jw:jw_test`, not a parent, child
+  or sibling package) that list it directly in `deps` (`grade_mutants.own_tests`; `rules/mutate.bzl` `_own_package` is
+  the same notion), found with `buck2 uquery` in the tree (the `test` attribute of the `ctest_results` targets, and the
+  `deps` of libraries and tests). The product declares no `c_mutants`. The other libraries those tests link (the
+  closure of their `deps` and the module's, without the module, dependents first) are passed as `deps`. See "Link
+  dependencies of the mutants (T070)". A test of another package never runs against the module's mutants and cannot
+  kill one, however directly it lists the module: a mutant that only such a test would kill is a survivor
+  (`survived-mutant` at L3 and above), and a module with no own-package test that lists it is `module-without-tests`.
+  The tests of a package the product declares an integration or simulation package (`decoupling.toml` `[tests]`,
+  [decoupling.md](decoupling.md)) are never a module's own tests, even if a library sits in that package.
+  Why: a module's `mutant_run` actions are keyed on every archive its tests link. When every test that lists a module
+  counted, a composition test made each module's mutants depend on nearly every other module, and a one-line edit
+  anywhere re-ran them all (business-apps: 92 % of the module/test pairs were another package's, about 21,000 mutant
+  actions and 71 minutes for one edit, and 3 % of the live mutants were killed only by such a test). Now an edit in
+  module A re-runs the mutants of module B only if a test in B's own package links A. The same selection serves
+  `mutants-witness` and `tools/mutants` (they call `grade_mutants.plan`). The witness scope W follows the same rule: a
+  module's test surface is its own package plus the kits its own-package tests link (`docs/witness.md`, "impl paths,
+  test surface and W").
 - **The generated package.** After the product was copied, the step writes `gate-mutants/BUCK` (one `c_mutants` call
   per module, target `m_<module>_<sha8 of the label>`, never a position: T121) and a root `PACKAGE` (`package(visibility = ["PUBLIC"], inherit = True)`;
   without it the product's test targets, which are package-private, are invisible to another package). Both are
@@ -298,7 +333,8 @@ nightly` exists for a bot that needs the whole grade.
   `chunks`, `retried` (chunk indexes) and `stderr_tail` (last failing chunk) are added. `--no-remote-cache` with
   `--uncached`.
   **Stop at the first kill (T121).** A mutant's tests run in a fixed order (the tests of the module's own package, then the
-  others, each sorted by label) and its runs stop at the first test that fails a check; the rest are recorded as skipped
+  others, each sorted by label; a grade hands a module its own package's tests only, the others exist for a `c_mutants`
+  target written by hand) and its runs stop at the first test that fails a check; the rest are recorded as skipped
   (`killed_by`), never as passes (`rigor mutants`: `bad-skip` unless an earlier run of that mutant fails a check). A crash
   does not stop the runs: the verdict is killed-assert if any test fails a check, so every verdict stays what it was. See
   `docs/mutate.md`.
@@ -307,7 +343,8 @@ nightly` exists for a bot that needs the whole grade.
   grade executes none. The key holds no work dir, time or nonce; the one per-grade thing that was in it, the target
   name's position (`m<NNN>_`, part of every output path), is gone. The verdict is read from the cached action output; no
   verdict is stored anywhere else. A module whose link deps changed re-runs (tests link every library the module's
-  tests link). `selftest/mutants_cache.sh` (a step of `selftest/grade.sh`) proves it. The reports are copied and `rigor mutants` runs in process over
+  own-package tests link, and nothing else: a library that only another package's test links is no input).
+  `selftest/mutants_cache.sh` (a step of `selftest/grade.sh`) proves it, step (d) for the last point. The reports are copied and `rigor mutants` runs in process over
   a policy the gate writes. Findings and the per-module summary (`total`, `verdicts`, `operators`, `survivors`)
   are reported with the product's module labels; metadata also has the executed/cached action counts and the
   sha256 of the generated `BUCK`.

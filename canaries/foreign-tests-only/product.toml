@@ -1,0 +1,6 @@
+name = "canary"
+
+[layout]
+# .buckconfig and tools/** are listed on purpose: the gate must drop them whatever a product says.
+include = ["core/**", "util/**", "far/**", ".buckconfig", "tools/**"]
+exclude = []
