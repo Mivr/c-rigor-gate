@@ -21,10 +21,11 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog", "c_embed")
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog", "c_embed", "c_android_so")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
-MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps")}
+# `c_android_so` (T-G2) names the symbols it exports and the system libraries it links.
+MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps"), "c_android_so": ("system_libs", "exports")}
 # T105: `c_catalog` has keywords of its own and no `srcs`/`headers`. `pots`, `langs`, `source_lang` and `symbol`
 # are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
 # is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).

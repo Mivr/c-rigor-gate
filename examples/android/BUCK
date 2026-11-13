@@ -1,0 +1,12 @@
+load("@gate//rules:c.bzl", "c_android_so", "c_library")
+
+c_library(name = "core", srcs = ["core.c"], headers = ["core.h"])
+
+# A NativeActivity shared object: the entry symbol is the only dynamic export (android mode only).
+c_android_so(
+    name = "club",
+    srcs = ["entry.c"],
+    deps = [":core"],
+    exports = ["ANativeActivity_onCreate"],
+    system_libs = ["android", "log"],
+)

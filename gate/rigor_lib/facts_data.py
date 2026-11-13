@@ -17,7 +17,7 @@ SYMBOL = re.compile(r"[A-Za-z0-9_.$@]+")
 SECTIONS = ("ro", "data", "bss", "tls")     # the section classes of a data object
 WRITABLE = ("data", "bss", "tls")
 SYSTEM_LIBS = ("pthread", "X11", "android", "log")     # the sysroot libraries a c_library may name (T095); rules/c.bzl `_SYSTEM_LIBS` is the same list
-KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_third_party")
+KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_third_party", "c_android_so")
 
 
 @dataclass(frozen=True)
@@ -169,8 +169,8 @@ def parse_facts(path, data):
         _fail(path, "every product target needs `system_libs`")
     if not system_libs <= set(SYSTEM_LIBS):
         _fail(path, "system_libs may only name %s" % (list(SYSTEM_LIBS),))
-    if system_libs and document["kind"] != "c_library":
-        _fail(path, "only a c_library has system_libs")
+    if system_libs and document["kind"] not in ("c_library", "c_android_so"):
+        _fail(path, "only a c_library or a c_android_so has system_libs")
     units = tuple(parse_unit(path, unit) for unit in document["units"])
     if len({unit.name for unit in units}) != len(units):
         _fail(path, "duplicate unit names")

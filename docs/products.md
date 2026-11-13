@@ -42,6 +42,20 @@ flags from the library's link info (the module and its `deps`) and puts them aft
 links. The facts record `system_libs` per module. Details and findings: [product-checks.md](product-checks.md#system-libraries-t095).
 Self-test: the last steps of `selftest/mutate.sh` (a real pthread in release and san, a binary, and the mutants of two modules).
 
+## `c_android_so`: a shared object for Android (T-G2)
+`c_android_so(name, exports, srcs, deps, system_libs, visibility)` links `lib<name>.so` for the `android` mode only
+(`--target-platforms toolchains//:android_release`; every other mode reports it incompatible). `exports` is the exact list of
+dynamic symbols: a generated GNU version script makes them global and everything else local, `--no-undefined`, `relro`/`now`
+and `--gc-sections` are fixed, and the link is 16 KB page aligned. The output is checked by `rules/elf_check.py` before it is
+published as the target's output: every `PT_LOAD` segment aligned to at least 16384 with offset and vaddr congruent, and the
+dynamic symbol table defines exactly `exports` (no more, none missing). `<name>_facts` (kind `c_android_so`) reads the android
+mode's own objects (the NDK's clang and header roots `toolchains//:ndk-system-roots`) and is not a `c_facts` target, so a Linux
+grade never selects it; the symbols gate reads it with `--libc toolchains//:libc_symbols_android`. The dependencies' facts stay
+the Linux release ones (one policy, one fact source), so a policy has the usual entries for them plus one for the `.so`
+(`exports = [...]`, `system_libs = ["android", "log"]`). Example: `examples/android`. Self-test: `selftest/android.sh`
+(readelf of the real object, the LOAD alignment, a 4 KB-aligned copy refused, the symbols gate accepting the example and
+rejecting `getenv` and a redefined bionic symbol); unit tests: `gate/tests/test_elf_check.py`.
+
 ## G25: the allocation deny list (P002)
 `business-apps` adds, to annas-c's standard `[global]` deny list, every way to get memory outside a caller-supplied arena
 or static storage. A reference to one of them in a graded module is a `symbols` FAIL (`denied-symbol`) unless that

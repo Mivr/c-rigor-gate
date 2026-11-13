@@ -175,6 +175,10 @@ def _ndk_cc_impl(ctx: AnalysisContext) -> list[Provider]:
         "-isystem",
         sys_inc,
         "-fPIC",
+        # The prelude's preprocessor action (`-E`, which the facts scan reads) also passes `-c`; clang 21 reports
+        # that driver argument as unused, and the sealed `-Werror` makes it an error. This is about the driver's own
+        # argument list, which no product controls, not about the product's code (clang 19 does not report it).
+        "-Wno-unused-command-line-argument",
         hidden = [clang_headers, sys_inc],
     )
     return [DefaultInfo(), RunInfo(args = args)]

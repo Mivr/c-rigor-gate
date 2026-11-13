@@ -175,6 +175,14 @@ class BuckFilesCase(TempDirTestCase):
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = LIBS)\n', "bad-argument")
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = [LIB])\n', "bad-argument")
 
+    def test_c_android_so_takes_exports_and_system_libs(self):
+        load = 'load("@gate//rules:c.bzl", "c_android_so")\n'
+        ok = load + 'c_android_so(name = "a", srcs = ["a.c"], deps = [":b"], exports = ["f"], system_libs = ["android", "log"])\n'
+        self.assertEqual(self.check({"BUCK": ok}, 0), [])
+        self.red(load + 'c_android_so(name = "a", srcs = ["a.c"], exports = f)\n', "bad-argument")
+        self.red(load + 'c_android_so(name = "a", srcs = ["a.c"], exports = ["f"], linker_flags = ["-s"])\n', "bad-argument")
+        self.red('load("@gate//rules:c.bzl", "c_library")\nc_library(name = "a", srcs = ["a.c"], exports = ["f"])\n', "bad-argument")
+
     def test_exported_deps_on_a_library(self):
         self.assertEqual(self.check({"BUCK": LOAD + 'c_library(name = "a", srcs = ["a.c"], exported_deps = [":c", "//p:d"])\n'}, 0), [])
 

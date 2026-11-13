@@ -6,11 +6,12 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 
 
+load("@gate//rules:android.bzl", "android_so", "android_version_script")
 load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:embed.bzl", "c_embed_gen")
 load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
-load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
+load("@gate//rules:facts.bzl", "c_android_facts", "c_facts", "c_san_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
 
@@ -402,6 +403,70 @@ def c_fuzz(name, srcs = [], deps = []):
         target_compatible_with = _RELEASE_OR_SAN,
     )
     _facts(name, "c_fuzz", srcs, deps, unit = ":" + name + "__facts_unit")
+
+# Android shared objects are linked with 16 KB LOAD segments (Android 15+ devices map with 16 KB pages); the NDK
+# toolchain links with `-z max-page-size=16384` and rules/elf_check.py refuses an object that is not.
+_ANDROID_PAGE = 16384
+_ANDROID_ONLY = ["toolchains//:android"]
+
+def _symbol_names(macro, attr, names):
+    if type(names) != "list" or len(names) == 0:
+        fail("{}: `{}` must be a non-empty list of C identifiers, got {!r}".format(macro, attr, names))
+    for symbol in names:
+        if type(symbol) != "string" or symbol == "" or symbol[0].isdigit() or any([c not in _EMBED_SYMBOL_CHARS for c in symbol.elems()]):
+            fail("{}: `{}` entries must be C identifiers ([A-Za-z_][A-Za-z0-9_]*), got {!r}".format(macro, attr, symbol))
+    if len(set(names)) != len(names):
+        fail("{}: `{}` has duplicates: {}".format(macro, attr, names))
+
+def c_android_so(name, exports, srcs = [], deps = [], system_libs = [], visibility = []):
+    """A shared object `lib<name>.so` for Android (android mode only), exporting exactly the symbols of `exports`.
+
+    `srcs` and `deps` as for `c_library`; the dependencies are linked in statically. A GNU version script makes
+    the `exports` global and everything else local, and the build fails (rules/elf_check.py) if the linked object
+    defines any other dynamic symbol, lacks one of `exports`, or has a PT_LOAD segment aligned to less than 16 KB.
+    `<name>` is the checked `lib<name>.so`; `<name>_facts` (the android mode's objects of this target, like
+    `c_library`'s release facts) feeds the symbols gate, with kind c_android_so.
+    The link is `-Wl,--no-undefined -Wl,-z,relro,-z,now -Wl,--gc-sections`; `system_libs` as for `c_library`.
+    """
+    _check("c_android_so", srcs, [])
+    _symbol_names("c_android_so", "exports", exports)
+    link_flags = _system_libs("c_android_so", system_libs)
+    android_version_script(name = name + "__map", symbols = exports)
+    native.cxx_library(
+        name = name + "__lib",
+        srcs = srcs,
+        deps = deps,
+        compiler_flags = _compile_flags(),
+        linker_flags = [
+            "-Wl,--version-script=$(location :{}__map)".format(name),
+            "-Wl,--no-undefined",
+            "-Wl,-z,relro,-z,now",
+            "-Wl,--gc-sections",
+        ],
+        post_linker_flags = link_flags,
+        preferred_linkage = "shared",
+        link_style = "static",
+        target_compatible_with = _ANDROID_ONLY,
+    )
+    android_so(
+        name = name,
+        lib = ":" + name + "__lib",
+        soname = name,
+        exports = exports,
+        page_size = _ANDROID_PAGE,
+        target_compatible_with = _ANDROID_ONLY,
+        visibility = visibility,
+    )
+    c_android_facts(
+        name = name + "_facts",
+        unit = ":" + name + "__lib",
+        facts_name = name,
+        kind = "c_android_so",
+        srcs = srcs,
+        facts_deps = deps,
+        system_libs = system_libs,
+        target_compatible_with = _ANDROID_ONLY,
+    )
 
 def c_mutants(name, module, tests, deps = [], perf = []):
     """Mutation testing of a `c_library` through the given `c_test` targets (release mode only).
