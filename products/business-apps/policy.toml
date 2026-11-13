@@ -315,6 +315,10 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/lk/auditplan:auditplan_fuzz"]
+allow = ["abort", "fprintf", "memchr", "stderr", "strcmp", "strlen"]
+exports = ["LLVMFuzzerTestOneInput"]
+
 [module."//apps/lockers/lk/auditplan:auditplan_junk_test"]
 allow = ["memset"]
 exports = ["main"]
@@ -404,6 +408,10 @@ level = "L3"
 impl = ["apps/lockers/lk/booktext/src/**"]
 allow = []
 exports = ["lk_booktext_parse", "lk_booktext_write"]
+
+[module."//apps/lockers/lk/booktext:booktext_fuzz"]
+allow = ["abort", "fprintf", "stderr"]
+exports = ["LLVMFuzzerTestOneInput"]
 
 [module."//apps/lockers/lk/booktext:booktext_parse_test"]
 allow = []
@@ -522,6 +530,10 @@ allow = []
 exports = ["cf_num_too_big", "lk_cache_decode", "lk_cache_encode", "lk_codes_begin", "lk_codes_feed",
     "lk_codes_parse", "lk_offline_start"]
 
+[module."//apps/lockers/lk/codesfile:codesfile_fuzz"]
+allow = ["abort", "fprintf", "memchr", "memcpy", "stderr"]
+exports = ["LLVMFuzzerTestOneInput"]
+
 [module."//apps/lockers/lk/codesfile:null_views_test"]
 allow = []
 exports = ["main"]
@@ -604,6 +616,10 @@ exports = ["main"]
 allow = ["memcpy", "strcat", "strcpy", "strlen"]
 exports = ["main"]
 
+[module."//apps/lockers/lk/config:config_fuzz"]
+allow = ["abort", "fprintf", "memchr", "stderr", "strlen"]
+exports = ["LLVMFuzzerTestOneInput"]
+
 [module."//apps/lockers/lk/config:config_nums_test"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
@@ -648,6 +664,10 @@ exports = ["main"]
 [module."//apps/lockers/lk/inventory:inventory_edge_test"]
 allow = ["memset", "snprintf", "strlen"]
 exports = ["main"]
+
+[module."//apps/lockers/lk/inventory:inventory_fuzz"]
+allow = ["abort", "bcmp", "fprintf", "memcmp", "stderr"]
+exports = ["LLVMFuzzerTestOneInput"]
 
 [module."//apps/lockers/lk/inventory:inventory_pline_test"]
 allow = ["memset", "snprintf"]
@@ -3164,6 +3184,10 @@ impl = ["lib/fmt/httpresp/src/**"]
 allow = ["memset"]
 exports = ["http_parser_eof", "http_parser_init", "http_parser_next", "http_status_line"]
 
+[module."//lib/fmt/httpresp:httpresp_fuzz"]
+allow = ["abort", "fprintf", "stderr"]
+exports = ["LLVMFuzzerTestOneInput"]
+
 [module."//lib/fmt/httpresp:parse_basic_test"]
 allow = ["bcmp", "memcpy", "snprintf", "strlen"]
 exports = ["main"]
@@ -3365,6 +3389,10 @@ impl = ["lib/fmt/jpull/src/**"]
 allow = []
 exports = ["jpull_feed", "jpull_init", "jpull_limits_default", "jpull_next", "jpull_schema"]
 
+[module."//lib/fmt/jpull:jpull_fuzz"]
+allow = ["abort", "fprintf", "stderr"]
+exports = ["LLVMFuzzerTestOneInput"]
+
 [module."//lib/fmt/jpull:limits_test"]
 allow = ["memcpy", "memset", "snprintf", "strcmp", "strlen", "strstr"]
 exports = ["main"]
@@ -3500,6 +3528,10 @@ exports = ["main"]
 [module."//lib/fmt/mbrtu:mbrtu_fixture_test"]
 allow = ["bcmp", "memcpy", "memset"]
 exports = ["fx", "fx_n", "main"]
+
+[module."//lib/fmt/mbrtu:mbrtu_fuzz"]
+allow = ["abort", "fprintf", "memcpy", "stderr"]
+exports = ["LLVMFuzzerTestOneInput"]
 
 [module."//lib/fmt/mbrtu:mbrtu_rx_test"]
 allow = ["memcpy", "memset"]

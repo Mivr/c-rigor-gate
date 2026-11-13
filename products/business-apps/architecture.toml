@@ -911,3 +911,31 @@ kind = "data"
 from = "app-root"
 to = "app-contract"
 kind = "data"
+
+# libFuzzer targets (c_fuzz) are leaf targets that only call the parser they fuzz and core; the layering gate does not
+# exempt them like c_test, so each edge is declared on its own (G23).
+
+[[edge]]
+from = "//lib/fmt/httpresp:httpresp_fuzz"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/httpresp:httpresp_fuzz"
+to = "//lib/fmt/httpresp:httpresp"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jpull:jpull_fuzz"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/jpull:jpull_fuzz"
+to = "//lib/fmt/jpull:jpull"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/mbrtu:mbrtu_fuzz"
+to = "//lib/fmt/mbrtu:mbrtu"
+kind = "pure"
