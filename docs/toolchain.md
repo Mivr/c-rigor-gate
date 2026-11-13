@@ -53,7 +53,9 @@ cannot just be trusted from it. Design:
 - The NDK tree is verified the same way (T-G1). `ndk.manifest` was regenerated from a fully uncached unpack (`build
   --no-remote-cache`, the `fetched_zip_tree` action executed on RE, not served from a cache). The first regeneration
   was byte-identical to the manifest generated from a cached tree; the committed one has one more member,
-  `bin/llvm-readobj` (the target of the `llvm-readelf` link, which dangled without it), and is otherwise unchanged.
+  `bin/llvm-readobj` (the target of the `llvm-readelf` link, which dangled without it), and is otherwise unchanged. Later (S2) `unzip_members.py` matched `*` across `/` no longer: the 1930 libc++ headers, the
+  other ABIs' asm headers and the Vulkan headers dropped out of the tree (1792 manifest lines, nothing removed that a C product
+  includes), regenerated uncached again (executed on RE).
   `selftest/toolchain.sh` has a step in which a scratch clone with one `ndk.manifest` sha256 flipped makes the
   grader's own verifier fail (`toolchain-mismatch`, `toolchains/ndk.manifest`, the flipped path), and the committed
   manifests pass.

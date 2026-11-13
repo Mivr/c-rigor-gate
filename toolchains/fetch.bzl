@@ -84,8 +84,9 @@ verified_tree = rule(
 # ---------------------------------------------------------------------------
 # A zip archive (the Android NDK ships as one). Same contract as `fetched_tree`: download by sha256,
 # unpack only `members` on the RE farm (`unzip_members.py`, python3 stdlib), a pattern that matches
-# nothing fails. `members = ["--list"]` writes the archive's member list instead (used to author the
-# members, never in a product graph).
+# nothing fails. `list_only = True` (no `members`) writes the archive's member list instead (used to author the
+# members, never in a product graph); otherwise `members` is mandatory and non-empty, and `*` in a member matches
+# inside one path component only (unzip_members.py).
 # ---------------------------------------------------------------------------
 
 def _fetched_zip_tree_impl(ctx: AnalysisContext) -> list[Provider]:
@@ -96,6 +97,8 @@ def _fetched_zip_tree_impl(ctx: AnalysisContext) -> list[Provider]:
         sha256 = ctx.attrs.sha256,
         size_bytes = ctx.attrs.size_bytes,
     )
+    if not ctx.attrs.list_only and len(ctx.attrs.members) == 0:
+        fail("{}: `members` must be a non-empty list (or `list_only = True`)".format(ctx.label))
     if ctx.attrs.list_only:
         out = ctx.actions.declare_output("members.txt")
         ctx.actions.run(
