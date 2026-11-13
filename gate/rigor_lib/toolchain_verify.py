@@ -4,9 +4,9 @@
 two minutes). The action cache is client-writable (backlog B4), so the tree may not simply be trusted
 from it. Before uncached builds a daemon is therefore primed with two commands:
 
-  1. `build toolchains//:{llvm,sysroot}_ref`, cache allowed, nothing materialised: the tree is taken from
+  1. `build toolchains//:{llvm,sysroot,ndk}_ref`, cache allowed, nothing materialised: the tree is taken from
      the action cache when present (the only time `tar` runs is when the cache truly lacks it);
-  2. `build --no-remote-cache toolchains//:{llvm,sysroot}_verified`: an uncached worker action that hashes
+  2. `build --no-remote-cache toolchains//:{llvm,sysroot,ndk}_verified`: an uncached worker action that hashes
      EVERY byte, mode bit, symlink and name of that very tree against the checked-in manifest
      (`toolchains/*.manifest`, gate files). Exit 0 only if tree and manifest are identical.
 
@@ -20,9 +20,9 @@ later gate the same way. Both steps cost seconds when the daemon is warm.
 import re
 from dataclasses import dataclass
 
-CACHED_TARGETS = ["toolchains//:llvm_ref", "toolchains//:sysroot_ref"]
-VERIFY_TARGETS = ["toolchains//:llvm_verified", "toolchains//:sysroot_verified"]
-MANIFESTS = ["llvm.manifest", "sysroot.manifest"]   # in the toolchains cell, same order as VERIFY_TARGETS
+CACHED_TARGETS = ["toolchains//:llvm_ref", "toolchains//:sysroot_ref", "toolchains//:ndk_ref"]
+VERIFY_TARGETS = ["toolchains//:llvm_verified", "toolchains//:sysroot_verified", "toolchains//:ndk_verified"]
+MANIFESTS = ["llvm.manifest", "sysroot.manifest", "ndk.manifest"]   # in the toolchains cell, same order as VERIFY_TARGETS
 PLATFORM = "toolchains//:linux_release"
 VERIFY_CATEGORY = "verify_tree"
 STEP_FETCH, STEP_VERIFY, STEP_WHAT_RAN, STEP_CACHED = "fetch", "verify", "what-ran", "verify-served-from-cache"

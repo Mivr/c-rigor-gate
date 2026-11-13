@@ -122,13 +122,21 @@ def _facts(name, kind, srcs, deps, unit = None, system_libs = [], generated = []
         )
 
 # The sysroot libraries a `c_library` may name (T095). `pthread`: glibc 2.31 keeps pthread_create and friends in
-# libpthread. `X11` (T117): libX11 for a Linux X11 shell. A new entry needs a product that needs it, and
+# libpthread; bionic has them in libc, so it links nothing in the android mode. `X11` (T117): libX11 for a Linux X11
+# shell. `android` and `log` (T-G1): the NDK's libandroid.so (ANativeWindow_*, AInput*, ALooper_*, ANativeActivity_*)
+# and liblog.so (__android_log_write), linked in the android mode only. A new entry needs a product that needs it, and
 # `facts_data.SYSTEM_LIBS` (the same list, checked against this one by a test) so the policy gate knows it.
-_SYSTEM_LIBS = ["pthread", "X11"]
+_SYSTEM_LIBS = ["pthread", "X11", "android", "log"]
 
 # What a name links, in link order. libX11 is a shared object whose own dependencies (libxcb, then libXau and
 # libXdmcp) must follow it on the line; all of them are members of the pinned sysroot (toolchains/BUCK).
-_SYSTEM_LIB_FLAGS = {"X11": ["-lX11", "-lxcb", "-lXau", "-lXdmcp"]}
+# The Android names exist in that one mode, `pthread` in every mode but it.
+_SYSTEM_LIB_FLAGS = {
+    "X11": ["-lX11", "-lxcb", "-lXau", "-lXdmcp"],
+    "pthread": select({"toolchains//:android": [], "DEFAULT": ["-lpthread"]}),
+    "android": select({"toolchains//:android": ["-landroid"], "DEFAULT": []}),
+    "log": select({"toolchains//:android": ["-llog"], "DEFAULT": []}),
+}
 
 def _system_libs(macro, libs):
     if type(libs) != "list":

@@ -16,7 +16,7 @@ LABEL = re.compile(r"[A-Za-z0-9_.-]*//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+")
 SYMBOL = re.compile(r"[A-Za-z0-9_.$@]+")
 SECTIONS = ("ro", "data", "bss", "tls")     # the section classes of a data object
 WRITABLE = ("data", "bss", "tls")
-SYSTEM_LIBS = ("pthread", "X11")     # the sysroot libraries a c_library may name (T095); rules/c.bzl `_SYSTEM_LIBS` is the same list
+SYSTEM_LIBS = ("pthread", "X11", "android", "log")     # the sysroot libraries a c_library may name (T095); rules/c.bzl `_SYSTEM_LIBS` is the same list
 KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_third_party")
 
 

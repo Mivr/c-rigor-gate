@@ -14,6 +14,7 @@ f	x	5424496	1cdde2768f3c94aa5db19361f6857ffe80a1c3c7f87574b64df5da256c4ac959	and
 f	x	21932736	68736b054c3d7035474e10b827908417b4d92e22b25bb1aa773f0add7f324b1f	android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump
 l	-	0	llvm-ar	android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib
 l	-	0	llvm-readobj	android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
+f	x	6800192	5104576a3518575cf1887c2afa9249bbd0dc175cb9dc0f2af0d430fe0cb20bbe	android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readobj
 l	-	0	llvm-objcopy	android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip
 d	-	0	-	android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/lib
 d	-	0	-	android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/lib/clang

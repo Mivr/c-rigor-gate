@@ -121,7 +121,7 @@ system_roots = rule(
 def _libc_impl(ctx: AnalysisContext) -> list[Provider]:
     """Every symbol the pinned glibc's shared libraries export (what a product must not redefine)."""
     sysroot = _tree(ctx.attrs.sysroot)
-    libs = [sysroot.project("lib/x86_64-linux-gnu/" + name) for name in ctx.attrs.libs]
+    libs = [sysroot.project(ctx.attrs.dir + name) for name in ctx.attrs.libs]
     out = ctx.actions.declare_output("libc.symbols")
     script = ctx.actions.write(
         "run.sh",
@@ -139,6 +139,8 @@ def _libc_impl(ctx: AnalysisContext) -> list[Provider]:
 libc_symbols = rule(
     impl = _libc_impl,
     attrs = {
+        # The directory of the libraries inside the tree; the NDK twin names its API 28 stub directory.
+        "dir": attrs.string(default = "lib/x86_64-linux-gnu/"),
         "libs": attrs.list(attrs.string()),
         "sysroot": attrs.dep(),
         "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
@@ -218,5 +220,26 @@ ndk_ld = rule(
         "ndk": attrs.dep(),
         "ndk_dir": attrs.string(),
         "runtimes": attrs.list(attrs.string()),
+    },
+)
+
+def _ndk_roots_impl(ctx: AnalysisContext) -> list[Provider]:
+    """The NDK twin of `system_roots`: `--system-root` for the clang resource headers and the bionic headers."""
+    ndk = _tree(ctx.attrs.ndk).project(ctx.attrs.ndk_dir.rstrip("/"))
+    args = cmd_args(
+        "--system-root",
+        ndk.project("lib/clang/{}/include".format(ctx.attrs.llvm_major)),
+        "--system-root",
+        ndk.project("sysroot/usr/include"),
+        ignore_artifacts = True,
+    )
+    return [DefaultInfo(), RunInfo(args = args)]
+
+ndk_roots = rule(
+    impl = _ndk_roots_impl,
+    attrs = {
+        "llvm_major": attrs.string(),
+        "ndk": attrs.dep(),
+        "ndk_dir": attrs.string(),
     },
 )

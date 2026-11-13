@@ -151,7 +151,14 @@ class CommittedManifestsTest(unittest.TestCase):
         self.assertEqual(llvm["bin/clang-19"][:2], ("f", "x"))
         self.assertEqual(llvm["bin/ld.lld"][0], "l")
         self.assertIn("usr/include/stdio.h", sysroot)
-        for table in (llvm, sysroot):
+        ndk = vt.parse((ROOT / "toolchains" / "ndk.manifest").read_text())
+        prefix = "android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/"
+        for path in ("bin/clang-21", "bin/ld.lld", "bin/llvm-readelf", "lib/clang/21/include",
+                     "sysroot/usr/include/jni.h", "sysroot/usr/lib/aarch64-linux-android/28/libc.so",
+                     "sysroot/usr/lib/aarch64-linux-android/28/libandroid.so",
+                     "sysroot/usr/lib/aarch64-linux-android/28/liblog.so"):
+            self.assertIn(prefix + path, ndk)
+        for table in (llvm, sysroot, ndk):
             for kind, _, size, value, path in table.values():
                 self.assertFalse(path.startswith("/") or ".." in path.split("/"), path)
                 if kind == "f":
@@ -162,6 +169,12 @@ class CommittedManifestsTest(unittest.TestCase):
         text = (ROOT / "toolchains" / "BUCK").read_text()
         self.assertIn('manifest = t + ".manifest"', text)
         self.assertIn('script = "verify_tree.py"', text)
+        # every verified tree is in the list the grader primes, in the same order for targets and manifests
+        self.assertIn('for t in ["llvm", "sysroot", "ndk"]', text)
+        self.assertEqual([t.split(":")[1].replace("_verified", ".manifest") for t in toolchain_verify.VERIFY_TARGETS],
+                         toolchain_verify.MANIFESTS)
+        self.assertEqual([t.split(":")[1].replace("_ref", ".manifest") for t in toolchain_verify.CACHED_TARGETS],
+                         toolchain_verify.MANIFESTS)
 
 
 class PrepareTest(unittest.TestCase):
@@ -185,7 +198,9 @@ class PrepareTest(unittest.TestCase):
         self.assertNotIn("--no-remote-cache", calls[0])
         self.assertIn("toolchains//:llvm_ref", calls[0])
         self.assertIn("--no-remote-cache", calls[1])
-        self.assertEqual(calls[1][-2:], toolchain_verify.VERIFY_TARGETS)
+        self.assertEqual(calls[1][-len(toolchain_verify.VERIFY_TARGETS):], toolchain_verify.VERIFY_TARGETS)
+        self.assertIn("toolchains//:ndk_verified", calls[1])
+        self.assertIn("toolchains//:ndk_ref", calls[0])
         self.assertEqual(calls[2], ["log", "what-ran"])
 
     def test_verify_failure_is_reported_and_never_refetches(self):

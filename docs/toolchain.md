@@ -11,6 +11,7 @@ compiling or linking: no host clang, no `/usr/include`, no `/usr/lib`.
 | Buck2 client | `/usr/local/bin/buck2` (`tools/buck2.version`; `tools/buck2` refuses any other binary) | `400f5fde930a62ff6f64513fb5a7e88fa1847afa85758cadd9484dc93446fa94` |
 | Prelude | bundled in that binary (`[external_cells] prelude = bundled`) | n/a |
 | LLVM 19.1.7 | `https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz` | `4a5ec53951a584ed36f80240f6fbf8fdd46b4cf6c7ee87cc2d5018dc37caf679` |
+| Android NDK r29 (linux zip) | `https://dl.google.com/android/repository/android-ndk-r29-linux.zip` | `4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf` |
 | glibc sysroot (Chromium Debian bullseye amd64) | `https://commondatastorage.googleapis.com/chrome-linux-sysroot/f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` | `f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` |
 
 `toolchains/fetch.bzl` (`fetched_tree`) downloads each archive (hash-checked) and runs `tar` on RE to unpack only
@@ -23,14 +24,14 @@ names (`toolchains/tools.bzl`, `.project(...)`). A pattern that matches nothing 
 archive, about two minutes, once per Buck2 daemon). The action cache is client-writable (backlog B4), so the tree
 cannot just be trusted from it. Design:
 
-- `toolchains/llvm.manifest` and `toolchains/sysroot.manifest` list every member of the extracted trees (directory,
+- `toolchains/{llvm,sysroot,ndk}.manifest` list every member of the extracted trees (directory,
   file with exec bit, size and sha256, symlink with target). They are gate files (`toolchains/**`), covered by the
   gate-clean check, and a change to one is a review item of its own.
 - The `toolchain` gate of `rigor grade` (`gate/rigor_lib/grade_toolchain.py`, T073; `docs/grade.md`) runs right after
   `assemble`, before any gate that compiles, and does this in the head tree's daemon (`toolchain_verify.prepare`):
-  (1) `build toolchains//:{llvm,sysroot}_ref`, cache allowed, nothing materialised, so the tree comes from the action
+  (1) `build toolchains//:{llvm,sysroot,ndk}_ref`, cache allowed, nothing materialised, so the tree comes from the action
   cache (the unpack runs only when the cache truly lacks it); (2) `build --no-remote-cache
-  toolchains//:{llvm,sysroot}_verified`: the `verified_tree` rule (`toolchains/fetch.bzl`) runs
+  toolchains//:{llvm,sysroot,ndk}_verified`: the `verified_tree` rule (`toolchains/fetch.bzl`) runs
   `toolchains/verify_tree.py` on a worker, uncached, over the very tree of step 1 and compares every name, type,
   exec bit, size, link target and sha256 with the manifest. Buck2 keeps that tree in the daemon, so the compile and
   link actions of the builds that follow consume the digest that was verified. Warm cost: about 8 s.
@@ -49,6 +50,18 @@ cannot just be trusted from it. Design:
 - Regenerating the manifests: `toolchains/gen_manifests.sh` (a real, uncached unpack; deterministic, so a second
   run leaves `git diff` empty). Bootstrapping a new pin needs empty `*.manifest` placeholder files first (the BUCK
   file names them as sources).
+- The NDK tree is verified the same way (T-G1). `ndk.manifest` was regenerated from a fully uncached unpack (`build
+  --no-remote-cache`, the `fetched_zip_tree` action executed on RE, not served from a cache). The first regeneration
+  was byte-identical to the manifest generated from a cached tree; the committed one has one more member,
+  `bin/llvm-readobj` (the target of the `llvm-readelf` link, which dangled without it), and is otherwise unchanged.
+  `selftest/toolchain.sh` has a step in which a scratch clone with one `ndk.manifest` sha256 flipped makes the
+  grader's own verifier fail (`toolchain-mismatch`, `toolchains/ndk.manifest`, the flipped path), and the committed
+  manifests pass.
+- NDK twins of the Linux facts (T-G1): `toolchains//:libc_symbols_android` (every symbol the API 28 stubs `libc.so`,
+  `libm.so`, `libdl.so`, `libandroid.so` and `liblog.so` export; the reserved-name list of an Android build) and
+  `toolchains//:ndk-system-roots` (`--system-root` for the NDK's clang and bionic header directories). The `system_libs`
+  names `android` (`-landroid`) and `log` (`-llog`) link in the android mode only; `pthread` links nothing there
+  (bionic has it in libc) and is unchanged on Linux.
 - Tests: `gate/tests/test_toolchain_verify.py`, `gate/tests/test_grade_toolchain.py`; the last step of
   `selftest/grade.sh` grades with a scratch gate copy whose `llvm.manifest` has one sha256 flipped (`toolchain` FAIL).
 

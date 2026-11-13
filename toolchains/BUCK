@@ -5,7 +5,7 @@ load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
 load(":fetch.bzl", "fetched_tree", "fetched_zip_tree", "tree_ref", "verified_tree")
 load(":platforms.bzl", "exec_platform", "target_platform")
 load(":select.bzl", "cxx_select")
-load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "ndk_cc", "ndk_ld", "system_roots")
+load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "ndk_cc", "ndk_ld", "ndk_roots", "system_roots")
 
 WORKER_IMAGE = read_root_config("rbe", "worker_image_digest", "")
 
@@ -218,6 +218,7 @@ fetched_zip_tree(
         _NDK + "bin/llvm-strip",
         _NDK + "bin/llvm-objdump",
         _NDK + "bin/llvm-readelf",
+        _NDK + "bin/llvm-readobj",  # the target of the llvm-readelf link
         _NDK + "lib/clang/21/include",
         _NDK + "lib/clang/21/lib/linux/libclang_rt.builtins-aarch64-android.a",
         _NDK + "lib/clang/21/lib/linux/aarch64/libunwind.a",
@@ -330,6 +331,18 @@ ndk_ld(
     llvm_major = "21",
     api = "28",
     runtimes = ["lib/clang/21/lib/linux/libclang_rt.builtins-aarch64-android.a", "lib/clang/21/lib/linux/aarch64/libunwind.a", "lib/clang/21/lib/linux/aarch64/libatomic.a"],
+)
+
+# The NDK twins of `system-roots` and `libc_symbols`: the clang and bionic header directories, and every symbol the API 28
+# stubs of libc, libm, libdl, libandroid and liblog export (what an Android product must not redefine).
+ndk_roots(name = "ndk-system-roots", ndk = ":ndk", ndk_dir = _NDK, llvm_major = "21", visibility = ["PUBLIC"])
+
+libc_symbols(
+    name = "libc_symbols_android",
+    libs = ["libc.so", "libm.so", "libdl.so", "libandroid.so", "liblog.so"],
+    dir = _NDK_ABI + "28/",
+    sysroot = ":ndk",
+    visibility = ["PUBLIC"],
 )
 
 [

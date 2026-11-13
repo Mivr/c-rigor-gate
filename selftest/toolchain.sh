@@ -144,6 +144,64 @@ for m in release san; do
 done
 rm -rf "$xs"
 
+begin "NDK tree (T-G1): the pinned r29 tree verifies against ndk.manifest uncached; one flipped manifest byte makes the grader's verifier fail"
+must_pass build --no-remote-cache toolchains//:ndk_verified
+flip="$out/ndk-flip"
+{ git init -q -b flip "$flip" && git -C "$flip" fetch -q --no-tags "$root" HEAD && git -C "$flip" reset -q --hard FETCH_HEAD; } || fail "$CUR: copy of the gate commit"
+flipped="$(python3 -I - "$flip/toolchains/ndk.manifest" <<'PY'
+import sys
+path = sys.argv[1]
+lines = open(path, encoding="utf-8").read().split("\n")
+for i, line in enumerate(lines):
+    fields = line.split("\t")
+    if len(fields) == 5 and fields[0] == "f" and fields[4].endswith("/bin/clang-21"):
+        digest = fields[3]
+        fields[3] = digest[:-1] + ("1" if digest[-1] != "1" else "2")
+        lines[i] = "\t".join(fields)
+        break
+else:
+    sys.exit("no clang-21 line in ndk.manifest")
+open(path, "w", encoding="utf-8").write("\n".join(lines))
+print(fields[4])
+PY
+)" || fail "$CUR: flip"
+git -C "$flip" -c user.name=selftest -c user.email=selftest@invalid commit -q -am "selftest: one ndk.manifest sha256 flipped" || fail "$CUR: commit"
+python3 -I - "$root" "$flip" "$flipped" > "$out/ndk-flip.log" 2>&1 <<'PY' || fail "$CUR: the flipped manifest was not refused as expected" "$out/ndk-flip.log"
+import os, subprocess, sys
+root, flip, flipped = sys.argv[1:4]
+sys.path.insert(0, os.path.join(root, "gate"))
+from rigor_lib import toolchain_verify
+
+def run(tree, args):
+    done = subprocess.run(["bash", os.path.join(tree, "tools", "buck2")] + args, cwd=tree, stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=1800)
+    return done.returncode, done.stdout, done.stderr
+
+failure = toolchain_verify.prepare(run, flip)
+assert failure is not None, "the flipped ndk.manifest was accepted"
+assert failure.step == toolchain_verify.STEP_VERIFY, failure.message()
+assert failure.manifest() == "toolchains/ndk.manifest", failure.message()
+assert failure.first_difference() == flipped, (failure.first_difference(), flipped)
+assert failure.verifier_exit_code() == 1, failure.message()
+print("FAILS as wanted: %s, first difference %s" % (failure.manifest(), failure.first_difference()))
+clean = toolchain_verify.prepare(run, root)
+assert clean is None, clean.message()
+print("the committed manifests (llvm, sysroot, ndk) verify")
+PY
+cat "$out/ndk-flip.log"
+# the scratch clone's own Buck2 daemon: stop only the processes whose working directory is the clone
+python3 -I - "$flip" <<'PY'
+import os, signal, sys
+root = os.path.realpath(sys.argv[1])
+for pid in filter(str.isdigit, os.listdir("/proc")):
+    try:
+        cwd = os.path.realpath(os.readlink("/proc/%s/cwd" % pid))
+    except OSError:
+        continue
+    if cwd == root or cwd.startswith(root + os.sep):
+        os.kill(int(pid), signal.SIGTERM)
+PY
+
 begin "remote: compile, link and test all execute on RE (fresh, uncached sources)"
 mkdir -p "$scratch"
 nonce="$(date +%s%N)-$$"
