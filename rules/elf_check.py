@@ -6,7 +6,9 @@ Runs in the `android_so` action (rules/android.bzl) on an RE worker, and in the 
 Exit 0 and OUT written, or exit 1 with the reasons on stderr and no OUT:
 
   * LIB is a little-endian ELF64 shared object (ET_DYN), AArch64 (EM_AARCH64);
-  * every PT_LOAD segment has p_align >= the page size and p_offset and p_vaddr agree modulo p_align
+  * the header sizes are those of ELF64 (e_phentsize 56, e_shentsize 64);
+  * every PT_LOAD segment has p_align a power of two and a multiple of the page size, and p_offset and p_vaddr agree
+    modulo p_align
     (a 4 KB-aligned segment cannot be mapped on a 16 KB page device, Android 15+);
   * the dynamic symbol table DEFINES exactly the `--export` names (no more, none missing): a shared object
     exports its entry point and nothing else.
@@ -15,7 +17,7 @@ Exit 0 and OUT written, or exit 1 with the reasons on stderr and no OUT:
 import struct
 import sys
 
-ET_DYN, EM_AARCH64, PT_LOAD, SHT_DYNSYM = 3, 183, 1, 11
+ET_DYN, EM_AARCH64, PT_LOAD, SHT_DYNSYM, SHT_STRTAB = 3, 183, 1, 11, 3
 _EHDR = struct.Struct("<16sHHIQQQIHHHHHH")
 _PHDR = struct.Struct("<IIQQQQQQ")
 _SHDR = struct.Struct("<IIQQQQIIQQ")
@@ -31,8 +33,13 @@ def _header(data):
     if len(data) < _EHDR.size or data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
         raise Bad("not a little-endian ELF64 file")
     fields = _EHDR.unpack_from(data)
-    return {"type": fields[1], "machine": fields[2], "phoff": fields[5], "shoff": fields[6],
-            "phnum": fields[10], "shnum": fields[12]}
+    head = {"type": fields[1], "machine": fields[2], "phoff": fields[5], "shoff": fields[6],
+            "phentsize": fields[9], "phnum": fields[10], "shentsize": fields[11], "shnum": fields[12]}
+    if head["phnum"] and head["phentsize"] != _PHDR.size:
+        raise Bad("e_phentsize is %d, not %d" % (head["phentsize"], _PHDR.size))
+    if head["shnum"] and head["shentsize"] != _SHDR.size:
+        raise Bad("e_shentsize is %d, not %d" % (head["shentsize"], _SHDR.size))
+    return head
 
 
 def load_segments(data):
@@ -65,14 +72,21 @@ def defined_dynamic_symbols(data):
         if entsize != _SYM.size or link >= len(sections):
             raise Bad("a malformed dynamic symbol table")
         strtab = sections[link]
+        if strtab[1] != SHT_STRTAB:
+            raise Bad("the dynamic symbol table's string table is not a string table (sh_type %d)" % strtab[1])
+        if offset + size > len(data) or strtab[4] + strtab[5] > len(data):
+            raise Bad("a dynamic symbol section is outside the file")
         for at in range(offset, offset + size, _SYM.size):
             name, _, _, shndx, _, _ = _SYM.unpack_from(data, at)
             if shndx == SHN_UNDEF:
                 continue
+            if name == 0:
+                continue
+            if name >= strtab[5]:
+                raise Bad("a symbol name offset %d is outside its string table" % name)
             start = strtab[4] + name
-            end = data.index(b"\0", start)
-            if name != 0:
-                names.append(data[start:end].decode("ascii", "replace"))
+            end = data.index(b"\0", start, strtab[4] + strtab[5])
+            names.append(data[start:end].decode("ascii", "replace"))
     return sorted(names)
 
 
@@ -91,9 +105,14 @@ def problems(data, page_size, exports):
         for offset, vaddr, align in segments:
             if align < page_size:
                 found.append("PT_LOAD at offset 0x%x is aligned to %d, not %d" % (offset, align, page_size))
+            elif align & (align - 1) or align % page_size:
+                found.append("PT_LOAD at offset 0x%x: alignment %d is not a power of two and a multiple of %d"
+                             % (offset, align, page_size))
             elif offset % align != vaddr % align:
                 found.append("PT_LOAD at offset 0x%x: offset and vaddr 0x%x disagree modulo %d" % (offset, vaddr, align))
         symbols = defined_dynamic_symbols(data)
+        if len(set(symbols)) != len(symbols):
+            found.append("defines a dynamic symbol twice: %s" % ", ".join(sorted({n for n in symbols if symbols.count(n) > 1})))
     except (Bad, struct.error, ValueError) as exc:
         return ["unreadable: %s" % exc]
     for name in sorted(set(symbols) - set(exports)):

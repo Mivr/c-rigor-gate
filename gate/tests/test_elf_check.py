@@ -89,6 +89,46 @@ class ProblemsTest(unittest.TestCase):
         self.assertEqual(ec.problems(elf(etype=2), PAGE, self.ENTRY), ["not a shared object (e_type 2)"])
         self.assertEqual(ec.problems(elf(machine=62), PAGE, self.ENTRY), ["not AArch64 (e_machine 62)"])
 
+    def test_header_entry_sizes_must_be_those_of_elf64(self):
+        for offset, text in ((54, "e_phentsize is 57, not 56"), (58, "e_shentsize is 63, not 64")):
+            data = bytearray(elf())
+            struct.pack_into("<H", data, offset, struct.unpack_from("<H", data, offset)[0] + (1 if offset == 54 else -1))
+            self.assertEqual(ec.problems(bytes(data), PAGE, self.ENTRY), ["unreadable: " + text])
+
+    def test_alignment_must_be_a_power_of_two_and_a_multiple_of_the_page(self):
+        found = ec.problems(elf(loads=((0, 0, 3 * PAGE),)), PAGE, self.ENTRY)
+        self.assertEqual(len(found), 1)
+        self.assertIn("not a power of two and a multiple of 16384", found[0])
+        self.assertEqual(len(ec.problems(elf(loads=((0, 0, 0),)), PAGE, self.ENTRY)), 1)
+        self.assertEqual(len(ec.problems(elf(loads=((0, 0, 1),)), PAGE, self.ENTRY)), 1)
+        self.assertEqual(ec.problems(elf(loads=((0, 0, 1 << 20),)), PAGE, self.ENTRY), [])
+
+    def test_the_string_table_must_be_a_string_table(self):
+        data = bytearray(elf())
+        shoff = struct.unpack_from("<Q", data, 40)[0]
+        struct.pack_into("<I", data, shoff + ec._SHDR.size + 4, 1)     # section 1 (.dynstr): sh_type PROGBITS
+        found = ec.problems(bytes(data), PAGE, self.ENTRY)
+        self.assertEqual(len(found), 1)
+        self.assertIn("is not a string table (sh_type 1)", found[0])
+
+    def test_a_name_offset_outside_the_string_table_is_refused(self):
+        data = bytearray(elf())
+        shoff = struct.unpack_from("<Q", data, 40)[0]
+        struct.pack_into("<Q", data, shoff + ec._SHDR.size + 32, 5)   # .dynstr sh_size: shorter than the names
+        found = ec.problems(bytes(data), PAGE, self.ENTRY)
+        self.assertEqual(len(found), 1)
+        self.assertIn("outside its string table", found[0])
+
+    def test_a_section_outside_the_file_is_refused(self):
+        data = bytearray(elf())
+        shoff = struct.unpack_from("<Q", data, 40)[0]
+        struct.pack_into("<Q", data, shoff + 2 * ec._SHDR.size + 32, 1 << 40)   # .dynsym sh_size
+        self.assertEqual(len(ec.problems(bytes(data), PAGE, self.ENTRY)), 1)
+
+    def test_a_name_defined_twice_is_refused(self):
+        found = ec.problems(elf(exports=("ANativeActivity_onCreate", "ANativeActivity_onCreate")), PAGE, self.ENTRY)
+        self.assertEqual(found, ["defines a dynamic symbol twice: ANativeActivity_onCreate"])
+
     def test_garbage_is_unreadable_not_an_exception(self):
         for data in (b"", b"MZ" + b"\0" * 100, elf()[:70], elf()[:-10]):
             self.assertEqual(len(ec.problems(data, PAGE, self.ENTRY)), 1, data[:8])
