@@ -6,7 +6,7 @@ The orchestrator used to pick selftests by hand. `tools/affected.py` and `tools/
 
 Ordered rules `{glob, selftests}`. The **first** rule whose glob matches a changed path decides that path; the selected
 set is the union over all changed paths, plus `gate` (the unit tests), which is always selected. Selftest names:
-`gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real`; `all` stands for
+`gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf android`; `all` stands for
 every one of them.
 
 Fail closed:
