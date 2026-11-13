@@ -15,7 +15,7 @@ c_perf(name = "parse_perf", module = ":parse", srcs = ["gen.c", "drv.c"], deps =
 - `module` is the `c_library` under test; `srcs` are the gate-held generator and driver sources (plain `.c` names,
   same checks as `c_binary`); `deps` are further libraries.
 - Targets: `<name>` (the binary) and `<name>_perf` (the action; its output is `perf.jsonl`).
-- **Release only** (`target_compatible_with = toolchains//:release`): `-O2`, the sealed warnings. The rule adds the
+- **Release only** (`target_compatible_with = toolchains//:release`): `-O2` and the hardened release flags (`docs/toolchain.md`, T139), the sealed warnings. The rule adds the
   `-Wl,--wrap=` flags for the libc list below; the product never sets them.
 - `sizes` (2 to 8 positive ints, normally `[n, 4n]`) and `seed` are attributes. Nothing comes from the environment.
 - The action succeeds whenever the harness ran and wrote records. It fails only when the harness could not run at
