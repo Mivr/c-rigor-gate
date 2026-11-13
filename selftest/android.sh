@@ -31,6 +31,9 @@ so="$root/$(output "$out/$step.log" '//examples/android:club')"
 echo "  $so"
 must_fail_with "incompatible|Incompatible" build //examples/android:club
 echo "  linux_release refuses the shared object (android mode only)"
+must_fail_with "incompatible|Incompatible" build --target-platforms $AND //examples/hello:hello
+must_fail_with "incompatible|Incompatible" build --target-platforms $AND //examples/hello:hello_test
+echo "  the android mode refuses c_binary and c_test (they run on the Linux workers only)"
 
 begin "llvm-readelf from the pinned NDK: the dynamic symbol table defines the entry symbol and nothing else"
 log="$out/readelf.log"

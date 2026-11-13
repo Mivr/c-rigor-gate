@@ -51,20 +51,25 @@ _SEALED = [
 _SAN = "-fsanitize=address,undefined,leak"
 _FUZZ = "-fsanitize=fuzzer,address,undefined"
 
+# One list for the optimised modes: the android mode IS the release list (not a copy of it), so a flag added to
+# the release profile (a hardening profile, T139) reaches the Android objects in the same change.
+_RELEASE_COMPILE = ["-O2"]
+_RELEASE_LINK = []
+
 _COMPILE_BY_MODE = {
-    "toolchains//:release": ["-O2"],
+    "toolchains//:release": _RELEASE_COMPILE,
     "toolchains//:san": ["-O1", "-g", _SAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:cov": ["-fprofile-instr-generate", "-fcoverage-mapping", "-fcoverage-mcdc"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
-    "toolchains//:android": ["-O2"],
+    "toolchains//:android": _RELEASE_COMPILE,
 }
 
 _LINK_BY_MODE = {
-    "toolchains//:release": [],
+    "toolchains//:release": _RELEASE_LINK,
     "toolchains//:san": [_SAN],
     "toolchains//:cov": ["-fprofile-instr-generate"],
     "toolchains//:fuzz": [_FUZZ],
-    "toolchains//:android": [],
+    "toolchains//:android": _RELEASE_LINK,
 }
 
 def _compile_flags():
@@ -76,8 +81,11 @@ def _link_flags():
 # Fuzz mode links libFuzzer's main(); ordinary binaries/tests are not built there, and
 # fuzz targets are not built in the other modes.
 _ONLY_FUZZ = ["toolchains//:fuzz"]
-_NOT_IN_FUZZ = select({
+# Binaries and tests run on the build farm's Linux x86_64 workers: never built for the android mode, whose only
+# products are libraries and `c_android_so` (a `//...` build under the android platform skips them as incompatible).
+_HOST_ONLY = select({
     "toolchains//:fuzz": ["toolchains//:never"],
+    "toolchains//:android": ["toolchains//:never"],
     "DEFAULT": [],
 })
 
@@ -306,7 +314,7 @@ def c_binary(name, srcs = [], deps = []):
         deps = deps,
         compiler_flags = _compile_flags(),
         linker_flags = _link_flags(),
-        target_compatible_with = _NOT_IN_FUZZ,
+        target_compatible_with = _HOST_ONLY,
     )
     _facts(name, "c_binary", srcs, deps)
 
@@ -320,7 +328,7 @@ def c_test(name, srcs = [], deps = []):
         deps = deps + ["gate//ctest:ctest"],
         compiler_flags = _compile_flags(),
         linker_flags = _link_flags(),
-        target_compatible_with = _NOT_IN_FUZZ,
+        target_compatible_with = _HOST_ONLY,
     )
 
     _facts(name, "c_test", srcs, deps + ["gate//ctest:ctest"])
@@ -431,7 +439,7 @@ def c_android_so(name, exports, srcs = [], deps = [], system_libs = [], visibili
     _check("c_android_so", srcs, [])
     _symbol_names("c_android_so", "exports", exports)
     link_flags = _system_libs("c_android_so", system_libs)
-    android_version_script(name = name + "__map", symbols = exports)
+    android_version_script(name = name + "__map", symbols = exports, visibility = [])
     native.cxx_library(
         name = name + "__lib",
         srcs = srcs,
@@ -447,6 +455,7 @@ def c_android_so(name, exports, srcs = [], deps = [], system_libs = [], visibili
         preferred_linkage = "shared",
         link_style = "static",
         target_compatible_with = _ANDROID_ONLY,
+        visibility = [],    # the unchecked object is the macro's own: only `<name>` (the checked one) is a product output
     )
     android_so(
         name = name,

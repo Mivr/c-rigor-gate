@@ -392,6 +392,16 @@ class TestOnlyLabelCase(TempDirTestCase):
                     'c_binary(name = "b", srcs = ["b.c"], deps = ["%s"])\n' % dep
                 self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
 
+    def test_nothing_depends_on_a_shared_object_or_on_what_it_derives(self):
+        """T-G2: `<name>__lib` is the unchecked link, `<name>__map` its script; only `<name>` is an output."""
+        for dep in (":so", ":so_facts", ":so__lib", ":so__map"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                load = 'load("@gate//rules:c.bzl", "c_android_so", "c_library")\n'
+                files = {"BUCK": load + 'c_android_so(name = "so", srcs = ["a.c"], exports = ["f"])\n'
+                                        'c_library(name = "l", srcs = ["l.c"], deps = ["%s"])\n' % dep}
+                self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
+
     def test_similar_names_elsewhere_are_not_refused(self):
         files = {"p/BUCK": LOADS + 'c_test(name = "t")\n',
                  "q/BUCK": LOADS + 'c_library(name = "t", srcs = ["l.c"])\nc_binary(name = "b", deps = [":t", ":t2"])\n'}

@@ -44,8 +44,9 @@ BUILD_FILE = "BUCK"
 DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+)")
 GATE_THIRD_PARTY = re.compile(r"//third_party[/:]")
 TEST_MACRO = "c_test"
+ANDROID_MACRO = "c_android_so"   # nothing depends on a shared object (or on what it derives): it is a product output only
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
-TEST_DERIVED = ("", "_facts", "_facts_san", "_results", "_coverage")
+TEST_DERIVED = ("", "_facts", "_facts_san", "_results", "_coverage", "__lib", "__map")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.
 FORBIDDEN_NAMES = ("TARGETS", "PACKAGE", ".buckconfig", ".buckconfig.local", ".buckroot",
@@ -243,7 +244,7 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
             found.extend(call_findings(path, node, allowed, test_allowed))
             if tests is not None and isinstance(node.value.func, ast.Name) and node.value.func.id in MACROS:
                 directory = os.path.dirname(path)
-                if node.value.func.id == TEST_MACRO:
+                if node.value.func.id in (TEST_MACRO, ANDROID_MACRO):
                     tests.extend((directory, n) for n in _keyword_strings(node.value, "name"))
                 calls.extend((path, node.lineno, d) for d in _dep_strings(node.value)
                              if DEP_LABEL.fullmatch(d))
