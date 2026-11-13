@@ -22,6 +22,15 @@ selftests = ["android", "product_checks"]
 [[rule]]
 glob = "rules/elf_check.py"
 selftests = ["android"]
+[[rule]]
+glob = "rules/apk*"
+selftests = ["android", "product_checks"]
+[[rule]]
+glob = "toolchains/android_*"
+selftests = ["android", "toolchain"]
+[[rule]]
+glob = "toolchains/jdk.manifest"
+selftests = ["android", "toolchain"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"

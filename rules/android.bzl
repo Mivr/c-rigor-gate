@@ -12,6 +12,8 @@ android_version_script = rule(
     attrs = {"symbols": attrs.list(attrs.string())},
 )
 
+AndroidSoInfo = provider(fields = {"exports": list[str], "so": Artifact})
+
 def _so_impl(ctx: AnalysisContext) -> list[Provider]:
     """`lib<name>.so`: the linked shared object, copied out only if elf_check.py accepts it."""
     lib = ctx.attrs.lib[DefaultInfo].sub_targets["shared"][DefaultInfo].default_outputs[0]
@@ -21,7 +23,7 @@ def _so_impl(ctx: AnalysisContext) -> list[Provider]:
         cmd.add("--export", symbol)
     cmd.add(lib, out.as_output())
     ctx.actions.run(cmd, category = "android_so_check", identifier = ctx.attrs.soname)
-    return [DefaultInfo(default_output = out)]
+    return [DefaultInfo(default_output = out), AndroidSoInfo(exports = ctx.attrs.exports, so = out)]
 
 android_so = rule(
     impl = _so_impl,

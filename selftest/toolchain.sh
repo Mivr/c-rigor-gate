@@ -144,31 +144,33 @@ for m in release san; do
 done
 rm -rf "$xs"
 
-begin "NDK tree (T-G1): the pinned r29 tree verifies against ndk.manifest uncached; one flipped manifest byte makes the grader's verifier fail"
-must_pass build --no-remote-cache toolchains//:ndk_verified
-flip="$out/ndk-flip"
+begin "NDK and SDK trees (T-G1, T-G3): the pinned trees verify against their manifests uncached; one flipped manifest byte makes the grader's verifier fail (ndk, build-tools, jdk each)"
+must_pass build --no-remote-cache toolchains//:ndk_verified toolchains//:android_build_tools_verified toolchains//:android_platform_verified toolchains//:jdk_verified
+for entry in "ndk|/bin/clang-21" "android_build_tools|/aapt2" "jdk|/bin/java"; do
+tree="${entry%%|*}"; member="${entry#*|}"
+flip="$out/flip-$tree"
 { git init -q -b flip "$flip" && git -C "$flip" fetch -q --no-tags "$root" HEAD && git -C "$flip" reset -q --hard FETCH_HEAD; } || fail "$CUR: copy of the gate commit"
-flipped="$(python3 -I - "$flip/toolchains/ndk.manifest" <<'PY'
+flipped="$(python3 -I - "$flip/toolchains/$tree.manifest" "$member" <<'PY'
 import sys
 path = sys.argv[1]
 lines = open(path, encoding="utf-8").read().split("\n")
 for i, line in enumerate(lines):
     fields = line.split("\t")
-    if len(fields) == 5 and fields[0] == "f" and fields[4].endswith("/bin/clang-21"):
+    if len(fields) == 5 and fields[0] == "f" and fields[4].endswith(sys.argv[2]):
         digest = fields[3]
         fields[3] = digest[:-1] + ("1" if digest[-1] != "1" else "2")
         lines[i] = "\t".join(fields)
         break
 else:
-    sys.exit("no clang-21 line in ndk.manifest")
+    sys.exit("no %s line in the manifest" % sys.argv[2])
 open(path, "w", encoding="utf-8").write("\n".join(lines))
 print(fields[4])
 PY
 )" || fail "$CUR: flip"
-git -C "$flip" -c user.name=selftest -c user.email=selftest@invalid commit -q -am "selftest: one ndk.manifest sha256 flipped" || fail "$CUR: commit"
-python3 -I - "$root" "$flip" "$flipped" > "$out/ndk-flip.log" 2>&1 <<'PY' || fail "$CUR: the flipped manifest was not refused as expected" "$out/ndk-flip.log"
+git -C "$flip" -c user.name=selftest -c user.email=selftest@invalid commit -q -am "selftest: one $tree.manifest sha256 flipped" || fail "$CUR: commit"
+python3 -I - "$root" "$flip" "$flipped" "$tree" > "$out/flip-$tree.log" 2>&1 <<'PY' || fail "$CUR: the flipped $tree.manifest was not refused as expected" "$out/flip-$tree.log"
 import os, subprocess, sys
-root, flip, flipped = sys.argv[1:4]
+root, flip, flipped, tree = sys.argv[1:5]
 sys.path.insert(0, os.path.join(root, "gate"))
 from rigor_lib import toolchain_verify
 
@@ -178,17 +180,17 @@ def run(tree, args):
     return done.returncode, done.stdout, done.stderr
 
 failure = toolchain_verify.prepare(run, flip)
-assert failure is not None, "the flipped ndk.manifest was accepted"
+assert failure is not None, "the flipped %s.manifest was accepted" % tree
 assert failure.step == toolchain_verify.STEP_VERIFY, failure.message()
-assert failure.manifest() == "toolchains/ndk.manifest", failure.message()
+assert failure.manifest() == "toolchains/%s.manifest" % tree, failure.message()
 assert failure.first_difference() == flipped, (failure.first_difference(), flipped)
 assert failure.verifier_exit_code() == 1, failure.message()
 print("FAILS as wanted: %s, first difference %s" % (failure.manifest(), failure.first_difference()))
 clean = toolchain_verify.prepare(run, root)
 assert clean is None, clean.message()
-print("the committed manifests (llvm, sysroot, ndk) verify")
+print("the committed manifests (llvm, sysroot, ndk, android_build_tools, android_platform, jdk) verify")
 PY
-cat "$out/ndk-flip.log"
+cat "$out/flip-$tree.log"
 # the scratch clone's own Buck2 daemon: stop only the processes whose working directory is the clone
 python3 -I - "$flip" <<'PY'
 import os, signal, sys
@@ -201,6 +203,8 @@ for pid in filter(str.isdigit, os.listdir("/proc")):
     if cwd == root or cwd.startswith(root + os.sep):
         os.kill(int(pid), signal.SIGTERM)
 PY
+rm -rf "$flip"
+done
 
 begin "remote: compile, link and test all execute on RE (fresh, uncached sources)"
 mkdir -p "$scratch"

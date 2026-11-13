@@ -247,3 +247,41 @@ ndk_roots = rule(
         "ndk_dir": attrs.string(),
     },
 )
+
+# ---------------------------------------------------------------------------
+# Android SDK tools (T-G3). Unlike the LLVM tools above these need their whole (small) tree beside them: zipalign loads
+# `lib64/libc++.so` through its rpath, and java loads its runtime from `lib/`. The tree is a hidden input.
+# ---------------------------------------------------------------------------
+
+def _tree_bin_impl(ctx: AnalysisContext) -> list[Provider]:
+    """One native binary of a fetched tree, run with the whole tree as inputs; no flags."""
+    tree = _tree(ctx.attrs.tree)
+    return [DefaultInfo(), RunInfo(args = cmd_args(tree.project(ctx.attrs.bin), hidden = tree))]
+
+tree_bin = rule(
+    impl = _tree_bin_impl,
+    attrs = {
+        "bin": attrs.string(),
+        "tree": attrs.dep(),
+    },
+)
+
+def _java_jar_impl(ctx: AnalysisContext) -> list[Provider]:
+    """`java -jar JAR` (or `java -cp JAR MAIN`) with the pinned JDK. No perf data file, no host JAVA_HOME or user settings."""
+    jdk = _tree(ctx.attrs.jdk)
+    tree = _tree(ctx.attrs.tree)
+    jar = tree.project(ctx.attrs.jar)
+    args = cmd_args(jdk.project(ctx.attrs.java), "-XX:-UsePerfData", "-Xshare:auto", "-Xmx1g", hidden = [jdk, tree])
+    args.add(["-cp", jar, ctx.attrs.main] if ctx.attrs.main else ["-jar", jar])
+    return [DefaultInfo(), RunInfo(args = args)]
+
+java_jar = rule(
+    impl = _java_jar_impl,
+    attrs = {
+        "jar": attrs.string(),
+        "java": attrs.string(),
+        "jdk": attrs.dep(),
+        "main": attrs.string(default = ""),
+        "tree": attrs.dep(),
+    },
+)

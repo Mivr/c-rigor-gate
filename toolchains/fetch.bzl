@@ -8,7 +8,7 @@ the toolchain actually uses. A pattern that matches nothing fails the build.
 """
 
 def _fetched_tree_impl(ctx: AnalysisContext) -> list[Provider]:
-    archive = ctx.actions.declare_output("archive.tar.xz")
+    archive = ctx.actions.declare_output("archive.tar.gz" if ctx.attrs.gzip else "archive.tar.xz")
     ctx.actions.download_file(
         archive.as_output(),
         ctx.attrs.url,
@@ -23,7 +23,7 @@ def _fetched_tree_impl(ctx: AnalysisContext) -> list[Provider]:
         "set -eu",
         cmd_args(out.as_output(), format = "mkdir -p {}"),
         cmd_args(
-            ["tar", "-xJf", archive, "-C", out.as_output(), "--wildcards", "--no-wildcards-match-slash", "-T", members] + strip,
+            ["tar", "-xzf" if ctx.attrs.gzip else "-xJf", archive, "-C", out.as_output(), "--wildcards", "--no-wildcards-match-slash", "-T", members] + strip,
             delimiter = " ",
         ),
         delimiter = "\n",
@@ -38,6 +38,7 @@ def _fetched_tree_impl(ctx: AnalysisContext) -> list[Provider]:
 fetched_tree = rule(
     impl = _fetched_tree_impl,
     attrs = {
+        "gzip": attrs.bool(default = False),    # a .tar.gz (the JDK); the default is the .tar.xz of LLVM and the sysroot
         "members": attrs.list(attrs.string()),
         "sha256": attrs.string(),
         "size_bytes": attrs.int(),

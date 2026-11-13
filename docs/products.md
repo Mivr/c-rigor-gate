@@ -71,6 +71,48 @@ before a product ships a closure that contains such code; until then a product m
 the `c_android_so`'s own sources. Example: `examples/android`. Self-test: `selftest/android.sh`; unit tests:
 `gate/tests/test_elf_check.py`, `gate/tests/test_grade_android.py`.
 
+## `c_apk`: a signed APK of one `c_android_so` (T-G3)
+`c_apk(name, so, package, label, version_code, version_name, orientation, permissions, assets, visibility)` packages the
+checked output of ONE `c_android_so` of the same BUCK file (`so = ":club"`; never its `__lib`, `buckfiles` refuses any `__`
+or foreign label) into `<name>.apk`, and defines `<name>_check`. Android mode only. No other keyword exists: no `deps`, no
+`srcs`, no flag, no manifest file, no SDK level, no signing argument (`buckfiles` and the macro both refuse them).
+The shared object must export exactly `ANativeActivity_onCreate`.
+
+| Step (all on RE, pinned SDK) | What |
+|---|---|
+| manifest | `rules/apk_manifest.py` renders AndroidManifest.xml from the declaration. Validated: `package` (dotted lower-case), `label`, `version_name` (patterns), `version_code` (1..2100000000), `orientation` (landscape, portrait, sensorLandscape, unspecified), `permissions` (from `INTERNET`). Fixed: minSdk 28, targetSdk 35, `hasCode="false"`, `extractNativeLibs="false"`, one NativeActivity whose `lib_name` is the soname. |
+| link | `aapt2 link` against platform-35 `android.jar` (and `assets`, plain file names under `assets/`) |
+| pack | `rules/apk_pack.py` adds `lib/arm64-v8a/lib<name>.so`; every entry STORED, fixed time and mode |
+| align | `zipalign -f -P 16 4` (the stored object starts at a multiple of 16384) |
+| sign | `apksigner sign` with the **TEST-ONLY debug key** `toolchains/android_debug.keystore` (public password `android`, alias `androiddebugkey`; its certificate SHA-256 is `toolchains/android_debug.cert.sha256`). It protects nothing: every product signs with the same public key. |
+
+`<name>_check` (a build action; `buck2 build` of it fails when the APK is not acceptable, and the grader builds the
+`_check` of every `c_apk`, `grade_checks._android_facts`) runs `rules/apk_check.py`: **entries** (exactly the manifest,
+`resources.arsc`, the object and the declared assets; no other file, no META-INF, no repeated name), **library** (STORED,
+data at a multiple of 16384, then `rules/elf_check.py`: AArch64 shared object, LOAD alignment 16384, dynamic exports exactly
+`ANativeActivity_onCreate`), **zipalign** (`-c -P 16 -v 4`), **signature** (`apksigner verify --min-sdk-version 28`: one
+signer, v2 or v3 scheme (with minSdk 28 apksigner writes v3 only), and the signer certificate's SHA-256 equals the debug
+certificate's), **manifest** (`aapt2 dump xmltree` of the APK equals that of the manifest rendered again from the declaration).
+`<name>_check[run]` is the same command without the APK (`buck2 run --target-platforms toolchains//:android_release
+'//pkg:<name>_check[run]' -- OTHER.apk`).
+
+**Release signing does not exist yet.** Nothing in `rules/apk*` reads an environment variable, a file of the product or a
+config value; a release-signed APK fails the `signature` check by its certificate digest, so a release step must be a
+separate, gate-owned step outside `c_apk` with its own check (open item, with `res/` and Java: `java_srcs`, `classes.dex`,
+`d8` (fetched and verified, unused until then) belong to T-A6).
+
+**Pins** (the Rust kiosk's `toolchains/android.bzl`, owner-approved; same URLs, sha256 and sizes): build-tools r35
+(`build-tools_r35_linux.zip`, sha256 `bd3a4966...1d88`), platform-35 r02 (`platform-35_r02.zip`, `0988caca...c8e0`), Temurin
+JDK 21.0.6+7 (`OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz`, `a2650fba...dbae`). Members only (`toolchains/BUCK`):
+`aapt2`, `zipalign`, `lib64/libc++.so`, `apksigner.jar`, `d8.jar`; `android.jar`; `bin/java`, `bin/keytool`, `lib/modules`,
+the JVM and its libraries, `conf`, `lib/security`. Each tree has a manifest (`toolchains/{android_build_tools,android_platform,jdk}.manifest`)
+and is verified by the `toolchain` grade gate with the other three (`toolchain_verify.TREES`). The tools are `toolchains//:aapt2`,
+`:zipalign`, `:keytool`, `:apksigner`, `:d8` (RunInfo).
+
+Example: `examples/android:app`. Self-test: `selftest/android.sh` (builds the APK and breaks it: a misaligned APK, an extra file,
+a wrong export, an APK signed by another key, another manifest, each must fail with its own check). Unit tests:
+`gate/tests/test_apk_rules.py`, `test_buckfiles.py`, `test_grade_android.py`, `test_toolchain_verify.py`.
+
 ## G25: the allocation deny list (P002)
 `business-apps` adds, to annas-c's standard `[global]` deny list, every way to get memory outside a caller-supplied arena
 or static storage. A reference to one of them in a graded module is a `symbols` FAIL (`denied-symbol`) unless that

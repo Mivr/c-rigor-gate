@@ -7,6 +7,7 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 
 load("@gate//rules:android.bzl", "android_so", "android_version_script")
+load("@gate//rules:apk.bzl", "apk", "apk_check")
 load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:embed.bzl", "c_embed_gen")
@@ -475,6 +476,64 @@ def c_android_so(name, exports, srcs = [], deps = [], system_libs = [], visibili
         facts_deps = deps,
         system_libs = system_libs,
         target_compatible_with = _ANDROID_ONLY,
+    )
+
+_APK_PACKAGE = "abcdefghijklmnopqrstuvwxyz0123456789_."
+
+def _apk_text(name, what, value, allowed, first, limit):
+    if type(value) != "string" or len(value) == 0 or len(value) > limit or value[0] not in first:
+        fail("c_apk {}: `{}` must be a string of 1 to {} characters starting with one of {!r}, got {!r}".format(name, what, limit, first, value))
+    for char in value.elems():
+        if char not in allowed:
+            fail("c_apk {}: `{}` has the character {!r}; allowed: {}".format(name, what, char, allowed))
+
+def c_apk(name, so, package, label, version_code, version_name, orientation = "landscape", permissions = [], assets = [], visibility = []):
+    """A signed, 16 KB aligned APK `<name>.apk` of one `c_android_so` (android mode only), and its test `<name>_check`.
+
+    `so` is `":<name>"` of a `c_android_so` of this package that exports exactly `ANativeActivity_onCreate`; only its checked
+    output is used, never its `__lib`. The manifest is generated (rules/apk_manifest.py): `package`, `label`,
+    `version_code`, `version_name`, `orientation` and `permissions` (names from `INTERNET`) are validated there; minSdk 28 and
+    targetSdk 35 are fixed, `hasCode` is false (no Java: T-A6) and one NativeActivity loads the object. `assets` are plain
+    file names of this package, packaged under `assets/`. There is no `res` (T-A6). The APK is signed with the checked-in
+    test-only debug key and nothing else: no argument, environment variable or file of a product selects another key, and
+    `<name>_check` (rules/apk_check.py: entries, 16 KB alignment, `apksigner verify`, the debug certificate, the manifest as
+    declared, the object's LOAD alignment and exports) fails for an APK signed by any other.
+    """
+    if type(so) != "string" or not so.startswith(":") or "__" in so or "/" in so:
+        fail("c_apk {}: `so` must be the label \":name\" of a c_android_so of this package, got {!r}".format(name, so))
+    _apk_text(name, "package", package, _APK_PACKAGE, "abcdefghijklmnopqrstuvwxyz", 120)
+    _apk_text(name, "label", label, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ._-", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 40)
+    _apk_text(name, "version_name", version_name, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 32)
+    if type(version_code) != "int" or version_code < 1 or version_code > 2100000000:
+        fail("c_apk {}: `version_code` must be an int from 1 to 2100000000, got {!r}".format(name, version_code))
+    if orientation not in ["landscape", "portrait", "sensorLandscape", "unspecified"]:
+        fail("c_apk {}: `orientation` must be landscape, portrait, sensorLandscape or unspecified, got {!r}".format(name, orientation))
+    if type(permissions) != "list" or [p for p in permissions if p not in ["INTERNET"]] or len(set(permissions)) != len(permissions):
+        fail("c_apk {}: `permissions` must be a list without repeats from [\"INTERNET\"], got {!r}".format(name, permissions))
+    _plain_files("c_apk", "assets", assets, "")
+    for asset in assets:
+        if "/" in asset or asset.startswith("."):
+            fail("c_apk {}: `assets` entries must be plain file names of this package, got {!r}".format(name, asset))
+    apk(
+        name = name,
+        apk_name = name + ".apk",
+        so = so,
+        package = package,
+        label = label,
+        version_code = version_code,
+        version_name = version_name,
+        orientation = orientation,
+        permissions = permissions,
+        assets = assets,
+        asset_names = assets,
+        target_compatible_with = _ANDROID_ONLY,
+        visibility = visibility,
+    )
+    apk_check(
+        name = name + "_check",
+        apk = ":" + name,
+        target_compatible_with = _ANDROID_ONLY,
+        visibility = [],
     )
 
 def c_mutants(name, module, tests, deps = [], perf = []):

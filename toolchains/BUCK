@@ -5,7 +5,7 @@ load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
 load(":fetch.bzl", "fetched_tree", "fetched_zip_tree", "tree_ref", "verified_tree")
 load(":platforms.bzl", "exec_platform", "target_platform")
 load(":select.bzl", "cxx_select")
-load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "ndk_cc", "ndk_ld", "ndk_roots", "system_roots")
+load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "java_jar", "ndk_cc", "ndk_ld", "ndk_roots", "system_roots", "tree_bin")
 
 WORKER_IMAGE = read_root_config("rbe", "worker_image_digest", "")
 
@@ -261,6 +261,66 @@ fetched_zip_tree(
     visibility = ["PUBLIC"],
 )
 
+# Android SDK parts for `c_apk` (T-G3), the very releases of the Rust kiosk's toolchains/android.bzl (same URLs, sha256, sizes).
+# Members only, as for the NDK: build-tools r35 (aapt2, zipalign and their library, the apksigner and d8 jars), the platform-35
+# android.jar, and the Temurin 21.0.6+7 JDK (java and keytool with the runtime they load: `lib/modules`, `lib/*.so`, the
+# security files), no `src.zip`, `ct.sym`, `jmods`, JFR or any other tool.
+_BT = "android-15/"
+_JDK = "jdk-21.0.6+7/"
+
+fetched_zip_tree(
+    name = "android_build_tools",
+    url = "https://dl.google.com/android/repository/build-tools_r35_linux.zip",
+    sha256 = "bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88",
+    size_bytes = 61958799,
+    script = "unzip_members.py",
+    members = [_BT + "aapt2", _BT + "zipalign", _BT + "lib64/libc++.so", _BT + "lib/apksigner.jar", _BT + "lib/d8.jar", _BT + "source.properties"],
+    visibility = ["PUBLIC"],
+)
+
+fetched_zip_tree(
+    name = "android_platform",
+    url = "https://dl.google.com/android/repository/platform-35_r02.zip",
+    sha256 = "0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0",
+    size_bytes = 64273788,
+    script = "unzip_members.py",
+    members = ["android-35/android.jar", "android-35/source.properties"],
+    visibility = ["PUBLIC"],
+)
+
+fetched_tree(
+    name = "jdk",
+    url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.6%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz",
+    sha256 = "a2650fba422283fbed20d936ce5d2a52906a5414ec17b2f7676dddb87201dbae",
+    size_bytes = 206861665,
+    gzip = True,
+    members = [
+        _JDK + "bin/java",
+        _JDK + "bin/keytool",
+        _JDK + "conf",
+        _JDK + "release",
+        _JDK + "lib/modules",
+        _JDK + "lib/jvm.cfg",
+        _JDK + "lib/lib*.so",
+        _JDK + "lib/server/libjvm.so",
+        _JDK + "lib/security",
+        _JDK + "lib/tzdb.dat",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+# The tools of `c_apk` and the selftest (RunInfo; each carries its tree). `apksigner` and `d8` run the build-tools jars on the pinned JDK.
+tree_bin(name = "aapt2", tree = ":android_build_tools", bin = _BT + "aapt2", visibility = ["PUBLIC"])
+tree_bin(name = "zipalign", tree = ":android_build_tools", bin = _BT + "zipalign", visibility = ["PUBLIC"])
+tree_bin(name = "keytool", tree = ":jdk", bin = _JDK + "bin/keytool", visibility = ["PUBLIC"])
+java_jar(name = "apksigner", jdk = ":jdk", java = _JDK + "bin/java", tree = ":android_build_tools", jar = _BT + "lib/apksigner.jar", visibility = ["PUBLIC"])
+java_jar(name = "d8", jdk = ":jdk", java = _JDK + "bin/java", tree = ":android_build_tools", jar = _BT + "lib/d8.jar", main = "com.android.tools.r8.D8", visibility = ["PUBLIC"])
+
+# The TEST-ONLY debug signing key of `c_apk` (public password `android`) and its certificate's SHA-256, which every
+# `<name>_check` pins. A release key is not in this repository and no product can name one.
+export_file(name = "android_debug.keystore", visibility = ["PUBLIC"])
+export_file(name = "android_debug.cert.sha256", visibility = ["PUBLIC"])
+
 # Verified reuse of the trees by an `--uncached` grade (gate/rigor_lib/toolchain_verify.py).
 [
     (
@@ -273,7 +333,7 @@ fetched_zip_tree(
             visibility = ["PUBLIC"],
         ),
     )
-    for t in ["llvm", "sysroot", "ndk"]
+    for t in ["llvm", "sysroot", "ndk", "android_build_tools", "android_platform", "jdk"]
 ]
 
 # ---------------------------------------------------------------------------

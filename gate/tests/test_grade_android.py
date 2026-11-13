@@ -18,15 +18,18 @@ FACTS = "root//p:club_facts"
 
 
 class FakeBuck:
-    def __init__(self, tree, android_labels, shared, fail_android=False):
+    def __init__(self, tree, android_labels, shared, fail_android=False, apk_checks=()):
         self.tree, self.calls = tree, []
         self.android_labels, self.shared, self.fail_android = android_labels, shared, fail_android
+        self.apk_checks = apk_checks
         self.reports = {}
 
     def run(self, tree, args):
         self.calls.append(args)
         if args[0] == "uquery":
             expression = args[1]
+            if "apk_check" in expression:
+                return 0, "".join(l + "\n" for l in self.apk_checks), ""
             if "c_android_facts" in expression:
                 return 0, "".join(l + "\n" for l in self.android_labels), ""
             if "android_so" in expression:
@@ -57,10 +60,10 @@ class FakeBuck:
 
 
 class AndroidFacts(TempDirTestCase):
-    def build(self, android_labels, shared, fail_android=False):
+    def build(self, android_labels, shared, fail_android=False, apk_checks=()):
         tree = self.sub("tree")
         work = self.sub("work")
-        fake = FakeBuck(str(tree), android_labels, shared, fail_android)
+        fake = FakeBuck(str(tree), android_labels, shared, fail_android, apk_checks)
         g = SimpleNamespace(tree=str(tree), work=str(work), args=SimpleNamespace(uncached=False), facts=None)
         with mock.patch.object(grade_build, "run_buck", fake.run), \
                 mock.patch.object(grade_build, "action_counts", lambda *_: (1, 2)), \
@@ -89,6 +92,21 @@ class AndroidFacts(TempDirTestCase):
         built, _ = self.build([], [SO])
         self.assertIsInstance(built, str)
         self.assertIn("c_android_so without facts: " + SO, built)
+
+    def test_the_check_of_every_c_apk_is_built_in_the_android_mode(self):
+        """T-G3: the APK is packaged, aligned, signed and checked by the grade's own android build; a failure there is a reason."""
+        check = "root//p:app_check"
+        built, fake = self.build([FACTS], [SO], apk_checks=[check])
+        android = [call for call in fake.calls if call[0] == "build" and "toolchains//:android_release" in call][0]
+        self.assertIn(check, android)
+        self.assertEqual(built.metadata["android_facts_targets"], 1)
+        queries = [call[1] for call in fake.calls if call[0] == "uquery"]
+        self.assertIn("kind('^apk_check$', //...)", queries)
+        built, fake = self.build([FACTS], [SO], fail_android=True, apk_checks=[check])
+        self.assertIn("android build failed", built)
+        built, fake = self.build([FACTS], [SO])
+        android = [call for call in fake.calls if call[0] == "build" and "toolchains//:android_release" in call][0]
+        self.assertNotIn(check, android)
 
     def test_an_android_build_failure_is_a_reason_not_a_pass(self):
         built, _ = self.build([FACTS], [SO], fail_android=True)

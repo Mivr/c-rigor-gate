@@ -1,4 +1,4 @@
-load("@gate//rules:c.bzl", "c_android_so", "c_library")
+load("@gate//rules:c.bzl", "c_android_so", "c_apk", "c_library")
 
 c_library(name = "core", srcs = ["core.c"], headers = ["core.h"])
 
@@ -9,4 +9,14 @@ c_android_so(
     deps = [":core"],
     exports = ["ANativeActivity_onCreate"],
     system_libs = ["android", "log"],
+)
+
+# The signed, 16 KB aligned APK of that object (debug key only) and its check test `app_check`.
+c_apk(
+    name = "app",
+    so = ":club",
+    package = "org.example.club",
+    label = "Club example",
+    version_code = 1,
+    version_name = "0.1.0",
 )

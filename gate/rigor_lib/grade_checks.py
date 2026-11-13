@@ -21,6 +21,7 @@ from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 FACTS_KIND = "c_facts"
 ANDROID_FACTS_KIND = "c_android_facts"   # the facts of every c_android_so (T-G2), built in the android mode
 ANDROID_SO_KIND = "android_so"           # the rule the c_android_so macro makes its output with
+ANDROID_APK_CHECK_KIND = "apk_check"     # the rule of every c_apk's `<name>_check` (T-G3)
 CTEST_FACTS = "gate//ctest:ctest_facts"
 LIBC_TARGET = "toolchains//:libc_symbols"
 LIBC_ANDROID_TARGET = "toolchains//:libc_symbols_android"
@@ -141,7 +142,7 @@ def _android_facts(g, directory, start, flags):
 
     A c_android_so has no Linux build, so nothing of it reaches the release facts; without these it would escape the
     fact gates. Each `android_so` must have its `<name>_facts` (the macro makes both; this refuses anything else), and
-    the shared objects are built too (their link and their ELF check), and a build failure is a reason like the release one: the fact gates are NOT_RUN, which fails the verdict."""
+    the shared objects are built too (their link and their ELF check), and so is the `_check` of every `c_apk` (its APK is packaged, aligned, signed and checked: T-G3), and a build failure is a reason like the release one: the fact gates are NOT_RUN, which fails the verdict."""
     code, out, err = grade_build.run_buck(g.tree, ["uquery", "kind(%s, //...)" % ANDROID_FACTS_KIND])
     if code != 0:
         return "android query failed: %s" % err.strip()[-500:]
@@ -150,6 +151,10 @@ def _android_facts(g, directory, start, flags):
     if code != 0:
         return "android query failed: %s" % err.strip()[-500:]
     shared = sorted(line.strip() for line in out.splitlines() if line.strip())
+    code, out, err = grade_build.run_buck(g.tree, ["uquery", "kind('^%s$', //...)" % ANDROID_APK_CHECK_KIND])
+    if code != 0:
+        return "android query failed: %s" % err.strip()[-500:]
+    apk_checks = sorted(line.strip() for line in out.splitlines() if line.strip())
     missing = [label for label in shared if label + "_facts" not in labels]
     if missing:
         return "c_android_so without facts: %s" % ", ".join(missing)
@@ -158,7 +163,7 @@ def _android_facts(g, directory, start, flags):
     report = os.path.join(g.work, "build-report-facts-android.json")
     code, _, err = grade_build.run_buck(g.tree, ["build", "--target-platforms", ANDROID_PLATFORM,
                                                  "--keep-going", "--build-report", report] + flags
-                                        + labels + shared + [LIBC_ANDROID_TARGET])
+                                        + labels + shared + apk_checks + [LIBC_ANDROID_TARGET])
     executed, cached = grade_build.action_counts(g.tree)
     results = grade_build.read_report(report)
     if code != 0 or results is None:

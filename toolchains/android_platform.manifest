@@ -1,0 +1,4 @@
+# c-rigor-gate toolchain manifest v1: kind, exec, size, sha256|link target, path
+d	-	0	-	android-35
+f	-	27092450	4566663c3876e022b4fa4ced8c8697c4ab1688267f090114fd92d027b32e619b	android-35/android.jar
+f	-	257	2c3764446f335ad2cc44383a0360fe247620b7c774ec100d5087771ac8ed3b28	android-35/source.properties

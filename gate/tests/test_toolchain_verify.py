@@ -158,7 +158,22 @@ class CommittedManifestsTest(unittest.TestCase):
                      "sysroot/usr/lib/aarch64-linux-android/28/libandroid.so",
                      "sysroot/usr/lib/aarch64-linux-android/28/liblog.so"):
             self.assertIn(prefix + path, ndk)
-        for table in (llvm, sysroot, ndk):
+        sdk = {name: vt.parse((ROOT / "toolchains" / (name + ".manifest")).read_text())
+               for name in ("android_build_tools", "android_platform", "jdk")}
+        # T-G3: the SDK parts of c_apk, members exact (the files an apk action runs, nothing else)
+        self.assertEqual(sorted(p for p, v in sdk["android_build_tools"].items() if v[0] == "f"),
+                         ["android-15/aapt2", "android-15/lib/apksigner.jar", "android-15/lib/d8.jar",
+                          "android-15/lib64/libc++.so", "android-15/source.properties", "android-15/zipalign"])
+        self.assertEqual(sorted(p for p, v in sdk["android_platform"].items() if v[0] == "f"),
+                         ["android-35/android.jar", "android-35/source.properties"])
+        for path in ("jdk-21.0.6+7/bin/java", "jdk-21.0.6+7/bin/keytool", "jdk-21.0.6+7/lib/modules",
+                     "jdk-21.0.6+7/lib/server/libjvm.so", "jdk-21.0.6+7/lib/security/cacerts"):
+            self.assertIn(path, sdk["jdk"])
+        for path in ("jdk-21.0.6+7/lib/src.zip", "jdk-21.0.6+7/lib/ct.sym", "jdk-21.0.6+7/bin/javac"):
+            self.assertNotIn(path, sdk["jdk"])
+        self.assertEqual(sdk["android_build_tools"]["android-15/aapt2"][:2], ("f", "x"))
+        self.assertEqual(sdk["android_build_tools"]["android-15/zipalign"][:2], ("f", "x"))
+        for table in (llvm, sysroot, ndk, *sdk.values()):
             for kind, _, size, value, path in table.values():
                 self.assertFalse(path.startswith("/") or ".." in path.split("/"), path)
                 if kind == "f":
@@ -170,7 +185,7 @@ class CommittedManifestsTest(unittest.TestCase):
         self.assertIn('manifest = t + ".manifest"', text)
         self.assertIn('script = "verify_tree.py"', text)
         # every verified tree is in the list the grader primes, in the same order for targets and manifests
-        self.assertIn('for t in ["llvm", "sysroot", "ndk"]', text)
+        self.assertIn('for t in ["llvm", "sysroot", "ndk", "android_build_tools", "android_platform", "jdk"]', text)
         self.assertEqual([t.split(":")[1].replace("_verified", ".manifest") for t in toolchain_verify.VERIFY_TARGETS],
                          toolchain_verify.MANIFESTS)
         self.assertEqual([t.split(":")[1].replace("_ref", ".manifest") for t in toolchain_verify.CACHED_TARGETS],
