@@ -162,6 +162,8 @@ carries `impl` for its L2+ modules (T039's `impl-missing`). The red witness case
 | canary | bypass | fails | NOT_RUN |
 |---|---|---|---|
 | `system-lib-not-allowed` | a new L3 library declares `system_libs = ["pthread"]`, its policy entry does not list it | `symbols`: system-lib-not-allowed; `witness-tests`: witness-missing | mutants-witness |
+| `android-so-denied-symbol` | a `c_android_so` (compiled only in the android mode) calls `getenv` | `symbols`: denied-symbol | |
+| `android-so-inline-asm` | a `c_android_so` contains inline assembly | `semantic-suppressions`: inline-asm | |
 | `system-lib-not-declared` | the policy entry lists `system_libs = ["pthread"]`, the library declares none | `symbols`: system-lib-not-declared; `witness-tests`: witness-missing | mutants-witness |
 
 Both are the `exports-missing-l3` shape (a new `//core:extra`, whose `witness-missing` is the same as there) with an `exports` list, so the

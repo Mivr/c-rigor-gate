@@ -44,17 +44,32 @@ Self-test: the last steps of `selftest/mutate.sh` (a real pthread in release and
 
 ## `c_android_so`: a shared object for Android (T-G2)
 `c_android_so(name, exports, srcs, deps, system_libs, visibility)` links `lib<name>.so` for the `android` mode only
-(`--target-platforms toolchains//:android_release`; every other mode reports it incompatible). `exports` is the exact list of
-dynamic symbols: a generated GNU version script makes them global and everything else local, `--no-undefined`, `relro`/`now`
-and `--gc-sections` are fixed, and the link is 16 KB page aligned. The output is checked by `rules/elf_check.py` before it is
-published as the target's output: every `PT_LOAD` segment aligned to at least 16384 with offset and vaddr congruent, and the
-dynamic symbol table defines exactly `exports` (no more, none missing). `<name>_facts` (kind `c_android_so`) reads the android
-mode's own objects (the NDK's clang and header roots `toolchains//:ndk-system-roots`) and is not a `c_facts` target, so a Linux
-grade never selects it; the symbols gate reads it with `--libc toolchains//:libc_symbols_android`. The dependencies' facts stay
-the Linux release ones (one policy, one fact source), so a policy has the usual entries for them plus one for the `.so`
-(`exports = [...]`, `system_libs = ["android", "log"]`). Example: `examples/android`. Self-test: `selftest/android.sh`
-(readelf of the real object, the LOAD alignment, a 4 KB-aligned copy refused, the symbols gate accepting the example and
-rejecting `getenv` and a redefined bionic symbol); unit tests: `gate/tests/test_elf_check.py`.
+(`--target-platforms toolchains//:android_release`; every other mode reports it incompatible, and `c_binary` and `c_test`
+are incompatible with the android mode). `exports` is the exact list of dynamic symbols: a generated GNU version script
+makes them global and everything else local, `--no-undefined`, `relro`/`now` and `--gc-sections` are fixed, the flags are
+the release list itself (`_RELEASE_COMPILE`), and the link is 16 KB page aligned. The output is checked by
+`rules/elf_check.py` before it is published as the target's output: ELF64 AArch64 shared object with the standard header
+sizes, every `PT_LOAD` segment aligned to a power of two that is a multiple of 16384 with offset and vaddr congruent, a real
+string table, and a dynamic symbol table that defines exactly `exports` (no more, none missing, none twice). Nothing may
+`deps` on a `c_android_so` or on what it derives (`<name>_facts`, `<name>__lib`, `<name>__map`): `buckfiles` refuses it.
+
+**What `rigor grade` does with it** (`grade_checks._android_facts`): `<name>_facts` (kind `c_android_so`, rule
+`c_android_facts`, which a `kind(c_facts, //...)` Linux query never selects) is built for `toolchains//:android_release`
+together with the `android_so` output itself and `toolchains//:libc_symbols_android`. A `c_android_so` without its facts
+target, or any build failure there, makes the fact gates NOT_RUN, which fails the verdict. The facts then go through the
+same gates as every module, in the one directory: `semantic-suppressions`, `symbols` (the NDK export list is the reserved
+list for the Android kinds, `facts_symbols.run(libc_android=...)`), `layering`, `decoupling` (kind judged: declared deps =
+used deps) and `structure` (structure targets for the module are built in the android mode, `c_android_structure`, NDK
+clang and roots). Canaries `android-so-denied-symbol` (a `getenv` call) and `android-so-inline-asm` fail the grade.
+
+**What it does NOT grade (condition for T-A2)**: the facts cover the `.so`'s own `srcs` as the NDK compiles them. The
+libraries in its dependency closure are graded from their Linux release facts only, so code under `#ifdef __ANDROID__`,
+`__BIONIC__` or `__aarch64__` in a closure library is compiled for Android but never scanned, and no check compares the
+release and android compiles of a library (no android `mode-divergence`). T-A2 must add an android facts twin per
+library of that closure (a distinct facts label, selected by the closure of the `android_so` targets) and that comparison
+before a product ships a closure that contains such code; until then a product must keep platform-conditional code in
+the `c_android_so`'s own sources. Example: `examples/android`. Self-test: `selftest/android.sh`; unit tests:
+`gate/tests/test_elf_check.py`, `gate/tests/test_grade_android.py`.
 
 ## G25: the allocation deny list (P002)
 `business-apps` adds, to annas-c's standard `[global]` deny list, every way to get memory outside a caller-supplied arena

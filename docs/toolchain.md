@@ -59,6 +59,11 @@ cannot just be trusted from it. Design:
   `selftest/toolchain.sh` has a step in which a scratch clone with one `ndk.manifest` sha256 flipped makes the
   grader's own verifier fail (`toolchain-mismatch`, `toolchains/ndk.manifest`, the flipped path), and the committed
   manifests pass.
+- Cost of the `ndk` entry in a Linux-only `--uncached` grade (S7, measured): the two verify commands over llvm and sysroot
+  versus over llvm, sysroot and ndk, in a warm daemon, both 0.6 s (ref 0.3 s + verify 0.3 s; 0.4 + 1.8 s on the very first
+  run that verified the ndk tree); `verify_tree.py` over the 297 MB materialised ndk tree takes 0.2 s of CPU. A fresh daemon
+  also takes the ndk tree (114 MB) from the action cache once. Not measured: a cold daemon end to end (`--isolation-dir`
+  is forbidden here and `buck2 kill` is not allowed to a lane), so that number is for the orchestrator's `validate.sh`.
 - NDK twins of the Linux facts (T-G1): `toolchains//:libc_symbols_android` (every symbol the API 28 stubs `libc.so`,
   `libm.so`, `libdl.so`, `libandroid.so` and `liblog.so` export; the reserved-name list of an Android build) and
   `toolchains//:ndk-system-roots` (`--system-root` for the NDK's clang and bionic header directories). The `system_libs`
