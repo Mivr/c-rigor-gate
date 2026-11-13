@@ -6,7 +6,7 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim
 # "all" is shorthand for every one of them.
 
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
@@ -86,6 +86,10 @@ selftests = ["perf", "mutate", "grade", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/fuzz_gate.py"
 selftests = ["fuzz"]
+# T2G1: the `c_sim` shard merge and mode comparison run inside the sim selftest's actions.
+[[rule]]
+glob = "gate/rigor_lib/sim_*"
+selftests = ["sim"]
 [[rule]]
 glob = "gate/rigor_lib/results_parse.py"
 selftests = ["ctest", "mutate", "product_checks", "third_party", "fuzz", "grade", "canaries"]
@@ -135,6 +139,10 @@ selftests = ["mutate", "grade", "canaries"]
 [[rule]]
 glob = "ctest/**"
 selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure", "require"]
+# T2G1: the gate-owned simulation runner and world interface (`gate//sim`); only the sim selftest links them.
+[[rule]]
+glob = "sim/**"
+selftests = ["sim"]
 # T128: the gate-owned header `gate//rt:require`; every gate that reads dependencies and headers meets it.
 [[rule]]
 glob = "rt/**"
@@ -150,7 +158,7 @@ glob = "third_party/**"
 selftests = ["third_party", "grade", "product_checks", "canaries"]
 [[rule]]
 glob = "products/selftest/**"
-selftests = ["grade", "canaries"]
+selftests = ["grade", "canaries", "sim"]
 # The real product: no selftest or canary reads it (T066; test_affected keeps this honest), only the unit tests do.
 [[rule]]
 glob = "products/annas-c/**"
@@ -232,6 +240,12 @@ selftests = ["fuzz"]
 [[rule]]
 glob = "selftest/fuzz_product/**"
 selftests = ["fuzz"]
+[[rule]]
+glob = "selftest/sim.sh"
+selftests = ["sim"]
+[[rule]]
+glob = "selftest/sim/**"
+selftests = ["sim"]
 [[rule]]
 glob = "selftest/third_party.sh"
 selftests = ["third_party"]

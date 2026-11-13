@@ -1,0 +1,10 @@
+load("@gate//rules:c.bzl", "c_library")
+
+# The fixture app: implements sim/world.h; the hooks come from the variant world of the c_sim target.
+c_library(
+    name = "toy",
+    srcs = ["toy.c"],
+    headers = ["toy.h"],
+    deps = ["gate//sim:world"],
+    visibility = ["PUBLIC"],
+)

@@ -168,6 +168,11 @@ def read_layout(run):
     if not isinstance(fuzz, dict) or not all(isinstance(entry, dict) for entry in fuzz.values()):
         raise InternalError("odd query output from buck2")
     behind_fuzz = {entry.get("binary") for entry in fuzz.values()}
+    # Likewise the binary behind a `c_sim` (`<name>__bin`, T2G1): the world is graded through its facts, not mutated as a module.
+    sim = jsonio.strict_loads(query(["kind(sim_run, //...)"] + attribute + ["^binary$"]).encode("utf-8"))
+    if not isinstance(sim, dict) or not all(isinstance(entry, dict) for entry in sim.values()):
+        raise InternalError("odd query output from buck2")
+    behind_fuzz |= {entry.get("binary") for entry in sim.values()}
     binaries = [label for label in binaries if label not in behind_fuzz]
     if not isinstance(attributes, dict):
         raise InternalError("odd query output from buck2")

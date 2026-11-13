@@ -27,3 +27,9 @@ export_file(
     name = "bin2c.py",
     visibility = ["PUBLIC"],
 )
+
+# The shard merge of `c_sim` (T2G1, rules/sim.bzl): stdlib only, runs inside the action.
+export_file(
+    name = "sim_merge.py",
+    visibility = ["PUBLIC"],
+)
