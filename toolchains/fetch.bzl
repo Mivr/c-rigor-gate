@@ -80,3 +80,50 @@ verified_tree = rule(
         "tree": attrs.exec_dep(),
     },
 )
+
+# ---------------------------------------------------------------------------
+# A zip archive (the Android NDK ships as one). Same contract as `fetched_tree`: download by sha256,
+# unpack only `members` on the RE farm (`unzip_members.py`, python3 stdlib), a pattern that matches
+# nothing fails. `members = ["--list"]` writes the archive's member list instead (used to author the
+# members, never in a product graph).
+# ---------------------------------------------------------------------------
+
+def _fetched_zip_tree_impl(ctx: AnalysisContext) -> list[Provider]:
+    archive = ctx.actions.declare_output("archive.zip")
+    ctx.actions.download_file(
+        archive.as_output(),
+        ctx.attrs.url,
+        sha256 = ctx.attrs.sha256,
+        size_bytes = ctx.attrs.size_bytes,
+    )
+    if ctx.attrs.list_only:
+        out = ctx.actions.declare_output("members.txt")
+        ctx.actions.run(
+            cmd_args(["python3", "-I", ctx.attrs.script, "list", archive, out.as_output()], hidden = [archive, out.as_output()]),
+            category = "zip_list",
+            identifier = ctx.label.name,
+        )
+        return [DefaultInfo(default_output = out)]
+    members, _ = ctx.actions.write("members.txt", ctx.attrs.members, allow_args = True)
+    out = ctx.actions.declare_output("tree", dir = True)
+    ctx.actions.run(
+        cmd_args(
+            ["python3", "-I", ctx.attrs.script, "extract", archive, out.as_output(), members],
+            hidden = [archive, members, out.as_output()],
+        ),
+        category = "fetched_zip_tree",
+        identifier = ctx.label.name,
+    )
+    return [DefaultInfo(default_output = out)]
+
+fetched_zip_tree = rule(
+    impl = _fetched_zip_tree_impl,
+    attrs = {
+        "list_only": attrs.bool(default = False),
+        "members": attrs.list(attrs.string(), default = []),
+        "sha256": attrs.string(),
+        "size_bytes": attrs.int(),
+        "url": attrs.string(),
+        "script": attrs.source(),
+    },
+)

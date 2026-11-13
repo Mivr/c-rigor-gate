@@ -2,9 +2,10 @@ load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_to
 load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
 load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
-load(":fetch.bzl", "fetched_tree", "tree_ref", "verified_tree")
+load(":fetch.bzl", "fetched_tree", "fetched_zip_tree", "tree_ref", "verified_tree")
 load(":platforms.bzl", "exec_platform", "target_platform")
-load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "system_roots")
+load(":select.bzl", "cxx_select")
+load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "ndk_cc", "ndk_ld", "system_roots")
 
 WORKER_IMAGE = read_root_config("rbe", "worker_image_digest", "")
 
@@ -20,7 +21,7 @@ constraint_value(name = "never", constraint_setting = ":mode")
 
 [
     constraint_value(name = m, constraint_setting = ":mode")
-    for m in ["release", "san", "cov", "fuzz"]
+    for m in ["release", "san", "cov", "fuzz", "android"]
 ]
 
 exec_platform(
@@ -41,6 +42,17 @@ exec_platform(
     )
     for m in ["release", "san", "cov", "fuzz"]
 ]
+
+# Android (aarch64, API 28, 16 KB pages): compiled and linked on the RE farm by the NDK's clang; the result is never
+# run there. The mode is its own value so every gate that reads release or san objects (facts, mutants, structure,
+# perf, ctest verdicts) stays incompatible with it. Select with --target-platforms toolchains//:android_release.
+target_platform(
+    name = "android_release",
+    cpu_configuration = "prelude//cpu/constraints:arm64",
+    os_configuration = "prelude//os/constraints:android",
+    mode = ":android",
+    visibility = ["PUBLIC"],
+)
 
 # ---------------------------------------------------------------------------
 # Pinned downloads. Only the listed members are unpacked.
@@ -184,7 +196,71 @@ fetched_tree(
     visibility = ["PUBLIC"],
 )
 
-# Verified reuse of the two trees by an `--uncached` grade (gate/rigor_lib/toolchain_verify.py).
+# Android NDK r29 (clang 21, bionic sysroot). A zip: unpacked on RE by `fetched_zip_tree`, members only.
+_NDK = "android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/"
+_NDK_ABI = _NDK + "sysroot/usr/lib/aarch64-linux-android/"
+_NDK_INC = _NDK + "sysroot/usr/include/"
+
+fetched_zip_tree(
+    name = "ndk",
+    url = "https://dl.google.com/android/repository/android-ndk-r29-linux.zip",
+    sha256 = "4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf",
+    size_bytes = 783549481,
+    script = "unzip_members.py",
+    members = [
+        _NDK + "bin/clang-21",
+        _NDK + "bin/lld",
+        _NDK + "bin/ld.lld",
+        _NDK + "bin/llvm-ar",
+        _NDK + "bin/llvm-ranlib",
+        _NDK + "bin/llvm-nm",
+        _NDK + "bin/llvm-objcopy",
+        _NDK + "bin/llvm-strip",
+        _NDK + "bin/llvm-objdump",
+        _NDK + "bin/llvm-readelf",
+        _NDK + "lib/clang/21/include",
+        _NDK + "lib/clang/21/lib/linux/libclang_rt.builtins-aarch64-android.a",
+        _NDK + "lib/clang/21/lib/linux/aarch64/libunwind.a",
+        _NDK + "lib/clang/21/lib/linux/aarch64/libatomic.a",
+        # Bionic: link stubs and startup objects for API 28 only, and the headers (no C++ headers, no other ABI).
+        _NDK_ABI + "28",
+        _NDK_INC + "*.h",
+    ] + [_NDK_INC + d for d in [
+        "aarch64-linux-android",
+        "android",
+        "arpa",
+        "asm-generic",
+        "bits",
+        "linux",
+        "net",
+        "netinet",
+        "netpacket",
+        "sys",
+        "scsi",
+        "rdma",
+        "mtd",
+        "misc",
+        "video",
+        "sound",
+        "drm",
+        "xen",
+        "unicode",
+        "EGL",
+        "GLES",
+        "GLES2",
+        "GLES3",
+        "KHR",
+        "camera",
+        "media",
+        "aaudio",
+        "amidi",
+        "OMXAL",
+        "SLES",
+    ]],
+    visibility = ["PUBLIC"],
+)
+
+# Verified reuse of the trees by an `--uncached` grade (gate/rigor_lib/toolchain_verify.py).
 [
     (
         tree_ref(name = t + "_ref", tree = ":" + t, visibility = ["PUBLIC"]),
@@ -196,7 +272,7 @@ fetched_tree(
             visibility = ["PUBLIC"],
         ),
     )
-    for t in ["llvm", "sysroot"]
+    for t in ["llvm", "sysroot", "ndk"]
 ]
 
 # ---------------------------------------------------------------------------
@@ -222,7 +298,7 @@ libc_symbols(
 ]
 
 cxx_toolchain(
-    name = "cxx",
+    name = "cxx_linux",
     c_compiler = ":cc",
     cxx_compiler = ":cc",
     assembler = ":cc",
@@ -241,6 +317,58 @@ cxx_toolchain(
     c_compiler_flags = [],
     link_style = "static",
     cache_links = True,
+    visibility = ["PUBLIC"],
+)
+
+# Android: the NDK's clang as `--target=aarch64-linux-android28`, lld, llvm-ar; 16 KB page alignment (Android 15+ rule).
+ndk_cc(name = "ndk_cc", ndk = ":ndk", ndk_dir = _NDK, llvm_major = "21", api = "28")
+
+ndk_ld(
+    name = "ndk_ld",
+    ndk = ":ndk",
+    ndk_dir = _NDK,
+    llvm_major = "21",
+    api = "28",
+    runtimes = ["lib/clang/21/lib/linux/libclang_rt.builtins-aarch64-android.a", "lib/clang/21/lib/linux/aarch64/libunwind.a", "lib/clang/21/lib/linux/aarch64/libatomic.a"],
+)
+
+[
+    llvm_bin(name = "ndk-llvm-" + t, bin = _NDK + "bin/llvm-" + t, llvm = ":ndk", visibility = ["PUBLIC"])
+    for t in ["ar", "nm", "objcopy", "objdump", "ranlib", "readelf", "strip"]
+]
+
+cxx_toolchain(
+    name = "cxx_android",
+    c_compiler = ":ndk_cc",
+    cxx_compiler = ":ndk_cc",
+    assembler = ":ndk_cc",
+    linker = ":ndk_ld",
+    archiver = ":ndk-llvm-ar",
+    archiver_type = "gnu",
+    nm = ":ndk-llvm-nm",
+    objdump = ":ndk-llvm-objdump",
+    ranlib = ":ndk-llvm-ranlib",
+    strip = ":ndk-llvm-strip",
+    objcopy_for_shared_library_interface = ":ndk-llvm-objcopy",
+    compiler_type = "clang",
+    linker_type = "gnu",
+    cpp_dep_tracking_mode = "none",
+    generate_linker_maps = False,
+    c_compiler_flags = [],
+    link_style = "static",
+    cache_links = True,
+    visibility = ["PUBLIC"],
+)
+
+# `toolchains//:cxx` is what every gate rule names: the NDK toolchain in the android mode, the Linux one otherwise.
+cxx_select(
+    name = "cxx",
+    android = ":cxx_android",
+    host = ":cxx_linux",
+    use_android = select({
+        ":android": True,
+        "DEFAULT": False,
+    }),
     visibility = ["PUBLIC"],
 )
 

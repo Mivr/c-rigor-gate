@@ -110,6 +110,7 @@ _MODE_FLAGS = {
     "toolchains//:san": ["-O1", "-g", _SAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:cov": ["-O2"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:android": ["-O2"],
 }
 
 _SAN_MODES = ["toolchains//:san", "toolchains//:fuzz"]
@@ -121,6 +122,7 @@ _MODE_FLAGS_PLAIN = {
     "toolchains//:san": ["-O1", "-g"],
     "toolchains//:cov": ["-O2"],
     "toolchains//:fuzz": ["-O1", "-g"],
+    "toolchains//:android": ["-O2"],
 }
 
 def c_third_party(

@@ -10,11 +10,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 tools/buck2 kill >/dev/null 2>&1 || true
-tools/buck2 build --no-remote-cache --materializations all toolchains//:llvm toolchains//:sysroot --show-output |
+tools/buck2 build --no-remote-cache --materializations all toolchains//:llvm toolchains//:sysroot toolchains//:ndk --show-output |
   while read -r label path; do
     case "$label" in
       toolchains//:llvm) name=llvm ;;
       toolchains//:sysroot) name=sysroot ;;
+      toolchains//:ndk) name=ndk ;;
       *) continue ;;
     esac
     python3 -I toolchains/verify_tree.py gen "$path" > "toolchains/$name.manifest.new"

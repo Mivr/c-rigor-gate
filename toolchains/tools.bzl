@@ -144,3 +144,79 @@ libc_symbols = rule(
         "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
     },
 )
+
+# ---------------------------------------------------------------------------
+# Android NDK (aarch64-linux-android, one API level). The tree is `fetched_zip_tree`; `ndk_dir` is the
+# prebuilt llvm directory inside it. Like the Linux tools, every path is a projected sub-path, so an action's
+# inputs are exactly the files named here.
+# ---------------------------------------------------------------------------
+
+def _ndk_triple(api: str) -> str:
+    return "aarch64-linux-android" + api
+
+def _ndk_cc_impl(ctx: AnalysisContext) -> list[Provider]:
+    """NDK clang as a C compiler: no host include directory is searched (-nostdinc)."""
+    ndk = _tree(ctx.attrs.ndk).project(ctx.attrs.ndk_dir.rstrip("/"))
+    clang_headers = ndk.project("lib/clang/{}/include".format(ctx.attrs.llvm_major))
+    sys_inc = ndk.project("sysroot/usr/include")
+    args = cmd_args(
+        ndk.project("bin/clang-" + ctx.attrs.llvm_major),
+        "--target=" + _ndk_triple(ctx.attrs.api),
+        "-nostdinc",
+        "-fdebug-compilation-dir=.",
+        "-fcoverage-compilation-dir=.",
+        cmd_args(clang_headers, format = "-resource-dir={}", parent = 1),
+        "-isystem",
+        clang_headers,
+        "-isystem",
+        cmd_args(sys_inc, format = "{}/aarch64-linux-android"),
+        "-isystem",
+        sys_inc,
+        "-fPIC",
+        hidden = [clang_headers, sys_inc],
+    )
+    return [DefaultInfo(), RunInfo(args = args)]
+
+ndk_cc = rule(
+    impl = _ndk_cc_impl,
+    attrs = {
+        "api": attrs.string(),
+        "llvm_major": attrs.string(),
+        "ndk": attrs.dep(),
+        "ndk_dir": attrs.string(),
+    },
+)
+
+def _ndk_ld_impl(ctx: AnalysisContext) -> list[Provider]:
+    """NDK clang as the link driver, lld as the linker, bionic stubs, compiler-rt builtins. 16 KB pages."""
+    ndk = _tree(ctx.attrs.ndk).project(ctx.attrs.ndk_dir.rstrip("/"))
+    major = ctx.attrs.llvm_major
+    runtimes = [ndk.project(r) for r in ctx.attrs.runtimes]
+    lld = ndk.project("bin/ld.lld")
+    lld_real = ndk.project("bin/lld")
+    sysroot = ndk.project("sysroot")
+    args = cmd_args(
+        ndk.project("bin/clang-" + major),
+        "--target=" + _ndk_triple(ctx.attrs.api),
+        cmd_args(ndk.project("lib/clang/" + major), format = "-resource-dir={}"),
+        cmd_args(sysroot, format = "--sysroot={}"),
+        "-fuse-ld=lld",
+        cmd_args(lld, format = "--ld-path={}"),
+        "-rtlib=compiler-rt",
+        "-unwindlib=libunwind",
+        "-Wl,-z,max-page-size=16384",
+        "-Wl,-z,common-page-size=16384",
+        hidden = [lld, lld_real, sysroot] + runtimes,
+    )
+    return [DefaultInfo(), RunInfo(args = args)]
+
+ndk_ld = rule(
+    impl = _ndk_ld_impl,
+    attrs = {
+        "api": attrs.string(),
+        "llvm_major": attrs.string(),
+        "ndk": attrs.dep(),
+        "ndk_dir": attrs.string(),
+        "runtimes": attrs.list(attrs.string()),
+    },
+)

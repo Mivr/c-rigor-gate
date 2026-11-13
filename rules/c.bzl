@@ -55,6 +55,7 @@ _COMPILE_BY_MODE = {
     "toolchains//:san": ["-O1", "-g", _SAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:cov": ["-fprofile-instr-generate", "-fcoverage-mapping", "-fcoverage-mcdc"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:android": ["-O2"],
 }
 
 _LINK_BY_MODE = {
@@ -62,6 +63,7 @@ _LINK_BY_MODE = {
     "toolchains//:san": [_SAN],
     "toolchains//:cov": ["-fprofile-instr-generate"],
     "toolchains//:fuzz": [_FUZZ],
+    "toolchains//:android": [],
 }
 
 def _compile_flags():
