@@ -78,3 +78,25 @@ class BuckFileCase(TempDirTestCase):
     def test_budget_keywords_belong_to_c_sim_only(self):
         self.assertEqual({rule for rule, _ in self.check(LOADS + 'c_library(name = "l", srcs = ["l.c"], seeds = 3)\n', 1)},
                          {"bad-argument"})
+
+    def test_nothing_may_depend_on_a_c_sim_or_a_target_it_derives(self):
+        sim = 'c_sim(name = "s", srcs = ["w.c"])\n'
+        for dep in (":s", ":s__bin", ":s__shard0", ":s__shard12", ":s__facts_unit", ":s_facts", ":s_facts_san", ":s_facts_msan",
+                    ":s_facts_tsan", "//:s", "//:s__bin"):
+            for macro in ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim"):
+                with self.subTest(dep=dep, macro=macro):
+                    self.setUp()
+                    text = (LOADS.replace('"c_library"', '"c_library", "c_binary", "c_test", "c_fuzz"') + sim
+                            + '%s(name = "x", srcs = ["x.c"], deps = ["%s"])\n' % (macro, dep))
+                    self.assertEqual(self.check(text, 1), [("bad-argument", "sim-target")])
+
+    def test_another_package_and_other_names_are_fine(self):
+        root = self.sub("product")
+        (root / "w").mkdir()
+        (root / "w" / "BUCK").write_text(LOADS + 'c_sim(name = "s", srcs = ["w.c"])\n', encoding="utf-8")
+        (root / "a").mkdir()
+        (root / "a" / "BUCK").write_text(LOADS + 'c_library(name = "l", srcs = ["l.c"], deps = [":s", ":sx", "//w:other"])\n',
+                                         encoding="utf-8")
+        self.assertExit(run_rigor(["buckfiles", "--root", root, "--out", self.tmp / "out.json"]), 0)
+        found = read_json(self.tmp / "out.json")["findings"]
+        self.assertEqual(found, [])  # no finding for ":s" in package a: it is not this package's c_sim

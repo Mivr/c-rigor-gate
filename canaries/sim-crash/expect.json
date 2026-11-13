@@ -1,0 +1,10 @@
+{
+  "bypass": "a world that crashes on some seeds",
+  "description": "T2G1 fixture world: one seed in four writes through a null pointer after ten virtual seconds. The run must FAIL with sim-crash, never skip the seed. Pending until T2G2 wires `sim` into rigor grade; the rule id is the runner's.",
+  "pending": "T2G2",
+  "fail": {
+    "sim": [
+      "sim-crash"
+    ]
+  }
+}

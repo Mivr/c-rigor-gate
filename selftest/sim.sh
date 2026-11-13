@@ -171,6 +171,16 @@ printf '[global]\ndeny = ["getenv"]\n' > "$out/pc.toml"
 grep -q '"rule":"module-not-in-policy"' "$out/sym_c.json" || fail "$CUR: no module-not-in-policy for the world" "$out/sym_c.txt"
 "${RIGOR[@]}" facts --gate semantic-suppressions --facts "$out/fa" --policy "$out/pa.toml" --out "$out/sem_a.json" > "$out/sem_a.txt" 2>&1 || fail "$CUR: the clean world fails the semantic gate" "$out/sem_a.txt"
 
+begin "buckfiles: a product BUCK that depends on a c_sim target or one it derives is refused (the real fixture BUCK files)"
+mkdir -p "$out/bf/w" "$out/bf/user"
+cp "$scratch/clean/BUCK" "$out/bf/w/BUCK"
+"${RIGOR[@]}" buckfiles --root "$out/bf" --out "$out/bf.json" > "$out/bf.txt" 2>&1 || fail "$CUR: the c_sim BUCK itself is refused" "$out/bf.txt"
+for dep in "//w:sim" "//w:sim__bin" "//w:sim__shard0" "//w:sim_facts"; do
+  printf 'load("@gate//rules:c.bzl", "c_library")\nc_library(name = "u", srcs = ["u.c"], deps = ["%s"])\n' "$dep" > "$out/bf/user/BUCK"
+  "${RIGOR[@]}" buckfiles --root "$out/bf" --out "$out/bf.json" > "$out/bf.txt" 2>&1 && fail "$CUR: a dep on $dep was accepted" "$out/bf.txt"
+  grep -q '"why":"sim-target"' "$out/bf.json" || fail "$CUR: no sim-target finding for $dep" "$out/bf.txt"
+done
+
 begin "a warm rebuild of the clean target executes 0 actions"
 run "$out/warm.log" build --target-platforms "$REL" "$P/clean:sim" || fail "$CUR" "$out/warm.log"
 run "$out/warm.log" build --target-platforms "$REL" "$P/clean:sim" || fail "$CUR" "$out/warm.log"
