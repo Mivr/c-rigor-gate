@@ -1680,6 +1680,10 @@ exports = ["lkrt_audit_map", "lkrt_core_init", "lkrt_core_stats", "lkrt_core_ste
     "lkrt_post_sync", "lkrt_result", "lkrt_scene", "lkrt_ui_dropped", "lkrt_ui_init",
     "lkrt_ui_post", "lkrt_warn"]
 
+[module."//apps/lockers/lkapp/runtime:snapshot_unattended_test"]
+allow = ["memcpy", "memset", "snprintf"]
+exports = ["main"]
+
 [module."//apps/lockers/lkapp/runtime:testkit"]
 level = "L1"
 allow = []
@@ -2731,6 +2735,10 @@ exports = ["blob_count", "blob_give", "blob_init", "blob_owner", "blob_ptr", "bl
 allow = ["bcmp", "memset"]
 exports = ["main"]
 
+[module."//lib/ds/blob:blob_exhaust_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/ds/blob:blob_model_test"]
 allow = ["fputs", "memset", "snprintf", "stderr"]
 exports = ["main"]
@@ -2880,6 +2888,10 @@ exports = ["pool_alloc", "pool_cap", "pool_free", "pool_get", "pool_init", "pool
 
 [module."//lib/ds/pool:pool_api_test"]
 allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/ds/pool:pool_exhaust_test"]
+allow = []
 exports = ["main"]
 
 [module."//lib/ds/pool:pool_gen_test"]
