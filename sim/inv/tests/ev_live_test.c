@@ -249,6 +249,10 @@ static void t_bad_configurations_are_refused(ctest_t *t) {
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.n_rows = 16;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
+    erig_fill(&C); C.rows[4].phase = 8; /* the first row past n_rows (4) is not read */
+    CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
+    erig_fill(&C); C.rows[3].phase = 8; /* the last one that is */
+    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.rows[0].phase = 8;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.corr_len = 0; C.corr_off = 1;
