@@ -267,22 +267,22 @@ static char TEXT[3000];
 static char MORE[1200];
 static char FILLER[700];
 
-static void t_sixteen_fields_are_the_most_an_object_holds(ctest_t *t) {
+static void t_twenty_four_fields_are_the_most_an_object_holds(ctest_t *t) {
     MORE[0] = '\0';
-    for (uint32_t i = 0; i < 14U; i++) {
+    for (uint32_t i = 0; i < 22U; i++) {
         char line[40];
         snprintf(line, sizeof line, "  field f%u bool\n", i);
         strcat(MORE, line);
     }
     snprintf(TEXT, sizeof TEXT, "  field free uint 65535\n%s", MORE);
-    const char *sixteen = urig_edit(URIG_SCHEMA, "  field free uint 65535\n", TEXT);
-    CHECK(t, sixteen != NULL);
-    CHECK_EQ_I64(t, ui_schema_parse(&S, sixteen, (uint32_t)strlen(sixteen)), UI_SE_OK); /* size, free and 14 more */
-    snprintf(TEXT, sizeof TEXT, "  field free uint 65535\n%s  field f14 bool\n", MORE);
-    const char *seventeen = urig_edit(URIG_SCHEMA, "  field free uint 65535\n", TEXT);
-    CHECK(t, seventeen != NULL);
-    CHECK_EQ_I64(t, ui_schema_parse(&S, seventeen, (uint32_t)strlen(seventeen)), UI_SE_LIMIT);
-    CHECK_EQ_U64(t, ui_schema_error_line(&S), urig_line_of(URIG_SCHEMA, "  field free uint 65535\n") + 15U);
+    const char *full = urig_edit(URIG_SCHEMA, "  field free uint 65535\n", TEXT);
+    CHECK(t, full != NULL);
+    CHECK_EQ_I64(t, ui_schema_parse(&S, full, (uint32_t)strlen(full)), UI_SE_OK); /* size, free and 22 more */
+    snprintf(TEXT, sizeof TEXT, "  field free uint 65535\n%s  field f22 bool\n", MORE);
+    const char *over = urig_edit(URIG_SCHEMA, "  field free uint 65535\n", TEXT);
+    CHECK(t, over != NULL);
+    CHECK_EQ_I64(t, ui_schema_parse(&S, over, (uint32_t)strlen(over)), UI_SE_LIMIT);
+    CHECK_EQ_U64(t, ui_schema_error_line(&S), urig_line_of(URIG_SCHEMA, "  field free uint 65535\n") + 23U);
 }
 
 static void t_a_line_has_at_most_600_bytes_and_30_tokens(ctest_t *t) {
@@ -347,6 +347,34 @@ static void t_empty_null_and_truncated_text(ctest_t *t) {
     CHECK_EQ_I64(t, ui_schema_parse(&S, URIG_SCHEMA, (uint32_t)strlen(URIG_SCHEMA) - 1U), UI_SE_OK);
 }
 
+/* An object with five enum fields, `n` of them read by a switch (`how` "s": a switch of its own, "b": a `by` of a field of an object that takes one). */
+static const char *slots(uint32_t n, int by) {
+    static char text[1500];
+    int k = snprintf(text, sizeof text, "enum e a b\nobject inner\n  switch @ e\n  endswitch\nend\nobject o\n");
+    for (uint32_t i = 1; i <= 5U; i++) {
+        k += snprintf(text + k, sizeof text - (size_t)k, "  field e%u enum e\n", i);
+    }
+    for (uint32_t i = 1; i <= n; i++) {
+        k += snprintf(text + k, sizeof text - (size_t)k, by != 0 ? "  field i%u obj inner by e%u\n" : "  switch e%u\n  endswitch\n", i, i);
+    }
+    snprintf(text + k, sizeof text - (size_t)k, "end\n");
+    return text;
+}
+
+static void t_an_object_reads_at_most_four_of_its_enum_fields(ctest_t *t) {
+    for (int by = 0; by <= 1; by++) {
+        const char *four = slots(4, by);
+        CHECK_EQ_I64(t, ui_schema_parse(&S, four, (uint32_t)strlen(four)), UI_SE_INCOMPLETE);
+        const char *five = slots(5, by);
+        CHECK_EQ_I64(t, ui_schema_parse(&S, five, (uint32_t)strlen(five)), UI_SE_LIMIT);
+        CHECK_EQ_U64(t, ui_schema_error_line(&S), by != 0 ? 5U + 5U + 4U + 1U + 1U : 5U + 5U + 4U * 2U + 1U + 1U);
+    }
+    /* the same field read twice is one slot */
+    const char *twice = urig_edit(slots(4, 0), "  switch e1\n  endswitch\n", "  switch e1\n  endswitch\n  switch e1\n  endswitch\n  switch e1\n  endswitch\n");
+    CHECK(t, twice != NULL);
+    CHECK_EQ_I64(t, ui_schema_parse(&S, twice, (uint32_t)strlen(twice)), UI_SE_INCOMPLETE);
+}
+
 static void t_a_failed_parse_clears_the_schema_and_a_later_parse_starts_fresh(ctest_t *t) {
     static ui_t u;
     ui_cfg_t cfg;
@@ -396,10 +424,11 @@ static void t_error_names(ctest_t *t) {
 CTEST_SUITE("ui_schema",
     { "rows", t_the_fixture_schema_parses_and_every_bad_edit_of_it_is_refused },
     { "rows4", t_rows_of_several_edits },
-    { "sixteen_fields", t_sixteen_fields_are_the_most_an_object_holds },
+    { "max_fields", t_twenty_four_fields_are_the_most_an_object_holds },
     { "line_limits", t_a_line_has_at_most_600_bytes_and_30_tokens },
     { "names", t_names_are_1_to_31_lower_case_characters },
     { "empty_and_truncated", t_empty_null_and_truncated_text },
     { "failed_parse_clears", t_a_failed_parse_clears_the_schema_and_a_later_parse_starts_fresh },
     { "banner_dismiss", t_banner_ids_have_their_dismiss_intents },
+    { "slots", t_an_object_reads_at_most_four_of_its_enum_fields },
     { "error_names", t_error_names })

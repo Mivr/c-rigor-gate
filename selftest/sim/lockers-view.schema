@@ -1,0 +1,110 @@
+# The closed schema of the lockers kiosk's ViewState canonical form (T2G5), written from apps/lockers/lkrx/vstate/vstate.h of business-apps
+# (its "CANONICAL FORM" and its enums: LKS_*, LK_NK_*, LK_DISMISS_*, LK_PH_*, LK_DOOR_*, LK_BANNER_*, the bounds of "Bounds") and the rules of
+# docs/lockers/ui-rules.md. This is the product's file to own: the gate parses it with ui_schema_parse and knows no field name of it.
+# [V] the texts of the fault enum are `lk_fault_name` of lk/types: check them against the product before this file is used for a grade.
+enum screen splash welcome choose opened shift report lockout fault_storage fault_relay
+enum lang bg en
+enum nkind dialog banner snackbar
+enum dismiss overlay banner_not_saved banner_audit banner_sync banner_codes_offline banner_codes_stale banner_self_test
+enum bannerid not_saved audit sync codes_offline codes_stale self_test
+enum phrase reject_invalid reject_unknown reject_codes_unavailable no_locker fault saved not_saved audit sync_rejected sync_late codes_offline codes_stale self_test
+enum fault relay_busy kiosk_busy lock_unavailable relay_safety_stop relay_offline relay_error storage_error codes_unavailable book_rejected locker_missing
+enum door nothing_opened maybe_opened opened
+
+object sizeitem
+  field size uint 5
+  field free uint 65535
+end
+
+# The arguments of a phrase: the keys of its case, in the order of vstate.h; every other phrase has `{}`.
+object args
+  switch @ phrase
+  on fault
+  field fault enum fault
+  field door enum door
+  field locker uint 999 null
+  on sync_rejected
+  field status uint 65535
+  on sync_late
+  field hour uint 23
+  field minute uint 59
+  on codes_offline
+  field hour uint 23
+  field minute uint 59
+  on self_test
+  field issues uint 4095
+  endswitch
+end
+
+object notice
+  field kind enum nkind
+  field dismiss enum dismiss
+  field phrase enum phrase
+  field args obj args by phrase
+  field warning bool
+  field countdown_ms uint 300000 null
+end
+
+object banner
+  field id enum bannerid
+  field phrase enum phrase
+  field args obj args by phrase
+  field warning bool
+end
+
+object view
+  field screen enum screen
+  field lang enum lang
+  field countdown_ms uint 300000 null
+  switch screen
+  on welcome
+  field pad_len uint 64
+  on choose
+  field sizes list sizeitem 6
+  on opened
+  field locker uint 999
+  field first_time bool
+  on shift
+  field done uint 65535
+  field total uint 65535
+  on report
+  field released uint 65535
+  field ok uint 65535
+  field faults uint 65535
+  field write_failed bool
+  on fault_storage
+  field fault enum fault
+  on fault_relay
+  field fault enum fault
+  endswitch
+  field notice obj notice null
+  field banners list banner 6
+end
+
+top view
+role screen view screen
+role lang view lang
+role notice view notice
+role banners view banners
+role n_kind notice kind
+role n_dismiss notice dismiss
+role n_phrase notice phrase
+role n_countdown notice countdown_ms
+role b_id banner id
+role b_phrase banner phrase
+
+# A banner's dismiss intent is implied by its id (vstate.h, lk_banner_t).
+bannerdismiss not_saved banner_not_saved
+bannerdismiss audit banner_audit
+bannerdismiss sync banner_sync
+bannerdismiss codes_offline banner_codes_offline
+bannerdismiss codes_stale banner_codes_stale
+bannerdismiss self_test banner_self_test
+
+# A message that is a screen has no place in the closed schema: these keys name one.
+forbid message text title detail
+
+idle welcome
+lang_default bg
+# Dialogs and snackbars clear on their own (their countdown); a banner does not (docs/lockers/ui-rules.md, "Screen timers").
+expiring dialog snackbar

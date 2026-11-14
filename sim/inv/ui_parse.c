@@ -9,8 +9,8 @@
 typedef struct {
     uint8_t is_list, obj, field, first, role, count, max;
     int8_t ext;
-    int8_t sel[UI_MAX_FIELDS];
-    uint32_t begin;
+    int8_t sel[UI_MAX_SLOTS];
+    uint16_t begin; /* where the object starts: a view has at most UI_VIEW_MAX bytes */
 } frame_t;
 
 typedef struct {
@@ -180,7 +180,7 @@ static void store(ps_t *p, const ui_field_t *fd, uint32_t val) {
     }
 }
 
-static ui_rule_t leaf(ps_t *p, frame_t *f, const ui_field_t *fd, uint32_t idx) {
+static ui_rule_t leaf(ps_t *p, frame_t *f, const ui_field_t *fd) {
     uint32_t val;
     uint32_t start = p->pos;
     ui_rule_t r;
@@ -191,8 +191,8 @@ static ui_rule_t leaf(ps_t *p, frame_t *f, const ui_field_t *fd, uint32_t idx) {
     if (r != UI_R_NONE) {
         return r;
     }
-    if (fd->type == (uint8_t)UI_T_ENUM) {
-        f->sel[idx] = (int8_t)val;
+    if (fd->slot != 0U) {
+        f->sel[fd->slot - 1U] = (int8_t)val;
     }
     if (fd->role == (uint8_t)UI_ROLE_N_COUNTDOWN) {
         p->v->n_cd_off = start;
@@ -208,7 +208,7 @@ static frame_t *push(ps_t *p, uint8_t obj, uint8_t is_list) {
     f->is_list = is_list;
     f->obj = obj;
     f->first = 1;
-    f->begin = p->pos - 1U;
+    f->begin = (uint16_t)(p->pos - 1U);
     return f;
 }
 
@@ -278,7 +278,7 @@ static ui_rule_t step_obj(ps_t *p, frame_t *f) {
     if (o->fields[i].type == (uint8_t)UI_T_OBJ || o->fields[i].type == (uint8_t)UI_T_LIST) {
         return container(p, f, &o->fields[i]);
     }
-    return leaf(p, f, &o->fields[i], (uint32_t)i);
+    return leaf(p, f, &o->fields[i]);
 }
 
 static ui_rule_t step_list(ps_t *p, frame_t *f) {

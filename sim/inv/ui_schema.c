@@ -160,15 +160,29 @@ static ui_schema_err_t do_end(ui_schema_t *s, const line_t *l) {
     return UI_SE_OK;
 }
 
+/* The slot of the enum field `k` of `o`, given on its first use: 0 when the object reads more than UI_MAX_SLOTS fields. */
+static uint8_t take_slot(ui_object_t *o, int k) {
+    ui_field_t *f = &o->fields[k];
+    if (f->slot == 0U && o->n_slots < UI_MAX_SLOTS) {
+        o->n_slots++;
+        f->slot = o->n_slots;
+    }
+    return f->slot;
+}
+
 /* `by KEY` and `null` after the object name of an `obj` field. */
-static ui_schema_err_t obj_tail(ui_schema_t *s, const line_t *l, ui_field_t *f, const ui_object_t *o) {
+static ui_schema_err_t obj_tail(ui_schema_t *s, const line_t *l, ui_field_t *f, ui_object_t *o) {
     uint32_t i = 4;
     if (tok_is(l, i, "by")) {
         int k = find_field(o, l->p[i + 1U], l->n[i + 1U]);
         if (k < 0 || o->fields[k].type != (uint8_t)UI_T_ENUM) {
             return UI_SE_REF;
         }
-        f->by = (uint8_t)(k + 1);
+        f->by = take_slot(o, k);
+        if (f->by == 0U) {
+            return UI_SE_LIMIT;
+        }
+        f->by_enum = o->fields[k].ref;
         i += 2U;
     }
     if (tok_is(l, i, "null")) {
@@ -179,7 +193,7 @@ static ui_schema_err_t obj_tail(ui_schema_t *s, const line_t *l, ui_field_t *f, 
         return UI_SE_SYNTAX;
     }
     const ui_object_t *t = &s->objects[f->ref];
-    if ((f->by != 0U) != (t->has_ext != 0U) || (f->by != 0U && t->ext_enum != o->fields[f->by - 1U].ref)) {
+    if ((f->by != 0U) != (t->has_ext != 0U) || (f->by != 0U && t->ext_enum != f->by_enum)) {
         return UI_SE_REF;
     }
     return UI_SE_OK;
@@ -204,7 +218,7 @@ static ui_schema_err_t type_enum(const ui_schema_t *s, const line_t *l, ui_field
     return e < 0 ? UI_SE_REF : UI_SE_OK;
 }
 
-static ui_schema_err_t type_ref(ui_schema_t *s, const line_t *l, ui_field_t *f, const ui_object_t *o) {
+static ui_schema_err_t type_ref(ui_schema_t *s, const line_t *l, ui_field_t *f, ui_object_t *o) {
     uint32_t v;
     if (l->count < 4U) {
         return UI_SE_SYNTAX;
@@ -229,7 +243,7 @@ static ui_schema_err_t type_ref(ui_schema_t *s, const line_t *l, ui_field_t *f, 
     return UI_SE_OK;
 }
 
-static ui_schema_err_t field_type(ui_schema_t *s, const line_t *l, ui_field_t *f, const ui_object_t *o) {
+static ui_schema_err_t field_type(ui_schema_t *s, const line_t *l, ui_field_t *f, ui_object_t *o) {
     if (tok_is(l, 2, "uint")) {
         return type_uint(l, f);
     }
@@ -298,7 +312,10 @@ static ui_schema_err_t do_switch(ui_schema_t *s, const line_t *l) {
         if (k < 0 || o->fields[k].type != (uint8_t)UI_T_ENUM) {
             return UI_SE_REF;
         }
-        s->sw_src = (uint8_t)(k + 1);
+        s->sw_src = take_slot(o, k);
+        if (s->sw_src == 0U) {
+            return UI_SE_LIMIT;
+        }
         s->sw_enum = o->fields[k].ref;
     } else {
         return UI_SE_SYNTAX;

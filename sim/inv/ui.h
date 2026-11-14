@@ -13,7 +13,7 @@
  * The engine does not know the product. The SHAPE of a view is DATA: a schema text (`ui_schema_parse`, grammar below) that the product
  * supplies and the gate parses; no field name of any product is in this code. The rules of the product (event ids, timers) are plain
  * numbers in `ui_cfg_t`; the phrase catalogue and the re-run are callbacks of the world. Static memory: the caller owns a `ui_schema_t`
- * (about 13 KiB) and a `ui_t` (about 10 KiB); keep both static. No recursion: a schema lists an object before it uses it.
+ * (about 14 KiB) and a `ui_t` (about 13 KiB); keep both static. No recursion: a schema lists an object before it uses it.
  *
  * A `vw` record: `bytes` is the canonical text of the view (compact JSON, keys in the schema's order, integers in decimal only,
  * booleans, null); `a` and `b` are the world's (the engine ignores them). Records must arrive in time order.
@@ -22,7 +22,7 @@
  * characters. Order matters: a thing is declared before it is used.
  *
  *   enum NAME V1 V2 ...             a closed set of texts (1 to 24 values, 10 enums)
- *   object NAME                     an object type (5 objects, 16 fields each) ... until `end`
+ *   object NAME                     an object type (5 objects, 24 fields each) ... until `end`
  *     field KEY uint MAX [null]     a decimal integer 0..MAX; `null` allows the text null instead (and then 0 is not canonical: it is null)
  *     field KEY bool                true or false
  *     field KEY enum ENUM           a text of the enum
@@ -55,12 +55,13 @@ enum {
     UI_MAX_ENUMS = 10,
     UI_MAX_VALUES = 24,
     UI_MAX_OBJECTS = 5,
-    UI_MAX_FIELDS = 16,
+    UI_MAX_FIELDS = 24,
     UI_MAX_BANNERS = 8,
     UI_MAX_FORBID = 4,
     UI_MAX_EV = 4,
     UI_MAX_FINDINGS = 16,
-    UI_MAX_DEPTH = 9, /* 2 * UI_MAX_OBJECTS - 1: a path has an object at most once, and a list between two objects */
+    UI_MAX_DEPTH = 9, /* 2 * UI_MAX_OBJECTS - 1: a path has an object at most once (an object is declared before its use), and a list between two objects */
+    UI_MAX_SLOTS = 4, /* the enum fields of one object that a `switch` or a `by` may read */
     UI_VIEW_MAX = 4096,  /* the longest view text; a longer one is a syntax violation */
     UI_SW_EXT = 255
 };
@@ -86,12 +87,14 @@ typedef enum {
 typedef struct {
     char key[UI_NAME_MAX];
     uint8_t type, nullable, ref, role, by, sw_src, sw_case;
+    uint8_t by_enum; /* with `by`: the enum of the field it names */
+    uint8_t slot; /* an enum field that a switch or a `by` reads keeps its value in this slot (1 to UI_MAX_SLOTS, 0: none); `by` and `sw_src` name one */
     uint32_t max;
 } ui_field_t;
 
 typedef struct {
     char name[UI_NAME_MAX];
-    uint8_t n_fields, has_ext, ext_enum;
+    uint8_t n_fields, has_ext, ext_enum, n_slots;
     ui_field_t fields[UI_MAX_FIELDS];
 } ui_object_t;
 

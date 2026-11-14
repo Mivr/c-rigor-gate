@@ -118,6 +118,8 @@ c_library(
     exported_deps = [":ui", ":ui_rig"],
 )
 
+# The lockers kiosk's own schema (selftest/sim/lockers-view.schema) and the views of vstate.h: the API says what the product's ViewState says.
+c_test(name = "ui_lockers_test", srcs = ["tests/ui_lockers_test.c"], deps = [":ui_rig"])
 c_test(name = "ui_model_test", srcs = ["tests/ui_model_test.c"], deps = [":ui_model"])
 
 c_mutants(
