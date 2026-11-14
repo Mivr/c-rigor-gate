@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Self-test of the Android shared object rule `c_android_so` (T-G2) and the NDK twins of the Linux facts (T-G1).
 # And of `c_apk` (T-G3): the signed, 16 KB aligned APK, its check, and five ways to break an APK that the check must refuse.
+# And of `c_apk` with Java and res/xml (T-G3b): classes.dex from java_srcs, the receiver/application declarations, and the ways
+# to break that APK (an extra or missing class, a corrupt or missing dex, an undeclared res file or receiver).
 # Needs bash, python3 (stdlib) and tools/buck2. Builds on the RE farm; `buck2 run` executes the pinned NDK llvm-readelf.
 set -uo pipefail
 
@@ -228,8 +230,44 @@ lab="$root/$(output "$out/$step.log" '//selftest/scratch_android:lab')"
 cat "$lab"
 rm -rf "$scratch"
 
+begin "examples/android:app_java builds (javac + d8 on RE, res/xml, receivers) and its _check holds"
+must_pass build --target-platforms $AND //examples/android:app_java //examples/android:app_java_check --show-output
+japk="$root/$(output "$out/$step.log" '//examples/android:app_java')"
+[ -f "$japk" ] && [ "$(basename "$japk")" = "app_java.apk" ] || fail "$CUR: no app_java.apk ($japk)" "$out/$step.log"
+echo "  $japk"
+
+begin "the Java APK is broken six ways inside one RE action (extra class, missing class, corrupt dex, no dex, undeclared res file, undeclared receiver): each refused for its own single reason"
+mkdir -p "$scratch"
+cat > "$scratch/BUCK" <<'BUCK'
+load("@gate//rules:apk.bzl", "apk_lab")
+load("@gate//rules:c.bzl", "c_android_so")
+c_android_so(name = "wide", srcs = ["wide.c"], exports = ["ANativeActivity_onCreate", "extra_symbol"])
+apk_lab(name = "lab_java", apk = "//examples/android:app_java", wide = ":wide")
+BUCK
+printf '#include <stddef.h>\nint extra_symbol(void) { return 7; }\nvoid ANativeActivity_onCreate(void *a, void *b, size_t c) { (void)a; (void)b; (void)c; (void)extra_symbol(); }\n' > "$scratch/wide.c"
+must_pass build --target-platforms $AND //selftest/scratch_android:lab_java --show-output
+lab="$root/$(output "$out/$step.log" '//selftest/scratch_android:lab_java')"
+[ -f "$lab" ] && grep -q "^APK LAB PASSED$" "$lab" || fail "$CUR: the Java lab did not pass" "$out/$step.log"
+for want in "extra_class refused" "missing_class refused" "corrupt_dex refused" "no_dex refused" "extra_res refused" "undeclared_receiver refused"; do
+  grep -q "$want" "$lab" || fail "$CUR: the lab did not report: $want" "$lab"; done
+cat "$lab"
+rm -rf "$scratch"
+
+begin "javac runs with -Werror: a Java source with an unchecked warning fails the APK build"
+mkdir -p "$scratch"
+cat > "$scratch/BUCK" <<'BUCK'
+load("@gate//rules:c.bzl", "c_android_so", "c_apk")
+c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])
+c_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, version_name = "1",
+      java_srcs = ["Warn.java"], java_classes = ["org.example.club.Warn"])
+BUCK
+printf '#include <stddef.h>\nvoid ANativeActivity_onCreate(void *a, void *b, size_t c) { (void)a; (void)b; (void)c; }\n' > "$scratch/a.c"
+printf 'package org.example.club;\n\npublic final class Warn {\n    @SuppressWarnings("rawtypes")\n    public static void ok() { java.util.List l = new java.util.ArrayList(); l.size(); }\n    public static void bad() { java.util.List l = new java.util.ArrayList(); l.add(1); }\n}\n' > "$scratch/Warn.java"
+must_fail_with "warnings found and -Werror specified" build --target-platforms $AND //selftest/scratch_android:app
+rm -rf "$scratch"
+
 begin "c_apk takes no signing argument, validates every attribute, and refuses a private or foreign shared object"
-for bad in 'signing = "release"' 'keystore = "k.jks"' 'min_sdk = 21'; do
+for bad in 'signing = "release"' 'keystore = "k.jks"' 'min_sdk = 21' 'java_flags = ["-nowarn"]' 'processors = ["p.Proc"]' 'raw_manifest = "<x/>"' 'manifest_xml = "<receiver/>"'; do
   mkdir -p "$scratch"; : > "$scratch/a.c"
   printf 'load("@gate//rules:c.bzl", "c_android_so", "c_apk")\nc_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\nc_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, version_name = "1", %s)\n' "$bad" > "$scratch/BUCK"
   python3 -I -B gate/rigor buckfiles --root "$scratch" > "$out/bf_bad.txt" 2>&1 && fail "$CUR: buckfiles accepted c_apk with $bad" "$out/bf_bad.txt"
@@ -237,7 +275,7 @@ for bad in 'signing = "release"' 'keystore = "k.jks"' 'min_sdk = 21'; do
   must_fail_with "extra named|Extra named|unexpected|Unexpected|Found .* named parameter|not a valid parameter" build --target-platforms $AND //selftest/scratch_android:app
   rm -rf "$scratch"
 done
-echo "  signing, keystore and SDK-level keywords: refused by buckfiles and by the macro"
+echo "  signing, keystore, SDK-level, javac-flag, processor and raw-manifest keywords: refused by buckfiles and by the macro"
 i=0
 while IFS='|' read -r attr value re; do
   i=$((i + 1)); mkdir -p "$scratch"; : > "$scratch/a.c"
@@ -260,6 +298,22 @@ version_code|0|c_apk app: `version_code`
 orientation|"left"|c_apk app: `orientation`
 permissions|["READ_SMS"]|c_apk app: `permissions`
 assets|["../x"]|c_apk app: `assets`
+java_srcs|["../other/X.java"]|c_apk app: `java_srcs` and `res_xml` entries must be plain file names of this package
+java_srcs|["sub/X.java"]|c_apk app: `java_srcs` and `res_xml` entries must be plain file names of this package
+java_srcs|["X.kt"]|c_apk: `java_srcs` entries must be plain file names ending in .java
+java_srcs|["X.java"]|c_apk app: `java_classes` must list the classes of `java_srcs`
+java_classes|["org.example.club.X"]|c_apk app: `java_classes` must list the classes of `java_srcs`
+res_xml|["x/a.xml"]|c_apk app: `java_srcs` and `res_xml` entries must be plain file names of this package
+res_xml|["A.xml"]|c_apk app: `res_xml` names must be lower-case
+application_class|"org.example.club.X"|c_apk app: `application_class`
+receivers|[{"name": "org.example.club.X"}]|c_apk app: the receiver
+receivers|[{"name": "org.example.club.X", "raw": "<a/>"}]|c_apk app: a receiver is a dict
+launch_mode|"fast"|c_apk app: `launch_mode`
+lock_task_mode|"always"|c_apk app: `lock_task_mode`
+soft_input_mode|"x"|c_apk app: `soft_input_mode`
+exclude_from_recents|"yes"|c_apk app: `exclude_from_recents`
+categories|["LAUNCHER"]|c_apk app: `categories`
+permissions|["BIND_DEVICE_ADMIN"]|c_apk app: `permissions`
 so|":club__lib"|c_apk app: `so` must be
 so|"//p:club"|c_apk app: `so` must be
 CASES

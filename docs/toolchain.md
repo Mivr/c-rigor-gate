@@ -14,7 +14,7 @@ compiling or linking: no host clang, no `/usr/include`, no `/usr/lib`.
 | Android NDK r29 (linux zip) | `https://dl.google.com/android/repository/android-ndk-r29-linux.zip` | `4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf` |
 | Android build-tools r35 (linux zip; `c_apk`: aapt2, zipalign, apksigner and d8 jars) | `https://dl.google.com/android/repository/build-tools_r35_linux.zip` | `bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88` |
 | Android platform 35 r02 (`android.jar`) | `https://dl.google.com/android/repository/platform-35_r02.zip` | `0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0` |
-| Temurin JDK 21.0.6+7 (linux x64; java for apksigner and d8, keytool) | `https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.6%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz` | `a2650fba422283fbed20d936ce5d2a52906a5414ec17b2f7676dddb87201dbae` |
+| Temurin JDK 21.0.6+7 (linux x64; java for apksigner, d8 and javac, keytool) | `https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.6%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz` | `a2650fba422283fbed20d936ce5d2a52906a5414ec17b2f7676dddb87201dbae` |
 | glibc sysroot (Chromium Debian bullseye amd64) | `https://commondatastorage.googleapis.com/chrome-linux-sysroot/f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` | `f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` |
 
 `toolchains/fetch.bzl` (`fetched_tree`) downloads each archive (hash-checked) and runs `tar` on RE to unpack only
@@ -83,6 +83,11 @@ cannot just be trusted from it. Design:
   the orchestrator provides. Run in W35 after the merge with 301dc22 (llvm unpacked again on a worker, 1.6 GiB down), all six
   manifests came out byte-identical to the committed ones, including the three SDK manifests first made by hand. `selftest/toolchain.sh` flips one sha256 in each of
   `ndk.manifest`, `android_build_tools.manifest` and `jdk.manifest` and expects `toolchain-mismatch` for that manifest.
+- javac for `c_apk` Java (T-G3b): `toolchains//:javac` is `java -m jdk.compiler/com.sun.tools.javac.Main` on the same pinned JDK tree
+  (`java_jar` with `module`; the compiler lives in `lib/modules`, so no member was added and `jdk.manifest` is unchanged). There is
+  no `lib/ct.sym` in the tree, hence no `--release`: `rules/apk_java.py` uses `-source 8 -target 8 -bootclasspath android.jar` with
+  `-Xlint:all,-options -Werror` (docs/products.md, "`c_apk`"). d8 is `toolchains//:d8` (`--min-api 28`). Both run only inside RE
+  actions (the `apk_java` action and the Java part of `apk_lab`), like every SDK tool.
 - Known limitation (T-G3, root cause found in round 4): the farm's CAS does not reliably serve the build-tools files to a Buck2
   CLIENT. Any `buck2 build --materializations all` (or `buck2 run`) of a tree that holds several of them (`aapt2`, `lib/apksigner.jar`,
   `lib/d8.jar`, `lib64/libc++.so`, `zipalign`, ...) fails with `Error downloading digest <sha256>:<size> ... Operation made no

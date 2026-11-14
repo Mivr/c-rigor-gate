@@ -213,7 +213,7 @@ apk_check = rule(
 )
 
 def _lab_impl(ctx: AnalysisContext) -> list[Provider]:
-    """Test tooling (selftest/android.sh): breaks the APK of `apk` five ways inside one RE action and demands that apk_check refuses each."""
+    """Test tooling (selftest/android.sh): breaks the APK of `apk` (ways of apk_lab.py; the Java ones when `apk` has java_srcs) inside one RE action and demands that apk_check refuses each."""
     info = ctx.attrs.apk[ApkInfo]
     android_jar = ctx.attrs._platform[DefaultInfo].default_outputs[0].project("android-35/android.jar")
     out = ctx.actions.declare_output("lab.txt")
@@ -235,7 +235,11 @@ def _lab_impl(ctx: AnalysisContext) -> list[Provider]:
             "--apk-check-py", ctx.attrs._check,
             "--elf-check-py", ctx.attrs._elf_check,
             "--apk-manifest-py", ctx.attrs._manifest,
+            "--apk-java-py", ctx.attrs._java,
+            "--javac", _as_command(ctx.attrs._javac[RunInfo]),
+            "--d8", _as_command(ctx.attrs._d8[RunInfo]),
             "--out", out.as_output(),
+            info.java_srcs,
         ),
         category = "apk_lab",
         identifier = ctx.label.name,
@@ -251,7 +255,10 @@ apk_lab = rule(
         "_apksigner": attrs.exec_dep(default = "toolchains//:apksigner", providers = [RunInfo]),
         "_cert": attrs.source(default = "toolchains//:android_debug.cert.sha256"),
         "_check": attrs.source(default = "gate//rules:apk_check.py"),
+        "_d8": attrs.exec_dep(default = "toolchains//:d8", providers = [RunInfo]),
         "_elf_check": attrs.source(default = "gate//rules:elf_check.py"),
+        "_java": attrs.source(default = "gate//rules:apk_java.py"),
+        "_javac": attrs.exec_dep(default = "toolchains//:javac", providers = [RunInfo]),
         "_keystore": attrs.source(default = "toolchains//:android_debug.keystore"),
         "_keytool": attrs.exec_dep(default = "toolchains//:keytool", providers = [RunInfo]),
         "_lab": attrs.source(default = "gate//rules:apk_lab.py"),

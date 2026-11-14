@@ -10,6 +10,7 @@ import struct
 import sys
 import unittest
 import zipfile
+import zlib
 from pathlib import Path
 
 from tests.helpers import TempDirTestCase
@@ -24,7 +25,7 @@ def load(name):
     return module
 
 
-manifest, pack, check = load("apk_manifest"), load("apk_pack"), load("apk_check")
+manifest, pack, check, java = load("apk_manifest"), load("apk_pack"), load("apk_check"), load("apk_java")
 SPEC = {"label": "Club", "orientation": "landscape", "package": "org.example.club", "permissions": ["INTERNET"],
         "version_code": 7, "version_name": "1.2.3"}
 
@@ -80,6 +81,247 @@ class ManifestTest(unittest.TestCase):
             for path in (spec_path, out):
                 if os.path.exists(path):
                     os.unlink(path)
+
+
+JAVA = dict(SPEC, permissions=["RECEIVE_BOOT_COMPLETED"], java_classes=["org.example.club.A", "org.example.club.A$App", "org.example.club.A$Boot"],
+            res_xml=["device_admin.xml"], application_class="org.example.club.A$App",
+            receivers=[{"name": "org.example.club.A", "permission": "BIND_DEVICE_ADMIN", "exported": True, "actions": ["DEVICE_ADMIN_ENABLED"],
+                        "meta_data": {"android.app.device_admin": "device_admin"}},
+                       {"name": "org.example.club.A$Boot", "permission": "", "exported": True, "actions": ["BOOT_COMPLETED"], "meta_data": {}}],
+            activity={"launch_mode": "singleTask", "lock_task_mode": "if_whitelisted", "exclude_from_recents": True,
+                      "soft_input_mode": "stateHidden", "categories": ["HOME", "DEFAULT"]})
+
+
+class JavaManifestTest(unittest.TestCase):
+    def test_without_java_the_manifest_is_the_old_one(self):
+        text = manifest.render(SPEC, "libclub.so")
+        self.assertIn('android:hasCode="false"', text)
+        for needle in ("<receiver", "android:launchMode", "android:lockTaskMode", "android:excludeFromRecents", "windowSoftInputMode",
+                       "category.HOME", "category.DEFAULT", 'android:name="org'):
+            self.assertNotIn(needle, text)
+        self.assertEqual(text, manifest.render(dict(SPEC, java_classes=[], res_xml=[], receivers=[], application_class=""), "libclub.so"))
+
+    def test_the_declarations_render(self):
+        text = manifest.render(JAVA, "libclub.so")
+        for needle in ('android:hasCode="true"', 'android:name="org.example.club.A$App"', 'android:launchMode="singleTask"',
+                       'android:lockTaskMode="if_whitelisted"', 'android:excludeFromRecents="true"',
+                       'android:windowSoftInputMode="stateHidden"', 'android:name="android.intent.category.HOME"',
+                       'android:name="android.intent.category.DEFAULT"', 'android:permission="android.permission.BIND_DEVICE_ADMIN"',
+                       'android:name="android.app.action.DEVICE_ADMIN_ENABLED"', 'android:name="android.intent.action.BOOT_COMPLETED"',
+                       'android:name="android.app.device_admin" android:resource="@xml/device_admin"',
+                       'android:name="android.permission.RECEIVE_BOOT_COMPLETED"'):
+            self.assertIn(needle, text)
+        self.assertEqual(text.count("<receiver"), 2)
+        self.assertEqual(text.count("android:permission="), 1)
+        self.assertEqual(manifest.render(dict(JAVA, receivers=[JAVA["receivers"][1]]), "libclub.so").count("<receiver"), 1)
+
+    def test_every_java_declaration_is_closed(self):
+        r0, r1 = JAVA["receivers"]
+        activity = JAVA["activity"]
+        bad = {
+            "java_classes": [["Other.A"], ["org.example.club.A", "org.example.club.A"], "org.example.club.A", ["org.example.club.A b"],
+                             ['org.example.club.A"x'], ["org.example.club."], ["org.example.clubx.A"], [1]],
+            "res_xml": [["a/b.xml"], ["A.xml"], ["a.xml", "a.xml"], "a.xml", ["a.txt"], ["x" * 41 + ".xml"]],
+            "application_class": ["org.example.club.Missing", 5, "org.example.club.A b"],
+            "receivers": [[dict(r0, name="org.example.club.Missing")], [dict(r0, permission="BIND_ACCESSIBILITY_SERVICE")],
+                          [dict(r0, exported="true")], [dict(r0, actions=["BOOT_COMPLETED", "BOOT_COMPLETED"])],
+                          [dict(r0, actions=["android.intent.action.MAIN"])], [dict(r0, meta_data={"android.app.other": "device_admin"})],
+                          [dict(r0, meta_data={"android.app.device_admin": "missing"})], [dict(r0, extra=1)],
+                          [{k: v for k, v in r0.items() if k != "name"}], [r0, r0], ["org.example.club.A"], "x", [r0] * 9, [[]]],
+            "activity": [dict(activity, launch_mode="fast"), dict(activity, lock_task_mode="always"), dict(activity, soft_input_mode="x"),
+                         dict(activity, exclude_from_recents="true"), dict(activity, categories=["LAUNCHER"]),
+                         dict(activity, categories=["HOME", "HOME"]), dict(activity, extra=1), {}, []],
+            "permissions": [["BIND_DEVICE_ADMIN"], ["android.permission.RECEIVE_BOOT_COMPLETED"]],
+        }
+        for key, values in bad.items():
+            for value in values:
+                with self.subTest(key=key, value=value):
+                    with self.assertRaises(SystemExit) as raised:
+                        manifest.render(dict(JAVA, **{key: value}), "libclub.so")
+                    self.assertIn("apk_manifest:", str(raised.exception))
+
+    def test_unknown_keys_and_raw_xml_are_not_a_declaration(self):
+        for extra in ("manifest_xml", "raw_manifest", "application"):
+            self.assertTrue(manifest.validate(dict(JAVA, **{extra: "<receiver/>"})))
+        self.assertEqual(manifest.validate(JAVA), [])
+
+
+def build_dex(names, strings_first=True):
+    """A minimal well-formed dex file whose class_defs are `names` (`org.example.A`): header, strings, type_ids, class_defs."""
+    descriptors = ["L%s;" % n.replace(".", "/") for n in names]
+    blob, offsets = b"", []
+    base = 0x70 + 4 * len(descriptors) * 2 + 32 * len(descriptors)
+    for d in descriptors:
+        offsets.append(base + len(blob))
+        blob += bytes([len(d)]) + d.encode("ascii") + b"\0"
+    n = len(descriptors)
+    body = b"".join(struct.pack("<I", o) for o in offsets) + b"".join(struct.pack("<I", i) for i in range(n))
+    body += b"".join(struct.pack("<I", i) + b"\0" * 28 for i in range(n)) + blob
+    header = bytearray(0x70)
+    header[0:8] = b"dex\n035\0"
+    struct.pack_into("<III", header, 0x20, 0x70 + len(body), 0x70, 0x12345678)
+    struct.pack_into("<IIII", header, 0x38, n, 0x70, n, 0x70 + 4 * n)
+    struct.pack_into("<II", header, 0x60, n, 0x70 + 8 * n)
+    data = bytearray(bytes(header) + body)
+    struct.pack_into("<I", data, 8, zlib.adler32(bytes(data[12:])))
+    return bytes(data)
+
+
+def fix(data, mutate):
+    """`data` changed by `mutate(bytearray)`, with the checksum recomputed (so that only the mutation is wrong)."""
+    out = bytearray(data)
+    mutate(out)
+    struct.pack_into("<I", out, 8, zlib.adler32(bytes(out[12:])))
+    return bytes(out)
+
+
+class DexTest(TempDirTestCase):
+    NAMES = ["org.example.club.A", "org.example.club.A$B", "org.example.club.C"]
+
+    def test_the_class_defs_are_read(self):
+        self.assertEqual(check.dex_classes(build_dex(self.NAMES)), self.NAMES)
+        self.assertEqual(check.dex_classes(build_dex([])), [])
+
+    def test_a_malformed_dex_is_refused(self):
+        good = build_dex(self.NAMES)
+        cases = {
+            "magic": (b"zip\n035\0" + good[8:], "not a dex file"),
+            "short": (good[:0x40], "not a dex file"),
+            "version": (fix(good, lambda d: d.__setitem__(slice(4, 7), b"abc")), "not a dex file"),
+            "size": (good + b"\0", "bad dex header"),
+            "header size": (fix(good, lambda d: struct.pack_into("<I", d, 0x24, 0x71)), "bad dex header"),
+            "endian": (fix(good, lambda d: struct.pack_into("<I", d, 0x28, 0x78563412)), "bad dex header"),
+            "checksum": (good[:-1] + bytes([good[-1] ^ 1]), "bad dex checksum"),
+            "class table": (fix(good, lambda d: struct.pack_into("<I", d, 0x64, len(good))), "outside the file"),
+            "string table": (fix(good, lambda d: struct.pack_into("<I", d, 0x3C, len(good))), "outside the file"),
+            "type table": (fix(good, lambda d: struct.pack_into("<I", d, 0x44, len(good))), "outside the file"),
+            "table in the header": (fix(good, lambda d: struct.pack_into("<I", d, 0x64, 0x20)), "outside the file"),
+            "type index": (fix(good, lambda d: struct.pack_into("<I", d, 0x70 + 8 * 3, 9)), "names the type 9 of 3"),
+            "string index": (fix(good, lambda d: struct.pack_into("<I", d, 0x70 + 4 * 3, 9)), "names the string 9 of 3"),
+            "not terminated": (fix(good, lambda d: d.__setitem__(slice(-1, None), b"x")), "not terminated"),
+            "not ascii": (fix(good, lambda d: d.__setitem__(len(d) - 3, 0xC3)), "not ASCII"),
+            "not a class": (fix(good, lambda d: d.__setitem__(len(d) - 2, ord("x"))), "not a class"),
+            "runaway length": (fix(good, lambda d: struct.pack_into("<I", d, 0x70, len(d))), "runs off the file"),
+        }
+        for name, (data, why) in cases.items():
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, why):
+                check.dex_classes(data)
+
+    def test_the_dex_of_an_apk_is_compared_with_the_declared_classes(self):
+        def apk_with(data):
+            path = self.tmp / "a.apk"
+            with zipfile.ZipFile(path, "w") as z:
+                if data is not None:
+                    z.writestr("classes.dex", data)
+            return str(path)
+        self.assertEqual(check.dex_problems(apk_with(build_dex(self.NAMES)), self.NAMES), [])
+        self.assertEqual(check.dex_problems(apk_with(build_dex(self.NAMES + ["org.example.club.X"])), self.NAMES),
+                         ["classes.dex defines org.example.club.X, which is not a declared class"])
+        self.assertEqual(check.dex_problems(apk_with(build_dex(self.NAMES[:2])), self.NAMES),
+                         ["classes.dex does not define the declared class org.example.club.C"])
+        self.assertEqual(check.dex_problems(apk_with(build_dex(self.NAMES + self.NAMES[:1])), self.NAMES),
+                         ["classes.dex defines org.example.club.A twice"])
+        self.assertEqual(check.dex_problems(apk_with(b"not a dex file at all, but long enough to read" * 4), self.NAMES),
+                         ["classes.dex: not a dex file (magic)"])
+        self.assertEqual(check.dex_problems(apk_with(None), self.NAMES), [])     # the entry check reports the missing file
+
+    def test_the_uleb128_length_prefix(self):
+        self.assertEqual(check._uleb(b"\x05abc", 0), (5, 1))
+        self.assertEqual(check._uleb(b"\xe5\x8e\x26", 0), (624485, 3))
+        with self.assertRaises(ValueError):
+            check._uleb(b"\x80", 0)
+        with self.assertRaises(ValueError):
+            check._uleb(b"\x80\x80\x80\x80\x80\x80", 0)
+
+    def test_the_entries_follow_the_declaration(self):
+        good = ["AndroidManifest.xml", "resources.arsc", "lib/arm64-v8a/libclub.so"]
+        want = good + ["classes.dex", "res/xml/a.xml"]
+        self.assertEqual(check.entry_problems(want, "libclub.so", [], True, ["a.xml"]), [])
+        self.assertEqual(check.entry_problems(good, "libclub.so", [], True, ["a.xml"]), ["missing entry classes.dex", "missing entry res/xml/a.xml"])
+        self.assertEqual(check.entry_problems(want, "libclub.so", []), ["unexpected entry classes.dex", "unexpected entry res/xml/a.xml"])
+        self.assertEqual(check.entry_problems(want + ["classes2.dex", "res/xml/b.xml"], "libclub.so", [], True, ["a.xml"]),
+                         ["unexpected entry classes2.dex", "unexpected entry res/xml/b.xml"])
+
+
+class JavaToolsTest(TempDirTestCase):
+    def test_pack_puts_the_dex_between_the_base_and_the_library(self):
+        base = self.tmp / "base.apk"
+        with zipfile.ZipFile(base, "w") as z:
+            z.writestr("AndroidManifest.xml", b"m")
+        lib, dex, out = self.tmp / "libclub.so", self.tmp / "classes.dex", self.tmp / "out.apk"
+        lib.write_bytes(b"so")
+        dex.write_bytes(b"dex")
+        self.assertEqual(pack.main(["x", str(base), str(lib), str(out), str(dex)]), 0)
+        with zipfile.ZipFile(out) as z:
+            self.assertEqual([i.filename for i in z.infolist()], ["AndroidManifest.xml", "classes.dex", "lib/arm64-v8a/libclub.so"])
+            self.assertEqual(z.read("classes.dex"), b"dex")
+            self.assertEqual({i.compress_type for i in z.infolist()}, {zipfile.ZIP_STORED})
+        with zipfile.ZipFile(base, "w") as z:
+            z.writestr("classes.dex", b"x")
+        with self.assertRaises(SystemExit):
+            pack.pack(str(base), str(lib), str(out))
+        with self.assertRaises(SystemExit):
+            pack.main(["x", "a", "b", "c", "d", "e"])
+
+    def test_apk_java_takes_exactly_its_arguments_and_only_java_files(self):
+        full = ["x", "--javac", "j", "--d8", "d", "--android-jar", "a.jar", "--min-api", "28", "--out", "o.dex", "A.java"]
+        for drop in range(1, 11, 2):
+            with self.subTest(drop=full[drop]), self.assertRaises(SystemExit):
+                java.main(full[:drop] + full[drop + 2:])
+        for bad in (["--proc", "x"], ["B.kt"], ["-Xlint:none"], ["--out"]):
+            with self.subTest(bad=bad), self.assertRaises(SystemExit):
+                java.main(full + bad)
+        with self.assertRaises(SystemExit):
+            java.main(full[:-1])         # no source
+
+    def test_javac_is_run_with_werror_without_processors_and_with_the_boot_class_path(self):
+        seen = []
+        original = java.run
+        java.run = lambda command, *args: seen.append((command, [str(a) for a in args])) or ""
+        try:
+            java.compile_sources("JAVAC", "android.jar", ["B.java", "A.java"], "out")
+        finally:
+            java.run = original
+        command, args = seen[0]
+        self.assertEqual(command, "JAVAC")
+        for flag in ("-Werror", "-proc:none", "-implicit:none"):
+            self.assertIn(flag, args)
+        self.assertEqual(args[args.index("-bootclasspath") + 1], "android.jar")
+        self.assertIn("-Xlint:all,-options", args)
+        self.assertEqual(args[-2:], ["A.java", "B.java"])           # sorted
+        self.assertEqual((args[args.index("-source") + 1], args[args.index("-target") + 1]), ("8", "8"))
+
+    def test_d8_is_run_with_the_min_api_and_must_write_exactly_classes_dex(self):
+        out = self.tmp / "dex"
+        out.mkdir()
+        calls = []
+        original = java.run
+        def fake(command, *args):
+            calls.append((command, [str(a) for a in args]))
+            (out / "classes.dex").write_bytes(b"d")
+            return ""
+        java.run = fake
+        try:
+            self.assertEqual(java.dex("D8", "android.jar", "28", ["a.class"], str(out)), str(out / "classes.dex"))
+            self.assertEqual(calls[0][1][:2], ["--min-api", "28"])
+            (out / "classes2.dex").write_bytes(b"d")
+            with self.assertRaises(SystemExit):
+                java.dex("D8", "android.jar", "28", ["a.class"], str(out))
+            with self.assertRaises(SystemExit):
+                java.dex("D8", "android.jar", "28", [], str(out))
+        finally:
+            java.run = original
+
+    def test_class_files_are_found_sorted_and_a_failing_tool_stops_the_action(self):
+        (self.tmp / "p").mkdir()
+        for name in ("p/B.class", "p/A.class", "p/A.java", "C.class"):
+            (self.tmp / name).write_bytes(b"")
+        self.assertEqual([os.path.relpath(f, self.tmp) for f in java.class_files(str(self.tmp))], ["C.class", "p/A.class", "p/B.class"])
+        self.assertEqual(java.run("true"), "")
+        with self.assertRaises(SystemExit) as raised:
+            java.run("sh", "-c", "echo boom; exit 3")
+        self.assertIn("exit 3", str(raised.exception))
+        self.assertIn("boom", str(raised.exception))
 
 
 class PackTest(TempDirTestCase):
@@ -203,7 +445,7 @@ class PinsTest(unittest.TestCase):
         text = (ROOT / "toolchains" / "BUCK").read_text()
         self.assertNotIn("TMPLIST", text)
         code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
-        for forbidden in ("src.zip", "ct.sym", "jmods", "bin/javac"):
+        for forbidden in ("src.zip", "ct.sym", "jmods", "bin/javac", "lib/jrt-fs", "bin/jar"):
             self.assertNotIn(forbidden, code)
 
 
@@ -211,7 +453,7 @@ class NoReleaseKeyTest(unittest.TestCase):
     """Release signing is out of scope: no argument, environment variable or file of a product reaches the signing step."""
 
     def test_the_rule_and_the_scripts_read_no_environment_and_take_no_key(self):
-        for name in ("rules/apk.bzl", "rules/apk_manifest.py", "rules/apk_pack.py", "rules/apk_check.py"):
+        for name in ("rules/apk.bzl", "rules/apk_manifest.py", "rules/apk_pack.py", "rules/apk_check.py", "rules/apk_java.py"):
             text = (ROOT / name).read_text()
             for needle in ("getenv", "os.environ", "read_config", "read_root_config", "JAVA_HOME", "ANDROID_"):
                 self.assertNotIn(needle, text, name)
