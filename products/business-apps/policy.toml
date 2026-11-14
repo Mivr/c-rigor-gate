@@ -133,6 +133,10 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/runtime:double_pulse_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
 [module."//apps/lockers/itest/shift:sh_gaps_test"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
@@ -202,6 +206,10 @@ allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/lockers/itest/view:vw_screen_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_double_pulse_test"]
 allow = ["memset"]
 exports = ["main"]
 
@@ -1999,6 +2007,10 @@ allow = ["strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/fold_core:fold_core_rust_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/fold_core:fold_core_saved_test"]
 allow = ["strlen"]
 exports = ["main"]
 
