@@ -6,7 +6,7 @@ The orchestrator used to pick selftests by hand. `tools/affected.py` and `tools/
 
 Ordered rules `{glob, selftests}`. The **first** rule whose glob matches a changed path decides that path; the selected
 set is the union over all changed paths, plus `gate` (the unit tests), which is always selected. Selftest names:
-`gate grade mutate structure product_checks profiles require sanmodes toolchain ctest fuzz third_party canaries trajectory_real`; `all` stands for
+`gate grade mutate structure product_checks profiles require sanmodes sim toolchain ctest fuzz third_party canaries trajectory_real`; `all` stands for
 every one of them.
 
 Fail closed:
@@ -40,7 +40,7 @@ selftests, runs them, and prints one table: selftest, exit, seconds, last line. 
 reads agent output. Exit 0 only if every selected selftest exited 0.
 
 Parallelism: `gate`, `grade`, `canaries` (with `--jobs 8`) and `trajectory_real` each get a lane of their own, because
-they do not build in this project root. The selftests that do (`product_checks profiles require ctest toolchain fuzz sanmodes structure mutate
+they do not build in this project root. The selftests that do (`product_checks profiles require ctest toolchain fuzz sim sanmodes structure mutate
 third_party`) share one Buck2 daemon and read `buck2 log what-ran`, which names the last command of the root, so they
 run one after another in a single lane. `trajectory_real` needs `TRAJECTORY_REAL_DIR`; unset, it skips (exit 0) and the
 table's last line says so.

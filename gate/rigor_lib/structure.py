@@ -87,7 +87,7 @@ class Model:
                     self.files.setdefault(fact.path, {"fact": fact, "modules": set()})["modules"].add(label)
 
     def node_id(self, key, label):
-        return "%s@%s" % (key, label) if self.graded[label].kind == "c_binary" else key
+        return "%s@%s" % (key, label) if self.graded[label].kind in ("c_binary", "c_sim") else key
 
     def resolve(self, to, label):
         """The nodes a call to `to` made from module `label` can reach: the program's own definition, else

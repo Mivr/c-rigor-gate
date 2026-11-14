@@ -14,6 +14,7 @@ load("@gate//rules:facts.bzl", "c_facts", "c_msan_facts", "c_san_facts", "c_tsan
 load("@gate//rules:fuzz.bzl", "fuzz_corpus", "fuzz_run", "fuzz_runs")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
+load("@gate//rules:sim.bzl", "sim_merge", "sim_params", "sim_run", "sim_salt")
 
 _SEALED_HEAD = [
     "-std=c17",
@@ -129,6 +130,13 @@ _RELEASE_OR_SAN = select({
     "toolchains//:san": [],
     "toolchains//:msan": [],
     "toolchains//:tsan": [],
+    "DEFAULT": ["toolchains//:never"],
+})
+
+# A `c_sim` runs in release and in san only (P330 §1.3: the identity check compares those two).
+_RELEASE_OR_SAN_ONLY = select({
+    "toolchains//:release": [],
+    "toolchains//:san": [],
     "DEFAULT": ["toolchains//:never"],
 })
 
@@ -467,6 +475,64 @@ def c_fuzz(name, srcs = [], deps = [], corpus = [], runs = None):
         target_compatible_with = _RELEASE_OR_SAN,
     )
     _facts(name, "c_fuzz", srcs, deps, unit = ":" + name + "__facts_unit")
+
+def c_sim(name, srcs = [], deps = [], seeds = None, run_ms = None, shards = None):
+    """A whole-app simulation target (P330 §1, docs/sim.md): `srcs` is the product's WORLD (it implements `sim/world.h`),
+    linked with the gate's runner (`gate//sim:runner`) that owns `main`, the seeds, the workload and the identity check.
+
+    `seeds`, `run_ms` and `shards` are optional budgets (defaults and maxima in rules/sim.bzl; the judge demands the
+    tier's minimum). `<name>` is the test: it runs every shard and merges them; `<name>[stats]`, `[hashes]`,
+    `[verdict]` and `[report]` are its outputs. The world's sources get facts like those of a `c_library`, so every
+    other gate sees them (the kind is `c_sim`, a product kind).
+    """
+    _check("c_sim", srcs, [])
+    if len(srcs) == 0:
+        fail("c_sim: `srcs` must name the world's source files, got none")
+    seeds, run_ms, shards = sim_params("c_sim", seeds, run_ms, shards)
+    native.cxx_binary(
+        name = name + "__bin",
+        srcs = srcs,
+        deps = deps + ["gate//sim:runner", "gate//sim:world"],
+        compiler_flags = _compile_flags(),
+        linker_flags = _link_flags(),
+        target_compatible_with = _RELEASE_OR_SAN_ONLY,
+    )
+    per = (seeds + shards - 1) // shards
+    parts = []
+    for k in range(shards):
+        first = k * per
+        count = min(per, seeds - first)
+        if count > 0:
+            part = "{}__shard{}".format(name, k)
+            sim_run(
+                name = part,
+                binary = ":" + name + "__bin",
+                world_srcs = srcs,
+                first = first,
+                count = count,
+                run_ms = run_ms,
+                salt = sim_salt(),
+                target_compatible_with = _RELEASE_OR_SAN_ONLY,
+            )
+            parts.append(":" + part)
+    sim_merge(
+        name = name,
+        shards = parts,
+        seeds = seeds,
+        target_compatible_with = _RELEASE_OR_SAN_ONLY,
+    )
+
+    # The facts of the world are read from a release-mode (and san, msan, tsan) twin that compiles the same sources with
+    # the same deps and flags, like a `c_fuzz`; the runner is the gate's code and is no dep of the facts.
+    native.cxx_library(
+        name = name + "__facts_unit",
+        srcs = srcs,
+        deps = deps + ["gate//sim:world"],
+        compiler_flags = _compile_flags(),
+        link_style = "static",
+        target_compatible_with = _RELEASE_OR_SAN,
+    )
+    _facts(name, "c_sim", srcs, deps, unit = ":" + name + "__facts_unit")
 
 def c_mutants(name, module, tests, deps = [], perf = []):
     """Mutation testing of a `c_library` through the given `c_test` targets (release mode only).

@@ -1,0 +1,10 @@
+{
+  "bypass": "a world with state outside world_init that changes the second run of a seed",
+  "description": "T2G1 fixture world: a static counter survives world_init and leaks into the trace time stamp, so the second run of every seed differs from the first. The run must FAIL with sim-nondeterministic. Pending until T2G2 wires `sim` into rigor grade; the rule id is the runner's.",
+  "pending": "T2G2",
+  "fail": {
+    "sim": [
+      "sim-nondeterministic"
+    ]
+  }
+}

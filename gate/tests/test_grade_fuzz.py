@@ -113,7 +113,7 @@ class Step(TempDirTestCase):
 class MutantsLayout(unittest.TestCase):
     """The libFuzzer binary of a `c_fuzz` is no module for the mutants gate (no `level-missing`); a product binary is."""
 
-    def layout(self):
+    def layout(self, sim=()):
         def fake_buck(tree, args):
             query = args[1]
             if query.startswith("kind(ctest_results"):
@@ -121,10 +121,13 @@ class MutantsLayout(unittest.TestCase):
             if query.startswith("kind('^(cxx_library"):
                 return 0, json.dumps({"root//p:fz__bin": {"deps": []}, "root//p:tool": {"deps": []}}), ""
             if query == "kind(cxx_binary, //...)":
-                return 0, "root//p:fz__bin\nroot//p:tool\n", ""
+                return 0, "root//p:fz__bin\nroot//p:tool\n" + "".join("%s\n" % b for b in sim), ""
             if query == "kind(fuzz_run, //...)":
                 self.assertEqual(args[2:], ["--output-format", "json", "--output-attribute", "^binary$"])
                 return 0, json.dumps({"root//p:fz": {"binary": "root//p:fz__bin"}}), ""
+            if query == "kind(sim_run, //...)":   # T2G1: the binary behind a `c_sim` is no module either
+                self.assertEqual(args[2:], ["--output-format", "json", "--output-attribute", "^binary$"])
+                return 0, json.dumps({"root//p:s__shard0": {"binary": "root//p:s__bin"}}), ""
             raise AssertionError(args)
         run = SimpleNamespace(tree="t")
         with mock.patch.object(grade_mutants.grade_build, "run_buck", side_effect=fake_buck):
@@ -132,6 +135,9 @@ class MutantsLayout(unittest.TestCase):
 
     def test_the_fuzz_binary_is_left_out_and_another_binary_stays(self):
         self.assertEqual(self.layout().binaries, frozenset({"//p:tool"}))
+
+    def test_the_sim_binary_is_left_out_too(self):
+        self.assertEqual(self.layout(sim=["root//p:s__bin"]).binaries, frozenset({"//p:tool"}))
 
 
 class Retry(TempDirTestCase):

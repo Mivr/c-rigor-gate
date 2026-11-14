@@ -24,7 +24,7 @@ from rigor_lib.runner import gate_handler
 
 GATE_ID = "guards"
 DENSITY_LINES = 40          # the cap: one declared guard per this many lines of the module's own source files
-MODULE_KINDS = ("c_library", "c_binary")
+MODULE_KINDS = ("c_library", "c_binary", "c_sim")
 
 
 def own_sites(label, facts, structure):

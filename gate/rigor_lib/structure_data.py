@@ -12,7 +12,7 @@ from rigor_lib.errors import InternalError
 from rigor_lib.facts_data import LABEL
 
 SCHEMA = 1
-KINDS = ("c_library", "c_binary", "c_test", "c_fuzz")
+KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim")
 EXEMPT_KINDS = ("c_test", "c_fuzz")   # present, but not graded
 FUNCTION_KEYS = ("name", "key", "static", "file", "line", "end_line", "body_lines", "split", "macro",
                  "params", "nesting", "cyclomatic", "statements", "calls", "indirect", "refs")
