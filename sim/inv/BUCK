@@ -85,3 +85,44 @@ c_test(name = "model_test", srcs = ["tests/model_test.c"], deps = [":model"])
 
 c_mutants(name = "audit_mutants", module = ":audit", tests = [":audit_test"], deps = [])
 c_mutants(name = "events_mutants", module = ":events", tests = [":ev_auth_test", ":ev_store_test", ":ev_live_test", ":model_test"], deps = [":audit", ":frame", ":wire", ":ev_rig", ":model"])
+
+# The view invariants I7 and I8 (T2G5): a strict parser of the canonical ViewState text under a product-supplied schema (data), the I7 rules,
+# the I8 re-run-and-dismiss check through a callback of the world, the phrase catalogue through another.
+c_library(
+    name = "ui",
+    srcs = ["ui.c", "ui_parse.c", "ui_schema.c"],
+    headers = ["ui.h"],
+    exported_deps = ["//sim:world"],
+    visibility = ["PUBLIC"],
+)
+
+# The test kit of the view tests: the fixture schema, view builders, a fake phrase catalogue and a scripted replay.
+c_library(
+    name = "ui_rig",
+    srcs = ["tests/ui_rig.c"],
+    headers = ["tests/ui_rig.h"],
+    exported_deps = [":ui", "gate//ctest:ctest"],
+)
+
+c_test(name = "ui_schema_test", srcs = ["tests/ui_schema_test.c"], deps = [":ui_rig"])
+c_test(name = "ui_parse_test", srcs = ["tests/ui_parse_test.c"], deps = [":ui_rig"])
+c_test(name = "ui_rules_test", srcs = ["tests/ui_rules_test.c"], deps = [":ui_rig"])
+c_test(name = "ui_i8_test", srcs = ["tests/ui_i8_test.c"], deps = [":ui_rig"])
+
+# The fixture product of T2G5: a model of a kiosk that publishes the views of a day, with the seeded bugs `full-screen-message`,
+# `notice-without-dismiss`, `countdown-null`, `lang-not-reset` (and `dismiss-ignored`, for I8), and answers the engine's replay.
+c_library(
+    name = "ui_model",
+    srcs = ["tests/ui_model.c"],
+    headers = ["tests/ui_model.h"],
+    exported_deps = [":ui", ":ui_rig"],
+)
+
+c_test(name = "ui_model_test", srcs = ["tests/ui_model_test.c"], deps = [":ui_model"])
+
+c_mutants(
+    name = "ui_mutants",
+    module = ":ui",
+    tests = [":ui_schema_test", ":ui_parse_test", ":ui_rules_test", ":ui_i8_test", ":ui_model_test"],
+    deps = [":ui_rig", ":ui_model"],
+)
