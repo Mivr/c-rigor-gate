@@ -2751,6 +2751,10 @@ exports = ["blob_count", "blob_give", "blob_init", "blob_owner", "blob_ptr", "bl
 allow = ["bcmp", "memset"]
 exports = ["main"]
 
+[module."//lib/ds/blob:blob_exhaust_test"]
+allow = []
+exports = ["main"]
+
 [module."//lib/ds/blob:blob_model_test"]
 allow = ["fputs", "memset", "snprintf", "stderr"]
 exports = ["main"]
@@ -2900,6 +2904,10 @@ exports = ["pool_alloc", "pool_cap", "pool_free", "pool_get", "pool_init", "pool
 
 [module."//lib/ds/pool:pool_api_test"]
 allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/ds/pool:pool_exhaust_test"]
+allow = []
 exports = ["main"]
 
 [module."//lib/ds/pool:pool_gen_test"]
