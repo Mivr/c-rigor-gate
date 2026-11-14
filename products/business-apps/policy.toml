@@ -2419,7 +2419,7 @@ exports = []
 level = "L3"
 impl = ["apps/lockers/lkui/screens/src/**"]
 allow = []
-exports = ["lkui_about", "lkui_build", "lkui_build2", "lkui_build_choose", "lkui_build_opened", "lkui_build_screen",
+exports = ["lkui_about", "lkui_build", "lkui_build2", "lkui_build_choose", "lkui_build_fault", "lkui_build_opened", "lkui_build_screen",
     "lkui_build_shift_col", "lkui_build_welcome", "lkui_button", "lkui_countdown", "lkui_countdown_at",
     "lkui_done_staff", "lkui_has_countdown", "lkui_lang", "lkui_licenses", "lkui_panel", "lkui_rect", "lkui_root",
     "lkui_text", "lkui_text_int", "lkui_top", "lkui_warning"]
@@ -2430,6 +2430,14 @@ exports = ["main"]
 
 [module."//apps/lockers/lkui/screens:screens_fit_test"]
 allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/screens:screens_fault_shape_test"]
+allow = ["bcmp", "memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/screens:screens_fault_test"]
+allow = ["memset", "snprintf", "strcmp", "strlen"]
 exports = ["main"]
 
 [module."//apps/lockers/lkui/screens:screens_opened_test"]
