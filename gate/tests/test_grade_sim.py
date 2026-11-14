@@ -174,3 +174,24 @@ class Step(TempDirTestCase):
                 mock.patch.object(grade_sim.grade_checks, "build_facts", return_value=facts):
             grade_sim.sim_gate_step(self.grading())
         self.assertEqual(len(builds), 4)   # san and release, each twice
+
+
+class OnlySelection(unittest.TestCase):
+    """`rigor grade --only` (the historical canaries of T2G8 name `gates`)."""
+
+    IDS = [gate_id for gate_id, _ in grade_pipeline.GATES]
+
+    def test_sim_runs_with_the_foundation_and_the_built_tree_only(self):
+        chosen = grade_pipeline.selection(["sim"], self.IDS)
+        self.assertEqual(chosen, {"clone", "assemble", "toolchain", "buckfiles", "build", "tests-release", "tests-san", "sim"})
+
+    def test_a_foundation_gate_alone_needs_no_build(self):
+        self.assertEqual(grade_pipeline.selection(["buckfiles"], self.IDS), set(grade_pipeline.FOUNDATION))
+
+    def test_the_witness_gates_need_the_mutants_gate(self):
+        self.assertIn("mutants", grade_pipeline.selection(["witness-tests"], self.IDS))
+
+    def test_a_bad_selection_is_exit_2(self):
+        for only in ([], ["nope"], ["sim", "sim"], ["sim", ""]):
+            with self.subTest(only=only), self.assertRaises(InternalError):
+                grade_pipeline.selection(only, self.IDS)
