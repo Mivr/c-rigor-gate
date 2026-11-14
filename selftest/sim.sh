@@ -2,7 +2,8 @@
 # Self-test of c_sim (T2G1, P330 §1): the runner, the world interface, seed identity and crash handling on the fixture
 # product selftest/sim (a toy locker with one relay line and deliberate bugs), plus the invariant engines of sim/inv (T2G3, T2G4, T2G5:
 # their tests in both modes and their mutants at L3), and the coverage and soak of T2G6: what the seeds show, the soak of the fixture
-# whose pool retires slots after 3 uses (red on I12, I13 and I11 on the days the arithmetic gives) and the judge over both.
+# whose pool retires slots after 3 uses (red on I12, I13 and I11 on the days the arithmetic gives) and the judge over both, and the oracle
+# replay of T2G7 (the fixture replayer over the fixture bundle: zero divergence, a changed byte and a buggy replayer caught).
 # Needs bash, python3 (stdlib) and tools/buck2. Scratch lives under selftest/scratch_sim and $TMPDIR.
 set -uo pipefail
 
@@ -373,6 +374,61 @@ for dep in "//w:sim" "//w:sim__bin" "//w:sim__shard0" "//w:sim__soak" "//w:sim_f
   "${RIGOR[@]}" buckfiles --root "$out/bf" --out "$out/bf.json" > "$out/bf.txt" 2>&1 && fail "$CUR: a dep on $dep was accepted" "$out/bf.txt"
   grep -q '"why":"sim-target"' "$out/bf.json" || fail "$CUR: no sim-target finding for $dep" "$out/bf.txt"
 done
+
+begin "oracle (T2G7): the fixture replayer replays the fixture bundle with zero divergence; one changed byte, a buggy replayer and a tampered bundle are caught"
+mkdir -p "$scratch/oracle_bug"
+cp "$scratch/oracle/BUCK" "$scratch/oracle_bug/BUCK"
+python3 -I - "$scratch/oracle/replay.c" "$scratch/oracle_bug/replay.c" <<'PY' || fail "$CUR: cannot make the buggy replayer"
+import sys
+text = open(sys.argv[1]).read()
+old = "        pad->entered = 0;\n    } else if (has_op(line, \"submit\"))"
+assert old in text
+open(sys.argv[2], "w").write(text.replace(old, "        pad->entered = pad->entered > 1 ? 0 : pad->entered;\n    } else if (has_op(line, \"submit\"))"))
+PY
+python3 -I -B "$scratch/oracle/gen_traces.py" "$out/ob" || fail "$CUR: the trace generator failed"
+diff -r "$out/ob" "$scratch/oracle/bundle" > "$out/ob.diff" || fail "$CUR: the committed bundle is not what gen_traces.py writes" "$out/ob.diff"
+replay_all() { # replay_all <binary> <results dir>
+  mkdir -p "$2"
+  for f in "$out/ob/files/"*.trace; do "$1" < "$f" > "$2/$(basename "$f")" || fail "$CUR: the replayer failed on $f"; done
+}
+build_out rp "$SAN" "$P/oracle:replay"
+replay_all "$rp" "$out/or_ok"
+"${RIGOR[@]}" oracle --bundle "$out/ob" --results "$out/or_ok" --out "$out/oracle_ok.json" > "$out/oracle_ok.txt" 2>&1 || fail "$CUR: the fixture does not replay clean" "$out/oracle_ok.txt"
+python3 -I - "$out/oracle_ok.json" <<'PY' || fail "$CUR: the clean oracle result is not an empty PASS over 4 traces"
+import json, sys
+r = json.load(open(sys.argv[1]))
+assert r["status"] == "PASS" and r["findings"] == [] and r["metadata"]["traces"] == 4 and r["metadata"]["replayed"] == 4, r
+PY
+# One byte of one view: `2000` -> `3000` on line 15 of scripted-01, so the finding is (step 5, line 15, byte of that digit).
+cp -R "$out/or_ok" "$out/or_flip"
+python3 -I - "$out/or_flip/scripted-01.trace" "$out/flip.want" <<'PY' || fail "$CUR: cannot flip a byte"
+import sys
+lines = open(sys.argv[1], "rb").read().split(b"\n")
+offset = lines[14].index(b"2000")
+lines[14] = lines[14][:offset] + b"3" + lines[14][offset + 1:]
+open(sys.argv[1], "wb").write(b"\n".join(lines))
+open(sys.argv[2], "w").write("%d" % offset)
+PY
+"${RIGOR[@]}" oracle --bundle "$out/ob" --results "$out/or_flip" --out "$out/oracle_flip.json" > "$out/oracle_flip.txt" 2>&1 && fail "$CUR: a changed byte was not caught" "$out/oracle_flip.txt"
+python3 -I - "$out/oracle_flip.json" "$(cat "$out/flip.want")" <<'PY' || fail "$CUR: wrong finding for the changed byte"
+import json, sys
+f = json.load(open(sys.argv[1]))["findings"]
+want = {"rule": "oracle-divergence", "severity": "error", "trace": "scripted-01", "step": 5, "line": 15, "byte": int(sys.argv[2]), "what": "vw"}
+assert f == [want], f
+PY
+build_out rpb "$SAN" "$P/oracle_bug:replay"
+replay_all "$rpb" "$out/or_bug"
+"${RIGOR[@]}" oracle --bundle "$out/ob" --results "$out/or_bug" --out "$out/oracle_bug.json" > "$out/oracle_bug.txt" 2>&1 && fail "$CUR: the buggy replayer was not caught" "$out/oracle_bug.txt"
+python3 -I - "$out/oracle_bug.json" <<'PY' || fail "$CUR: wrong findings for the buggy replayer"
+import json, sys
+f = json.load(open(sys.argv[1]))["findings"]
+
+assert {x["rule"] for x in f} == {"oracle-divergence"} and any(x["trace"] == "scripted-02" and x["line"] == 9 for x in f), f
+PY
+cp -R "$out/ob" "$out/ob_bad"
+printf 'x' >> "$out/ob_bad/files/scripted-01.trace"
+"${RIGOR[@]}" oracle --bundle "$out/ob_bad" --results "$out/or_ok" --out "$out/oracle_bad.json" > "$out/oracle_bad.txt" 2>&1; code=$?
+[ "$code" = 2 ] || fail "$CUR: a tampered bundle gave exit $code, not 2" "$out/oracle_bad.txt"
 
 begin "a warm rebuild of the clean target executes 0 actions"
 run "$out/warm.log" build --target-platforms "$REL" "$P/clean:sim" || fail "$CUR" "$out/warm.log"
