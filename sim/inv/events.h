@@ -33,7 +33,7 @@
 
 enum {
     EV_MAX_AUTH = 4,
-    EV_MAX_PHASES = 8,    /* phase ids are 0 (idle) to 7 */
+    EV_MAX_PHASES = 256,  /* phase ids are 0 (idle) to 255: a byte, so no id can be out of range */
     EV_MAX_PHASE_ROWS = 8,
     EV_NAME_MAX = 16,     /* file name of the book, with its end */
     EV_PAYLOAD_MAX = 32,  /* the longest opening-effect payload (a longer one is BAD_PAYLOAD); it is kept for the book callback */
@@ -90,7 +90,7 @@ typedef struct {
 
 typedef struct {
     events_sel_t sel;
-    uint32_t phase; /* 0 to 7; 0 is idle */
+    uint8_t phase; /* 0 is idle */
 } events_phase_row_t;
 
 /* The product's rules, from `sim.toml`. All of them are plain data: zero means "off" where a `has_` flag exists. */
@@ -126,7 +126,7 @@ typedef struct {
     uint32_t has_recover;             /* 1: the relay-clear rule */
     events_sel_t relay_clear;
     uint32_t recover_ms;
-    uint32_t welcome_phase;
+    uint8_t welcome_phase;
 } events_cfg_t;
 
 /* The world's answers about its durable state. Any callback may be NULL: the checks that need it do not run, and the antecedent
@@ -193,7 +193,7 @@ typedef struct {
 
 /* Validate `cfg` and start. Returns 0, or -1 (nothing changed in the meaning of the engine: it refuses every feed) when the
  * configuration is out of range: n_auth not 1..4, an idle limit (`limit_ms[0]`) other than 0, a book name without its end, corr_len over 8, flashes_per_open 0, a locker length not 1..4 when the chain
- * rules are on, a phase row with a phase over 7 or more than 8 rows, a welcome phase over 7. `world` may be NULL (no callbacks). */
+ * rules are on, or more than 8 phase rows. `world` may be NULL (no callbacks). */
 int events_init(events_t *e, const events_cfg_t *cfg, const events_world_t *world);
 
 /* Take one record. Returns 0 when it was processed, -1 when it is malformed (NULL, bytes missing, time going backwards) or the

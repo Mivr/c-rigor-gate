@@ -249,22 +249,12 @@ static void t_bad_configurations_are_refused(ctest_t *t) {
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.n_rows = 16;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
-    erig_fill(&C); C.rows[4].phase = 8; /* the first row past n_rows (4) is not read */
-    CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
-    erig_fill(&C); C.rows[3].phase = 8; /* the last one that is */
-    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
-    erig_fill(&C); C.rows[0].phase = 8;
-    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.corr_len = 0; C.corr_off = 1;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.corr_len = 0; C.result_corr_off = 1;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.corr_len = 0;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
-    erig_fill(&C); C.welcome_phase = 7;
-    CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
-    erig_fill(&C); C.welcome_phase = 8;
-    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.limit_ms[0] = 1;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); memset(C.io_book, 'x', EV_NAME_MAX);
@@ -286,10 +276,6 @@ static void t_chain_and_phase_configurations_are_checked(ctest_t *t) {
     C.has_chain = 0; /* the length does not matter when the rules are off */
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
     erig_fill(&C);
-    C.rows[2].phase = 7;
-    CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
-    C.rows[2].phase = 8;
-    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C);
     C.rows[5].phase = 8; /* a row past n_rows is not read */
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);

@@ -298,7 +298,7 @@ static void check_timers(events_t *e) {
     }
 }
 
-static void set_phase(events_t *e, uint32_t phase) {
+static void set_phase(events_t *e, uint8_t phase) {
     if (phase == e->phase) {
         return;
     }
@@ -365,7 +365,7 @@ static void check_crash_book(events_t *e) {
 
 static int cfg_ok(const events_cfg_t *c) {
     if (c->n_auth < 1U || c->n_auth > EV_MAX_AUTH || c->corr_len > 8U || c->flashes_per_open < 1U ||
-        c->n_rows > EV_MAX_PHASE_ROWS || c->welcome_phase >= EV_MAX_PHASES) {
+        c->n_rows > EV_MAX_PHASE_ROWS) {
         return 0;
     }
     if (c->corr_len == 0U && (c->corr_off != 0U || c->result_corr_off != 0U)) {
@@ -376,12 +376,6 @@ static int cfg_ok(const events_cfg_t *c) {
     }
     if (c->has_chain != 0U && (c->ev_locker_len < 1U || c->ev_locker_len > 4U)) {
         return 0;
-    }
-    /* The walk is over the whole table (its own size), and only the first n_rows rows count. */
-    for (const events_phase_row_t *r = c->rows; r != c->rows + sizeof c->rows / sizeof c->rows[0]; r++) {
-        if ((uint32_t)(r - c->rows) < c->n_rows && r->phase >= EV_MAX_PHASES) {
-            return 0;
-        }
     }
     return 1;
 }

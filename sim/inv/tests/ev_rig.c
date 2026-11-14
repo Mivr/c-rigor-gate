@@ -60,7 +60,7 @@ void erig_fill(events_cfg_t *cp) {
     c->n_rows = 4;
     for (uint32_t i = 0; i < 4U; i++) { /* a view of phase i is `vw` with a = i */
         c->rows[i].sel = (events_sel_t){{'v', 'w'}, i};
-        c->rows[i].phase = i;
+        c->rows[i].phase = (uint8_t)i;
     }
     c->limit_ms[1] = 30500;
     c->limit_ms[2] = 3000;

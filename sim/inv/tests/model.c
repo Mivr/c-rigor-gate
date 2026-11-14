@@ -192,7 +192,7 @@ static uint64_t visit(model_t *m, uint64_t t0, uint32_t k, int *stuck) {
 }
 
 int model_run(events_t *e, uint64_t seed, model_bug_t bug, model_out_t *out) {
-    events_cfg_t cfg;
+    static events_cfg_t cfg;
     events_world_t world = {&M, cb_reserves, cb_digest, cb_audit};
     uint64_t t = 0;
     int stuck = 0;
