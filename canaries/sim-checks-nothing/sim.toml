@@ -1,0 +1,5 @@
+# What a run of this product must have shown (T2G6, P330 §1.6). The world below reports none of it.
+invariants = ["I11", "I12", "I13"]
+faults = ["disk_full"]
+screens = ["welcome"]
+zero_counters = ["no_free_blob"]

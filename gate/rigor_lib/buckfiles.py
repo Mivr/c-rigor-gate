@@ -66,7 +66,7 @@ REQUIRE_MACROS = ("c_library", "c_binary", TEST_MACRO)
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
 # T2G1: nothing may depend on a `c_sim` or on a target its macro derives: the world and its runner are for the simulation only.
 SIM_MACRO = "c_sim"
-SIM_DERIVED = re.compile(r"(__bin|__shard[0-9]+|__facts_unit|_facts|_facts_san|_facts_msan|_facts_tsan)?")
+SIM_DERIVED = re.compile(r"(__bin|__shard[0-9]+|__soak|__facts_unit|_facts|_facts_san|_facts_msan|_facts_tsan)?")
 TEST_DERIVED = ("", "_facts", "_facts_san", "_facts_msan", "_facts_tsan", "_results", "_coverage", "__lib", "__map", "_check")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.

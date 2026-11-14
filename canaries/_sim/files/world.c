@@ -68,8 +68,7 @@ int world_crash_restart(world_t *w) {
 }
 
 int world_stats(const world_t *w, sim_stats_t *out) {
-    *out = (sim_stats_t){0};
-    out->steps = w->steps;
+    out->steps = w->steps; /* `out` arrives zeroed (sim/world.h) */
     return WORLD_OK;
 }
 

@@ -18,6 +18,9 @@ SIM_DEFAULT_RUN_MS = 3600000
 SIM_MAX_RUN_MS = 86400000
 SIM_MAX_SHARDS = 16
 SIM_STEP_LIMIT = 50000000
+SIM_MAX_SOAK_DAYS = 4096
+SIM_SOAK_STEPS_PER_DAY = 2000000
+SIM_SOAK_REAL_LIMIT_S = 900
 SIM_REAL_LIMIT_S = 120
 
 def _int_in(macro, name, value, default, low, high):
@@ -40,6 +43,14 @@ def sim_salt():
     if len(salt) % 2 != 0 or len(salt) > 128 or any([c not in "0123456789abcdef" for c in salt.elems()]):
         fail("rigor.sim_salt must be lowercase hex of at most 64 bytes, got {!r}".format(salt))
     return salt
+
+def sim_soak_days():
+    """The simulated days of the soak, from `-c rigor.sim_soak_days=N` (the grader passes the tier's days; 0 by default,
+    which builds no soak: the merge tier never runs one)."""
+    raw = read_config("rigor", "sim_soak_days", "0")
+    if raw == "" or any([c not in "0123456789" for c in raw.elems()]) or int(raw) > SIM_MAX_SOAK_DAYS:
+        fail("rigor.sim_soak_days must be an integer in [0, {}], got {!r}".format(SIM_MAX_SOAK_DAYS, raw))
+    return int(raw)
 
 _KEEP = "^==[0-9]+==ERROR|^SUMMARY:|runtime error|^ +#[0-9]+ |^(READ|WRITE) of size|is located|^(allocated|freed) by|^seed |^sim:"
 _DROP = "llvm-project/|/lib/x86_64-linux-gnu/|in __libc_start_main|in _start "
@@ -178,6 +189,7 @@ def _sim_merge_impl(ctx: AnalysisContext) -> list[Provider]:
             sub_targets = {
                 "hashes": [DefaultInfo(default_output = hashes)],
                 "report": [DefaultInfo(default_output = report)],
+                "soak": [DefaultInfo(default_output = ctx.attrs.soak[DefaultInfo].default_outputs[0])],
                 "stats": [DefaultInfo(default_output = stats)],
                 "verdict": [DefaultInfo(default_output = verdict)],
             },
@@ -194,6 +206,69 @@ sim_merge = rule(
     attrs = {
         "seeds": attrs.int(),
         "shards": attrs.list(attrs.dep()),
+        "soak": attrs.dep(),
         "_merge": attrs.source(default = "gate//gate/rigor_lib:sim_merge.py"),
+    },
+)
+
+def _soak_script(ctx: AnalysisContext):
+    return ctx.actions.write(
+        "soak.sh",
+        [
+            "set -u",
+            'bin="$1"; out="$2"; sym="$3"; days="$4"; steps="$5"; real="$6"; salt="$7"; shift 7',
+            'here="$(cd "$(dirname "$out")" && pwd)"',
+            'sym="$(cd "$(dirname "$sym")" && pwd)/$(basename "$sym")"',
+            'work="$here/work"',
+            'rm -rf "$work"; mkdir -p "$work"',
+        ] + sanitizer_env_lines() + [
+            ': > "$work/srcs"',
+            'for f in "$@"; do h="$(sha256sum < "$f")" || exit 1; echo "${h%% *}" >> "$work/srcs"; done',
+            'w="$(LC_ALL=C sort "$work/srcs" | sha256sum)" || exit 1; w="${w%% *}"',
+            "rc=0",
+            '"$bin" --world-sha256 "$w" --salt "$salt" --soak-days "$days" --step-limit "$steps" --real-limit-s "$real" --soak-out "$out" > "$work/stdout.txt" 2> "$work/stderr.txt" || rc=$?',
+            'if [ "$rc" -ne 0 ] || [ ! -f "$out" ]; then echo "sim: the soak runner could not run (status $rc)" >&2; cat "$work/stderr.txt" >&2; exit 1; fi',
+            'rm -rf "$work"',
+        ],
+        is_executable = True,
+    )
+
+def _sim_soak_impl(ctx: AnalysisContext) -> list[Provider]:
+    binary = ctx.attrs.binary[DefaultInfo].default_outputs[0]
+    out = ctx.actions.declare_output("soak.json")
+    if ctx.attrs.days == 0:
+        # Nothing asked for a soak (`-c rigor.sim_soak_days`): building the output is an error, never an empty soak.
+        ctx.actions.run(
+            cmd_args(["/bin/sh", "-c", 'echo "sim: no soak configured (-c rigor.sim_soak_days=N)" >&2; exit 1', "soak", out.as_output()]),
+            category = "sim_soak",
+        )
+    else:
+        ctx.actions.run(
+            cmd_args(
+                [
+                    "/bin/sh",
+                    _soak_script(ctx),
+                    binary,
+                    out.as_output(),
+                    ctx.attrs._symbolizer[RunInfo],
+                    str(ctx.attrs.days),
+                    str(ctx.attrs.days * SIM_SOAK_STEPS_PER_DAY),
+                    str(SIM_SOAK_REAL_LIMIT_S),
+                    ctx.attrs.salt if ctx.attrs.salt else "",
+                ],
+                ctx.attrs.world_srcs,
+            ),
+            category = "sim_soak",
+        )
+    return [DefaultInfo(default_output = out)]
+
+sim_soak = rule(
+    impl = _sim_soak_impl,
+    attrs = {
+        "binary": attrs.dep(),
+        "days": attrs.int(),
+        "salt": attrs.string(default = ""),
+        "world_srcs": attrs.list(attrs.source(), default = []),
+        "_symbolizer": attrs.exec_dep(default = "toolchains//:llvm-symbolizer", providers = [RunInfo]),
     },
 )

@@ -7,7 +7,9 @@ the gate `sim` (grade_sim.py).
 The results directory (flat; anything else in it is exit 2) is what the `c_sim` actions produced, collected by the caller:
 `index.json` = `{"<c_sim label>": "<id>"}` and per id `<id>.stats.json` (schema `sim-stats/1`), `<id>.verdict`, `<id>.report`,
 `<id>.hashes` (the san run: `index seed trace state` per finished seed), `<id>.release.hashes` (the release run, whose seeds 0
-to 9 must equal the san ones) and optionally `<id>.failure.trace` (at most 64 KiB). The judge trusts nothing the runner says
+to 9 must equal the san ones) and optionally `<id>.failure.trace` (at most 64 KiB) and `<id>.soak.json` (the soak run of the
+tier, schema `sim-soak/1`, T2G6: the days it completed, the day each assertion first failed and what it checked; the merge tier
+has none, and a soak result at that tier is exit 2). The judge trusts nothing the runner says
 about itself: it recomputes the seeds from the salt and the world hash, the required budget from the policy and the tier,
 and what each invariant and fault was required to show from the spec (docs/sim.md). `--salt` is the hex salt file (the
 grader's hidden one, or the product's public one; absent: the empty salt); `--salt-id` is checked against its sha256.
@@ -37,8 +39,11 @@ _ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
 _SHA = re.compile(r"[0-9a-f]{64}")
 _HEX16 = re.compile(r"[0-9a-f]{16}")
 _VERDICT = re.compile(r"pass|fail sim-[a-z-]+")
-_SUFFIXES = (".stats.json", ".verdict", ".report", ".hashes", ".release.hashes", ".failure.trace")
-_REQUIRED_SUFFIXES = _SUFFIXES[:-1]
+_SUFFIXES = (".stats.json", ".verdict", ".report", ".hashes", ".release.hashes", ".failure.trace", ".soak.json")
+_REQUIRED_SUFFIXES = _SUFFIXES[:5]
+SOAK_SCHEMA = "sim-soak/1"
+_SOAK_KEYS = {"checked", "days", "failures", "salt_sha256", "schema", "seed", "state_hash", "trace_hash", "uploads", "world_sha256"}
+SOAK_CHECKS = ("I11", "I12", "I13")     # the invariants a soak evaluates at its daily checkpoints
 _BASE_KEYS = {"count", "distinct_hashes", "failures", "schema", "seeds_run", "shards"}
 _WORLD_KEYS = {"run_ms", "salt_sha256", "world_sha256"}
 _OPTIONAL_KEYS = {"invariants", "faults", "screens", "counters", "soak", "unexercised", "first"}
@@ -65,6 +70,8 @@ class Result:
     release: dict       # release hashes, the same shape
     hashes_sha256: str
     release_sha256: str
+    soak: dict = None               # the validated `<id>.soak.json`, None without one
+    soak_sha256: str = None
 
 
 def _text(path):
@@ -131,6 +138,35 @@ def _hashes(path):
     return rows
 
 
+def _soak_file(path):
+    """The parsed and validated soak result at PATH; any defect is exit 2."""
+    try:
+        soak = jsonio.strict_loads(jsonio.read_bytes(path))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise InternalError("%s is not valid JSON: %s" % (path, exc)) from exc
+    if not isinstance(soak, dict) or set(soak) != _SOAK_KEYS or soak["schema"] != SOAK_SCHEMA:
+        _fail(path, "must be an object with exactly the keys %s and schema %s" % (sorted(_SOAK_KEYS), SOAK_SCHEMA))
+    _nonneg(path + " days", soak["days"])
+    _nonneg(path + " uploads", soak["uploads"])
+    checked = soak["checked"]
+    if not isinstance(checked, dict) or set(checked) != set(SOAK_CHECKS):
+        _fail(path, "checked must have exactly %s" % list(SOAK_CHECKS))
+    for name in SOAK_CHECKS:
+        _nonneg("%s checked.%s" % (path, name), checked[name])
+    if not all(isinstance(soak[k], str) and _SHA.fullmatch(soak[k]) for k in ("salt_sha256", "world_sha256")) \
+            or not all(isinstance(soak[k], str) and _HEX16.fullmatch(soak[k]) for k in ("seed", "state_hash", "trace_hash")):
+        _fail(path, "the hashes and the seed must be lowercase hex")
+    failures = soak["failures"]
+    if not isinstance(failures, list):
+        _fail(path, "failures must be a list")
+    for item in failures:
+        if not isinstance(item, dict) or set(item) != {"assertion", "day"} or not isinstance(item["assertion"], str) \
+                or not item["assertion"]:
+            _fail(path, "a soak failure is {assertion, day}")
+        _nonneg(path + " failure day", item["day"])
+    return soak
+
+
 def load_result(directory, label, ident):
     base = os.path.join(directory, ident)
     stats = _stats(base + ".stats.json")
@@ -146,9 +182,14 @@ def load_result(directory, label, ident):
     trace = base + ".failure.trace"
     if os.path.exists(trace) and os.path.getsize(trace) > TRACE_LIMIT:
         _fail(trace, "larger than %d bytes" % TRACE_LIMIT)
+    soak_path = base + ".soak.json"
+    soak = _soak_file(soak_path) if os.path.exists(soak_path) else None
+    if soak is not None and "soak" in stats:
+        _fail(label, "a soak in the stats and a soak file")
     return Result(label, stats, verdict, _hashes(base + ".hashes"), _hashes(base + ".release.hashes"),
                   jsonio.sha256_hex(jsonio.read_bytes(base + ".hashes")),
-                  jsonio.sha256_hex(jsonio.read_bytes(base + ".release.hashes")))
+                  jsonio.sha256_hex(jsonio.read_bytes(base + ".release.hashes")),
+                  soak, None if soak is None else jsonio.sha256_hex(jsonio.read_bytes(soak_path)))
 
 
 def load_results(directory):
@@ -177,9 +218,10 @@ def load_results(directory):
 
 def seed_digest(results):
     """sha256 over the sha256 of every target's san and release hashes, in label order: it commits to which seeds ran and what
-    they did (the verdict's `sim_seed_digest`)."""
-    return jsonio.sha256_hex(jsonio.canonical_dumps([[r.label, r.hashes_sha256, r.release_sha256]
-                                                     for _, r in sorted(results.items())]))
+    they did (the verdict's `sim_seed_digest`); a soak result adds its own hash to its target's row."""
+    return jsonio.sha256_hex(jsonio.canonical_dumps([
+        [r.label, r.hashes_sha256, r.release_sha256] + ([] if r.soak_sha256 is None else [r.soak_sha256])
+        for _, r in sorted(results.items())]))
 
 
 # ---------------------------------------------------------------------------------------------------- findings
@@ -282,9 +324,21 @@ def spec_findings(result, spec):
     return found
 
 
-def soak_findings(result, policy, tier):
-    """`soak-too-short` (the days the tier and the capacity rows demand) and `soak-assertion` (day of each failed assertion)."""
-    soak, label, found = result.stats.get("soak"), result.label, []
+def _soak_checked(result, policy, spec):
+    """`sim-vacuous` for a soak that never evaluated what it must (the spec's I11 to I13, and I12 whenever the policy has
+    capacity rows): a soak whose world reports nothing passes every day and proves nothing."""
+    required = {name for name in spec.invariants if name in SOAK_CHECKS}
+    if policy.capacity:
+        required.add("I12")
+    return [finding("sim-vacuous", target=result.label, soak=name, count=result.soak["checked"][name])
+            for name in sorted(required) if result.soak["checked"][name] == 0]
+
+
+def soak_findings(result, policy, tier, spec=None):
+    """`soak-too-short` (the days the tier and the capacity rows demand), `soak-assertion` (day of each failed assertion) and
+    `sim-vacuous` (a soak that checked nothing). The soak is the result's soak file, or a `soak` object of the stats."""
+    label, found = result.label, []
+    soak = result.stats.get("soak") if result.soak is None else {"days": result.soak["days"], "failures": result.soak["failures"]}
     need = policy.soak_required(tier)
     if soak is not None and (not isinstance(soak, dict) or set(soak) != {"days", "failures"} or
                              type(soak["days"]) is not int or soak["days"] < 0 or not isinstance(soak["failures"], list)):
@@ -297,7 +351,24 @@ def soak_findings(result, policy, tier):
                 or not isinstance(item["assertion"], str):
             _fail("stats", "a soak failure is {assertion, day}")
         found.append(finding("soak-assertion", target=label, assertion=item["assertion"], day=item["day"]))
+    if result.soak is not None and spec is not None:
+        found.extend(_soak_checked(result, policy, spec))
     return found
+
+
+def check_soak(result, salt, world, tier, policy):
+    """The soak file belongs to this run: same world and salt as the shards, the seed the derivation gives for the soak, and
+    only at a tier that demands days (the merge tier does not, unless the policy says so: P330 §4)."""
+    soak = result.soak
+    if soak is None:
+        return
+    if policy.soak_required(tier) == 0:
+        _fail(result.label, "a soak result at the %s tier, which demands no soak" % tier)
+    stats = result.stats
+    if soak["world_sha256"] != stats["world_sha256"] or soak["salt_sha256"] != stats["salt_sha256"]:
+        _fail(result.label, "the soak ran another world or salt than the seeds")
+    if soak["seed"] != sim_policy.seed_of(salt, world, sim_policy.SOAK_INDEX):
+        _fail(result.label, "the soak's seed is not the one the salt and the world give")
 
 
 def regression_findings(regressions, results):
@@ -366,14 +437,24 @@ def judge(facts_by_label, policy, modules, spec, results, regressions, salt, sal
             found.extend(failure_findings(result) or [finding("sim-world-error", target=label)])
             continue
         _expected_seeds(result, salt, world)
+        check_soak(result, salt, world, tier, policy)
         found.extend(failure_findings(result))
         found.extend(seed_findings(result, required))
         found.extend(mode_findings(result))
         found.extend(spec_findings(result, spec))
         if not policy.target or policy.target == label:
-            found.extend(soak_findings(result, policy, tier))
+            found.extend(soak_findings(result, policy, tier, spec))
     found.extend(regression_findings(regressions, results))
     return found
+
+
+def _target_metadata(result):
+    stats = result.stats
+    row = {"count": stats["count"], "seeds_run": stats["seeds_run"], "distinct_hashes": stats["distinct_hashes"],
+           "failures": len(stats["failures"])}
+    if result.soak is not None:
+        row["soak_days"] = result.soak["days"]
+    return row
 
 
 def run(args):
@@ -390,9 +471,7 @@ def run(args):
     found = judge(facts_by_label, policy, modules, spec, results, regressions, salt, salt_id, tier)
     metadata = {"tier": tier, "required_seeds": policy.seeds[tier], "salt_id": salt_id, "spec_sha256": spec_sha,
                 "seed_digest": seed_digest(results) if results else None,
-                "targets": {label: {"count": r.stats["count"], "seeds_run": r.stats["seeds_run"],
-                                    "distinct_hashes": r.stats["distinct_hashes"], "failures": len(r.stats["failures"])}
-                            for label, r in sorted(results.items())}}
+                "targets": {label: _target_metadata(r) for label, r in sorted(results.items())}}
     return GateResult(GATE_ID, found, metadata)
 
 

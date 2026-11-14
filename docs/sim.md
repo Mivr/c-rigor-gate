@@ -28,7 +28,8 @@ not depend on any product and vendors none of its code (orchestrator decision on
 | `<name>[hashes]` | one line per finished seed: `index seed trace_hash state_hash` (hex) |
 | `<name>[verdict]` | `pass`, or `fail <rule>` |
 | `<name>[report]` | the runner's lines and the filtered sanitizer output |
-| `<name>__bin`, `<name>__shard<k>` | the runner linked with the world (release and san only); one `sim_run` action per shard of seeds |
+| `<name>[soak]` | the soak of `-c rigor.sim_soak_days=N` days (`soak.json`, schema `sim-soak/1`); building it without days is an error |
+| `<name>__bin`, `<name>__shard<k>`, `<name>__soak` | the runner linked with the world (release and san only); one `sim_run` action per shard of seeds |
 | `<name>_facts` (and `_san`, `_msan`, `_tsan`) | the facts of the world's sources, kind `c_sim` |
 
 ## Seeds, runs, identity
@@ -65,12 +66,12 @@ a policy entry (`module-not-in-policy` otherwise), its sources go through the se
 
 `world_init(cfg, seed, tap, ctx)` (the one static world instance, re-initialised), `world_run_until(t_ms)`, `world_now_ms`, `world_apply(intent)`,
 `world_fault(fault)`, `world_crash_restart`, `world_stats`, `world_state_hash`. All time is virtual; no function reads a real clock,
-the environment, a file or a socket. P330 §1.2 has the full contract; this header is the T2G1 subset (the fault catalogue grows in T2G3).
+the environment, a file or a socket. P330 §1.2 has the full contract; this header is the T2G1 subset (the fault catalogue grows in T2G3). `sim_stats_t` (T2G6) is what a world reports for the gate's checks, below.
 
 ## Nothing depends on a `c_sim`
 
 `rigor buckfiles` refuses (`bad-argument`, why `sim-target`) any dep, from any macro, on a `c_sim` target or a target it derives
-(`__bin`, `__shard<k>`, `__facts_unit`, `_facts`, `_facts_san`, `_facts_msan`, `_facts_tsan`). Resolution is the one used for `c_test` targets.
+(`__bin`, `__shard<k>`, `__soak`, `__facts_unit`, `_facts`, `_facts_san`, `_facts_msan`, `_facts_tsan`). Resolution is the one used for `c_test` targets.
 
 ## The judge: `rigor sim` (T2G2, P330 §1.8)
 
@@ -89,8 +90,10 @@ malformed input. The judge recomputes what it can and trusts nothing the runner 
   every `screens` name reached (`sim-vacuous`, `screen`); every `zero_counters` name at 0 (`sim-stats-counter`).
 * **Modules.** Policy modules whose `profile` is one of `[sim] profiles` must be in the link closure (`deps`, transitively) of some `c_sim`
   facts (`sim-module-unreached`); `stats.unexercised` (the `cov` shard, later) names modules with no executed line (`sim-module-unexercised`).
-* **Soak.** At a tier with soak days the stats need `soak.days >= max(tier days, ceil(2 * bound / rate_per_day))` over every
-  `[soak.capacity.*]` row (`soak-too-short`); each `soak.failures` row is `soak-assertion` (`assertion`, `day`).
+* **Soak.** At a tier with soak days the soak result (`<id>.soak.json`, "Soak, capacity gauges and the coverage floors" below) needs
+  `days >= max(tier days, ceil(2 * bound / rate_per_day))` over every `[soak.capacity.*]` row (`soak-too-short`); each `failures` row is
+  `soak-assertion` (`assertion`, `day`); a soak that never evaluated what the spec (I11 to I13) or the capacity rows (I12) require is
+  `sim-vacuous` (`soak`, `count`). The merge tier runs no soak by default (a soak result at a tier that demands no days is exit 2).
 * **Targets.** A `c_sim` target of the facts without results is `sim-not-run`; `[sim] required = true` without the (named) target is
   `sim-missing-target`; a result for something that is no `c_sim` target of the facts is exit 2.
 
@@ -100,10 +103,11 @@ the rules above. Volatile data (seconds, counts) lives only in the metadata, whi
 `spec_sha256` and `seed_digest`.
 
 **Results directory** (flat; anything else is exit 2): `index.json` (`{"<c_sim facts label>": "<id>"}`) and per id `<id>.stats.json`,
-`<id>.verdict`, `<id>.report`, `<id>.hashes`, `<id>.release.hashes` and optionally `<id>.failure.trace` (at most 64 KiB). The stats are the
-merged `sim-stats/1` of the runner; the judge also accepts the optional keys `invariants` (`{id: {checked, violated}}`), `faults`
-(`{kind: {fired, observed}}`), `screens`, `counters`, `soak` (`{days, failures}`) and `unexercised`, which the invariant engine (T2G3, T2G4)
-and the soak (T2G9) will write. Any other key is exit 2.
+`<id>.verdict`, `<id>.report`, `<id>.hashes`, `<id>.release.hashes` and optionally `<id>.failure.trace` (at most 64 KiB) and `<id>.soak.json`.
+The stats are the merged `sim-stats/1` of the runner; the judge also accepts the optional keys `invariants` (`{id: {checked, violated}}`),
+`faults` (`{kind: {fired, observed}}`), `screens`, `counters`, `soak` (`{days, failures}`, the older form of the soak file) and `unexercised`.
+Since T2G6 the runner writes `invariants` (I11 to I14), `faults`, `screens` and `counters`; the engines of T2G3 to T2G5 will add theirs when a
+world taps them (T2G9). Any other key is exit 2.
 
 **Policy** (`products/<p>/policy.toml`): `[sim] required`, `target`, `profiles`, `[sim.seeds]` (`merge`, `nightly`; defaults 200 and 2000),
 `[sim.soak_days]` (defaults 0 and 400) and `[soak.capacity.<name>]` (`event`, `bound`, `rate_per_day`). Without a `[sim]` table the
@@ -130,6 +134,54 @@ else none.
 Open: `sim-regression-missing` can only be satisfied once the runner can replay explicit seeds (a `--seeds` list on `sim/runner`, not in
 T2G1's runner); until then a product with a regressions file fails it, on purpose (fail closed).
 
+## Soak, capacity gauges and the coverage floors (T2G6, P330 §1.6, §1.7, §2.4)
+
+**What a world reports.** `world_stats` fills `sim_stats_t` (`sim/world.h`); the verdicts are the gate's (`sim/checks.c`, pure, unit-tested):
+
+| Check | Reads | Antecedent (the check could have failed) | Violated when |
+|---|---|---|---|
+| **I11** snapshots keep arriving | `uploads`, `sync_interval_ms`, `snap_taken_ms`, `snap_pending`, `link_ok_ms` | an upload happened and the world has a sync interval | the book changed since the server's newest snapshot, the link has been healthy for 3 intervals, and `now - snap_taken_ms > 2 * interval` (allowance 0; exactly 2 intervals is fine) |
+| **I12** capacity gauges | `gauges[]` (`cap`, `free_idle`) | the world reports a gauge | any gauge has `free_idle < cap` when idle (a slot retired for good: the signature of `pool.h`) |
+| **I13** impossible counters | `counters[]` with `impossible` set | the world reports one | any impossible counter is not 0 |
+| **I14** identity | the runner's two passes | every seed that finished both | the two passes differ (the failure row is the seed's `sim-nondeterministic` with `invariant` `I14`) |
+
+The runner evaluates I11 to I13 once per seed after the quiet drain (a seed that violates one is a `sim-invariant-violated` row with `invariant`,
+`at_ms`) and writes into `stats.json`: `invariants` (`{I11..I14: {checked, violated}}`: per seed whose antecedent held, and per seed that failed),
+`faults` (`{kind: {fired, observed}}`: `fired` counted by the workload when the world accepted the fault, `observed` by the world's
+`fault_observed[kind]`: the effect, a fault without one is `fault-not-observed`), `screens` (the closed set of P330 §1.6, from the world's bitmask) and `counters` (summed by
+name). The shards are summed by `sim_merge.py`. The judge's floors on them are the spec's (`min_checked`, `min_fired`; `docs/sim.md` "What the stats
+must show"). The antecedent counters of I1 to I10 and I15 appear when a world taps the invariant engines (T2G9); a spec that lists one before that is
+`sim-vacuous`, on purpose.
+
+**The soak** (`runner --soak-days N --soak-out F`, sim/soak.c). One seed (the derivation of index 2^32, never an index of the seed runs), `N` simulated days,
+the seeded workload of the seeds **without power cuts** (a power cut re-initialises every pool: a soak that cut the power every few minutes could never reach
+the death at day 91 of P330 §5.3; the crash storm is a run of its own, T2G9), a checkpoint at the end of every day (virtual time `d` days, after every event at or
+before it; day 1 is the end of the first day) where I11, I12 and I13 are evaluated. One sequential action in a forked child with the real-time limit
+(`SIM_SOAK_REAL_LIMIT_S`, 900 s) and a step limit of 2,000,000 steps per day; a world that crashes, hangs or stops early is a failure row (`sim-crash` or `sim-timeout`
+at the day it stopped; day 0 when nothing is known), never a skip. Output `soak.json`: `days` (completed), `failures` (`{assertion, day}` for the FIRST checkpoint at which each
+of I11, I12, I13 failed, in day order), `checked` (per invariant, the checkpoints at which its antecedent held), `uploads`, `seed`, `trace_hash`, `state_hash`,
+`world_sha256`, `salt_sha256`. The judge refuses (exit 2) a soak of another world or salt, a seed that is not the derivation, and a soak at a tier that demands no days (the merge tier by default);
+`sim_seed_digest` includes the soak's hash. Failed assertions are `soak-assertion` (`assertion`, `day`): the spec's "`sim-invariant-violated` I12" of §5.3 is
+`soak-assertion` `I12` here, so that one finding kind lists everything the soak found (decision of T2G6).
+
+**Sizing rule** (P330 §1.7, enforced since T2G2): `soak-too-short` unless `days >= max(tier days, ceil(2 * bound / rate_per_day))`. It is checked in the judge
+against the soak file, so a soak that stops early shows `days` below the rule whatever it claims.
+
+**Tiers.** `rigor grade` asks Buck2 for `<target>[soak]` in the san build only, for the policy's target (every `c_sim` when it names none), only when
+`policy.soak_required(tier) > 0`, and passes the days as `-c rigor.sim_soak_days=N` (merge: 0 days, nothing built; nightly: the policy's days or the rule's).
+The rows are in the "Grade tiers" table of `docs/grade.md`.
+
+**The fixture `pool-retires-at-3`** (`selftest/sim/poolbug`, the toy app of `selftest/sim/toy`): a snapshot pool of 2 slots, an upload every 12 hours (2 a day), a
+slot retired for good after 3 uses, and a server that keeps the newest snapshot. Arithmetic (`selftest/sim.sh` derives it from the constants, nothing is typed twice):
+the pool serves `2 * 3 = 6` uploads, the last snapshot is taken at day `6 / 2 = 3.0`, so **I12 fails at the end of day 3** (both slots retired once the 6th upload
+gives its blob back); the 7th upload (day 3.5) finds no blob and bumps `no_free_blob`, so **I13 fails on day 4**; the snapshot is older than 2 intervals (1 day) from day
+3.0, so **I11 fails on day 5** (day 4 has age exactly 1 day). The soak of 50 days gives exactly these three failures, in release and in san, byte-identical; the clean fixture
+(`retire_after` 0) gives none. The sizing rule for it is `ceil(2 * 6 / 2) = 6` days: a 3-day soak is `soak-too-short`. The canary `sim-checks-nothing` is the opposite
+case: a world that reports nothing.
+
+**Not yet** (T2G9): the `cov` shard (the `unexercised` list is accepted by the judge, but nothing writes it; it needs the coverage platform and the module-to-source
+map of the real product), the measured budgets, and the invariant engines of `sim/inv` wired into a world's tap.
+
 ## Canaries
 
 `canaries/sim-crash` and `canaries/sim-nondeterministic` (shared files in `canaries/_sim/files`) put a one-file world into the
@@ -137,7 +189,7 @@ base product. They were pending in T2G1 (the grade passed them: every existing g
 library) and are red in gate `sim` since T2G2. There is no `sim-no-seeds` canary: the macro refuses `seeds < 1` at load time and the
 runner/merge produce `sim-no-seeds` only for a run that did not execute, which a product cannot author; that rule is covered by
 `gate/tests/test_sim_merge.py` and `selftest/sim.sh` (`--count 0`). T2G2 added `sim-vacuous` (a world whose workload does nothing),
-`sim-seeds-short` (the policy asks for more seeds than the target runs), `sim-missing-target` (`[sim] required = true`, no `c_sim`) and the control
+`sim-seeds-short` (the policy asks for more seeds than the target runs), T2G6 `sim-checks-nothing` (a world that reports nothing to `world_stats`: `sim-vacuous`, `fault-not-observed`, `sim-stats-counter`), `sim-missing-target` (`[sim] required = true`, no `c_sim`) and the control
 `sim-green` (a clean world with a public salt, graded PASS).
 
 ## Wire invariants I3 to I6b (T2G3, P330 §2.1)

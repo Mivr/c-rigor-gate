@@ -99,10 +99,12 @@ passed, the facts exist, `toolchain` passed) (`grade_sim.py`).
    `rigor verify` prints them (`sim_spec_sha256 ...`) and takes `--expect-sim-salt-id` and `--expect-sim-spec-sha`.
 5. **Tiers.** The minimum seeds and the soak days come from the policy's `[sim.seeds]` and `[sim.soak_days]` for the tier of the
    grade (table below); a target with fewer seeds is `sim-seeds-short`. Without a `[sim]` table the minimum is one seed, no soak.
+   The soak (T2G6) is `<target>[soak]` of the san build, requested only for the policy's target and only at a tier that demands days;
+   it is collected as `<id>.soak.json` (`docs/sim.md`, "Soak, capacity gauges and the coverage floors").
 6. **Roles.** `test-author`: PASS with info `not-applicable`.
 
 Products that have no `c_sim` target and no `[sim]` policy are graded as before: the gate passes with info `no-sim-targets`.
-The canaries `sim-crash`, `sim-nondeterministic`, `sim-vacuous`, `sim-seeds-short` and `sim-missing-target` are red on this gate only;
+The canaries `sim-crash`, `sim-nondeterministic`, `sim-vacuous`, `sim-seeds-short`, `sim-missing-target` and `sim-checks-nothing` (T2G6) are red on this gate only;
 `sim-green` (control) is a clean world graded PASS end to end.
 
 ## `c_catalog`: translations as a const C catalog (T105, G9)
@@ -275,9 +277,10 @@ prints the tier and `--require-tier TIER` refuses a verdict of the other one.
 | `tests-msan`, `tests-tsan` (T138) | run | run, unchanged (both tiers run both gates) |
 | `mutants` | every module at L2 or above is built, run and judged | the modules that can only report are **deferred** (not built, not run); the others as in `nightly` |
 | `mutants-witness` | every module of the witness scope | the same deferral rule |
-| `sim` (T2G2) | the policy's `[sim.seeds] nightly` seeds (default 2000) and `[sim.soak_days] nightly` (default 400) | `[sim.seeds] merge` (default 200), `[sim.soak_days] merge` (default 0) |
+| `sim`: seeds (T2G2) | the policy's `[sim.seeds] nightly` seeds (default 2000), hidden salt | `[sim.seeds] merge` (default 200) |
+| `sim`: soak (T2G6) | `<target>[soak]` is built in the san build with `-c rigor.sim_soak_days=N`, `N = max([sim.soak_days] nightly (default 400), the capacity rows' days)`; the judge needs `days >= N` (`soak-too-short`) and reports each failed assertion with its day | **no soak**: `[sim.soak_days] merge` is 0 by default, so no soak action is built or run; a soak result at a tier that demands none is exit 2 |
 
-**No other gate changes with the tier** (`sim` only moves its seed and soak minimums). Later tasks add a row to this table for what they move; they do not invent a
+**No other gate changes with the tier** (`sim` only moves its seed and soak minimums, and whether the soak action is built). Later tasks add a row to this table for what they move; they do not invent a
 second mechanism (the tier is one string, `grade_tier.tier_of`, read from `args.tier`).
 
 **The deferral rule** (`gate/rigor_lib/grade_tier.py`). A module is deferred at tier `merge` when no finding of its

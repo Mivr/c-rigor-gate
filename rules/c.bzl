@@ -16,7 +16,7 @@ load("@gate//rules:facts.bzl", "c_android_facts", "c_facts", "c_msan_facts", "c_
 load("@gate//rules:fuzz.bzl", "fuzz_corpus", "fuzz_run", "fuzz_runs")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
-load("@gate//rules:sim.bzl", "sim_merge", "sim_params", "sim_run", "sim_salt")
+load("@gate//rules:sim.bzl", "sim_merge", "sim_params", "sim_run", "sim_salt", "sim_soak", "sim_soak_days")
 
 _SEALED_HEAD = [
     "-std=c17",
@@ -759,7 +759,8 @@ def c_sim(name, srcs = [], deps = [], seeds = None, run_ms = None, shards = None
 
     `seeds`, `run_ms` and `shards` are optional budgets (defaults and maxima in rules/sim.bzl; the judge demands the
     tier's minimum). `<name>` is the test: it runs every shard and merges them; `<name>[stats]`, `[hashes]`,
-    `[verdict]` and `[report]` are its outputs. The world's sources get facts like those of a `c_library`, so every
+    `[verdict]` and `[report]` are its outputs; `[soak]` is the soak run of `-c rigor.sim_soak_days=N` days (an error
+    to build without it; the grade builds it only at the tier that demands one, T2G6). The world's sources get facts like those of a `c_library`, so every
     other gate sees them (the kind is `c_sim`, a product kind).
     """
     _check("c_sim", srcs, [])
@@ -792,10 +793,19 @@ def c_sim(name, srcs = [], deps = [], seeds = None, run_ms = None, shards = None
                 target_compatible_with = _RELEASE_OR_SAN_ONLY,
             )
             parts.append(":" + part)
+    sim_soak(
+        name = name + "__soak",
+        binary = ":" + name + "__bin",
+        world_srcs = srcs,
+        days = sim_soak_days(),
+        salt = sim_salt(),
+        target_compatible_with = _RELEASE_OR_SAN_ONLY,
+    )
     sim_merge(
         name = name,
         shards = parts,
         seeds = seeds,
+        soak = ":" + name + "__soak",
         target_compatible_with = _RELEASE_OR_SAN_ONLY,
     )
 

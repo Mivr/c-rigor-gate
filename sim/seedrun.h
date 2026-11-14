@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 
+#include "sim/checks.h"
 #include "sim/world.h"
 
 #define SIM_TICK_MS 250U
@@ -25,19 +26,33 @@ typedef enum {
     SIM_DEADLOCK,
     SIM_INIT_FAILED,
     SIM_WORLD_ERROR,
+    SIM_INVARIANT,
     SIM_RULE_COUNT
 } sim_rule_t;
 
+/* What the first pass of a seed showed at its end (after the quiet drain): the stats the world reported, the faults the
+ * workload injected, and the verdict of the gate's own checks (sim/checks.h) on them. */
+typedef struct {
+    sim_stats_t stats;
+    uint64_t fired[SIM_FAULT_COUNT];
+    unsigned checked;
+    unsigned violated;
+    uint64_t at_ms;
+} sim_cover_t;
+
 typedef struct {
     sim_rule_t rule;
-    int detail;             /* signal, exit status, or record index of the first difference; -1 when none */
+    int detail;             /* signal, exit status, record index of the first difference, or the invariant number (11 to 13); -1 when none */
     uint64_t trace_hash;
     uint64_t state_hash;
     uint64_t records;
     int64_t first_diff;     /* record index where the two runs first differ, -1 when they do not */
+    sim_cover_t cover;      /* valid when the child finished both passes (rule SIM_OK, SIM_NONDETERMINISTIC or SIM_INVARIANT) */
 } sim_seed_out_t;
 
 const char *sim_rule_name(sim_rule_t rule);
+/* The rule of a WORLD_* return code (SIM_OK for WORLD_OK). */
+sim_rule_t sim_rule_of_rc(int rc);
 
 /* Runs both passes in a child; always returns with `out` filled (rule SIM_OK only when both passes finished
  * and agree). Returns 0, or -1 when the child could not even be started (the runner then exits 2). */

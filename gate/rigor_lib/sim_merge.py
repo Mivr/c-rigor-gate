@@ -39,6 +39,36 @@ def _first_rule(shards):
     return None
 
 
+def _sum_tables(shards, key, fields):
+    """{name: {field: sum over the shards}} of the optional table `key` (T2G6: invariants, faults); None when no shard has it."""
+    tables = [shard["stats"][key] for shard in shards if key in shard["stats"]]
+    if not tables:
+        return None
+    merged = {}
+    for table in tables:
+        for name, row in table.items():
+            total = merged.setdefault(name, {field: 0 for field in fields})
+            for field in fields:
+                total[field] += row[field]
+    return merged
+
+
+def _merge_extras(shards):
+    """The optional keys of the shards' stats that sum or join across seeds: invariants, faults, counters, screens."""
+    extras = {}
+    for key, fields in (("invariants", ("checked", "violated")), ("faults", ("fired", "observed"))):
+        table = _sum_tables(shards, key, fields)
+        if table is not None:
+            extras[key] = table
+    counters = [shard["stats"]["counters"] for shard in shards if "counters" in shard["stats"]]
+    if counters:
+        extras["counters"] = {name: sum(table.get(name, 0) for table in counters) for name in sorted({n for t in counters for n in t})}
+    screens = [shard["stats"]["screens"] for shard in shards if "screens" in shard["stats"]]
+    if screens:
+        extras["screens"] = sorted({name for names in screens for name in names})
+    return extras
+
+
 def merge(shards, expect):
     """(verdict line, stats dict, hashes text). `shards`: dicts with `stats` (parsed), `verdict` and `hashes` (text)."""
     rows, failures, worlds = {}, [], set()
@@ -59,6 +89,7 @@ def merge(shards, expect):
         rule = "sim-vacuous"
     stats = {"count": expect, "distinct_hashes": distinct, "failures": sorted(failures, key=lambda f: f["index"]),
              "schema": SCHEMA, "seeds_run": ran, "shards": len(shards)}
+    stats.update(_merge_extras(shards))
     if len(worlds) == 1:
         world, salt, run_ms = next(iter(worlds))
         stats.update({"run_ms": run_ms, "salt_sha256": salt, "world_sha256": world})

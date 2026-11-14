@@ -13,6 +13,6 @@ static void crash_on_some_seeds(uint64_t seed, uint64_t virtual_ms, uint64_t *bu
 }
 
 const toy_hooks_t *toy_variant(void) {
-    static const toy_hooks_t hooks = {virtual_clock, crash_on_some_seeds};
+    static const toy_hooks_t hooks = {virtual_clock, crash_on_some_seeds, 0};
     return &hooks;
 }
