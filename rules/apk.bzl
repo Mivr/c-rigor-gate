@@ -153,3 +153,52 @@ apk_check = rule(
         "_zipalign": attrs.exec_dep(default = "toolchains//:zipalign"),
     },
 )
+
+def _lab_impl(ctx: AnalysisContext) -> list[Provider]:
+    """Test tooling (selftest/android.sh): breaks the APK of `apk` five ways inside one RE action and demands that apk_check refuses each."""
+    info = ctx.attrs.apk[ApkInfo]
+    android_jar = ctx.attrs._platform[DefaultInfo].default_outputs[0].project("android-35/android.jar")
+    out = ctx.actions.declare_output("lab.txt")
+    ctx.actions.run(
+        cmd_args(
+            _PY,
+            ctx.attrs._lab,
+            "--apk", info.apk,
+            "--spec", info.spec,
+            "--lib", info.lib,
+            "--wide", ctx.attrs.wide[DefaultInfo].default_outputs[0],
+            "--android-jar", android_jar,
+            "--cert-sha256", ctx.attrs._cert,
+            "--keystore", ctx.attrs._keystore,
+            "--aapt2", _as_command(ctx.attrs._aapt2[RunInfo]),
+            "--zipalign", _as_command(ctx.attrs._zipalign[RunInfo]),
+            "--apksigner", _as_command(ctx.attrs._apksigner[RunInfo]),
+            "--keytool", _as_command(ctx.attrs._keytool[RunInfo]),
+            "--apk-check-py", ctx.attrs._check,
+            "--elf-check-py", ctx.attrs._elf_check,
+            "--apk-manifest-py", ctx.attrs._manifest,
+            "--out", out.as_output(),
+        ),
+        category = "apk_lab",
+        identifier = ctx.label.name,
+    )
+    return [DefaultInfo(default_output = out)]
+
+apk_lab = rule(
+    impl = _lab_impl,
+    attrs = {
+        "apk": attrs.dep(providers = [ApkInfo]),
+        "wide": attrs.dep(providers = [AndroidSoInfo]),
+        "_aapt2": attrs.exec_dep(default = "toolchains//:aapt2", providers = [RunInfo]),
+        "_apksigner": attrs.exec_dep(default = "toolchains//:apksigner", providers = [RunInfo]),
+        "_cert": attrs.source(default = "toolchains//:android_debug.cert.sha256"),
+        "_check": attrs.source(default = "gate//rules:apk_check.py"),
+        "_elf_check": attrs.source(default = "gate//rules:elf_check.py"),
+        "_keystore": attrs.source(default = "toolchains//:android_debug.keystore"),
+        "_keytool": attrs.exec_dep(default = "toolchains//:keytool", providers = [RunInfo]),
+        "_lab": attrs.source(default = "gate//rules:apk_lab.py"),
+        "_manifest": attrs.source(default = "gate//rules:apk_manifest.py"),
+        "_platform": attrs.exec_dep(default = "toolchains//:android_platform"),
+        "_zipalign": attrs.exec_dep(default = "toolchains//:zipalign"),
+    },
+)

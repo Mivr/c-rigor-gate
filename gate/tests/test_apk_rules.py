@@ -219,7 +219,7 @@ class NoReleaseKeyTest(unittest.TestCase):
         head = macro[macro.index("def c_apk("):macro.index(")", macro.index("def c_apk("))]
         for forbidden in ("key", "sign", "release", "store", "pass"):
             self.assertNotIn(forbidden, head.lower())
-        rule = (ROOT / "rules" / "apk.bzl").read_text()
+        rule = (ROOT / "rules" / "apk.bzl").read_text().split("def _lab_impl")[0]     # the product rules, not the test lab
         self.assertEqual(rule.count("_keystore"), 2)          # declared once (a checked-in file), used once
         self.assertIn('"toolchains//:android_debug.keystore"', rule)
         self.assertEqual(rule.count('"pass:android"'), 2)

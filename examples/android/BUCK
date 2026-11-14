@@ -19,4 +19,5 @@ c_apk(
     label = "Club example",
     version_code = 1,
     version_name = "0.1.0",
+    visibility = ["PUBLIC"],    # the self-test (selftest/android.sh) breaks this APK in a scratch package
 )

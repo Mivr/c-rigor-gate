@@ -83,11 +83,21 @@ cannot just be trusted from it. Design:
   the orchestrator provides. Run in W35 after the merge with 301dc22 (llvm unpacked again on a worker, 1.6 GiB down), all six
   manifests came out byte-identical to the committed ones, including the three SDK manifests first made by hand. `selftest/toolchain.sh` flips one sha256 in each of
   `ndk.manifest`, `android_build_tools.manifest` and `jdk.manifest` and expects `toolchain-mismatch` for that manifest.
-- Known local-only limitation (T-G3): under `--target-platforms toolchains//:android_release`, Buck2 cannot materialize the
-  build-tools tree on the local machine (`Error downloading digest ... input being empty` from the CAS) while the same tree builds and
-  runs on RE and materializes fine in the default (Linux) configuration. It bites only a local `buck2 build` or `buck2 run` of a target
-  that carries the tools as `RunInfo` in the android configuration; hence `<name>_check[run]` is a sub-target (a plain build of
-  `<name>_check` is unaffected) and `selftest/android.sh` runs the SDK tools from the Linux-configuration trees. No RE action is affected.
+- Known limitation (T-G3, root cause found in round 4): the farm's CAS does not reliably serve the build-tools files to a Buck2
+  CLIENT. Any `buck2 build --materializations all` (or `buck2 run`) of a tree that holds several of them (`aapt2`, `lib/apksigner.jar`,
+  `lib/d8.jar`, `lib64/libc++.so`, `zipalign`, ...) fails with `Error downloading digest <sha256>:<size> ... Operation made no
+  progress over multiple calls, due to input being empty` on a daemon that has not already got every blob locally; the failing file
+  differs from run to run. The action cache entry is fine (`Cache hits: 100%`), RE workers read the same blobs without trouble
+  (every RE action of `c_apk` passes), and the platform, jdk and ndk trees download from the same farm without error. Reproduced
+  from scratch clones: a tree of `{aapt2, apksigner.jar}` or `{aapt2, d8.jar}` fails while each member alone, and the pairs
+  `{aapt2, zipalign}`, `{aapt2, libc++.so}`, succeed (blobs already on the machine from an earlier success), so a machine that once
+  downloaded the blobs one by one is fine and a fresh one is not. It is not the rule: not a symlink, mode, or hardlink (the
+  extractor writes plain files, `unzip_members.py`), and the same files extracted by a different action fail identically.
+  It looks like a farm-side (NativeLink) read problem for these blobs (candidate a); report to the orchestrator.
+  What the gate does about it: **no SDK tool is ever materialized on a client.** `c_apk` and `<name>_check` run on RE only, and
+  `selftest/android.sh` reads the APK back and breaks it inside ONE RE action (`rules/apk_lab.py`, rule `apk_lab`), whose output is a
+  small log. `buck2 run` of `<name>_check[run]`, `toolchains//:aapt2`, `:zipalign`, `:apksigner` on a client may fail the same way;
+  `toolchains//:keytool` (the JDK tree) works.
 - Tests: `gate/tests/test_toolchain_verify.py`, `gate/tests/test_grade_toolchain.py`; the last step of
   `selftest/grade.sh` grades with a scratch gate copy whose `llvm.manifest` has one sha256 flipped (`toolchain` FAIL).
 

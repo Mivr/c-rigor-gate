@@ -194,108 +194,23 @@ rm -rf "$scratch"
 # ---------------------------------------------------------------------------------------------------------------------
 # c_apk (T-G3)
 # ---------------------------------------------------------------------------------------------------------------------
-begin "examples/android builds app.apk and its _check; the pinned SDK tools read it back independently"
+begin "examples/android builds app.apk and its _check (on RE)"
 must_pass build --target-platforms $AND //examples/android:app //examples/android:app_check --show-output
 apk="$root/$(output "$out/$step.log" '//examples/android:app')"
 [ -f "$apk" ] && [ "$(basename "$apk")" = "app.apk" ] || fail "$CUR: no app.apk ($apk)" "$out/$step.log"
 echo "  $apk"
 must_fail_with "incompatible|Incompatible" build //examples/android:app
 echo "  linux_release refuses the APK (android mode only)"
-# The SDK trees in the default configuration (their blobs are what the verified-tree step reads); paths of the tools:
-must_pass build --materializations all toolchains//:android_build_tools toolchains//:android_platform toolchains//:jdk --show-full-output
-tree_of() { awk -v t="$1" '$1 == t {print $2}' "$out/$step.log" | tail -1; }
-BT="$(tree_of toolchains//:android_build_tools)/android-15"
-JAR="$(tree_of toolchains//:android_platform)/android-35/android.jar"
-JDK="$(tree_of toolchains//:jdk)/jdk-21.0.6+7"
-for f in "$BT/aapt2" "$BT/zipalign" "$BT/lib/apksigner.jar" "$JAR" "$JDK/bin/java" "$JDK/bin/keytool"; do [ -f "$f" ] || fail "$CUR: missing $f" "$out/$step.log"; done
-APKSIGNER=("$JDK/bin/java" -Xmx1g -jar "$BT/lib/apksigner.jar")
-"$BT/zipalign" -c -P 16 -v 4 "$apk" > "$out/za.log" 2>&1 || fail "$CUR: zipalign -c -P 16 refuses the APK" "$out/za.log"
-grep -q "lib/arm64-v8a/libclub.so (OK)" "$out/za.log" || fail "$CUR: the object is not reported aligned" "$out/za.log"
-"${APKSIGNER[@]}" verify --verbose --print-certs --min-sdk-version 28 "$apk" > "$out/sig.log" 2>&1 || fail "$CUR: apksigner verify refuses the APK" "$out/sig.log"
-grep -q "Number of signers: 1" "$out/sig.log" || fail "$CUR: not exactly one signer" "$out/sig.log"
-digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$out/sig.log")"
-[ "$digest" = "$(tr -d '\n' < toolchains/android_debug.cert.sha256)" ] || fail "$CUR: signed by $digest, not the debug key" "$out/sig.log"
-"$BT/aapt2" dump badging "$apk" > "$out/badging.log" 2>&1 || fail "$CUR: aapt2 dump badging failed" "$out/badging.log"
-for want in "package: name='org.example.club' versionCode='1' versionName='0.1.0'" "minSdkVersion:'28'" "targetSdkVersion:'35'" \
-            "application: label='Club example'" "native-code: 'arm64-v8a'" "launchable-activity: name='android.app.NativeActivity'"; do
-  grep -qF "$want" "$out/badging.log" || fail "$CUR: badging lacks $want" "$out/badging.log"; done
-! grep -q "uses-permission" "$out/badging.log" || fail "$CUR: the example declares no permission" "$out/badging.log"
-python3 -I - "$apk" <<'PY' || fail "$CUR: wrong entries"
-import sys, zipfile
-z = zipfile.ZipFile(sys.argv[1])
-names = [i.filename for i in z.infolist()]
-print("  entries:", names)
-assert sorted(names) == ["AndroidManifest.xml", "lib/arm64-v8a/libclub.so", "resources.arsc"], names
-so = z.getinfo("lib/arm64-v8a/libclub.so")
-assert so.compress_type == zipfile.ZIP_STORED
-PY
-cat > "$out/spec.json" <<'JSON'
-{"label": "Club example", "orientation": "landscape", "package": "org.example.club", "permissions": [], "version_code": 1, "version_name": "0.1.0"}
-JSON
-# The build's check, run by hand on any APK: tools, spec and the debug certificate as the rule passes them.
-CHECK_BASE=(python3 -I -B rules/apk_check.py --spec "$out/spec.json" --lib libclub.so
-       --aapt2 "$BT/aapt2" --zipalign "$BT/zipalign" --apksigner "$JDK/bin/java -Xmx1g -jar $BT/lib/apksigner.jar"
-       --android-jar "$JAR" --cert-sha256 toolchains/android_debug.cert.sha256
-       --elf-check-py rules/elf_check.py --apk-manifest-py rules/apk_manifest.py)
-CHECK=("${CHECK_BASE[@]}" --export ANativeActivity_onCreate)
-"${CHECK[@]}" "$apk" > "$out/check_ok.log" 2>&1 || fail "$CUR: apk_check refuses the real APK" "$out/check_ok.log"
-cat "$out/check_ok.log"
 
-# problems <log>: the tags and texts of the problem lines of an apk_check run
-problems() { sed -n 's/^  \[\([a-z]*\)\] \(.*\)$/\1: \2/p' "$1"; }
-expect_refused() { # <name> <regex of the one problem> <apk> [extra apk_check arguments]
-  local name="$1" re="$2" file="$3"; shift 3
-  "${CHECK[@]}" "$@" "$file" > "$out/$name.log" 2>&1 && fail "$CUR: $name was accepted" "$out/$name.log"
-  local n; n="$(problems "$out/$name.log" | wc -l)"
-  [ "$n" = 1 ] && problems "$out/$name.log" | grep -Eq "$re" || fail "$CUR: $name: wanted exactly one problem matching /$re/" "$out/$name.log"
-  echo "  $name refused: $(problems "$out/$name.log" | head -1 | cut -c1-150)"
-}
-sign() { "${APKSIGNER[@]}" sign --ks "${3:-toolchains/android_debug.keystore}" --ks-pass pass:android --ks-key-alias "${4:-androiddebugkey}" --key-pass pass:android \
-           --min-sdk-version 28 --alignment-preserved true --v1-signing-enabled false --v4-signing-enabled false --out "$2" "$1" > "$out/sign.log" 2>&1 || fail "$CUR: apksigner sign" "$out/sign.log"; }
-align() { "$BT/zipalign" -f -P 16 4 "$1" "$2" > "$out/align.log" 2>&1 || fail "$CUR: zipalign" "$out/align.log"; }
-cat > "$out/mut.py" <<'PY'
-"""mut.py unaligned|extra|swap IN [LIB] OUT: rewrite a zip without its signature (the caller re-aligns and re-signs)."""
-import sys, zipfile
-mode, src, out = sys.argv[1], sys.argv[2], sys.argv[-1]
-def entry(name):
-    info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0)); info.compress_type = zipfile.ZIP_STORED; info.external_attr = 0o644 << 16
-    return info
-with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out, "w") as zout:
-    for info in zin.infolist():
-        data = zin.read(info)
-        if mode == "swap" and info.filename.endswith("libclub.so"):
-            data = open(sys.argv[3], "rb").read()
-        zout.writestr(entry(info.filename), data)
-    if mode == "extra":
-        zout.writestr(entry("assets/extra.txt"), b"not declared\n")
-if mode == "unaligned":
-    with zipfile.ZipFile(out) as z:
-        info = z.getinfo("lib/arm64-v8a/libclub.so")
-        at = info.header_offset + 30 + len(info.filename)
-        assert at % 16384 != 0, "the rewritten object happens to be aligned"
-PY
-
-begin "a misaligned APK (re-signed, so only the alignment is wrong), an APK with an extra file and a wrong manifest are each refused for their own reason"
-python3 -I "$out/mut.py" unaligned "$apk" "$out/unaligned_raw.apk" || fail "$CUR: mut unaligned"
-sign "$out/unaligned_raw.apk" "$out/unaligned.apk"
-"$BT/zipalign" -c -P 16 4 "$out/unaligned.apk" > /dev/null 2>&1 && fail "$CUR: the rewritten APK is aligned after all"
-"${APKSIGNER[@]}" verify --min-sdk-version 28 "$out/unaligned.apk" > /dev/null 2>&1 || fail "$CUR: the re-signed misaligned APK does not even verify"
-"${CHECK[@]}" "$out/unaligned.apk" > "$out/unaligned.log" 2>&1 && fail "$CUR: a misaligned APK was accepted" "$out/unaligned.log"
-problems "$out/unaligned.log" | grep -Eq "^library: .*data starts at .*not a multiple of 16384" || fail "$CUR: the object offset was not refused" "$out/unaligned.log"
-problems "$out/unaligned.log" | grep -Eq "^zipalign: " || fail "$CUR: zipalign -c did not refuse it" "$out/unaligned.log"
-[ "$(problems "$out/unaligned.log" | wc -l)" = 2 ] || fail "$CUR: more than the two alignment problems" "$out/unaligned.log"
-echo "  misaligned: $(problems "$out/unaligned.log" | cut -c1-110 | tr '\n' ';')"
-python3 -I "$out/mut.py" extra "$apk" "$out/extra_raw.apk" || fail "$CUR: mut extra"
-align "$out/extra_raw.apk" "$out/extra_aligned.apk"; sign "$out/extra_aligned.apk" "$out/extra.apk"
-expect_refused extra_file '^entries: unexpected entry assets/extra.txt$' "$out/extra.apk"
-printf '{"label": "Club example", "orientation": "landscape", "package": "org.example.club", "permissions": [], "version_code": 2, "version_name": "0.1.0"}\n' > "$out/spec2.json"
-expect_refused other_manifest '^manifest: the manifest differs from the declaration at line' "$apk" --spec "$out/spec2.json"
-
-begin "an object with an extra export, an export list that names another entry, and an APK signed by another key are refused"
+begin "the pinned SDK tools read the APK back, then break it (misaligned, extra file, other manifest, extra or wrong export, other key, tampered): each refused for its own reason"
+# Everything below runs inside ONE action on an RE worker (rules/apk_lab.py): the farm does not serve the build-tools files to a
+# client reliably (docs/toolchain.md, "Known limitation"), so no SDK tool is ever run on this machine.
 mkdir -p "$scratch"
 cat > "$scratch/BUCK" <<'BUCK'
+load("@gate//rules:apk.bzl", "apk_lab")
 load("@gate//rules:c.bzl", "c_android_so")
-c_android_so(name = "club", srcs = ["wide.c"], exports = ["ANativeActivity_onCreate", "extra_symbol"])
+c_android_so(name = "wide", srcs = ["wide.c"], exports = ["ANativeActivity_onCreate", "extra_symbol"])
+apk_lab(name = "lab", apk = "//examples/android:app", wide = ":wide")
 BUCK
 cat > "$scratch/wide.c" <<'C'
 #include <stddef.h>
@@ -307,37 +222,11 @@ void ANativeActivity_onCreate(void *activity, void *saved, size_t saved_size) {
     (void)extra_symbol();
 }
 C
-must_pass build --target-platforms $AND //selftest/scratch_android:club --show-output
-wide="$root/$(output "$out/$step.log" '//selftest/scratch_android:club')"
-python3 -I "$out/mut.py" swap "$apk" "$wide" "$out/wide_raw.apk" || fail "$CUR: mut swap"
-align "$out/wide_raw.apk" "$out/wide_aligned.apk"; sign "$out/wide_aligned.apk" "$out/wide.apk"
-expect_refused extra_export '^library: libclub.so: exports extra_symbol, which is not in the allowed export list$' "$out/wide.apk"
-# --export other_entry gives two problems (the entry is not allowed, the other is missing): both, and nothing else, are the proof
-"${CHECK_BASE[@]}" --export other_entry "$apk" > "$out/other.log" 2>&1 && fail "$CUR: a wrong export list was accepted" "$out/other.log"
-[ "$(problems "$out/other.log" | sort | tr '\n' '|')" = "library: libclub.so: does not define the export other_entry|library: libclub.so: exports ANativeActivity_onCreate, which is not in the allowed export list|" ] \
-  || fail "$CUR: wrong problems for a wrong export list" "$out/other.log"
+must_pass build --target-platforms $AND //selftest/scratch_android:lab --show-output
+lab="$root/$(output "$out/$step.log" '//selftest/scratch_android:lab')"
+[ -f "$lab" ] && grep -q "^APK LAB PASSED$" "$lab" || fail "$CUR: the lab did not pass" "$out/$step.log"
+cat "$lab"
 rm -rf "$scratch"
-# another key: a fresh key pair from the pinned keytool, the same APK re-signed with it
-rm -f "$out/other.keystore"
-"$JDK/bin/keytool" -genkeypair -keystore "$out/other.keystore" -storetype PKCS12 -storepass android -keypass android -alias otherkey \
-  -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=another key" > "$out/keytool.log" 2>&1 || fail "$CUR: keytool" "$out/keytool.log"
-sign "$apk" "$out/other_key.apk" "$out/other.keystore" otherkey
-"${APKSIGNER[@]}" verify --min-sdk-version 28 "$out/other_key.apk" > /dev/null 2>&1 || fail "$CUR: apksigner itself does not accept the APK signed by the other key"
-echo "  (apksigner verify alone accepts it; only the pinned certificate says no)"
-expect_refused other_key '^signature: signer certificate SHA-256 is \[' "$out/other_key.apk"
-# a tampered APK (one byte of the signed manifest) fails the signature itself
-python3 -I - "$apk" "$out/tampered.apk" <<'PY' || fail "$CUR: tamper"
-import sys, zipfile
-raw = bytearray(open(sys.argv[1], "rb").read())
-with zipfile.ZipFile(sys.argv[1]) as z:
-    info = z.getinfo("AndroidManifest.xml")
-    at = info.header_offset + 30 + len(info.filename) + len(info.extra) + info.file_size // 2
-raw[at] ^= 0xFF
-open(sys.argv[2], "wb").write(raw)
-PY
-"${CHECK[@]}" "$out/tampered.apk" > "$out/tampered.log" 2>&1 && fail "$CUR: a tampered APK was accepted" "$out/tampered.log"
-problems "$out/tampered.log" | grep -Eq "^signature: apksigner verify refused it" || fail "$CUR: the tampering was not caught by the signature" "$out/tampered.log"
-echo "  tampered: signature refused"
 
 begin "c_apk takes no signing argument, validates every attribute, and refuses a private or foreign shared object"
 for bad in 'signing = "release"' 'keystore = "k.jks"' 'min_sdk = 21'; do
