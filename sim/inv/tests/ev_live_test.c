@@ -55,7 +55,7 @@ static void t_every_entry_starts_its_own_timer(ctest_t *t) {
     erig_vw(&R, 30001, 3); /* a new stay: flagged again */
     erig_vw(&R, 30001 + 8501, 3);
     CHECK_EQ_U64(t, events_finding_count(&E), 2);
-    CHECK_EQ_U64(t, events_counts(&E)->phase_changes, 5);
+    CHECK_EQ_U64(t, events_counts(&E).phase_changes, 5);
 }
 
 static void t_a_repeat_of_the_phase_does_not_restart_the_timer(ctest_t *t) {
@@ -64,7 +64,7 @@ static void t_a_repeat_of_the_phase_does_not_restart_the_timer(ctest_t *t) {
     erig_vw(&R, 3000, 2);
     erig_vw(&R, 4001, 2);
     CHECK_EQ_U64(t, events_finding_count(&E), 1);
-    CHECK_EQ_U64(t, events_counts(&E)->phase_changes, 1);
+    CHECK_EQ_U64(t, events_counts(&E).phase_changes, 1);
 }
 
 static void t_a_phase_without_a_limit_never_sticks(ctest_t *t) {
@@ -86,9 +86,9 @@ static void t_the_phase_comes_from_the_kind_and_the_type_of_a_record(ctest_t *t)
     erig_rec(&R, "fx", 1001, 3, 0, NULL, 0);
     erig_rec(&R, "xx", 1002, 3, 0, NULL, 0);
     erig_vw(&R, 1003, 7); /* no row */
-    CHECK_EQ_U64(t, events_counts(&E)->phase_changes, 0);
+    CHECK_EQ_U64(t, events_counts(&E).phase_changes, 0);
     erig_rec(&R, "vw", 1004, 3, 99, (const uint8_t *)"abc", 3);
-    CHECK_EQ_U64(t, events_counts(&E)->phase_changes, 1);
+    CHECK_EQ_U64(t, events_counts(&E).phase_changes, 1);
 }
 
 static void t_the_first_matching_row_wins(ctest_t *t) {
@@ -110,9 +110,9 @@ static void t_only_the_configured_rows_are_read(ctest_t *t) {
     C.n_rows = 2;
     start(t, &C);
     erig_vw(&R, 1000, 2); /* a row beyond n_rows */
-    CHECK_EQ_U64(t, events_counts(&E)->phase_changes, 0);
+    CHECK_EQ_U64(t, events_counts(&E).phase_changes, 0);
     erig_vw(&R, 1001, 1);
-    CHECK_EQ_U64(t, events_counts(&E)->phase_changes, 1);
+    CHECK_EQ_U64(t, events_counts(&E).phase_changes, 1);
 }
 
 static void t_the_run_must_end_idle(ctest_t *t) {
@@ -165,8 +165,10 @@ static void t_reaching_welcome_clears_the_deadline(ctest_t *t) {
     erig_vw(&R, 500, 2);
     relay_clear(1000);
     erig_vw(&R, 2000, 0);
-    erig_vw(&R, 2500, 2);
-    erig_vw(&R, 20000, 0);
+    erig_vw(&R, 20000, 0); /* still at welcome long after the deadline: nothing is due */
+    CHECK(t, !events_has_rule(&E, EV_R_NO_RECOVERY));
+    erig_vw(&R, 20500, 2);
+    erig_vw(&R, 90000, 0);
     CHECK(t, !events_has_rule(&E, EV_R_NO_RECOVERY));
 }
 
@@ -243,8 +245,18 @@ static void t_bad_configurations_are_refused(ctest_t *t) {
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.n_rows = 8;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
-    erig_fill(&C); C.n_rows = 9;
+    erig_fill(&C); C.n_rows = 9; C.limit_ms[1] = 0; /* the row after the table would read as phase 0 */
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
+    erig_fill(&C); C.n_rows = 16; C.limit_ms[1] = 0;
+    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
+    erig_fill(&C); C.rows[0].phase = 8;
+    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
+    erig_fill(&C); C.corr_len = 0; C.corr_off = 1;
+    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
+    erig_fill(&C); C.corr_len = 0; C.result_corr_off = 1;
+    CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
+    erig_fill(&C); C.corr_len = 0;
+    CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
     erig_fill(&C); C.welcome_phase = 7;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
     erig_fill(&C); C.welcome_phase = 8;
@@ -299,14 +311,16 @@ static void t_malformed_records_change_nothing(ctest_t *t) {
     erig_ev_bare(&R, 100, T_STAGED);
     sim_rec_t bad = {{'e', 'v'}, 100, T_STAGED, 0, NULL, 3};
     CHECK_EQ_I64(t, events_feed(&E, &bad), -1);
+    bad.len = 1;
+    CHECK_EQ_I64(t, events_feed(&E, &bad), -1);
     CHECK_EQ_I64(t, events_feed(&E, NULL), -1);
     sim_rec_t back = {{'e', 'v'}, 99, T_STAGED, 0, NULL, 0};
     CHECK_EQ_I64(t, events_feed(&E, &back), -1);
-    CHECK_EQ_U64(t, events_counts(&E)->records, 1);
-    CHECK_EQ_U64(t, events_counts(&E)->auth_events, 1);
+    CHECK_EQ_U64(t, events_counts(&E).records, 1);
+    CHECK_EQ_U64(t, events_counts(&E).auth_events, 1);
     sim_rec_t same = {{'e', 'v'}, 100, T_STAGED, 0, NULL, 0}; /* equal time is in order */
     CHECK_EQ_I64(t, events_feed(&E, &same), 0);
-    CHECK_EQ_U64(t, events_counts(&E)->records, 2);
+    CHECK_EQ_U64(t, events_counts(&E).records, 2);
 }
 
 static void t_findings_are_capped_at_16_and_counted(ctest_t *t) {
@@ -359,8 +373,15 @@ static void t_names_for_the_report(ctest_t *t) {
             CHECK(t, strcmp(events_rule_name((events_rule_t)r), events_rule_name((events_rule_t)q)) != 0);
         }
     }
-    CHECK_EQ_STR(t, events_rule_name(EV_R_NO_AUTH), "no-authorisation");
-    CHECK_EQ_STR(t, events_rule_name(EV_R_NOT_IDLE_AT_END), "not-idle-at-end");
+    static const char *const names[] = {
+        "no-authorisation", "open-overlap", "corr-reused", "bad-payload", "handover-without-effect", "pulse-without-open",
+        "extra-pulse", "not-durable", "book-undecodable", "crash-book-changed", "crash-book-unreadable", "crash-audit-format",
+        "crash-audit-gap", "open-before-boot", "audit-format", "audit-gap", "audit-bound", "door-without-assignment",
+        "door-without-open", "short-locker", "locker-table-full", "stuck-phase", "no-recovery", "not-idle-at-end"};
+    CHECK_EQ_U64(t, sizeof names / sizeof names[0], (uint32_t)EV_R_COUNT - 1U);
+    for (uint32_t r = 1; r < (uint32_t)EV_R_COUNT; r++) {
+        CHECK_EQ_STR(t, events_rule_name((events_rule_t)r), names[r - 1U]);
+    }
     /* the invariant of each rule, pinned: the order of the enum is the order of the table */
     static const events_inv_t want[] = {EV_I1, EV_I1, EV_I1, EV_I1, EV_I1, EV_I1, EV_I1, EV_I2, EV_I2, EV_I9, EV_I9, EV_I9, EV_I9, EV_I9,
                                         EV_I10, EV_I10, EV_I10, EV_I10, EV_I10, EV_I10, EV_I10, EV_I15, EV_I15, EV_I15};

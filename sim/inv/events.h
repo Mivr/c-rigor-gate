@@ -36,7 +36,7 @@ enum {
     EV_MAX_PHASES = 8,    /* phase ids are 0 (idle) to 7 */
     EV_MAX_PHASE_ROWS = 8,
     EV_NAME_MAX = 16,     /* file name of the book, with its end */
-    EV_PAYLOAD_MAX = 32,  /* bytes of an opening effect kept for the book callback */
+    EV_PAYLOAD_MAX = 32,  /* the longest opening-effect payload (a longer one is BAD_PAYLOAD); it is kept for the book callback */
     EV_CORRS = 256,       /* corr values remembered for the uniqueness check (the last 256) */
     EV_LOCKERS = 64,      /* lockers tracked by the audit chain rules */
     EV_MAX_FINDINGS = 16
@@ -55,7 +55,7 @@ typedef enum {
     EV_R_NO_AUTH = 1,         /* I1: an opening effect with no authorising event left (the double pulse) */
     EV_R_OPEN_OVERLAP,        /* I1: an opening effect while the previous one has no result yet */
     EV_R_CORR_REUSED,         /* I1: a corr seen before (one of the last 256) */
-    EV_R_SHORT_PAYLOAD,       /* I1: a payload too short for the configured corr offset */
+    EV_R_BAD_PAYLOAD,       /* I1: a payload too short for the corr, or an effect payload over 32 bytes */
     EV_R_HANDOVER_NO_EFFECT,  /* I1: a hand-over to the driver with no effect before it */
     EV_R_PULSE_NO_OPEN,       /* I1: a flash-on frame with no hand-over in flight */
     EV_R_EXTRA_PULSE,         /* I1: more flash-on frames than `flashes_per_open` for one hand-over */
@@ -149,8 +149,8 @@ typedef struct {
 } events_finding_t;
 
 typedef struct {
-    uint32_t id, assigned, opens, doors;
-} events_locker_t;
+    uint32_t opens[EV_LOCKERS], doors[EV_LOCKERS];
+} events_lcount_t;
 
 typedef struct {
     uint32_t auth_events, opens, handovers, flashes, i2_checks, durable_saves, power_cuts, audit_lines, doors, phase_changes, records;
@@ -169,12 +169,15 @@ typedef struct {
     uint8_t payload[EV_PAYLOAD_MAX];
     uint32_t payload_len;
     uint64_t corrs[EV_CORRS];
-    uint32_t ncorr;
+    uint8_t corr_used[EV_CORRS];
+    uint32_t corr_head;
     /* I9 */
     uint8_t booted, digest_known;
     uint64_t digest;
     /* I10 */
-    events_locker_t lockers[EV_LOCKERS];
+    uint32_t lock_id[EV_LOCKERS];
+    uint8_t lock_assigned[EV_LOCKERS];
+    events_lcount_t lcount;
     uint32_t nlockers;
     uint8_t table_raised;
     /* I15 */
@@ -209,7 +212,7 @@ int events_has_rule(const events_t *e, events_rule_t rule);
 int events_has_inv(const events_t *e, events_inv_t inv);
 uint32_t events_inv_mask(const events_t *e); /* bit `inv` per invariant */
 uint32_t events_dropped(const events_t *e);  /* findings past the 16 kept */
-const events_counts_t *events_counts(const events_t *e); /* the antecedents, for the judge's non-vacuity check */
+events_counts_t events_counts(const events_t *e); /* the antecedents, for the judge's non-vacuity check */
 
 /* Names for the report: "I1" ... and "no-authorisation" ... (a rule's invariant and its kebab-case id). NULL for a value out of range. */
 events_inv_t events_rule_inv(events_rule_t rule);

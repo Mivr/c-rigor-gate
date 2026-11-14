@@ -26,12 +26,12 @@ static void t_clean_visits_pass(ctest_t *t) {
     erig_visit(&R, 4000, 3, 84);
     CHECK_EQ_U64(t, events_finding_count(&E), 0);
     CHECK_EQ_U64(t, events_inv_mask(&E), 0);
-    const events_counts_t *c = events_counts(&E);
-    CHECK_EQ_U64(t, c->auth_events, 3);
-    CHECK_EQ_U64(t, c->opens, 3);
-    CHECK_EQ_U64(t, c->handovers, 3);
-    CHECK_EQ_U64(t, c->flashes, 6);
-    CHECK_EQ_U64(t, c->records, 1 + 3 * 6);
+    events_counts_t c = events_counts(&E);
+    CHECK_EQ_U64(t, c.auth_events, 3);
+    CHECK_EQ_U64(t, c.opens, 3);
+    CHECK_EQ_U64(t, c.handovers, 3);
+    CHECK_EQ_U64(t, c.flashes, 6);
+    CHECK_EQ_U64(t, c.records, 1 + 3 * 6);
 }
 
 static void t_double_pulse_is_found_at_the_second_effect(ctest_t *t) {
@@ -158,12 +158,53 @@ static void t_a_short_effect_payload_is_a_finding(ctest_t *t) {
     erig_ev(&R, 100, T_STAGED, 1, 84);
     static const uint8_t three[3] = {1, 0, 0};
     erig_rec(&R, "fx", 110, T_FX_OPEN, 5, three, 3);
-    CHECK(t, erig_finding_is(&R, 0, EV_I1, EV_R_SHORT_PAYLOAD, 2));
+    CHECK(t, erig_finding_is(&R, 0, EV_I1, EV_R_BAD_PAYLOAD, 2));
     erig_ev(&R, 120, T_STAGED, 2, 84);
     static const uint8_t four[4] = {2, 0, 0, 0}; /* exactly the corr: long enough for the corr, too short for the locker */
     erig_rec(&R, "fx", 130, T_FX_OPEN, 5, four, 4);
     CHECK(t, !events_has_rule(&E, EV_R_CORR_REUSED));
     CHECK(t, events_has_rule(&E, EV_R_SHORT_LOCKER));
+}
+
+static void t_a_payload_exactly_as_long_as_the_corr_is_enough(ctest_t *t) {
+    erig_fill(&C);
+    C.has_chain = 0;
+    start(t, &C);
+    static const uint8_t four[4] = {7, 0, 0, 0};
+    erig_ev(&R, 100, T_STAGED, 7, 84);
+    erig_rec(&R, "fx", 110, T_FX_OPEN, 5, four, 4);
+    erig_rec(&R, "ev", 120, T_RESULT, 0, four, 4);
+    erig_ev(&R, 130, T_STAGED, 8, 84);
+    static const uint8_t other[4] = {8, 0, 0, 0};
+    erig_rec(&R, "fx", 140, T_FX_OPEN, 5, other, 4);
+    CHECK_EQ_U64(t, events_finding_count(&E), 0); /* the result matched, nothing is in flight */
+}
+
+static void t_an_unreadable_corr_accepts_the_next_result(ctest_t *t) {
+    begin(t);
+    erig_visit(&R, 100, 1, 84);
+    erig_ev(&R, 1000, T_STAGED, 2, 84);
+    static const uint8_t three[3] = {2, 0, 0};
+    erig_rec(&R, "fx", 1010, T_FX_OPEN, 5, three, 3); /* no corr to remember: the stale one of visit 1 must not be used */
+    erig_ev(&R, 1020, T_RESULT, 2, 84);
+    erig_ev(&R, 1030, T_STAGED, 3, 84);
+    erig_effect(&R, 1040, 3, 84);
+    CHECK(t, !events_has_rule(&E, EV_R_OPEN_OVERLAP));
+}
+
+static void t_a_payload_over_32_bytes_is_a_finding(ctest_t *t) {
+    erig_fill(&C);
+    C.has_chain = 0;
+    start(t, &C);
+    uint8_t big[33] = {1};
+    erig_ev(&R, 100, T_STAGED, 1, 84);
+    erig_rec(&R, "fx", 110, T_FX_OPEN, 5, big, 32);
+    CHECK_EQ_U64(t, events_finding_count(&E), 0);
+    erig_ev(&R, 120, T_RESULT, 1, 84);
+    erig_ev(&R, 130, T_STAGED, 2, 84);
+    big[0] = 2;
+    erig_rec(&R, "fx", 140, T_FX_OPEN, 5, big, 33);
+    CHECK(t, erig_finding_is(&R, 0, EV_I1, EV_R_BAD_PAYLOAD, 5));
 }
 
 static void t_the_result_must_carry_the_corr_of_its_opening(ctest_t *t) {
@@ -186,7 +227,7 @@ static void t_a_short_result_payload_is_a_finding_and_changes_nothing(ctest_t *t
     erig_ev(&R, 100, T_STAGED, 1, 84);
     erig_effect(&R, 110, 1, 84);
     erig_rec(&R, "ev", 120, T_RESULT, 0, NULL, 0);
-    CHECK(t, erig_finding_is(&R, 0, EV_I1, EV_R_SHORT_PAYLOAD, 3));
+    CHECK(t, erig_finding_is(&R, 0, EV_I1, EV_R_BAD_PAYLOAD, 3));
     erig_ev(&R, 130, T_STAGED, 2, 84);
     erig_effect(&R, 140, 2, 84);
     CHECK(t, events_has_rule(&E, EV_R_OPEN_OVERLAP));
@@ -284,7 +325,7 @@ static void t_only_flash_on_requests_are_pulses(ctest_t *t) {
     begin(t);
     uint8_t f[8];
     erig_read(&R, 10); /* a read of the coils */
-    CHECK_EQ_U64(t, events_counts(&E)->flashes, 0);
+    CHECK_EQ_U64(t, events_counts(&E).flashes, 0);
     static const uint16_t addrs[] = {0x01ff, 0x0200, 0x021d, 0x021e};
     static const uint32_t counted[] = {0, 1, 2, 2};
     for (uint32_t i = 0; i < 4U; i++) {
@@ -293,7 +334,7 @@ static void t_only_flash_on_requests_are_pulses(ctest_t *t) {
         f[6] = (uint8_t)(crc & 0xffU);
         f[7] = (uint8_t)(crc >> 8);
         erig_rec(&R, "fr", 20U + i, 0, 0, f, 8);
-        CHECK_EQ_U64(t, events_counts(&E)->flashes, counted[i]);
+        CHECK_EQ_U64(t, events_counts(&E).flashes, counted[i]);
     }
 }
 
@@ -304,11 +345,11 @@ static void t_a_response_or_a_bad_frame_is_not_a_pulse(ctest_t *t) {
     f[6] = (uint8_t)(crc & 0xffU);
     f[7] = (uint8_t)(crc >> 8);
     erig_rec(&R, "fr", 10, 1, 0, f, 8); /* the board's echo */
-    CHECK_EQ_U64(t, events_counts(&E)->flashes, 0);
+    CHECK_EQ_U64(t, events_counts(&E).flashes, 0);
     f[7] ^= 1U; /* bad CRC */
     erig_rec(&R, "fr", 20, 0, 0, f, 8);
     erig_rec(&R, "fr", 30, 0, 0, NULL, 0);
-    CHECK_EQ_U64(t, events_counts(&E)->flashes, 0);
+    CHECK_EQ_U64(t, events_counts(&E).flashes, 0);
     CHECK_EQ_U64(t, events_finding_count(&E), 0);
 }
 
@@ -326,8 +367,8 @@ static void t_without_handover_the_effect_opens_the_window(ctest_t *t) {
     erig_ev(&R, 150, T_RESULT, 1, 84);
     erig_ev(&R, 160, T_STAGED, 2, 84);
     erig_rec(&R, "fx", 170, T_FX_OPEN, HANDOVER_B, NULL, 0); /* the same b is only an effect here */
-    CHECK_EQ_U64(t, events_counts(&E)->handovers, 0);
-    CHECK_EQ_U64(t, events_counts(&E)->opens, 2);
+    CHECK_EQ_U64(t, events_counts(&E).handovers, 0);
+    CHECK_EQ_U64(t, events_counts(&E).opens, 2);
 }
 
 static void t_other_effects_are_ignored(ctest_t *t) {
@@ -335,8 +376,8 @@ static void t_other_effects_are_ignored(ctest_t *t) {
     erig_rec(&R, "fx", 100, T_FX_OPEN + 1U, 5, NULL, 0);
     erig_rec(&R, "fx", 110, T_FX_OPEN + 1U, HANDOVER_B, NULL, 0);
     CHECK_EQ_U64(t, events_finding_count(&E), 0);
-    CHECK_EQ_U64(t, events_counts(&E)->opens, 0);
-    CHECK_EQ_U64(t, events_counts(&E)->handovers, 0);
+    CHECK_EQ_U64(t, events_counts(&E).opens, 0);
+    CHECK_EQ_U64(t, events_counts(&E).handovers, 0);
 }
 
 CTEST_SUITE("ev_auth",
@@ -350,6 +391,9 @@ CTEST_SUITE("ev_auth",
     { "shared_corr", t_the_shared_corr_is_exempt_only_when_configured },
     { "corr_memory", t_corr_memory_is_the_last_256 },
     { "short_effect", t_a_short_effect_payload_is_a_finding },
+    { "exact_payload", t_a_payload_exactly_as_long_as_the_corr_is_enough },
+    { "unreadable_corr", t_an_unreadable_corr_accepts_the_next_result },
+    { "long_payload", t_a_payload_over_32_bytes_is_a_finding },
     { "result_corr", t_the_result_must_carry_the_corr_of_its_opening },
     { "short_result", t_a_short_result_payload_is_a_finding_and_changes_nothing },
     { "stale_result", t_a_stale_result_changes_nothing },

@@ -2,55 +2,52 @@
 
 #include <stddef.h>
 
-#define SEQ_KEY "\"seq\":"
-#define SEQ_KEY_LEN 6U
 #define SEQ_MAX_DIGITS 18U
 
-static int key_at(const uint8_t *line, uint32_t n, uint32_t i) {
-    static const char key[] = SEQ_KEY;
-    if (i + SEQ_KEY_LEN > n) {
-        return 0;
-    }
-    for (uint32_t k = 0; k < SEQ_KEY_LEN; k++) {
-        if (line[i + k] != (uint8_t)key[k]) {
-            return 0;
-        }
-    }
-    return 1;
-}
+/* What one pass over a line finds: its first and last byte, and the digits after the first `"seq":`. */
+typedef struct {
+    uint8_t first, last;
+    uint32_t matched; /* bytes of the key matched so far (6 = the key was seen) */
+    uint32_t digits;
+    uint64_t value;
+    int ended; /* the digits (or their absence) are over */
+} line_t;
 
-/* The value after the first `"seq":` of a line: 1 to 18 decimal digits. */
-static int parse_seq(const uint8_t *line, uint32_t n, uint64_t *seq) {
-    for (uint32_t i = 0; i + SEQ_KEY_LEN <= n; i++) {
-        if (!key_at(line, n, i)) {
-            continue;
-        }
-        uint32_t p = i + SEQ_KEY_LEN;
-        uint64_t v = 0;
-        uint32_t digits = 0;
-        while (p < n && line[p] >= '0' && line[p] <= '9' && digits <= SEQ_MAX_DIGITS) {
-            v = v * 10U + (uint64_t)(line[p] - '0');
-            digits++;
-            p++;
-        }
-        *seq = v;
-        return digits >= 1U && digits <= SEQ_MAX_DIGITS;
+static void line_byte(line_t *l, uint32_t index, uint8_t c) {
+    static const char key[] = "\"seq\":";
+    if (index == 0U) {
+        l->first = c;
     }
-    return 0;
+    l->last = c;
+    if (l->ended != 0) {
+        return;
+    }
+    if (l->matched < sizeof key - 1U) {
+        /* The key has one `"`, at its start: a mismatch can only restart on another `"`. */
+        l->matched = c == (uint8_t)key[l->matched] ? l->matched + 1U : (c == (uint8_t)key[0] ? 1U : 0U);
+    } else if (c >= (uint8_t)'0' && c <= (uint8_t)'9') {
+        l->value = l->value * 10U + (uint64_t)(c - (uint8_t)'0');
+        l->digits++;
+    } else {
+        l->ended = 1;
+    }
 }
 
 /* One complete line, without its newline: accept it and take its seq. */
 static audit_result_t take_line(const uint8_t *line, uint32_t n, audit_scan_t *out) {
-    uint64_t seq = 0;
-    if (n < 2U || line[0] != (uint8_t)'{' || line[n - 1U] != (uint8_t)'}' || !parse_seq(line, n, &seq)) {
+    line_t l = {0, 0, 0, 0, 0, 0};
+    for (uint32_t i = 0; i < n; i++) {
+        line_byte(&l, i, line[i]);
+    }
+    if (l.first != (uint8_t)'{' || l.last != (uint8_t)'}' || l.digits < 1U || l.digits > SEQ_MAX_DIGITS) {
         return AUDIT_FORMAT;
     }
     if (out->lines == 0U) {
-        out->first_seq = seq;
-    } else if (seq != out->last_seq + 1U) {
+        out->first_seq = l.value;
+    } else if (l.value != out->last_seq + 1U) {
         return AUDIT_GAP;
     }
-    out->last_seq = seq;
+    out->last_seq = l.value;
     out->lines++;
     return AUDIT_OK;
 }

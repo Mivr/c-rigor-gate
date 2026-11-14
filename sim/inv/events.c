@@ -18,11 +18,10 @@ static void flag(events_t *e, events_rule_t rule) {
     }
 }
 
-/* ---- payload and record helpers ---- */
-
 /* `n` (0 to 8) little-endian bytes at `off`: 1 when they are all there. */
 static int le_get(const sim_rec_t *rec, uint32_t off, uint32_t n, uint64_t *out) {
     uint64_t v = 0;
+    *out = 0;
     if (n > rec->len || off > rec->len - n) {
         return 0;
     }
@@ -41,12 +40,11 @@ static int selects(const events_sel_t *s, const sim_rec_t *rec) {
     return rec->kind[0] == s->kind[0] && rec->kind[1] == s->kind[1] && rec->a == s->a;
 }
 
-/* ---- I10 locker table ---- */
-
-static events_locker_t *locker_of(events_t *e, uint32_t id) {
+/* The slot of a locker id, adding it when new; -1 when the table is full. */
+static int locker_slot(events_t *e, uint32_t id) {
     for (uint32_t i = 0; i < e->nlockers; i++) {
-        if (e->lockers[i].id == id) {
-            return &e->lockers[i];
+        if (e->lock_id[i] == id) {
+            return (int)i;
         }
     }
     if (e->nlockers == EV_LOCKERS) {
@@ -54,42 +52,43 @@ static events_locker_t *locker_of(events_t *e, uint32_t id) {
             e->table_raised = 1;
             flag(e, EV_R_TABLE_FULL);
         }
-        return NULL;
+        return -1;
     }
-    e->lockers[e->nlockers] = (events_locker_t){id, 0, 0, 0};
-    return &e->lockers[e->nlockers++];
+    e->lock_id[e->nlockers] = id;
+    e->nlockers++;
+    return (int)(e->nlockers - 1U);
 }
 
-/* The locker id of a record at `off`; raises SHORT_LOCKER when the payload is too short. */
-static events_locker_t *locker_in(events_t *e, const sim_rec_t *rec, uint32_t off) {
-    uint64_t id = 0;
+/* The slot of the locker a record names at `off`; raises SHORT_LOCKER when the payload is too short. */
+static int locker_in(events_t *e, const sim_rec_t *rec, uint32_t off) {
+    uint64_t id;
     if (!le_get(rec, off, e->cfg.ev_locker_len, &id)) {
         flag(e, EV_R_SHORT_LOCKER);
-        return NULL;
+        return -1;
     }
-    return locker_of(e, (uint32_t)id);
+    return locker_slot(e, (uint32_t)id);
 }
 
 static void on_door(events_t *e, const sim_rec_t *rec) {
-    events_locker_t *l = locker_in(e, rec, e->cfg.ev_locker_off);
+    int l = locker_in(e, rec, e->cfg.ev_locker_off);
     e->counts.doors++;
-    if (l == NULL) {
+    if (l < 0) {
         return;
     }
-    l->doors++;
-    if (l->assigned == 0U) {
+    e->lcount.doors[l]++;
+    if (e->lock_assigned[l] == 0U) {
         flag(e, EV_R_DOOR_NO_ASSIGN);
     }
-    if (l->doors > l->opens) {
+    if (e->lcount.doors[l] > e->lcount.opens[l]) {
         flag(e, EV_R_DOOR_NO_OPEN);
     }
 }
 
 static void on_chain_ev(events_t *e, const sim_rec_t *rec) {
     if (rec->a == e->cfg.ev_assigned) {
-        events_locker_t *l = locker_in(e, rec, e->cfg.ev_locker_off);
-        if (l != NULL) {
-            l->assigned = 1;
+        int l = locker_in(e, rec, e->cfg.ev_locker_off);
+        if (l >= 0) {
+            e->lock_assigned[l] = 1;
         }
     }
     if (rec->a == e->cfg.ev_door_opened) {
@@ -97,12 +96,9 @@ static void on_chain_ev(events_t *e, const sim_rec_t *rec) {
     }
 }
 
-/* ---- I1 ---- */
-
 static int corr_seen(const events_t *e, uint64_t corr) {
-    uint32_t n = e->ncorr < EV_CORRS ? e->ncorr : EV_CORRS;
-    for (uint32_t i = 0; i < n; i++) {
-        if (e->corrs[i] == corr) {
+    for (uint32_t i = 0; i < EV_CORRS; i++) {
+        if (e->corr_used[i] != 0U && e->corrs[i] == corr) {
             return 1;
         }
     }
@@ -110,13 +106,13 @@ static int corr_seen(const events_t *e, uint64_t corr) {
 }
 
 static void check_corr(events_t *e, const sim_rec_t *rec) {
-    uint64_t corr = 0;
+    uint64_t corr;
     e->open_corr_ok = 0;
     if (e->cfg.corr_len == 0U) {
         return;
     }
     if (!le_get(rec, e->cfg.corr_off, e->cfg.corr_len, &corr)) {
-        flag(e, EV_R_SHORT_PAYLOAD);
+        flag(e, EV_R_BAD_PAYLOAD);
         return;
     }
     e->open_corr = corr;
@@ -127,8 +123,9 @@ static void check_corr(events_t *e, const sim_rec_t *rec) {
     if (corr_seen(e, corr)) {
         flag(e, EV_R_CORR_REUSED);
     }
-    e->corrs[e->ncorr % EV_CORRS] = corr;
-    e->ncorr++;
+    e->corrs[e->corr_head] = corr;
+    e->corr_used[e->corr_head] = 1;
+    e->corr_head = (e->corr_head + 1U) % EV_CORRS;
 }
 
 static void on_open_effect(events_t *e, const sim_rec_t *rec) {
@@ -144,9 +141,12 @@ static void on_open_effect(events_t *e, const sim_rec_t *rec) {
     } else {
         e->credits--;
     }
-    e->payload_len = rec->len < EV_PAYLOAD_MAX ? rec->len : EV_PAYLOAD_MAX;
-    if (e->payload_len > 0U) {
-        memcpy(e->payload, rec->bytes, e->payload_len);
+    e->payload_len = 0;
+    if (rec->len > EV_PAYLOAD_MAX) {
+        flag(e, EV_R_BAD_PAYLOAD);
+    } else if (rec->bytes != NULL) {
+        memcpy(e->payload, rec->bytes, rec->len);
+        e->payload_len = rec->len;
     }
     e->inflight = 1;
     e->unhanded++;
@@ -156,9 +156,9 @@ static void on_open_effect(events_t *e, const sim_rec_t *rec) {
         e->flashes = 0;
     }
     if (e->cfg.has_chain != 0U) {
-        events_locker_t *l = locker_in(e, rec, e->cfg.fx_locker_off);
-        if (l != NULL) {
-            l->opens++;
+        int l = locker_in(e, rec, e->cfg.fx_locker_off);
+        if (l >= 0) {
+            e->lcount.opens[l]++;
         }
     }
 }
@@ -186,18 +186,16 @@ static void on_fx(events_t *e, const sim_rec_t *rec) {
 }
 
 static void on_result(events_t *e, const sim_rec_t *rec) {
-    uint64_t corr = 0;
+    uint64_t corr;
     if (e->inflight == 0U) {
         return; /* a stale result: no opening is waiting for it */
     }
-    if (e->cfg.corr_len != 0U) {
-        if (!le_get(rec, e->cfg.result_corr_off, e->cfg.corr_len, &corr)) {
-            flag(e, EV_R_SHORT_PAYLOAD);
-            return;
-        }
-        if (e->open_corr_ok != 0U && corr != e->open_corr) {
-            return; /* the result of an earlier opening */
-        }
+    if (!le_get(rec, e->cfg.result_corr_off, e->cfg.corr_len, &corr)) {
+        flag(e, EV_R_BAD_PAYLOAD);
+        return;
+    }
+    if (e->open_corr_ok != 0U && corr != e->open_corr) {
+        return; /* the result of an earlier opening */
     }
     e->inflight = 0;
     e->window = 0;
@@ -215,15 +213,13 @@ static void on_ev(events_t *e, const sim_rec_t *rec) {
     if (rec->a == e->cfg.ev_open_result) {
         on_result(e, rec);
     }
-    if (e->cfg.has_boot != 0U && rec->a == e->cfg.ev_boot) {
+    if (rec->a == e->cfg.ev_boot) {
         e->booted = 1;
     }
     if (e->cfg.has_chain != 0U) {
         on_chain_ev(e, rec);
     }
 }
-
-/* ---- I2 on the wire ---- */
 
 static int is_flash(const sim_rec_t *rec) {
     wire_req_t req;
@@ -264,8 +260,6 @@ static void on_fr(events_t *e, const sim_rec_t *rec) {
     check_durable(e);
 }
 
-/* ---- I9: the book's durable saves ---- */
-
 static int is_book_done(const events_t *e, const sim_rec_t *rec) {
     return e->cfg.io_book[0] != 0 && strlen(e->cfg.io_book) == rec->len &&
            memcmp(rec->bytes, e->cfg.io_book, rec->len) == 0 && EV_IO_KIND(rec->a) == e->cfg.io_done_kind &&
@@ -273,7 +267,7 @@ static int is_book_done(const events_t *e, const sim_rec_t *rec) {
 }
 
 static void on_io(events_t *e, const sim_rec_t *rec) {
-    uint64_t d = 0;
+    uint64_t d;
     if (!is_book_done(e, rec)) {
         return;
     }
@@ -288,8 +282,6 @@ static void on_io(events_t *e, const sim_rec_t *rec) {
     e->digest = d;
     e->digest_known = 1;
 }
-
-/* ---- I15 ---- */
 
 static void check_timers(events_t *e) {
     if (e->stuck_raised == 0U && e->cfg.limit_ms[e->phase] != 0U &&
@@ -329,11 +321,9 @@ static void on_phase(events_t *e, const sim_rec_t *rec) {
     }
 }
 
-/* ---- the audit file ---- */
-
 static void check_audit(events_t *e, int torn_ok, events_rule_t r_format, events_rule_t r_gap) {
     const uint8_t *bytes = NULL;
-    uint32_t len = 0;
+    uint32_t len;
     audit_scan_t scan;
     audit_result_t r;
     if (e->world.audit_read == NULL) {
@@ -356,7 +346,7 @@ static void check_audit(events_t *e, int torn_ok, events_rule_t r_format, events
 }
 
 static void check_crash_book(events_t *e) {
-    uint64_t d = 0;
+    uint64_t d;
     if (e->world.book_digest == NULL) {
         return;
     }
@@ -370,11 +360,12 @@ static void check_crash_book(events_t *e) {
     }
 }
 
-/* ---- the public engine ---- */
-
 static int cfg_ok(const events_cfg_t *c) {
     if (c->n_auth < 1U || c->n_auth > EV_MAX_AUTH || c->corr_len > 8U || c->flashes_per_open < 1U ||
         c->n_rows > EV_MAX_PHASE_ROWS || c->welcome_phase >= EV_MAX_PHASES) {
+        return 0;
+    }
+    if (c->corr_len == 0U && (c->corr_off != 0U || c->result_corr_off != 0U)) {
         return 0;
     }
     if (c->limit_ms[0] != 0U || memchr(c->io_book, 0, EV_NAME_MAX) == NULL) {
@@ -442,12 +433,8 @@ int events_power_cut(events_t *e, uint64_t t_ms) {
     e->window = 0;
     e->booted = 0;
     e->phase = 0;
-    e->stuck_raised = 0;
     e->recovering = 0;
-    for (uint32_t i = 0; i < e->nlockers; i++) {
-        e->lockers[i].opens = 0;
-        e->lockers[i].doors = 0;
-    }
+    memset(&e->lcount, 0, sizeof e->lcount);
     e->counts.power_cuts++;
     return 0;
 }
@@ -481,11 +468,11 @@ const events_finding_t *events_finding(const events_t *e, uint32_t index) {
 }
 
 int events_has_rule(const events_t *e, events_rule_t rule) {
-    return (unsigned)rule < 32U && (e->rules_seen & (1U << (unsigned)rule)) != 0U;
+    return (int)((e->rules_seen >> ((unsigned)rule & 31U)) & 1U);
 }
 
 int events_has_inv(const events_t *e, events_inv_t inv) {
-    return (unsigned)inv < 32U && (e->inv_seen & (1U << (unsigned)inv)) != 0U;
+    return (int)((e->inv_seen >> ((unsigned)inv & 31U)) & 1U);
 }
 
 uint32_t events_inv_mask(const events_t *e) {
@@ -496,6 +483,6 @@ uint32_t events_dropped(const events_t *e) {
     return e->dropped;
 }
 
-const events_counts_t *events_counts(const events_t *e) {
-    return &e->counts;
+events_counts_t events_counts(const events_t *e) {
+    return e->counts;
 }

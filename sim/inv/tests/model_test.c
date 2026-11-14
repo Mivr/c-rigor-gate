@@ -12,15 +12,15 @@ static void t_the_correct_kiosk_is_green_over_200_seeds(ctest_t *t) {
         CHECK_EQ_I64(t, model_run(&E, seed, MODEL_CORRECT, &out), 0);
         CHECK_EQ_U64(t, events_finding_count(&E), 0);
         CHECK_EQ_U64(t, events_inv_mask(&E), 0);
-        const events_counts_t *c = events_counts(&E);
-        CHECK_EQ_U64(t, c->opens, out.visits);
-        CHECK_EQ_U64(t, c->handovers, out.visits);
-        CHECK_EQ_U64(t, c->flashes, 2U * out.visits);
-        CHECK_EQ_U64(t, c->i2_checks, 2U * out.visits);
-        CHECK_EQ_U64(t, c->doors, out.visits);
-        CHECK_EQ_U64(t, c->durable_saves, out.visits);
-        CHECK_EQ_U64(t, c->power_cuts, out.cuts);
-        CHECK_EQ_U64(t, c->audit_lines, out.visits);
+        events_counts_t c = events_counts(&E);
+        CHECK_EQ_U64(t, c.opens, out.visits);
+        CHECK_EQ_U64(t, c.handovers, out.visits);
+        CHECK_EQ_U64(t, c.flashes, 2U * out.visits);
+        CHECK_EQ_U64(t, c.i2_checks, 2U * out.visits);
+        CHECK_EQ_U64(t, c.doors, out.visits);
+        CHECK_EQ_U64(t, c.durable_saves, out.visits);
+        CHECK_EQ_U64(t, c.power_cuts, out.cuts);
+        CHECK_EQ_U64(t, c.audit_lines, out.visits);
         cuts += out.cuts;
         visits += out.visits;
     }

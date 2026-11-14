@@ -9,7 +9,7 @@ static const char *const RULE_NAME[EV_R_COUNT] = {
     "no-authorisation",
     "open-overlap",
     "corr-reused",
-    "short-payload",
+    "bad-payload",
     "handover-without-effect",
     "pulse-without-open",
     "extra-pulse",
@@ -32,7 +32,7 @@ static const char *const RULE_NAME[EV_R_COUNT] = {
     "not-idle-at-end"};
 
 events_inv_t events_rule_inv(events_rule_t rule) {
-    return (unsigned)rule >= 1U && (unsigned)rule < (unsigned)EV_R_COUNT ? RULE_INV[rule] : (events_inv_t)0;
+    return (unsigned)rule < (unsigned)EV_R_COUNT ? RULE_INV[rule] : (events_inv_t)0;
 }
 
 const char *events_inv_name(events_inv_t inv) {

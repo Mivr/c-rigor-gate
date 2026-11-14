@@ -61,7 +61,7 @@ static void emit(model_t *m, const char *kind, uint64_t t_ms, uint32_t a, uint32
 }
 
 static uint32_t next_index(const model_t *m) {
-    return events_counts(m->e)->records;
+    return events_counts(m->e).records;
 }
 
 static void mark_bug(model_t *m) {

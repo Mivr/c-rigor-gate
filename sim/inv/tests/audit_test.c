@@ -61,6 +61,12 @@ static void t_a_line_must_be_an_object_with_a_seq(ctest_t *t) {
     CHECK_EQ_I64(t, scan("{\"seq\":-1}\n", 0, &o), AUDIT_FORMAT);
     CHECK_EQ_I64(t, scan("{\"seq\":", 1, &o), AUDIT_OK);
     CHECK_EQ_I64(t, scan("{\"seq\":1}\n\n", 0, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("\n", 1, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("\n\n", 1, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("{}", 1, &o), AUDIT_OK); /* torn, not a line */
+    CHECK_EQ_I64(t, scan("{\"seq\":1}\n}\n", 1, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("{\"seq\":1}\n{\n", 1, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("{\"seq\":1}\n{}\n", 1, &o), AUDIT_FORMAT);
     CHECK_EQ_U64(t, o.lines, 1);
 }
 
@@ -110,6 +116,7 @@ static void t_bad_arguments(ctest_t *t) {
     audit_scan_t o;
     CHECK_EQ_I64(t, audit_scan((const uint8_t *)"{\"seq\":1}\n", 10, 0, NULL), AUDIT_FORMAT);
     CHECK_EQ_I64(t, audit_scan(NULL, 5, 0, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, audit_scan(NULL, 1, 1, &o), AUDIT_FORMAT);
     CHECK_EQ_U64(t, o.lines, 0);
 }
 
