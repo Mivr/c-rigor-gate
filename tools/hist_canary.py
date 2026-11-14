@@ -404,6 +404,8 @@ def command_show(args, ctx):
 
 
 def command_make(args, ctx):
+    if args.context < 1:   # git apply refuses a patch without context unless told --unidiff-zero
+        raise HistError("--context must be at least 1")
     errors = ctx.check_commits()
     if errors:
         print("refused: " + "; ".join(errors), file=sys.stderr)

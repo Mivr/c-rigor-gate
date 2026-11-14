@@ -311,6 +311,10 @@ selftests = []
 [[rule]]
 glob = "tools/backlog_fold.py"
 selftests = []
+# The historical canary tool (T2G8): its provenance checks are what the canary pack runs.
+[[rule]]
+glob = "tools/hist_canary.py"
+selftests = ["canaries"]
 [[rule]]
 glob = "tools/validate.sh"
 selftests = []
