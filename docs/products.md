@@ -72,7 +72,7 @@ the `c_android_so`'s own sources. Example: `examples/android`. Self-test: `selft
 `gate/tests/test_elf_check.py`, `gate/tests/test_grade_android.py`.
 
 ## `c_apk`: a signed APK of one `c_android_so` (T-G3)
-`c_apk(name, so, package, label, version_code, version_name, orientation, permissions, assets, java_srcs, java_classes, res_xml, application_class, receivers, launch_mode, lock_task_mode, exclude_from_recents, soft_input_mode, categories, visibility)` packages the
+`c_apk(name, so, package, label, version_code, version_name, orientation, permissions, assets, java_srcs, java_classes, java_packages, res_xml, application_class, receivers, launch_mode, lock_task_mode, exclude_from_recents, soft_input_mode, categories, visibility)` packages the
 checked output of ONE `c_android_so` of the same BUCK file (`so = ":club"`; never its `__lib`, `buckfiles` refuses any `__`
 or foreign label) into `<name>.apk`, and defines `<name>_check`. Android mode only. No other keyword exists: no `deps`, no
 `srcs`, no flag, no manifest file or manifest XML, no javac or d8 option, no annotation processor, no SDK level, no signing
@@ -93,6 +93,14 @@ The shared object must export exactly `ANativeActivity_onCreate`.
 - `java_srcs`: plain `.java` file names of the BUCK package (a path such as `sub/X.java` or `../x/X.java` is refused). `java_classes`:
   the binary names (`org.example.club.A`, nested `org.example.club.A$B`) the dex must define, inside `package`; non-empty exactly
   when `java_srcs` is. Lambdas and other d8 synthetics would appear as classes of their own and must be declared too.
+- `java_packages`: the Java packages the dex may define classes in; explicit dotted lower-case names (at least two parts, no wildcard),
+  default `[package]` (giving the list replaces the default, so list the app package too). Every `java_classes` entry, `application_class`
+  and receiver name must lie directly in one listed package (a sub-package is a different package and must be listed), and
+  `apk_java.py` reads the `package` line of every `java_srcs` file and refuses one that is missing or not listed. Never allowed, as
+  an entry or a prefix: `java`, `javax`, `android`, `androidx`, `dalvik`, `kotlin`, `com.android`. Use: a component whose name is fixed
+  by an already provisioned device (the lockers' `org.simple.club.deviceowner.ClubDeviceAdminReceiver` in the app package
+  `org.simple.club.lockers`) is listed as its own package, not by allowing "the parent package". The dex check still demands exactly
+  `java_classes`. Example: `examples/android:app_pkg`.
 - `res_xml`: plain `[a-z][a-z0-9_]*.xml` names, compiled by aapt2 into `res/xml/<name>.xml`.
 - `application_class`: one of `java_classes` (the manifest's `android:name` of `<application>`).
 - `receivers`: list (at most 8) of dicts with `name` (one of `java_classes`), `permission` (`""` or `BIND_DEVICE_ADMIN`), `exported`

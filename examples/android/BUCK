@@ -63,3 +63,20 @@ c_apk(
     categories = ["HOME", "DEFAULT"],
     visibility = ["PUBLIC"],    # the self-test (selftest/android.sh) breaks this APK in a scratch package
 )
+
+# A class outside the app package, allowed only because `java_packages` lists its package (T-G3b follow-up): the dex must
+# define exactly `java_classes`, and the receiver may sit in any listed package.
+c_apk(
+    name = "app_pkg",
+    so = ":club",
+    package = "org.example.club",
+    label = "Club package example",
+    version_code = 1,
+    version_name = "0.1.0",
+    permissions = ["RECEIVE_BOOT_COMPLETED"],
+    java_srcs = ["Owner.java"],
+    java_packages = ["org.example.club", "org.example.owner"],
+    java_classes = ["org.example.owner.Owner"],
+    receivers = [{"name": "org.example.owner.Owner", "exported": True, "actions": ["BOOT_COMPLETED"]}],
+    visibility = ["PUBLIC"],
+)

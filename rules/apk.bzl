@@ -41,6 +41,7 @@ def _apk_impl(ctx: AnalysisContext) -> list[Provider]:
         },
         "application_class": ctx.attrs.application_class,
         "java_classes": ctx.attrs.java_classes,
+        "java_packages": ctx.attrs.java_packages,
         "label": ctx.attrs.label,
         "orientation": ctx.attrs.orientation,
         "package": ctx.attrs.package,
@@ -79,10 +80,14 @@ def _apk_impl(ctx: AnalysisContext) -> list[Provider]:
     dex = None
     if ctx.attrs.java_srcs:
         dex = ctx.actions.declare_output("classes.dex")
+        packages = cmd_args()
+        for package in ctx.attrs.java_packages:
+            packages.add("--package", package)
         ctx.actions.run(
             cmd_args(
                 _PY,
                 ctx.attrs._java,
+                packages,
                 "--javac", _as_command(ctx.attrs._javac[RunInfo]),
                 "--d8", _as_command(ctx.attrs._d8[RunInfo]),
                 "--android-jar", android_jar,
@@ -144,6 +149,7 @@ apk = rule(
         "categories": attrs.list(attrs.string(), default = []),
         "exclude_from_recents": attrs.bool(default = False),
         "java_classes": attrs.list(attrs.string(), default = []),
+        "java_packages": attrs.list(attrs.string(), default = []),
         "java_srcs": attrs.list(attrs.source(), default = []),
         "label": attrs.string(),
         "launch_mode": attrs.string(default = ""),

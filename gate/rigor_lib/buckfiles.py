@@ -47,7 +47,7 @@ EMBED_KEYWORDS = ("name", "visibility", "src", "symbol", "max_bytes", "nul")
 # strings and whose values are a string, a True/False, a list of strings or a dict of strings. Never XML: the macro checks every word.
 APK_MACRO = "c_apk"
 APK_KEYWORDS = ("name", "visibility", "so", "package", "label", "version_code", "version_name", "orientation", "permissions", "assets",
-                "java_srcs", "java_classes", "res_xml", "application_class", "receivers", "launch_mode", "lock_task_mode",
+                "java_srcs", "java_classes", "java_packages", "res_xml", "application_class", "receivers", "launch_mode", "lock_task_mode",
                 "exclude_from_recents", "soft_input_mode", "categories")
 APK_STRINGS = ("application_class", "launch_mode", "lock_task_mode", "soft_input_mode")
 APK_SO_LABEL = re.compile(r":[A-Za-z0-9.+-][A-Za-z0-9_.+-]*")

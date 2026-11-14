@@ -1,6 +1,6 @@
 """javac, then d8: the Java sources of a `c_apk` become its classes.dex (stdlib only; runs in the `apk` action on RE).
 
-    apk_java.py --javac CMD --d8 CMD --android-jar JAR --min-api N --out classes.dex SRC.java...
+    apk_java.py --javac CMD --d8 CMD --android-jar JAR --min-api N [--package P]... --out classes.dex SRC.java...
 
 javac is the pinned JDK's, run as `java -m jdk.compiler/com.sun.tools.javac.Main` (toolchains//:javac). The sources are
 compiled against the platform android.jar as the boot class path, as Java 8 source and class files (the language level of minSdk
@@ -12,6 +12,7 @@ and nothing is read from the environment.
 """
 
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -27,6 +28,22 @@ def run(command, *args):
     if done.returncode != 0:
         sys.exit("apk_java: %s failed (exit %d):\n%s" % (command.split()[-1], done.returncode, text[-3000:]))
     return text
+
+
+_PACKAGE_LINE = re.compile(r"^\s*package\s+([A-Za-z_][A-Za-z0-9_.]*)\s*;", re.M)
+
+
+def package_problems(sources, packages):
+    """Every source must have a `package` line naming one of the listed `--package`s (no default package, no unlisted one)."""
+    found = []
+    for path in sources:
+        with open(path, encoding="utf-8") as handle:
+            match = _PACKAGE_LINE.search(handle.read())
+        if not match:
+            found.append("%s has no package line" % path)
+        elif match.group(1) not in packages:
+            found.append("%s is in the package %s, which is not in java_packages (%s)" % (path, match.group(1), ", ".join(packages)))
+    return found
 
 
 def compile_sources(javac, android_jar, sources, classes):
@@ -63,17 +80,22 @@ def build(javac, d8, android_jar, min_api, sources, scratch, skip=()):
 
 
 def main(argv):
-    opts, sources, args = {}, [], list(argv[1:])
+    opts, sources, packages, args = {}, [], [], list(argv[1:])
     while args:
         arg = args.pop(0)
-        if arg.startswith("--") and arg[2:] in KEYS and args:
+        if arg == "--package" and args:
+            packages.append(args.pop(0))
+        elif arg.startswith("--") and arg[2:] in KEYS and args:
             opts[arg[2:]] = args.pop(0)
         elif not arg.startswith("-") and arg.endswith(".java"):
             sources.append(arg)
         else:
             sys.exit(__doc__)
-    if sorted(opts) != sorted(KEYS) or not sources:
+    if sorted(opts) != sorted(KEYS) or not sources or not packages:
         sys.exit(__doc__)
+    problems = package_problems(sources, packages)
+    if problems:
+        sys.exit("apk_java: " + "; ".join(problems))
     with tempfile.TemporaryDirectory() as scratch:
         produced = build(opts["javac"], opts["d8"], opts["android-jar"], opts["min-api"], sources, scratch)
         with open(produced, "rb") as handle, open(opts["out"], "wb") as target:

@@ -253,6 +253,20 @@ for want in "extra_class refused" "missing_class refused" "corrupt_dex refused" 
 cat "$lab"
 rm -rf "$scratch"
 
+begin "a class in a Java package that is not listed is refused for that single reason; a listed second package builds"
+must_pass build --target-platforms $AND //examples/android:app_pkg //examples/android:app_pkg_check
+echo "  examples/android:app_pkg (java_packages lists org.example.owner) builds and passes its check"
+mkdir -p "$scratch"
+printf '#include <stddef.h>\nvoid ANativeActivity_onCreate(void *a, void *b, size_t c) { (void)a; (void)b; (void)c; }\n' > "$scratch/a.c"
+printf 'package org.example.owner;\n\npublic final class Owner {\n}\n' > "$scratch/Owner.java"
+printf 'load("@gate//rules:c.bzl", "c_android_so", "c_apk")\nc_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\nc_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, version_name = "1", java_srcs = ["Owner.java"], java_classes = ["org.example.owner.Owner"])\n' > "$scratch/BUCK"
+must_fail_with "c_apk app: .java_classes. must be a class directly in one of the .java_packages. \[.org.example.club.\]" build --target-platforms $AND //selftest/scratch_android:app
+echo "  java_classes outside the listed packages: refused at analysis"
+printf 'load("@gate//rules:c.bzl", "c_android_so", "c_apk")\nc_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\nc_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, version_name = "1", java_srcs = ["Owner.java"], java_classes = ["org.example.club.Owner"])\n' > "$scratch/BUCK"
+must_fail_with "Owner.java is in the package org.example.owner, which is not in java_packages" build --target-platforms $AND //selftest/scratch_android:app
+echo "  a source whose package line is not listed: refused by the build action"
+rm -rf "$scratch"
+
 begin "javac runs with -Werror: a Java source with an unchecked warning fails the APK build"
 mkdir -p "$scratch"
 cat > "$scratch/BUCK" <<'BUCK'
@@ -306,6 +320,15 @@ java_classes|["org.example.club.X"]|c_apk app: `java_classes` must list the clas
 res_xml|["x/a.xml"]|c_apk app: `java_srcs` and `res_xml` entries must be plain file names of this package
 res_xml|["A.xml"]|c_apk app: `res_xml` names must be lower-case
 application_class|"org.example.club.X"|c_apk app: `application_class`
+java_packages|["org.example.*"]|c_apk app: `java_packages`
+java_packages|["java.util"]|`java_packages` entry .java.util. is a platform or runtime package
+java_packages|["javax.x"]|`java_packages` entry .javax.x. is a platform or runtime package
+java_packages|["android.app"]|`java_packages` entry .android.app. is a platform or runtime package
+java_packages|["androidx.core"]|`java_packages` entry .androidx.core. is a platform or runtime package
+java_packages|["dalvik.system"]|`java_packages` entry .dalvik.system. is a platform or runtime package
+java_packages|["kotlin.io"]|`java_packages` entry .kotlin.io. is a platform or runtime package
+java_packages|["com.android.x"]|`java_packages` entry .com.android.x. is a platform or runtime package
+java_packages|["org"]|`java_packages` entry .org. must be a dotted
 receivers|[{"name": "org.example.club.X"}]|c_apk app: the receiver
 receivers|[{"name": "org.example.club.X", "raw": "<a/>"}]|c_apk app: a receiver is a dict
 launch_mode|"fast"|c_apk app: `launch_mode`

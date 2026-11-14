@@ -583,13 +583,31 @@ def _apk_closed(name, what, value, allowed):
     if type(value) != "string" or value not in allowed:
         fail("c_apk {}: `{}` must be one of {}, got {!r}".format(name, what, allowed, value))
 
-def _apk_class(name, what, value, package):
-    ok = type(value) == "string" and value.startswith(package + ".") and len(value) > len(package) + 1 and len(value) <= 200
+_APK_FORBIDDEN_PACKAGES = ["java", "javax", "android", "androidx", "dalvik", "kotlin", "com.android"]
+
+def _apk_packages(name, java_packages, package):
+    """The listed Java packages (default: the app package): explicit, valid, never a platform or runtime package."""
+    if type(java_packages) != "list" or len(set(java_packages)) != len(java_packages):
+        fail("c_apk {}: `java_packages` must be a list without repeats, got {!r}".format(name, java_packages))
+    if not java_packages:
+        return [package]
+    for entry in java_packages:
+        _apk_text(name, "java_packages", entry, _APK_PACKAGE, "abcdefghijklmnopqrstuvwxyz", 120)
+        for forbidden in _APK_FORBIDDEN_PACKAGES:
+            if entry == forbidden or entry.startswith(forbidden + "."):
+                fail("c_apk {}: `java_packages` entry {!r} is a platform or runtime package ({})".format(name, entry, ", ".join(_APK_FORBIDDEN_PACKAGES)))
+        parts = entry.split(".")
+        if len(parts) < 2 or [p for p in parts if not p or p[0] not in "abcdefghijklmnopqrstuvwxyz"]:
+            fail("c_apk {}: `java_packages` entry {!r} must be a dotted lower-case package name with at least two parts".format(name, entry))
+    return java_packages
+
+def _apk_class(name, what, value, packages):
+    ok = type(value) == "string" and len(value) <= 200 and "." in value and value.rpartition(".")[0] in packages and len(value.rpartition(".")[2]) > 0
     if ok:
         for char in value.elems():
             ok = ok and char in _APK_CLASS_CHARS
     if not ok:
-        fail("c_apk {}: `{}` must be a class name inside the package {} ([A-Za-z0-9_.$] only), got {!r}".format(name, what, package, value))
+        fail("c_apk {}: `{}` must be a class directly in one of the `java_packages` {} ([A-Za-z0-9_.$] only), got {!r}".format(name, what, packages, value))
 
 def _apk_receivers(name, receivers, package, classes, res_names):
     """The receivers as complete dicts (every key present), each checked against the closed vocabularies."""
@@ -628,6 +646,7 @@ def c_apk(
         assets = [],
         java_srcs = [],
         java_classes = [],
+        java_packages = [],
         res_xml = [],
         application_class = "",
         receivers = [],
@@ -650,7 +669,9 @@ def c_apk(
 
     Java (T-G3b), all plain data: `java_srcs` are `.java` files of this package (no path), compiled with the pinned javac
     against android.jar (-Werror, no processors) and dexed by the pinned d8 into classes.dex (`hasCode="true"`); `java_classes`
-    lists every class the dex must define (binary names inside `package`, nested ones as `A$B`), no more, no fewer.
+    lists every class the dex must define (binary names, nested ones as `A$B`), no more, no fewer. `java_packages` lists the
+    Java packages those classes (and the `package` line of every `java_srcs` file, the receivers and `application_class`) may lie
+    in: explicit names, default `[package]`, never `java`, `javax`, `android`, `androidx`, `dalvik`, `kotlin`, `com.android`.
     `res_xml` are `.xml` files of this package compiled by aapt2 into `res/xml/`. `application_class` and the `receivers`
     (dicts: `name` from `java_classes`, `permission` BIND_DEVICE_ADMIN, `exported`, `actions` from DEVICE_ADMIN_ENABLED and
     BOOT_COMPLETED, `meta_data` {"android.app.device_admin": <res_xml name without .xml>}) are manifest declarations, as are
@@ -681,10 +702,11 @@ def c_apk(
         fail("c_apk {}: `java_srcs` and `res_xml` must not repeat a file".format(name))
     if type(java_classes) != "list" or bool(java_classes) != bool(java_srcs) or len(set(java_classes)) != len(java_classes):
         fail("c_apk {}: `java_classes` must list the classes of `java_srcs` without repeats, and be empty exactly when `java_srcs` is, got {!r}".format(name, java_classes))
+    packages = _apk_packages(name, java_packages, package)
     for cls in java_classes:
-        _apk_class(name, "java_classes", cls, package)
+        _apk_class(name, "java_classes", cls, packages)
     if application_class != "":
-        _apk_class(name, "application_class", application_class, package)
+        _apk_class(name, "application_class", application_class, packages)
         if application_class not in java_classes:
             fail("c_apk {}: `application_class` {!r} must be one of `java_classes`".format(name, application_class))
     if type(res_xml) == "list" and [r for r in res_xml if len(r) > 44 or not r[0] in _APK_CLASS_FIRST or [c for c in r[:-4].elems() if c not in "abcdefghijklmnopqrstuvwxyz0123456789_"]]:
@@ -711,6 +733,7 @@ def c_apk(
         asset_names = assets,
         java_srcs = java_srcs,
         java_classes = java_classes,
+        java_packages = packages,
         res_xml = res_xml,
         res_xml_names = res_xml,
         application_class = application_class,
