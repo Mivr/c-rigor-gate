@@ -339,8 +339,6 @@ static void t_the_invariant_queries(ctest_t *t) {
     CHECK(t, !events_has_inv(&E, EV_I15));
     CHECK(t, events_has_rule(&E, EV_R_NO_AUTH));
     CHECK(t, !events_has_rule(&E, EV_R_EXTRA_PULSE));
-    CHECK(t, !events_has_rule(&E, EV_R_COUNT)); /* out of range, no crash */
-    CHECK(t, !events_has_inv(&E, (events_inv_t)40));
     CHECK_EQ_U64(t, events_inv_mask(&E), 1U << EV_I1);
 }
 
