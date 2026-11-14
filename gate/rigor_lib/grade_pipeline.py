@@ -8,7 +8,7 @@ remaining steps do not run. Every gate that compiles is wrapped in `needs_toolch
 after the `toolchain` gate passed (grade_toolchain), otherwise it is NOT_RUN.
 """
 
-from rigor_lib import grade_build, grade_checks, grade_decoupling, grade_fuzz, grade_mutants, grade_sanmodes, grade_sim, grade_steps
+from rigor_lib import grade_build, grade_checks, grade_decoupling, grade_fuzz, grade_mutants, grade_oracle, grade_sanmodes, grade_sim, grade_steps
 from rigor_lib import grade_structure
 from rigor_lib import grade_toolchain, grade_witness, perf_gate
 from rigor_lib.errors import InternalError
@@ -25,7 +25,7 @@ def _compiling(gate_id, step):
 FOUNDATION = ("clone", "assemble", "toolchain", "buckfiles")
 NEEDS_BUILT = ("build", "tests-release", "tests-san")
 _BUILT_USERS = frozenset(NEEDS_BUILT + ("structure", "mode-divergence", "tests-msan", "tests-tsan", "tests-stub", "fuzz", "sim",
-                                        "perf", "mutants", "witness-tests", "mutants-witness"))
+                                        "oracle", "perf", "mutants", "witness-tests", "mutants-witness"))
 _WITNESS = frozenset(("witness-tests", "mutants-witness"))
 
 
@@ -67,6 +67,9 @@ GATES = (
     _compiling("fuzz", grade_fuzz.fuzz_gate_step),
     # `sim` builds in the san and release platforms, after `build` and both test gates passed (grade_sim.REQUIRED).
     _compiling("sim", grade_sim.sim_gate_step),
+    # `oracle` replays the hidden Rust traces with the product's replayer built in the san platform, after `build` and both test
+    # gates passed (grade_oracle.REQUIRED).
+    _compiling("oracle", grade_oracle.oracle_gate_step),
     # `perf` builds, but only after `build` and both test gates passed (perf_gate.REQUIRED), which already need the toolchain.
     ("perf", perf_gate.perf_gate),
     _compiling("mutants", grade_mutants.mutants_gate),

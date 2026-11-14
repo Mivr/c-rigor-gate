@@ -23,6 +23,7 @@
     "perf",
     "fuzz",
     "sim",
+    "oracle",
     "mutants",
     "witness-tests",
     "mutants-witness"

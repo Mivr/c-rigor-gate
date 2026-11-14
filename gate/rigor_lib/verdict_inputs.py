@@ -12,7 +12,7 @@ import os
 import re
 import stat
 
-from rigor_lib import approval_args, approvals, grade_context, grade_policy, grade_tier, jsonio, perf_bundle, sim_policy, witness_bundle
+from rigor_lib import approval_args, approvals, grade_context, grade_policy, grade_tier, jsonio, oracle_bundle, perf_bundle, sim_policy, witness_bundle
 from rigor_lib.errors import InternalError
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
@@ -27,24 +27,28 @@ TASK_NAME = "TASK.toml"
 APPROVALS_NAME = "approvals"
 WITNESS_NAME = "witness"
 PERF_NAME = "perf"
+ORACLE_NAME = "oracle"
 # Files beside product.toml that the grade reads; the name is kept so path arithmetic still works.
 PRODUCT_FILES = ("product.toml", "policy.toml", "expected-tests.json", "expected-tests.previous.json",
                  "ram-budget.toml", "architecture.toml", "fuzz-regressions.json", "decoupling.toml",
-                 "decoupling-baseline.toml", "sim.toml", "sim-regressions.json", "sim-salt.public")
+                 "decoupling-baseline.toml", "sim.toml", "sim-regressions.json", "sim-salt.public",
+                 "oracle-policy.toml", "oracle-normalise.toml", "oracle-excluded.toml")
 SIM_SALT_NAME = "sim-salt"   # the snapshot of the salt the sim gate builds with (grade_sim.SALT_NAME)
 
 SHA_KEYS = ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
             "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
             "order_sha256", "buckconfig_sha256", "toolchain_buck_sha256", "llvm_sha256",
             "sysroot_sha256", "buck2_sha256", "witness_sha256", "perf_sha256",
-            "fuzz_regressions_sha256", "sim_spec_sha256", "sim_regressions_sha256", "sim_salt_id", "sim_seed_digest")
+            "fuzz_regressions_sha256", "sim_spec_sha256", "sim_regressions_sha256", "sim_salt_id", "sim_seed_digest", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
+            "oracle_excluded_sha256")
 COMMIT_KEYS = ("gate_sha", "head", "base", "merge_base")
 INPUT_KEYS = frozenset(SHA_KEYS + COMMIT_KEYS + ("gate_clean", "product", "uncached", "tier"))
 # Absent on purpose in many grades: no approvals bundle, no previous expected-tests file, no witness, no perf bundle,
-# no fuzz regression list, and nothing of the simulation (no sim.toml, no regressions, no salt, no `c_sim` run).
+# no fuzz regression list, and nothing of the simulation (no sim.toml, no regressions, no salt, no `c_sim` run) and nothing of the oracle (no bundle, no policy, no table, no exclusions).
 OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256", "ram_budget_sha256", "witness_sha256",
                            "perf_sha256", "fuzz_regressions_sha256", "sim_spec_sha256", "sim_regressions_sha256",
-                           "sim_salt_id", "sim_seed_digest"})
+                           "sim_salt_id", "sim_seed_digest", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
+                           "oracle_excluded_sha256"})
 
 
 # ---------------------------------------------------------------- snapshot (read once, use the copy)
@@ -143,6 +147,9 @@ def snapshot_inputs(args, work):
     hashes["fuzz_regressions_sha256"] = copies["fuzz-regressions.json"]
     hashes["sim_spec_sha256"] = copies["sim.toml"]
     hashes["sim_regressions_sha256"] = copies["sim-regressions.json"]
+    hashes["oracle_policy_sha256"] = copies["oracle-policy.toml"]
+    hashes["oracle_normalise_sha256"] = copies["oracle-normalise.toml"]
+    hashes["oracle_excluded_sha256"] = copies["oracle-excluded.toml"]
     hashes["sim_salt_id"] = snapshot_sim_salt(getattr(args, "sim_salt", None),
                                               os.path.join(base, "product", "sim-salt.public"),
                                               os.path.join(base, SIM_SALT_NAME))
@@ -246,6 +253,24 @@ def snapshot_perf(source, destination, product_name, levels):
     bundle = perf_bundle.load(destination)
     perf_bundle.check(bundle, product_name, levels)
     return bundle, perf_bundle.digest(bundle)
+
+
+def snapshot_oracle(source, destination, product_name):
+    """The oracle_sha256 of the `--oracle` bundle, or None without one (T2G7, P330 §3.3).
+
+    Bound like the witness bundle: copied once, the copy loaded once and checked against the product name, and that one load
+    is what is hashed; the `oracle` gate loads the same copy again (and refuses it if the hash differs). The bundle is the
+    hidden half of the replay, so only this hash ever enters a verdict. Every defect is an InternalError (exit 2, before `clone`).
+    """
+    if source is None:
+        return None
+    try:
+        _copy_bundle_tree(source, destination, "oracle bundle")
+    except OSError as exc:
+        raise InternalError("oracle bundle: cannot copy %s: %s" % (source, exc)) from exc
+    bundle = oracle_bundle.load(destination)
+    oracle_bundle.check(bundle, product_name)
+    return oracle_bundle.digest(bundle)
 
 
 # ---------------------------------------------------------------- facts from the grade itself
@@ -385,6 +410,11 @@ def check_verdict(data, signature_path, allowed_signers, expect, require_uncache
         problems.append("witness_sha256 is null (graded without --witness), expected %s" % wanted)
     elif wanted is not None and inputs["witness_sha256"] != wanted:
         problems.append("witness_sha256 is %s, expected %s" % (inputs["witness_sha256"], wanted))
+    wanted = expect.get("oracle_sha")
+    if wanted is not None and inputs["oracle_sha256"] is None:
+        problems.append("oracle_sha256 is null (graded without --oracle), expected %s" % wanted)
+    elif wanted is not None and inputs["oracle_sha256"] != wanted:
+        problems.append("oracle_sha256 is %s, expected %s" % (inputs["oracle_sha256"], wanted))
     wanted = expect.get("perf_sha")
     if wanted == NO_PERF and inputs["perf_sha256"] is not None:
         problems.append("perf_sha256 is %s, expected none (graded without --perf)" % inputs["perf_sha256"])
@@ -421,7 +451,7 @@ def run_verify(args):
     signature = args.signature or args.verdict + ".sig"
     expect = {"head": args.expect_head, "gate": args.expect_gate,
               "policy_sha": args.expect_policy_sha, "witness_sha": args.expect_witness_sha,
-              "perf_sha": args.expect_perf_sha, "sim_salt_id": args.expect_sim_salt_id,
+              "perf_sha": args.expect_perf_sha, "oracle_sha": args.expect_oracle_sha, "sim_salt_id": args.expect_sim_salt_id,
               "sim_spec_sha": args.expect_sim_spec_sha}
     problems = check_verdict(data, signature, args.allowed_signers, expect, args.require_uncached,
                              args.require_tier)
@@ -451,6 +481,9 @@ def add_verify_parser(subparsers):
     parser.add_argument("--expect-witness-sha",
                         help="witness_sha256 of the witness bundle it must have been graded with; "
                              "a verdict graded without --witness is rejected")
+    parser.add_argument("--expect-oracle-sha",
+                        help="oracle_sha256 of the oracle bundle it must have been graded with; "
+                             "a verdict graded without --oracle is rejected")
     parser.add_argument("--expect-perf-sha",
                         help="perf_sha256 of the perf bundle it must have been graded with, or `none` for a "
                              "grade without --perf; a verdict graded without --perf is rejected for a sha")

@@ -22,7 +22,8 @@ FILE_HASHES = {key: jsonio.sha256_hex(key.encode()) for key in
                ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
                 "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
                 "order_sha256", "witness_sha256", "perf_sha256", "fuzz_regressions_sha256", "sim_spec_sha256",
-                "sim_regressions_sha256", "sim_salt_id")}
+                "sim_regressions_sha256", "sim_salt_id", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
+                "oracle_excluded_sha256")}
 WITNESS_FIXTURE = GATE_DIR / "tests" / "fixtures" / "witness" / "good"
 
 

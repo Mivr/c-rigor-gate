@@ -14,7 +14,7 @@ from tests.helpers import GATE_DIR, TempDirTestCase
 
 # The gates that compile or link: none of them may run unless `toolchain` passed.
 COMPILING = ["semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "tests-msan",
-             "tests-tsan", "fuzz", "sim", "mutants", "witness-tests", "mutants-witness"]
+             "tests-tsan", "fuzz", "sim", "oracle", "mutants", "witness-tests", "mutants-witness"]
 
 # What buck2 (exit 3) printed when the verify action of the llvm tree failed in the T073 demonstration
 # (one sha256 of a scratch copy of llvm.manifest flipped), shortened.

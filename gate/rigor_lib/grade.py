@@ -68,7 +68,7 @@ def discard(path):
 
 
 def absolute_arguments(args):
-    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "sim_salt", "sign_key", "work",
+    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "oracle", "sim_salt", "sign_key", "work",
                  "verdict_out"):
         value = getattr(args, name, None)
         if value is not None:
@@ -101,6 +101,13 @@ def start_grading(args):
             handle.write(order_bytes)
         inputs["order_sha256"] = jsonio.sha256_hex(order_bytes)
     product = product_layout.load_product(args.product)
+    # T2G7: the oracle bundle (the hidden half of the replay) is copied and bound like the witness; `args.oracle` then names the
+    # copy, which the `oracle` gate loads again. Only its hash enters the verdict.
+    oracle_source = getattr(args, "oracle", None)
+    if oracle_source is not None:
+        args.oracle = os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.ORACLE_NAME)
+    inputs["oracle_sha256"] = verdict_inputs.snapshot_oracle(oracle_source, getattr(args, "oracle", None),
+                                                             product.name)
     perf_source = getattr(args, "perf", None)  # callers that build args by hand may omit it
     levels = {}
     if perf_source is not None:  # the snapshot of the policy, like every other reader
@@ -188,6 +195,9 @@ def add_parser(subparsers):
     parser.add_argument("--perf", metavar="DIR",
                         help="perf bundle (docs/perf.md); snapshotted into <work>/inputs/perf and bound as "
                              "perf_sha256 (null without it); loaded and checked, no gate judges it yet")
+    parser.add_argument("--oracle", metavar="DIR",
+                        help="oracle bundle (docs/oracle.md): the hidden Rust traces the `oracle` gate replays; snapshotted into "
+                             "<work>/inputs/oracle and bound as oracle_sha256 (null without it)")
     parser.add_argument("--sim-salt", metavar="FILE",
                         help="the salt of the simulation seeds (lowercase hex; docs/sim.md): the grader's hidden one. Only "
                              "its sha256 enters the verdict (inputs.sim_salt_id); without it the product's "

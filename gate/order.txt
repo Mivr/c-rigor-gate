@@ -18,6 +18,7 @@ tests-tsan
 tests-stub
 fuzz
 sim
+oracle
 perf
 mutants
 witness-tests
