@@ -1653,6 +1653,14 @@ exports = ["main"]
 allow = ["memcpy", "memset", "snprintf"]
 exports = ["main"]
 
+[module."//apps/lockers/lkapp/runtime:net_stamp_test"]
+allow = ["memcpy", "memset", "snprintf"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:net_304_test"]
+allow = ["memcpy", "memset", "snprintf"]
+exports = ["main"]
+
 [module."//apps/lockers/lkapp/runtime:opener_test"]
 allow = ["memcpy", "memmove", "memset"]
 exports = ["main"]
