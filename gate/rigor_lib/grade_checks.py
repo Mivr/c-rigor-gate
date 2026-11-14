@@ -20,9 +20,14 @@ from rigor_lib import paths, product_layout
 from rigor_lib.findings import SEVERITY_INFO, GateResult, finding
 
 FACTS_KIND = "c_facts"
+ANDROID_FACTS_KIND = "c_android_facts"   # the facts of every c_android_so (T-G2), built in the android mode
+ANDROID_SO_KIND = "android_so"           # the rule the c_android_so macro makes its output with
+ANDROID_APK_CHECK_KIND = "apk_check"     # the rule of every c_apk's `<name>_check` (T-G3)
 CTEST_FACTS = "gate//ctest:ctest_facts"
 LIBC_TARGET = "toolchains//:libc_symbols"
+LIBC_ANDROID_TARGET = "toolchains//:libc_symbols_android"
 PLATFORM = "toolchains//:linux_release"
+ANDROID_PLATFORM = "toolchains//:android_release"
 
 
 @dataclass(frozen=True)
@@ -30,6 +35,7 @@ class FactsBuild:
     directory: str   # one *.json per facts target
     libc: str        # the libc export list
     metadata: dict
+    libc_android: str = None   # the NDK's export list, read for the facts of a c_android_so; None: the product has none
 
 
 def _display(text):
@@ -65,10 +71,9 @@ def buckfiles_gate(g):
     return GateResult(buckfiles.GATE_ID, found, {"files": len(g.product_paths)})
 
 
-def _copy_outputs(g, labels, results, directory):
-    """Copy the artifact of every label; returns the labels that did not build, or None if all did."""
-    bad = []
-    paths = {}
+def _artifacts(g, labels, results):
+    """({label: artifact path}, [labels that did not build])."""
+    bad, found = [], {}
     for label in labels:
         entry = results.get(label)
         path = None
@@ -76,13 +81,15 @@ def _copy_outputs(g, labels, results, directory):
             path = grade_build.output_path(g.tree, label, entry)
         if path is None:
             bad.append(label)
-        paths[label] = path
-    if bad:
-        return bad
-    os.makedirs(directory)
-    for index, label in enumerate(labels[:-1]):  # the last label is the libc list
-        shutil.copyfile(paths[label], os.path.join(directory, "%03d.json" % index))
-    return []
+        found[label] = path
+    return found, bad
+
+
+def _copy_facts(found, labels, directory, start):
+    """Copy the artifact of every label to `directory` as <start + index>.json."""
+    os.makedirs(directory, exist_ok=True)
+    for index, label in enumerate(labels):
+        shutil.copyfile(found[label], os.path.join(directory, "%03d.json" % (start + index)))
 
 
 def build_facts(g):
@@ -102,23 +109,73 @@ def _build_facts(g):
     labels = sorted(line.strip() for line in out.splitlines() if line.strip())
     # B12: the facts of every gate-owned library a product may use (`<label>_symbols`), trusted by name.
     labels += sorted(label + "_symbols" for label in facts_third_party.load().trusted)
-    labels += [CTEST_FACTS, LIBC_TARGET]  # libc last: _copy_outputs relies on it
+    labels += [CTEST_FACTS]
     report = os.path.join(g.work, "build-report-facts.json")
     flags = ["--no-remote-cache"] if g.args.uncached else []
     code, _, err = grade_build.run_buck(g.tree, ["build", "--target-platforms", PLATFORM,
-                                                 "--keep-going", "--build-report", report] + flags + labels)
+                                                 "--keep-going", "--build-report", report] + flags
+                                        + labels + [LIBC_TARGET])
     executed, cached = grade_build.action_counts(g.tree)
     results = grade_build.read_report(report)
     if code != 0 or results is None:
         return "build failed: %s" % err.strip()[-500:]
-    directory = os.path.join(g.work, "facts")
-    bad = _copy_outputs(g, labels, results, directory)
+    found, bad = _artifacts(g, labels + [LIBC_TARGET], results)
     if bad:
         return "no output for %s" % ", ".join(bad)
+    directory = os.path.join(g.work, "facts")
+    _copy_facts(found, labels, directory, 0)
     libc = os.path.join(g.work, "libc.symbols")
-    shutil.copyfile(grade_build.output_path(g.tree, LIBC_TARGET, results[LIBC_TARGET]), libc)
-    return FactsBuild(directory, libc, {"facts_targets": len(labels) - 1,
-                                        "executed_actions": executed, "cached_actions": cached})
+    shutil.copyfile(found[LIBC_TARGET], libc)
+    android = _android_facts(g, directory, len(labels), flags)
+    if isinstance(android, str):
+        return android
+    metadata = {"facts_targets": len(labels), "executed_actions": executed, "cached_actions": cached}
+    if android is None:
+        return FactsBuild(directory, libc, metadata)
+    metadata["android_facts_targets"] = android["targets"]
+    metadata["executed_actions"] += android["executed"]
+    metadata["cached_actions"] += android["cached"]
+    return FactsBuild(directory, libc, metadata, android["libc"])
+
+
+def _android_facts(g, directory, start, flags):
+    """The facts of every c_android_so, built in the android mode. None: the product has none; a string: why not.
+
+    A c_android_so has no Linux build, so nothing of it reaches the release facts; without these it would escape the
+    fact gates. Each `android_so` must have its `<name>_facts` (the macro makes both; this refuses anything else), and
+    the shared objects are built too (their link and their ELF check), and so is the `_check` of every `c_apk` (its APK is packaged, aligned, signed and checked: T-G3), and a build failure is a reason like the release one: the fact gates are NOT_RUN, which fails the verdict."""
+    code, out, err = grade_build.run_buck(g.tree, ["uquery", "kind(%s, //...)" % ANDROID_FACTS_KIND])
+    if code != 0:
+        return "android query failed: %s" % err.strip()[-500:]
+    labels = sorted(line.strip() for line in out.splitlines() if line.strip())
+    code, out, err = grade_build.run_buck(g.tree, ["uquery", "kind(%s, //...)" % ANDROID_SO_KIND])
+    if code != 0:
+        return "android query failed: %s" % err.strip()[-500:]
+    shared = sorted(line.strip() for line in out.splitlines() if line.strip())
+    code, out, err = grade_build.run_buck(g.tree, ["uquery", "kind('^%s$', //...)" % ANDROID_APK_CHECK_KIND])
+    if code != 0:
+        return "android query failed: %s" % err.strip()[-500:]
+    apk_checks = sorted(line.strip() for line in out.splitlines() if line.strip())
+    missing = [label for label in shared if label + "_facts" not in labels]
+    if missing:
+        return "c_android_so without facts: %s" % ", ".join(missing)
+    if not labels:
+        return None
+    report = os.path.join(g.work, "build-report-facts-android.json")
+    code, _, err = grade_build.run_buck(g.tree, ["build", "--target-platforms", ANDROID_PLATFORM,
+                                                 "--keep-going", "--build-report", report] + flags
+                                        + labels + shared + apk_checks + [LIBC_ANDROID_TARGET])
+    executed, cached = grade_build.action_counts(g.tree)
+    results = grade_build.read_report(report)
+    if code != 0 or results is None:
+        return "android build failed: %s" % err.strip()[-500:]
+    found, bad = _artifacts(g, labels + [LIBC_ANDROID_TARGET], results)
+    if bad:
+        return "no output for %s" % ", ".join(bad)
+    _copy_facts(found, labels, directory, start)
+    libc = os.path.join(g.work, "libc-android.symbols")
+    shutil.copyfile(found[LIBC_ANDROID_TARGET], libc)
+    return {"libc": libc, "targets": len(labels), "executed": executed, "cached": cached}
 
 
 def _fact_gate(g, run):
@@ -141,7 +198,8 @@ def semantic_gate(g):
 def symbols_gate(g):
     """`symbols`, plus the `threads` declaration of every test against its own objects (`facts_threads`, T138)."""
     def judged(facts, policy, built):
-        result = facts_symbols.run(facts, policy, facts_data.load_symbol_list(built.libc))
+        result = facts_symbols.run(facts, policy, facts_data.load_symbol_list(built.libc),
+                                   libc_android=None if built.libc_android is None else facts_data.load_symbol_list(built.libc_android))
         if any(item.kind == facts_threads.TEST_KIND for item in facts.values()):   # no test, nothing to declare
             result.findings.extend(facts_threads.findings(facts, grade_sanmodes.declared_threads(g.tree)))
         return result

@@ -25,18 +25,21 @@ def _label_text(label: Label, name: str = "") -> str:
     cell = "" if label.cell == "root" else label.cell
     return "{}//{}:{}".format(cell, label.package, name if name else label.name)
 
-def _objects(dep: Dependency) -> dict[str, Artifact]:
+def _objects(dep: Dependency, pic: bool = False) -> dict[str, Artifact]:
+    """The plain objects of a library; a shared object (`pic`) only has the position-independent ones, named as plain."""
     subs = dep[DefaultInfo].sub_targets
     if "objects" not in subs:
         fail("{}: no [objects] sub-target".format(dep.label))
     every = subs["objects"][DefaultInfo].sub_targets
+    if pic:
+        return {name[:-len(".pic.o")] + ".o": unit[DefaultInfo].default_outputs[0] for name, unit in every.items() if name.endswith(".pic.o")}
     return {name: unit[DefaultInfo].default_outputs[0] for name, unit in every.items() if not name.endswith(".pic.o")}
 
 def _compile_prefix(ctx, headers, toolchain):
     info = ctx.attrs.module[DefaultInfo].sub_targets["argsfiles"][DefaultInfo]
     argsfile = None
     for item in info.other_outputs:
-        if type(item) == "Artifact" and item.basename.endswith(".cxx_compile_argsfile") and ".pic." not in item.basename:
+        if type(item) == "Artifact" and item.basename.endswith(".cxx_compile_argsfile") and (ctx.attrs.pic or ".pic." not in item.basename):
             argsfile = item
     if argsfile == None:
         fail("{}: no compile argsfile found".format(ctx.attrs.module.label))
@@ -54,7 +57,7 @@ def _structure_impl(ctx: AnalysisContext) -> list[Provider]:
     srcs = sorted(ctx.attrs.srcs, key = lambda s: s.short_path)
     if len(srcs) == 0:
         fail("{}: the module has no sources".format(ctx.label))
-    objects = _objects(ctx.attrs.module)
+    objects = _objects(ctx.attrs.module, ctx.attrs.pic)
     wanted = sorted([s.short_path + ".o" for s in srcs])
     if sorted(objects.keys()) != wanted:
         fail("{}: srcs {} do not match the objects the module compiles {}".format(ctx.label, wanted, sorted(objects.keys())))
@@ -104,21 +107,29 @@ def _structure_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.run(join, category = "c_structure")
     return [DefaultInfo(default_output = result)]
 
-c_structure_rule = rule(
-    impl = _structure_impl,
-    attrs = {
-        "deps": attrs.list(attrs.dep(), default = []),
-        "facts_name": attrs.string(default = ""),
-        "headers": attrs.list(attrs.source(), default = []),
-        "kind": attrs.string(),
-        "module": attrs.dep(),
-        "srcs": attrs.list(attrs.source()),
-        "_ctest": attrs.dep(default = "gate//ctest:ctest"),
-        "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
-        "_scanner": attrs.source(default = "gate//gate/rigor_lib:structure_scan.py"),
-        "_toolchain": attrs.toolchain_dep(default = "toolchains//:cxx", providers = [CxxToolchainInfo]),
-    },
-)
+_ATTRS = {
+    "deps": attrs.list(attrs.dep(), default = []),
+    "facts_name": attrs.string(default = ""),
+    "headers": attrs.list(attrs.source(), default = []),
+    "kind": attrs.string(),
+    "module": attrs.dep(),
+    "pic": attrs.bool(default = False),
+    "srcs": attrs.list(attrs.source()),
+    "_ctest": attrs.dep(default = "gate//ctest:ctest"),
+    "_roots": attrs.exec_dep(default = "toolchains//:system-roots", providers = [RunInfo]),
+    "_scanner": attrs.source(default = "gate//gate/rigor_lib:structure_scan.py"),
+    "_toolchain": attrs.toolchain_dep(default = "toolchains//:cxx", providers = [CxxToolchainInfo]),
+}
+
+c_structure_rule = rule(impl = _structure_impl, attrs = _ATTRS)
+
+# The Android twin (a `c_android_so`): the NDK's clang (the `cxx` toolchain of the android mode), the NDK's header
+# directories as the system roots, and the position-independent objects a shared object has.
+_ANDROID_ATTRS = dict(_ATTRS)
+_ANDROID_ATTRS["pic"] = attrs.bool(default = True)
+_ANDROID_ATTRS["_roots"] = attrs.exec_dep(default = "toolchains//:ndk-system-roots", providers = [RunInfo])
+
+c_android_structure_rule = rule(impl = _structure_impl, attrs = _ANDROID_ATTRS)
 
 def c_structure(name, module, srcs, headers = [], deps = [], kind = "c_library", facts_name = ""):
     """Structure facts of `module` (a c_library, c_binary, c_test, c_fuzz or c_sim target); release mode only.
@@ -137,4 +148,17 @@ def c_structure(name, module, srcs, headers = [], deps = [], kind = "c_library",
         kind = kind,
         facts_name = facts_name,
         target_compatible_with = ["toolchains//:release"],
+    )
+
+def c_android_structure(name, module, srcs, headers = [], deps = [], facts_name = ""):
+    """Structure facts of a `c_android_so` (its `<name>__lib` unit); android mode only."""
+    c_android_structure_rule(
+        name = name,
+        module = module,
+        srcs = srcs,
+        headers = headers,
+        deps = deps,
+        kind = "c_android_so",
+        facts_name = facts_name,
+        target_compatible_with = ["toolchains//:android"],
     )

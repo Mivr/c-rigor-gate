@@ -121,7 +121,7 @@ system_roots = rule(
 def _libc_impl(ctx: AnalysisContext) -> list[Provider]:
     """Every symbol the pinned glibc's shared libraries export (what a product must not redefine)."""
     sysroot = _tree(ctx.attrs.sysroot)
-    libs = [sysroot.project("lib/x86_64-linux-gnu/" + name) for name in ctx.attrs.libs]
+    libs = [sysroot.project(ctx.attrs.dir + name) for name in ctx.attrs.libs]
     out = ctx.actions.declare_output("libc.symbols")
     script = ctx.actions.write(
         "run.sh",
@@ -139,8 +139,149 @@ def _libc_impl(ctx: AnalysisContext) -> list[Provider]:
 libc_symbols = rule(
     impl = _libc_impl,
     attrs = {
+        # The directory of the libraries inside the tree; the NDK twin names its API 28 stub directory.
+        "dir": attrs.string(default = "lib/x86_64-linux-gnu/"),
         "libs": attrs.list(attrs.string()),
         "sysroot": attrs.dep(),
         "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
+    },
+)
+
+# ---------------------------------------------------------------------------
+# Android NDK (aarch64-linux-android, one API level). The tree is `fetched_zip_tree`; `ndk_dir` is the
+# prebuilt llvm directory inside it. Like the Linux tools, every path is a projected sub-path, so an action's
+# inputs are exactly the files named here.
+# ---------------------------------------------------------------------------
+
+def _ndk_triple(api: str) -> str:
+    return "aarch64-linux-android" + api
+
+def _ndk_cc_impl(ctx: AnalysisContext) -> list[Provider]:
+    """NDK clang as a C compiler: no host include directory is searched (-nostdinc)."""
+    ndk = _tree(ctx.attrs.ndk).project(ctx.attrs.ndk_dir.rstrip("/"))
+    clang_headers = ndk.project("lib/clang/{}/include".format(ctx.attrs.llvm_major))
+    sys_inc = ndk.project("sysroot/usr/include")
+    args = cmd_args(
+        ndk.project("bin/clang-" + ctx.attrs.llvm_major),
+        "--target=" + _ndk_triple(ctx.attrs.api),
+        "-nostdinc",
+        "-fdebug-compilation-dir=.",
+        "-fcoverage-compilation-dir=.",
+        cmd_args(clang_headers, format = "-resource-dir={}", parent = 1),
+        "-isystem",
+        clang_headers,
+        "-isystem",
+        cmd_args(sys_inc, format = "{}/aarch64-linux-android"),
+        "-isystem",
+        sys_inc,
+        "-fPIC",
+        # The prelude's preprocessor action (`-E`, which the facts scan reads) also passes `-c`; clang 21 reports
+        # that driver argument as unused, and the sealed `-Werror` makes it an error. This is about the driver's own
+        # argument list, which no product controls, not about the product's code (clang 19 does not report it).
+        "-Wno-unused-command-line-argument",
+        hidden = [clang_headers, sys_inc],
+    )
+    return [DefaultInfo(), RunInfo(args = args)]
+
+ndk_cc = rule(
+    impl = _ndk_cc_impl,
+    attrs = {
+        "api": attrs.string(),
+        "llvm_major": attrs.string(),
+        "ndk": attrs.dep(),
+        "ndk_dir": attrs.string(),
+    },
+)
+
+def _ndk_ld_impl(ctx: AnalysisContext) -> list[Provider]:
+    """NDK clang as the link driver, lld as the linker, bionic stubs, compiler-rt builtins. 16 KB pages."""
+    ndk = _tree(ctx.attrs.ndk).project(ctx.attrs.ndk_dir.rstrip("/"))
+    major = ctx.attrs.llvm_major
+    runtimes = [ndk.project(r) for r in ctx.attrs.runtimes]
+    lld = ndk.project("bin/ld.lld")
+    lld_real = ndk.project("bin/lld")
+    sysroot = ndk.project("sysroot")
+    args = cmd_args(
+        ndk.project("bin/clang-" + major),
+        "--target=" + _ndk_triple(ctx.attrs.api),
+        cmd_args(ndk.project("lib/clang/" + major), format = "-resource-dir={}"),
+        cmd_args(sysroot, format = "--sysroot={}"),
+        "-fuse-ld=lld",
+        cmd_args(lld, format = "--ld-path={}"),
+        "-rtlib=compiler-rt",
+        "-unwindlib=libunwind",
+        "-Wl,-z,max-page-size=16384",
+        "-Wl,-z,common-page-size=16384",
+        hidden = [lld, lld_real, sysroot] + runtimes,
+    )
+    return [DefaultInfo(), RunInfo(args = args)]
+
+ndk_ld = rule(
+    impl = _ndk_ld_impl,
+    attrs = {
+        "api": attrs.string(),
+        "llvm_major": attrs.string(),
+        "ndk": attrs.dep(),
+        "ndk_dir": attrs.string(),
+        "runtimes": attrs.list(attrs.string()),
+    },
+)
+
+def _ndk_roots_impl(ctx: AnalysisContext) -> list[Provider]:
+    """The NDK twin of `system_roots`: `--system-root` for the clang resource headers and the bionic headers."""
+    ndk = _tree(ctx.attrs.ndk).project(ctx.attrs.ndk_dir.rstrip("/"))
+    args = cmd_args(
+        "--system-root",
+        ndk.project("lib/clang/{}/include".format(ctx.attrs.llvm_major)),
+        "--system-root",
+        ndk.project("sysroot/usr/include"),
+        ignore_artifacts = True,
+    )
+    return [DefaultInfo(), RunInfo(args = args)]
+
+ndk_roots = rule(
+    impl = _ndk_roots_impl,
+    attrs = {
+        "llvm_major": attrs.string(),
+        "ndk": attrs.dep(),
+        "ndk_dir": attrs.string(),
+    },
+)
+
+# ---------------------------------------------------------------------------
+# Android SDK tools (T-G3). Unlike the LLVM tools above these need their whole (small) tree beside them: zipalign loads
+# `lib64/libc++.so` through its rpath, and java loads its runtime from `lib/`. The tree is a hidden input.
+# ---------------------------------------------------------------------------
+
+def _tree_bin_impl(ctx: AnalysisContext) -> list[Provider]:
+    """One native binary of a fetched tree, run with the whole tree as inputs; no flags."""
+    tree = _tree(ctx.attrs.tree)
+    return [DefaultInfo(), RunInfo(args = cmd_args(tree.project(ctx.attrs.bin), hidden = tree))]
+
+tree_bin = rule(
+    impl = _tree_bin_impl,
+    attrs = {
+        "bin": attrs.string(),
+        "tree": attrs.dep(),
+    },
+)
+
+def _java_jar_impl(ctx: AnalysisContext) -> list[Provider]:
+    """`java -jar JAR` (or `java -cp JAR MAIN`) with the pinned JDK. No perf data file, no host JAVA_HOME or user settings."""
+    jdk = _tree(ctx.attrs.jdk)
+    tree = _tree(ctx.attrs.tree)
+    jar = tree.project(ctx.attrs.jar)
+    args = cmd_args(jdk.project(ctx.attrs.java), "-XX:-UsePerfData", "-Xshare:auto", "-Xmx1g", hidden = [jdk, tree])
+    args.add(["-cp", jar, ctx.attrs.main] if ctx.attrs.main else ["-jar", jar])
+    return [DefaultInfo(), RunInfo(args = args)]
+
+java_jar = rule(
+    impl = _java_jar_impl,
+    attrs = {
+        "jar": attrs.string(),
+        "java": attrs.string(),
+        "jdk": attrs.dep(),
+        "main": attrs.string(default = ""),
+        "tree": attrs.dep(),
     },
 )

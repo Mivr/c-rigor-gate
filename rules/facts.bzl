@@ -24,8 +24,14 @@ def _facts_impl(ctx: AnalysisContext) -> list[Provider]:
     subs = ctx.attrs.unit[DefaultInfo].sub_targets
     every = subs["objects"][DefaultInfo].sub_targets if "objects" in subs else {}
 
-    # A library has a position-independent twin of each object; the plain one is what gets linked.
-    objects = {name: unit for name, unit in every.items() if not name.endswith(".pic.o")}
+    # A library has a position-independent twin of each object; the plain one is what gets linked, except in a
+    # shared object (`pic`, the Android facts), which only has the position-independent ones: they are named as the plain ones.
+    objects = {}
+    for name, unit in every.items():
+        if ctx.attrs.pic and name.endswith(".pic.o"):
+            objects[name[:-len(".pic.o")] + ".o"] = unit
+        elif not ctx.attrs.pic and not name.endswith(".pic.o"):
+            objects[name] = unit
     expected = len(ctx.attrs.srcs) + len(ctx.attrs.generated)
     if len(objects) != expected:
         fail("{}: expected {} compiled units, the compiler produced {}".format(
@@ -97,6 +103,7 @@ _ATTRS = {
     # they are no file of the package, so `rigor structure` gets none (it reads the `srcs` attribute only).
     "generated": attrs.list(attrs.string(), default = []),
     "kind": attrs.string(),
+    "pic": attrs.bool(default = False),
     "srcs": attrs.list(attrs.string(), default = []),
     "system_libs": attrs.list(attrs.string(), default = []),
     "unit": attrs.dep(),
@@ -113,6 +120,15 @@ c_facts = rule(impl = _facts_impl, attrs = _ATTRS)
 # The same rule under another name for the `san` twin: `kind(c_facts, //...)` (what `rigor grade` builds,
 # in the release platform) must not pick the san targets up, and a regex `c_facts` does not match this name.
 c_san_facts = rule(impl = _facts_impl, attrs = _ATTRS)
+
+# The Android twin (T-G2): the facts of a `c_android_so`, read from the android mode's own objects (the NDK's clang
+# and headers, aarch64 objects listed by the same llvm-nm), with the NDK's header directories as the system roots.
+# Its name matches neither `c_facts` nor `c_san_facts`, so `kind(c_facts, //...)` in a Linux grade never selects it.
+_ANDROID_ATTRS = dict(_ATTRS)
+_ANDROID_ATTRS["pic"] = attrs.bool(default = True)
+_ANDROID_ATTRS["_roots"] = attrs.exec_dep(default = "toolchains//:ndk-system-roots", providers = [RunInfo])
+
+c_android_facts = rule(impl = _facts_impl, attrs = _ANDROID_ATTRS)
 
 # The msan and tsan twins (T138), for the `mode-divergence` gate: `__has_feature(memory_sanitizer)` and
 # `__has_feature(thread_sanitizer)` code is in these compiles only.
