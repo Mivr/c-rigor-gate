@@ -377,8 +377,8 @@ static int cfg_ok(const events_cfg_t *c) {
     if (c->has_chain != 0U && (c->ev_locker_len < 1U || c->ev_locker_len > 4U)) {
         return 0;
     }
-    for (uint32_t i = 0; i < c->n_rows; i++) {
-        if (c->rows[i].phase >= EV_MAX_PHASES) {
+    for (uint32_t i = 0; i < EV_MAX_PHASE_ROWS; i++) { /* always inside the table, whatever n_rows says */
+        if (i < c->n_rows && c->rows[i].phase >= EV_MAX_PHASES) {
             return 0;
         }
     }

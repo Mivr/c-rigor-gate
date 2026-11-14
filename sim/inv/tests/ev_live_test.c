@@ -245,9 +245,9 @@ static void t_bad_configurations_are_refused(ctest_t *t) {
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.n_rows = 8;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), 0);
-    erig_fill(&C); C.n_rows = 9; C.limit_ms[1] = 0; /* the row after the table would read as phase 0 */
+    erig_fill(&C); C.n_rows = 9; /* more rows than the table holds: refused, whatever follows it */
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
-    erig_fill(&C); C.n_rows = 16; C.limit_ms[1] = 0;
+    erig_fill(&C); C.n_rows = 16;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);
     erig_fill(&C); C.rows[0].phase = 8;
     CHECK_EQ_I64(t, events_init(&E, &C, NULL), -1);

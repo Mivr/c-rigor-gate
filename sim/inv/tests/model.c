@@ -32,8 +32,11 @@ static uint64_t rng_next(model_t *m) {
 
 static int cb_reserves(void *ctx, const uint8_t *open, uint32_t len) {
     const model_t *m = (const model_t *)ctx;
+    if (len < 8U) {
+        return EV_BOOK_NOT_RESERVED;
+    }
     uint32_t locker = (uint32_t)open[4] | ((uint32_t)open[5] << 8);
-    return len >= 8U && m->durable_locker == locker ? EV_BOOK_RESERVED : EV_BOOK_NOT_RESERVED;
+    return m->durable_locker == locker ? EV_BOOK_RESERVED : EV_BOOK_NOT_RESERVED;
 }
 
 static int cb_digest(void *ctx, uint64_t *digest) {

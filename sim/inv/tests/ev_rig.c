@@ -9,7 +9,7 @@ static int cb_reserves(void *ctx, const uint8_t *open, uint32_t len) {
     w->reserves_calls++;
     w->last_open_len = len;
     memset(w->last_open, 0, sizeof w->last_open);
-    if (len > 0U) {
+    if (len > 0U && len <= sizeof w->last_open) {
         memcpy(w->last_open, open, len);
     }
     return w->reserves;
