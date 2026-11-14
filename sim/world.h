@@ -67,9 +67,54 @@ typedef struct {
     uint32_t duration_ms;
 } sim_fault_t;
 
+/* The closed screen set of the kiosk (P330 §1.6): a bit of `sim_stats_t.screens` per screen the world showed. */
+typedef enum {
+    SIM_SCREEN_SPLASH = 0,
+    SIM_SCREEN_WELCOME,
+    SIM_SCREEN_CHOOSE,
+    SIM_SCREEN_OPENED,
+    SIM_SCREEN_SHIFT,
+    SIM_SCREEN_REPORT,
+    SIM_SCREEN_LOCKOUT,
+    SIM_SCREEN_FAULT_STORAGE,
+    SIM_SCREEN_FAULT_RELAY,
+    SIM_SCREEN_COUNT
+} sim_screen_t;
+
+#define SIM_COUNTERS 8U
+#define SIM_GAUGES 4U
+#define SIM_NAME_MAX 24U
+
+/* A runtime counter. `name` is empty for an unused slot, else lowercase letters, digits and `_`. An `impossible` counter is
+ * one that must stay 0 by design (P330 §2 I13: `rx_push_lost`, `no_free_blob`, ...); the runner reports a violation of I13
+ * the first time one is not 0. */
+typedef struct {
+    char name[SIM_NAME_MAX];
+    uint64_t value;
+    uint8_t impossible;
+} sim_counter_t;
+
+/* A fixed-capacity resource (a pool). `cap` slots exist; `free_idle` of them are usable when the app is idle. Anything
+ * below `cap` is capacity lost for good (a retired slot, P330 §5.3): I12. An empty `name` is an unused slot. */
+typedef struct {
+    char name[SIM_NAME_MAX];
+    uint64_t cap;
+    uint64_t free_idle;
+} sim_gauge_t;
+
+/* What the runner reads from a world (P330 §1.2 `world_stats`), at the end of a run and at every daily checkpoint of a
+ * soak. The world only reports what it counted; the verdicts (I11, I12, I13) are the gate's (sim/checks.h). */
 typedef struct {
     uint64_t steps; /* steps used so far in this run */
-    uint64_t counters[8]; /* the world's own "impossible" counters; the judge reads them (T2G4) */
+    sim_counter_t counters[SIM_COUNTERS];
+    sim_gauge_t gauges[SIM_GAUGES];
+    uint64_t uploads;          /* sync uploads the simulated server has received (the antecedent of I11) */
+    uint64_t snap_taken_ms;    /* `taken_at` of the newest snapshot the server holds (0: none) */
+    uint64_t link_ok_ms;       /* how long the sync link has been healthy up to now */
+    uint64_t sync_interval_ms; /* the app's sync interval; 0 when the world has no sync */
+    uint32_t snap_pending;     /* 1: the book changed since the newest snapshot the server holds */
+    uint32_t screens;          /* bit `sim_screen_t` of every screen shown so far */
+    uint64_t fault_observed[SIM_FAULT_COUNT]; /* per fault kind: times its EFFECT was seen (a fault with none is a bug) */
 } sim_stats_t;
 
 /* Build the whole app on simulated ports at cfg->start_ms and install the tap `fn` (may be NULL) before anything
@@ -82,6 +127,7 @@ int world_apply(world_t *w, sim_intent_t intent);
 int world_fault(world_t *w, sim_fault_t fault);
 /* Power cut: drop all volatile state, keep the durable image, boot again through the normal boot path. */
 int world_crash_restart(world_t *w);
+/* `out` arrives zeroed: the world sets only what it reports (a zeroed field is "nothing to report"), so a world needs no memset. */
 int world_stats(const world_t *w, sim_stats_t *out);
 /* A hash of the whole observable state of the app (book, sessions, relay model...), equal for equal runs. */
 uint64_t world_state_hash(const world_t *w);

@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "sim/cover.h"
 #include "sim/runner.h"
+#include "sim/soak.h"
 #include "sim/sha256.h"
 
 typedef struct {
@@ -12,6 +14,7 @@ typedef struct {
 
 static seed_row_t g_rows[SIM_MAX_COUNT];
 static sim_args_t g_args;
+static sim_cover_total_t g_cover;
 
 static void hex_of(const uint8_t *bytes, size_t len, char *out) {
     static const char digits[] = "0123456789abcdef";
@@ -50,14 +53,34 @@ static int write_hashes(const sim_args_t *a, uint64_t rows) {
     return fclose(f);
 }
 
+/* The invariant a failure row names: I14 for a nondeterministic seed, I11 to I13 for the gate's checks, none otherwise. */
+static const char *row_invariant(const sim_seed_out_t *out) {
+    if (out->rule == SIM_NONDETERMINISTIC) {
+        return "I14";
+    }
+    return out->rule == SIM_INVARIANT ? sim_check_name((unsigned)out->detail - 11U) : NULL;
+}
+
+static void write_failure(FILE *f, const seed_row_t *r) {
+    const char *invariant = row_invariant(&r->out);
+    if (r->out.rule == SIM_INVARIANT) {
+        (void)fprintf(f, "\"at_ms\":%llu,", (unsigned long long)r->out.cover.at_ms);
+    }
+    (void)fprintf(f, "\"detail\":%d,\"index\":%llu,", r->out.detail, (unsigned long long)r->index);
+    if (invariant != NULL) {
+        (void)fprintf(f, "\"invariant\":\"%s\",", invariant);
+    }
+    (void)fprintf(f, "\"rule\":\"%s\",\"seed\":\"%016llx\"", sim_rule_name(r->out.rule), (unsigned long long)r->seed);
+}
+
 static void write_failures(FILE *f, uint64_t rows) {
     const char *sep = "";
     for (uint64_t i = 0; i < rows; i++) {
         const seed_row_t *r = &g_rows[i];
         if (r->out.rule != SIM_OK) {
-            (void)fprintf(f, "%s{\"detail\":%d,\"index\":%llu,\"rule\":\"%s\",\"seed\":\"%016llx\"}", sep,
-                          r->out.detail, (unsigned long long)r->index, sim_rule_name(r->out.rule),
-                          (unsigned long long)r->seed);
+            (void)fprintf(f, "%s{", sep);
+            write_failure(f, r);
+            (void)fputc('}', f);
             sep = ",";
         }
     }
@@ -90,13 +113,18 @@ static int write_stats(const sim_args_t *a, uint64_t rows, uint64_t distinct) {
     if (f == NULL) {
         return -1;
     }
-    (void)fprintf(f, "{\"count\":%llu,\"distinct_hashes\":%llu,\"failures\":[", (unsigned long long)a->count,
-                  (unsigned long long)distinct);
+    (void)fprintf(f, "{\"count\":%llu,", (unsigned long long)a->count);
+    sim_cover_write_counters(f, &g_cover);
+    (void)fprintf(f, ",\"distinct_hashes\":%llu,\"failures\":[", (unsigned long long)distinct);
     write_failures(f, rows);
-    (void)fprintf(f, "],\"first\":%llu,\"run_ms\":%llu,\"salt_sha256\":\"%s\",\"schema\":\"sim-stats/1\","
-                     "\"seeds_run\":%llu,\"world_sha256\":\"%s\"}\n",
-                  (unsigned long long)a->first, (unsigned long long)a->params.run_ms, salt_sha,
-                  (unsigned long long)rows, world);
+    (void)fputs("],", f);
+    sim_cover_write_faults(f, &g_cover);
+    (void)fprintf(f, ",\"first\":%llu,", (unsigned long long)a->first);
+    sim_cover_write_invariants(f, &g_cover);
+    (void)fprintf(f, ",\"run_ms\":%llu,\"salt_sha256\":\"%s\",\"schema\":\"sim-stats/1\",",
+                  (unsigned long long)a->params.run_ms, salt_sha);
+    sim_cover_write_screens(f, &g_cover);
+    (void)fprintf(f, ",\"seeds_run\":%llu,\"world_sha256\":\"%s\"}\n", (unsigned long long)rows, world);
     return fclose(f);
 }
 
@@ -123,6 +151,7 @@ static int run_all(const sim_args_t *a, uint64_t *rows) {
             return -1;
         }
         *rows = i + 1;
+        sim_cover_add(&g_cover, &r->out);
         if (r->out.rule != SIM_OK) {
             printf("seed %016llx (index %llu): %s detail=%d first_diff=%lld\n", (unsigned long long)r->seed,
                    (unsigned long long)r->index, sim_rule_name(r->out.rule), r->out.detail,
@@ -137,6 +166,10 @@ int main(int argc, char **argv) {
     if (sim_parse_args(argc, argv, &g_args) != 0) {
         return 2;
     }
+    if (args->soak_days > 0) {
+        return sim_soak_main(args);
+    }
+    sim_cover_init(&g_cover);
     uint64_t rows = 0;
     if (run_all(args, &rows) != 0) {
         return 2;

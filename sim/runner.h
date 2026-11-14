@@ -9,6 +9,7 @@
 
 #define SIM_MAX_COUNT 4096U
 #define SIM_MAX_SALT 64U
+#define SIM_MAX_SOAK_DAYS 4096U
 
 typedef struct {
     uint64_t first;
@@ -20,6 +21,8 @@ typedef struct {
     const char *stats_path;
     const char *hashes_path;
     const char *verdict_path;
+    uint64_t soak_days;         /* > 0: the soak mode (sim/soak.h): one seed, this many simulated days, no seeds run */
+    const char *soak_path;
 } sim_args_t;
 
 /* 0 on success, -1 on a usage error (message on stderr). */

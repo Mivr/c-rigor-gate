@@ -69,6 +69,17 @@ def write_run(directory, ident="t000", label=SIM, count=12, failures=(), salt=SA
     return directory
 
 
+def write_soak(directory, ident="t000", days=50, failures=(), checked=None, salt=SALT, world=WORLD, seed=None, **override):
+    """`<id>.soak.json` of a run (T2G6, schema sim-soak/1); `override` replaces any top-level key."""
+    doc = {"checked": {"I11": days, "I12": days, "I13": days} if checked is None else checked, "days": days,
+           "failures": [{"assertion": a, "day": d} for a, d in failures], "salt_sha256": sim_policy.jsonio.sha256_hex(salt),
+           "schema": "sim-soak/1",
+           "seed": sim_policy.seed_of(salt, bytes.fromhex(world), sim_policy.SOAK_INDEX) if seed is None else seed,
+           "state_hash": "%016x" % 7, "trace_hash": "%016x" % 9, "uploads": 2 * days, "world_sha256": world}
+    doc.update(override)
+    (Path(directory) / (ident + ".soak.json")).write_text(json.dumps(doc))
+
+
 def policy_file(path, text=""):
     Path(path).write_text(text)
     return path

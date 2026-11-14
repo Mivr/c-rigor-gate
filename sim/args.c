@@ -51,6 +51,8 @@ static int set_option(sim_args_t *a, const char *name, const char *value, int *s
         a->hashes_path = value;
     } else if (strcmp(name, "--verdict") == 0) {
         a->verdict_path = value;
+    } else if (strcmp(name, "--soak-out") == 0) {
+        a->soak_path = value;
     } else if (strcmp(name, "--salt") == 0) {
         long len = parse_hex(value, a->salt, SIM_MAX_SALT, 0);
         if (len < 0) {
@@ -66,6 +68,8 @@ static int set_option(sim_args_t *a, const char *name, const char *value, int *s
         a->first = n;
     } else if (strcmp(name, "--count") == 0) {
         a->count = n;
+    } else if (strcmp(name, "--soak-days") == 0) {
+        a->soak_days = n;
     } else if (strcmp(name, "--run-ms") == 0) {
         a->params.run_ms = n;
     } else if (strcmp(name, "--step-limit") == 0) {
@@ -87,12 +91,16 @@ int sim_parse_args(int argc, char **argv, sim_args_t *args) {
             return -1;
         }
     }
-    int ok = argc % 2 == 1 && seen_world && args->stats_path != NULL && args->hashes_path != NULL &&
-             args->verdict_path != NULL && args->count <= SIM_MAX_COUNT && args->params.run_ms >= SIM_TICK_MS &&
-             args->params.step_limit > 0 && args->params.real_limit_s > 0;
-    if (!ok) {
+    int common = argc % 2 == 1 && seen_world && args->params.step_limit > 0 && args->params.real_limit_s > 0;
+    int seeds = args->stats_path != NULL && args->hashes_path != NULL && args->verdict_path != NULL &&
+                args->soak_path == NULL && args->count <= SIM_MAX_COUNT && args->params.run_ms >= SIM_TICK_MS;
+    int soak = args->soak_days <= SIM_MAX_SOAK_DAYS && args->soak_path != NULL && args->count == 0 &&
+               args->stats_path == NULL && args->hashes_path == NULL && args->verdict_path == NULL;
+    if (!common || !(args->soak_days > 0 ? soak : seeds)) {
         fprintf(stderr, "usage: runner --world-sha256 HEX64 [--salt HEX] --first N --count N --run-ms N --step-limit N "
-                        "--real-limit-s N --stats F --hashes F --verdict F\n");
+                        "--real-limit-s N --stats F --hashes F --verdict F\n"
+                        "   or: runner --world-sha256 HEX64 [--salt HEX] --soak-days N --step-limit N --real-limit-s N "
+                        "--soak-out F\n");
         return -1;
     }
     return 0;

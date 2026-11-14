@@ -25,7 +25,29 @@ def shard(first, count, rule=None, ran=None, world=WORLD, hashes=None):
             "hashes": text, "verdict": "pass\n" if rule is None else "fail %s\n" % rule}
 
 
+def with_extras(item, **extras):
+    item["stats"].update(extras)
+    return item
+
+
 class MergeCase(TempDirTestCase):
+    def test_what_the_seeds_showed_is_summed_across_shards(self):
+        """T2G6: invariants and faults add up, counters add up by name, screens are joined; absent in every shard: absent."""
+        first = with_extras(shard(0, 3), invariants={"I11": {"checked": 2, "violated": 0}, "I12": {"checked": 3, "violated": 1}},
+                            faults={"disk_full": {"fired": 4, "observed": 1}}, counters={"a": 1, "b": 0}, screens=["welcome"])
+        second = with_extras(shard(3, 3), invariants={"I11": {"checked": 5, "violated": 0}, "I14": {"checked": 3, "violated": 0}},
+                             faults={"disk_full": {"fired": 1, "observed": 0}, "clock_jump": {"fired": 2, "observed": 2}},
+                             counters={"a": 2, "c": 7}, screens=["opened", "welcome"])
+        _, stats, _ = sim_merge.merge([first, second], 6)
+        self.assertEqual(stats["invariants"], {"I11": {"checked": 7, "violated": 0}, "I12": {"checked": 3, "violated": 1},
+                                               "I14": {"checked": 3, "violated": 0}})
+        self.assertEqual(stats["faults"], {"disk_full": {"fired": 5, "observed": 1}, "clock_jump": {"fired": 2, "observed": 2}})
+        self.assertEqual(stats["counters"], {"a": 3, "b": 0, "c": 7})
+        self.assertEqual(stats["screens"], ["opened", "welcome"])
+        _, plain, _ = sim_merge.merge([shard(0, 3), shard(3, 3)], 6)
+        self.assertFalse({"invariants", "faults", "counters", "screens"} & set(plain))
+
+
     def test_two_good_shards_pass(self):
         verdict, stats, hashes = sim_merge.merge([shard(0, 3), shard(3, 3)], 6)
         self.assertEqual(verdict, "pass\n")

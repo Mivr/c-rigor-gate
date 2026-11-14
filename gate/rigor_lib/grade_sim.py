@@ -10,6 +10,10 @@ the judge's:
 
     sim-build-failed   a target did not build, or built without one of its outputs (an error)
 
+The soak (T2G6, P330 §1.7) is one more output of the san build, `<target>[soak]`, requested only for the policy's target and
+only when the tier demands days: `policy.soak_required(tier)`, passed to Buck2 as `-c rigor.sim_soak_days=N`. The merge tier
+asks for none, so no soak action is built or run at that tier (and the judge refuses a soak result there).
+
 A product without a `c_sim` target and without `[sim] required = true` passes with info `no-sim-targets`. In role
 test-author the head is the stub commit: PASS with info `not-applicable`. NOT_RUN unless the tree built, the facts exist
 and every test passed.
@@ -35,6 +39,7 @@ RESULTS_DIR = "sim"
 # sub-target of the san build -> suffix of its file in the results directory; the release build gives `release.hashes`
 SAN_OUTPUTS = {"verdict": ".verdict", "report": ".report", "stats": ".stats.json", "hashes": ".hashes"}
 RELEASE_OUTPUTS = {"hashes": ".release.hashes"}
+SOAK_OUTPUTS = {"soak": ".soak.json"}
 _TAIL_CHARS = 4000
 _LABEL = re.compile(r"root//[A-Za-z0-9_./+-]*:[A-Za-z0-9_./+-]+")
 
@@ -73,14 +78,18 @@ def salt_path(g):
     return path if os.path.isfile(path) else None
 
 
-def _build(g, platform, outputs, labels, salt_hex):
+def _build(g, platform, outputs, labels, salt_hex, soak_days=0, soak_labels=()):
     """One build of every label's outputs in PLATFORM; retried once when it died of a transport failure and left a target
     unbuilt (the rule of the fuzz and mutants builds). Returns (results, exit code, stderr, executed, cached)."""
     report = os.path.join(g.work, "build-report-sim-%s.json" % platform.rsplit("_", 1)[1])
     flags = ["--no-remote-cache"] if g.args.uncached else []
     if salt_hex:
         flags += ["-c", "rigor.sim_salt=" + salt_hex]
+    if soak_days:
+        flags += ["-c", "rigor.sim_soak_days=%d" % soak_days]   # both builds get it: one configuration for the daemon
     wanted = ["%s[%s]" % (label, name) for label in labels for name in outputs]
+    if outputs is SAN_OUTPUTS:
+        wanted += ["%s[soak]" % label for label in labels if label in soak_labels]
     executed = cached = 0
     retried = False
     while True:
@@ -97,18 +106,20 @@ def _build(g, platform, outputs, labels, salt_hex):
         retried = True
 
 
-def collect(tree, labels, built, directory):
+def collect(tree, labels, built, directory, soak=()):
     """Copy the outputs of every target that built in both platforms into `directory`, write `index.json`.
-    `built` is ({san results}, {release results}). Returns (the labels that did not build or lack an output, {facts label: id})."""
+    `built` is ({san results}, {release results}); a target in `soak` must also have built its soak. Returns (the labels
+    that did not build or lack an output, {facts label: id})."""
     os.makedirs(directory)
     failed, index = [], {}
     for number, label in enumerate(labels):
         paths = {}
-        for results, outputs in zip(built, (SAN_OUTPUTS, RELEASE_OUTPUTS)):
+        wanted = (SAN_OUTPUTS, RELEASE_OUTPUTS) + ((SOAK_OUTPUTS,) if label in soak else ())
+        for results, outputs in zip(built + (built[0],), wanted):   # the soak is an output of the san build
             entry = results.get(label)
             if _built(results, label):
                 paths.update({suffix: _output_file(tree, entry, name) for name, suffix in outputs.items()})
-        if len(paths) != len(SAN_OUTPUTS) + len(RELEASE_OUTPUTS) or None in paths.values():
+        if len(paths) != sum(len(outputs) for outputs in wanted) or None in paths.values():
             failed.append(label)
             continue
         ident = "t%03d" % number
@@ -134,6 +145,11 @@ def judge(g, facts_dir, directory, failed):
     return kept, result.metadata
 
 
+def soak_labels(labels, policy):
+    """The targets whose soak is built: the policy's target, or every target when it names none (the judge's rule)."""
+    return tuple(label for label in labels if not policy.target or grade_fuzz.facts_label(label) == policy.target)
+
+
 def _salt_hex(g):
     path = salt_path(g)
     return "" if path is None else sim_policy.load_salt(path)[0].hex()
@@ -151,14 +167,16 @@ def _step(g):
         return None  # the facts did not build: nothing to judge against
     directory = os.path.join(g.work, RESULTS_DIR)
     executed = cached = 0
-    built, code, err = ({}, {}), 0, ""
+    built, code, err, soak = ({}, {}), 0, "", ()
     if labels:
         salt_hex = _salt_hex(g)
-        san, code, err, executed, cached = _build(g, SAN, SAN_OUTPUTS, labels, salt_hex)
-        release, code2, err2, done_executed, done_cached = _build(g, RELEASE, RELEASE_OUTPUTS, labels, salt_hex)
+        soak_days = policy.soak_required(grade_tier.tier_of(g))
+        soak = soak_labels(labels, policy) if soak_days else ()
+        san, code, err, executed, cached = _build(g, SAN, SAN_OUTPUTS, labels, salt_hex, soak_days, soak)
+        release, code2, err2, done_executed, done_cached = _build(g, RELEASE, RELEASE_OUTPUTS, labels, salt_hex, soak_days)
         built, executed, cached = (san, release), executed + done_executed, cached + done_cached
         code, err = (code, err) if code != 0 else (code2, err2)
-    failed, _ = collect(g.tree, labels, built, directory)
+    failed, _ = collect(g.tree, labels, built, directory, soak)
     found, metadata = judge(g, facts.directory, directory, failed)
     found.extend(finding("sim-build-failed", target=grade_fuzz.facts_label(label)) for label in failed)
     metadata.update({"executed_actions": executed, "cached_actions": cached, "exit_code": code})

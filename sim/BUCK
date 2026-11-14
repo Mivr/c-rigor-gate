@@ -7,11 +7,11 @@ c_library(
     visibility = ["PUBLIC"],
 )
 
-# Gate-owned pieces of the runner that have no `main`: the trace hash, SHA-256 and the seeded workload.
+# Gate-owned pieces of the runner that have no `main`: the trace hash, SHA-256, the seeded workload and the checks of I11 to I13.
 c_library(
     name = "kit",
-    srcs = ["trace.c", "sha256.c", "workload.c"],
-    headers = ["sha256.h", "workload.h"],
+    srcs = ["trace.c", "sha256.c", "workload.c", "checks.c"],
+    headers = ["sha256.h", "workload.h", "checks.h"],
     deps = [":world"],
     visibility = ["PUBLIC"],
 )
@@ -19,8 +19,8 @@ c_library(
 # The gate-owned runner: `main`, the seeds, the identity check. Linked into every `c_sim` binary by the rule.
 c_library(
     name = "runner",
-    srcs = ["runner.c", "args.c", "seedrun.c"],
-    headers = ["runner.h", "seedrun.h"],
+    srcs = ["runner.c", "args.c", "seedrun.c", "cover.c", "soak.c"],
+    headers = ["runner.h", "seedrun.h", "cover.h", "soak.h"],
     deps = [":kit", ":world"],
     visibility = ["PUBLIC"],
 )

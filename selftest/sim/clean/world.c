@@ -11,6 +11,6 @@ static void no_bug(uint64_t seed, uint64_t virtual_ms, uint64_t *burn) {
 }
 
 const toy_hooks_t *toy_variant(void) {
-    static const toy_hooks_t hooks = {virtual_clock, no_bug};
+    static const toy_hooks_t hooks = {virtual_clock, no_bug, 0};
     return &hooks;
 }

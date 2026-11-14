@@ -17,6 +17,6 @@ static void read_host(uint64_t seed, uint64_t virtual_ms, uint64_t *burn) {
 }
 
 const toy_hooks_t *toy_variant(void) {
-    static const toy_hooks_t hooks = {virtual_clock, read_host};
+    static const toy_hooks_t hooks = {virtual_clock, read_host, 0};
     return &hooks;
 }

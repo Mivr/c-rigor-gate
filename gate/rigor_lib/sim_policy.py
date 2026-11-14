@@ -39,6 +39,7 @@ DEFAULT_SEEDS = {"merge": 200, "nightly": 2000}
 DEFAULT_SOAK_DAYS = {"merge": 0, "nightly": 400}
 MAX_SALT_HEX = 128
 SEED_TAG = b"rigor-sim-v1"
+SOAK_INDEX = 1 << 32      # the seed index of the soak (sim/soak.h `SIM_SOAK_INDEX`); the seed runs never reach it
 _HEX = re.compile(r"(?:[0-9a-f]{2})*")
 _NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
 _SEED = re.compile(r"[0-9a-f]{16}")
