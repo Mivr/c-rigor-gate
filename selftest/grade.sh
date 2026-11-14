@@ -80,7 +80,7 @@ want_not_run = ({"tests-release", "tests-san", "tests-msan", "tests-tsan", "sema
                  "mode-divergence"}
                 if "build" in expected else set())
 if expected & {"assemble", "buckfiles", "build", "tests-release", "tests-san"}:
-    want_not_run.update(("mutants", "fuzz"))
+    want_not_run.update(("mutants", "fuzz", "sim"))
 want_code = 1 if expected else 0
 print("  " + " ".join("%s=%s" % (g, s) for g, s in got.items()) + "  overall=" + core["overall"])
 ok = bad == expected and not_run == want_not_run and code == want_code and (core["overall"] == "PASS") == (not expected)
@@ -880,7 +880,7 @@ code, flipped = int(sys.argv[3]), sys.argv[4]
 got = {g["id"]: g["status"] for g in core["gates"]}
 print("  " + " ".join("%s=%s" % kv for kv in got.items()) + "  overall=" + core["overall"])
 compiling = {"semantic-suppressions", "symbols", "build", "structure", "mode-divergence", "tests-msan", "tests-tsan",
-             "fuzz", "mutants", "witness-tests", "mutants-witness"}
+             "fuzz", "sim", "mutants", "witness-tests", "mutants-witness"}
 assert code == 1 and core["overall"] == "FAIL" and core["uncached"] is True, (code, core["overall"])
 assert {g for g, s in got.items() if s == "FAIL"} == {"toolchain"}, got
 assert {g for g, s in got.items() if s == "NOT_RUN"} == compiling | {"tests-release", "tests-san"}, got

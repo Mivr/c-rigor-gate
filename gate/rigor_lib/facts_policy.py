@@ -106,7 +106,7 @@ def load_policy(path):
         document = tomllib.loads(jsonio.read_bytes(path).decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as exc:
         raise InternalError("%s is not valid TOML: %s" % (path, exc)) from exc
-    _only("top level", document, ("global", "module"))
+    _only("top level", document, ("global", "module", "sim", "soak"))   # `sim` and `soak`: sim_policy reads them
     glob = document.get("global")
     _only("[global]", glob, ("deny", "trusted"))
     if "deny" not in glob:

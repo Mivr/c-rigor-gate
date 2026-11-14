@@ -9,6 +9,7 @@
   },
   "not_run": [
     "fuzz",
+    "sim",
     "mutants"
   ]
 }

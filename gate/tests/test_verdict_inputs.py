@@ -21,7 +21,8 @@ LLVM, SYSROOT, BUCK2 = "1" * 64, "2" * 64, "3" * 64
 FILE_HASHES = {key: jsonio.sha256_hex(key.encode()) for key in
                ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
                 "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
-                "order_sha256", "witness_sha256", "perf_sha256", "fuzz_regressions_sha256")}
+                "order_sha256", "witness_sha256", "perf_sha256", "fuzz_regressions_sha256", "sim_spec_sha256",
+                "sim_regressions_sha256", "sim_salt_id")}
 WITNESS_FIXTURE = GATE_DIR / "tests" / "fixtures" / "witness" / "good"
 
 
@@ -37,6 +38,7 @@ class Fixture:
         self.gate_sha, self.gate_clean, self.name, self.uncached = GATE, True, "prod", False
         self.tier = "nightly"
         self.file_hashes = dict(FILE_HASHES)
+        self.sim_digest = None
 
     def grading(self):
         buck = (BUCK_TEXT % (self.llvm, self.sysroot)).encode()
@@ -50,6 +52,8 @@ class Fixture:
                     ["gate/toolchains/BUCK", jsonio.sha256_hex(buck)],
                     ["gate/tools/buck2.version", jsonio.sha256_hex(version)]]
         documents = {"clone": {"metadata": dict(self.commits)}, "assemble": {"metadata": {"manifest": manifest}}}
+        if self.sim_digest is not None:
+            documents["sim"] = {"metadata": {"seed_digest": self.sim_digest}}
         g = SimpleNamespace(tree=self.tree, work=self.root, gate_sha=self.gate_sha, gate_clean=self.gate_clean,
                             product=SimpleNamespace(name=self.name), args=SimpleNamespace(uncached=self.uncached, approvals=None, tier=self.tier),
                             inputs=dict(self.file_hashes))
@@ -94,6 +98,7 @@ class EveryInputChangesTheHash(TempDirTestCase):
             cases[key] = lambda f, key=key: f.file_hashes.__setitem__(key, other_hash(key))
         for key, other in (("head", "e" * 40), ("base", "f" * 40), ("merge_base", "9" * 40)):
             cases[key] = lambda f, key=key, other=other: f.commits.__setitem__(key, other)
+        cases["sim_seed_digest"] = lambda f: setattr(f, "sim_digest", "a" * 64)   # from the `sim` gate's metadata
         cases["gate_sha"] = lambda f: setattr(f, "gate_sha", "e" * 40)
         cases["gate_clean"] = lambda f: setattr(f, "gate_clean", False)
         cases["product"] = lambda f: setattr(f, "name", "other")
@@ -165,6 +170,7 @@ class Snapshot(TempDirTestCase):
         self.write("task.toml", "id = 't'\n", directory=self.tmp)
         for name in verdict_inputs.PRODUCT_FILES:
             self.write(name, name + "\n")
+        self.write("sim-salt.public", "0a0b\n")   # a salt file must be hex
         self.approvals = self.sub("approvals")
         (self.approvals / ("0" * 64 + ".json")).write_text("{}")
         self.work = str(self.sub("work"))

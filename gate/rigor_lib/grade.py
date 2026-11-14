@@ -65,7 +65,7 @@ def discard(path):
 
 
 def absolute_arguments(args):
-    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "sign_key", "work",
+    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "sim_salt", "sign_key", "work",
                  "verdict_out"):
         value = getattr(args, name, None)
         if value is not None:
@@ -170,6 +170,10 @@ def add_parser(subparsers):
     parser.add_argument("--perf", metavar="DIR",
                         help="perf bundle (docs/perf.md); snapshotted into <work>/inputs/perf and bound as "
                              "perf_sha256 (null without it); loaded and checked, no gate judges it yet")
+    parser.add_argument("--sim-salt", metavar="FILE",
+                        help="the salt of the simulation seeds (lowercase hex; docs/sim.md): the grader's hidden one. Only "
+                             "its sha256 enters the verdict (inputs.sim_salt_id); without it the product's "
+                             "sim-salt.public is used, else no salt")
     parser.add_argument("--sign-key")
     parser.add_argument("--work", required=True)
     parser.add_argument("--allow-dirty-gate", action="store_true",

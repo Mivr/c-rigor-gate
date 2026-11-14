@@ -17,6 +17,7 @@ tests-msan
 tests-tsan
 tests-stub
 fuzz
+sim
 perf
 mutants
 witness-tests
