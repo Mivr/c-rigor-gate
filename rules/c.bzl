@@ -6,11 +6,13 @@ platform's mode constraint; the sealed warning profile is appended last.
 
 
 
+load("@gate//rules:android.bzl", "android_so", "android_version_script")
+load("@gate//rules:apk.bzl", "apk", "apk_check")
 load("@gate//rules:catalog.bzl", "c_catalog_gen")
 load("@gate//rules:cov.bzl", "cov_report")
 load("@gate//rules:embed.bzl", "c_embed_gen")
 load("@gate//rules:ctest.bzl", "MSAN_ENV_LINES", "TSAN_ENV_LINES", "ctest_results")
-load("@gate//rules:facts.bzl", "c_facts", "c_msan_facts", "c_san_facts", "c_tsan_facts")
+load("@gate//rules:facts.bzl", "c_android_facts", "c_facts", "c_msan_facts", "c_san_facts", "c_tsan_facts")
 load("@gate//rules:fuzz.bzl", "fuzz_corpus", "fuzz_run", "fuzz_runs")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
@@ -70,22 +72,29 @@ _TSAN = "-fsanitize=thread"
 # other modes are not shipped, and the sanitizer modes would conflict with some of these flags.
 _HARDENED_RELEASE = ["-ftrivial-auto-var-init=zero", "-fstrict-flex-arrays=3"]
 
+# One list for the optimised modes: the android mode IS the release list (not a copy of it), so a flag added to
+# the release profile (a hardening profile, T139) reaches the Android objects in the same change.
+_RELEASE_COMPILE = ["-O2"] + _HARDENED_RELEASE
+_RELEASE_LINK = []
+
 _COMPILE_BY_MODE = {
-    "toolchains//:release": ["-O2"] + _HARDENED_RELEASE,
+    "toolchains//:release": _RELEASE_COMPILE,
     "toolchains//:san": ["-O1", "-g", _SAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:cov": ["-fprofile-instr-generate", "-fcoverage-mapping", "-fcoverage-mcdc"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:msan": ["-O1", "-g"] + _MSAN + ["-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:tsan": ["-O1", "-g", _TSAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:android": _RELEASE_COMPILE,
 }
 
 _LINK_BY_MODE = {
-    "toolchains//:release": [],
+    "toolchains//:release": _RELEASE_LINK,
     "toolchains//:san": [_SAN],
     "toolchains//:cov": ["-fprofile-instr-generate"],
     "toolchains//:fuzz": [_FUZZ],
     "toolchains//:msan": _MSAN,
     "toolchains//:tsan": [_TSAN],
+    "toolchains//:android": _RELEASE_LINK,
 }
 
 def _compile_flags():
@@ -97,8 +106,11 @@ def _link_flags():
 # Fuzz mode links libFuzzer's main(); ordinary binaries/tests are not built there, and
 # fuzz targets are not built in the other modes.
 _ONLY_FUZZ = ["toolchains//:fuzz"]
-_NOT_IN_FUZZ = select({
+# Binaries and tests run on the build farm's Linux x86_64 workers: never built for the android mode, whose only
+# products are libraries and `c_android_so` (a `//...` build under the android platform skips them as incompatible).
+_HOST_ONLY = select({
     "toolchains//:fuzz": ["toolchains//:never"],
+    "toolchains//:android": ["toolchains//:never"],
     "DEFAULT": [],
 })
 
@@ -187,13 +199,21 @@ def _facts(name, kind, srcs, deps, unit = None, system_libs = [], generated = []
         )
 
 # The sysroot libraries a `c_library` may name (T095). `pthread`: glibc 2.31 keeps pthread_create and friends in
-# libpthread. `X11` (T117): libX11 for a Linux X11 shell. A new entry needs a product that needs it, and
+# libpthread; bionic has them in libc, so it links nothing in the android mode. `X11` (T117): libX11 for a Linux X11
+# shell. `android` and `log` (T-G1): the NDK's libandroid.so (ANativeWindow_*, AInput*, ALooper_*, ANativeActivity_*)
+# and liblog.so (__android_log_write), linked in the android mode only. A new entry needs a product that needs it, and
 # `facts_data.SYSTEM_LIBS` (the same list, checked against this one by a test) so the policy gate knows it.
-_SYSTEM_LIBS = ["pthread", "X11"]
+_SYSTEM_LIBS = ["pthread", "X11", "android", "log"]
 
 # What a name links, in link order. libX11 is a shared object whose own dependencies (libxcb, then libXau and
 # libXdmcp) must follow it on the line; all of them are members of the pinned sysroot (toolchains/BUCK).
-_SYSTEM_LIB_FLAGS = {"X11": ["-lX11", "-lxcb", "-lXau", "-lXdmcp"]}
+# The Android names exist in that one mode, `pthread` in every mode but it.
+_SYSTEM_LIB_FLAGS = {
+    "X11": ["-lX11", "-lxcb", "-lXau", "-lXdmcp"],
+    "pthread": select({"toolchains//:android": [], "DEFAULT": ["-lpthread"]}),
+    "android": select({"toolchains//:android": ["-landroid"], "DEFAULT": []}),
+    "log": select({"toolchains//:android": ["-llog"], "DEFAULT": []}),
+}
 
 def _system_libs(macro, libs):
     if type(libs) != "list":
@@ -363,7 +383,7 @@ def c_binary(name, srcs = [], deps = []):
         deps = deps,
         compiler_flags = _compile_flags(),
         linker_flags = _link_flags(),
-        target_compatible_with = _NOT_IN_FUZZ,
+        target_compatible_with = _HOST_ONLY,
     )
     _facts(name, "c_binary", srcs, deps)
 
@@ -381,7 +401,7 @@ def c_test(name, srcs = [], deps = [], threads = False):
         deps = deps + ["gate//ctest:ctest"],
         compiler_flags = _compile_flags(),
         linker_flags = _link_flags(),
-        target_compatible_with = _NOT_IN_FUZZ,
+        target_compatible_with = _HOST_ONLY,
     )
 
     _facts(name, "c_test", srcs, deps + ["gate//ctest:ctest"])
@@ -475,6 +495,129 @@ def c_fuzz(name, srcs = [], deps = [], corpus = [], runs = None):
         target_compatible_with = _RELEASE_OR_SAN,
     )
     _facts(name, "c_fuzz", srcs, deps, unit = ":" + name + "__facts_unit")
+
+# Android shared objects are linked with 16 KB LOAD segments (Android 15+ devices map with 16 KB pages); the NDK
+# toolchain links with `-z max-page-size=16384` and rules/elf_check.py refuses an object that is not.
+_ANDROID_PAGE = 16384
+_ANDROID_ONLY = ["toolchains//:android"]
+
+def _symbol_names(macro, attr, names):
+    if type(names) != "list" or len(names) == 0:
+        fail("{}: `{}` must be a non-empty list of C identifiers, got {!r}".format(macro, attr, names))
+    for symbol in names:
+        if type(symbol) != "string" or symbol == "" or symbol[0].isdigit() or any([c not in _EMBED_SYMBOL_CHARS for c in symbol.elems()]):
+            fail("{}: `{}` entries must be C identifiers ([A-Za-z_][A-Za-z0-9_]*), got {!r}".format(macro, attr, symbol))
+    if len(set(names)) != len(names):
+        fail("{}: `{}` has duplicates: {}".format(macro, attr, names))
+
+def c_android_so(name, exports, srcs = [], deps = [], system_libs = [], visibility = []):
+    """A shared object `lib<name>.so` for Android (android mode only), exporting exactly the symbols of `exports`.
+
+    `srcs` and `deps` as for `c_library`; the dependencies are linked in statically. A GNU version script makes
+    the `exports` global and everything else local, and the build fails (rules/elf_check.py) if the linked object
+    defines any other dynamic symbol, lacks one of `exports`, or has a PT_LOAD segment aligned to less than 16 KB.
+    `<name>` is the checked `lib<name>.so`; `<name>_facts` (the android mode's objects of this target, like
+    `c_library`'s release facts) feeds the symbols gate, with kind c_android_so.
+    The link is `-Wl,--no-undefined -Wl,-z,relro,-z,now -Wl,--gc-sections`; `system_libs` as for `c_library`.
+    """
+    _check("c_android_so", srcs, [])
+    _symbol_names("c_android_so", "exports", exports)
+    link_flags = _system_libs("c_android_so", system_libs)
+    android_version_script(name = name + "__map", symbols = exports, visibility = [])
+    native.cxx_library(
+        name = name + "__lib",
+        srcs = srcs,
+        deps = deps,
+        compiler_flags = _compile_flags(),
+        linker_flags = [
+            "-Wl,--version-script=$(location :{}__map)".format(name),
+            "-Wl,--no-undefined",
+            "-Wl,-z,relro,-z,now",
+            "-Wl,--gc-sections",
+        ],
+        post_linker_flags = link_flags,
+        preferred_linkage = "shared",
+        link_style = "static",
+        target_compatible_with = _ANDROID_ONLY,
+        visibility = [],    # the unchecked object is the macro's own: only `<name>` (the checked one) is a product output
+    )
+    android_so(
+        name = name,
+        lib = ":" + name + "__lib",
+        soname = name,
+        exports = exports,
+        page_size = _ANDROID_PAGE,
+        target_compatible_with = _ANDROID_ONLY,
+        visibility = visibility,
+    )
+    c_android_facts(
+        name = name + "_facts",
+        unit = ":" + name + "__lib",
+        facts_name = name,
+        kind = "c_android_so",
+        srcs = srcs,
+        facts_deps = deps,
+        system_libs = system_libs,
+        target_compatible_with = _ANDROID_ONLY,
+    )
+
+_APK_PACKAGE = "abcdefghijklmnopqrstuvwxyz0123456789_."
+
+def _apk_text(name, what, value, allowed, first, limit):
+    if type(value) != "string" or len(value) == 0 or len(value) > limit or value[0] not in first:
+        fail("c_apk {}: `{}` must be a string of 1 to {} characters starting with one of {!r}, got {!r}".format(name, what, limit, first, value))
+    for char in value.elems():
+        if char not in allowed:
+            fail("c_apk {}: `{}` has the character {!r}; allowed: {}".format(name, what, char, allowed))
+
+def c_apk(name, so, package, label, version_code, version_name, orientation = "landscape", permissions = [], assets = [], visibility = []):
+    """A signed, 16 KB aligned APK `<name>.apk` of one `c_android_so` (android mode only), and its test `<name>_check`.
+
+    `so` is `":<name>"` of a `c_android_so` of this package that exports exactly `ANativeActivity_onCreate`; only its checked
+    output is used, never its `__lib`. The manifest is generated (rules/apk_manifest.py): `package`, `label`,
+    `version_code`, `version_name`, `orientation` and `permissions` (names from `INTERNET`) are validated there; minSdk 28 and
+    targetSdk 35 are fixed, `hasCode` is false (no Java: T-A6) and one NativeActivity loads the object. `assets` are plain
+    file names of this package, packaged under `assets/`. There is no `res` (T-A6). The APK is signed with the checked-in
+    test-only debug key and nothing else: no argument, environment variable or file of a product selects another key, and
+    `<name>_check` (rules/apk_check.py: entries, 16 KB alignment, `apksigner verify`, the debug certificate, the manifest as
+    declared, the object's LOAD alignment and exports) fails for an APK signed by any other.
+    """
+    if type(so) != "string" or not so.startswith(":") or "__" in so or "/" in so:
+        fail("c_apk {}: `so` must be the label \":name\" of a c_android_so of this package, got {!r}".format(name, so))
+    _apk_text(name, "package", package, _APK_PACKAGE, "abcdefghijklmnopqrstuvwxyz", 120)
+    _apk_text(name, "label", label, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ._-", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 40)
+    _apk_text(name, "version_name", version_name, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 32)
+    if type(version_code) != "int" or version_code < 1 or version_code > 2100000000:
+        fail("c_apk {}: `version_code` must be an int from 1 to 2100000000, got {!r}".format(name, version_code))
+    if orientation not in ["landscape", "portrait", "sensorLandscape", "unspecified"]:
+        fail("c_apk {}: `orientation` must be landscape, portrait, sensorLandscape or unspecified, got {!r}".format(name, orientation))
+    if type(permissions) != "list" or [p for p in permissions if p not in ["INTERNET"]] or len(set(permissions)) != len(permissions):
+        fail("c_apk {}: `permissions` must be a list without repeats from [\"INTERNET\"], got {!r}".format(name, permissions))
+    _plain_files("c_apk", "assets", assets, "")
+    for asset in assets:
+        if "/" in asset or asset.startswith("."):
+            fail("c_apk {}: `assets` entries must be plain file names of this package, got {!r}".format(name, asset))
+    apk(
+        name = name,
+        apk_name = name + ".apk",
+        so = so,
+        package = package,
+        label = label,
+        version_code = version_code,
+        version_name = version_name,
+        orientation = orientation,
+        permissions = permissions,
+        assets = assets,
+        asset_names = assets,
+        target_compatible_with = _ANDROID_ONLY,
+        visibility = visibility,
+    )
+    apk_check(
+        name = name + "_check",
+        apk = ":" + name,
+        target_compatible_with = _ANDROID_ONLY,
+        visibility = [],
+    )
 
 def c_sim(name, srcs = [], deps = [], seeds = None, run_ms = None, shards = None):
     """A whole-app simulation target (P330 §1, docs/sim.md): `srcs` is the product's WORLD (it implements `sim/world.h`),

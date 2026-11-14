@@ -112,6 +112,7 @@ _MODE_FLAGS = {
     "toolchains//:san": ["-O1", "-g", _SAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:cov": ["-O2"],
     "toolchains//:fuzz": ["-O1", "-g", _FUZZ, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
+    "toolchains//:android": ["-O2"],
     "toolchains//:msan": ["-O1", "-g"] + _MSAN + ["-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
     "toolchains//:tsan": ["-O1", "-g", _TSAN, "-fno-sanitize-recover=all", "-fno-omit-frame-pointer"],
 }
@@ -125,6 +126,7 @@ _MODE_FLAGS_PLAIN = {
     "toolchains//:san": ["-O1", "-g"],
     "toolchains//:cov": ["-O2"],
     "toolchains//:fuzz": ["-O1", "-g"],
+    "toolchains//:android": ["-O2"],
     "toolchains//:msan": ["-O1", "-g"],
     "toolchains//:tsan": ["-O1", "-g"],
 }

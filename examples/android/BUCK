@@ -1,0 +1,23 @@
+load("@gate//rules:c.bzl", "c_android_so", "c_apk", "c_library")
+
+c_library(name = "core", srcs = ["core.c"], headers = ["core.h"])
+
+# A NativeActivity shared object: the entry symbol is the only dynamic export (android mode only).
+c_android_so(
+    name = "club",
+    srcs = ["entry.c"],
+    deps = [":core"],
+    exports = ["ANativeActivity_onCreate"],
+    system_libs = ["android", "log"],
+)
+
+# The signed, 16 KB aligned APK of that object (debug key only) and its check test `app_check`.
+c_apk(
+    name = "app",
+    so = ":club",
+    package = "org.example.club",
+    label = "Club example",
+    version_code = 1,
+    version_name = "0.1.0",
+    visibility = ["PUBLIC"],    # the self-test (selftest/android.sh) breaks this APK in a scratch package
+)

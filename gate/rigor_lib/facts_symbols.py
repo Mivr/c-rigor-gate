@@ -149,17 +149,24 @@ def mutable_data_findings(facts, module):
     return found
 
 
-def run(facts_by_label, policy, libc, third=None):
+ANDROID_KINDS = ("c_android_so",)
+
+
+def run(facts_by_label, policy, libc, third=None, libc_android=None):
+    """`libc_android`: the NDK export list, reserved for the facts of the Android kinds instead of `libc` (T-G2).
+    Without one, an Android kind is judged against `libc` (which still reserves glibc names)."""
     third = facts_third_party.load() if third is None else third
     facts_third_party.check_policy(policy, third)
     products, libs, found = facts_third_party.split(facts_by_label, third)
     found.extend(policy_coverage_findings(products, policy))
     found.extend(facts_third_party.test_only_findings(products, third))
-    reserved = set(libc)
+    reserved = set()
     for label in policy.trusted & set(products):
         reserved |= exports_of(products[label])
     for lib in libs.values():
         reserved |= exports_of(lib)
+    reserved_android = reserved | set(libc if libc_android is None else libc_android)
+    reserved |= set(libc)
     prefixes = tuple(third.prefixes)
     units = 0
     for label in sorted(products):
@@ -171,7 +178,8 @@ def run(facts_by_label, policy, libc, third=None):
         own = exports_of(facts)
         for unit in facts.units:
             units += 1
-            found.extend(unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes))
+            found.extend(unit_findings(facts, unit, module, policy, allowed, own,
+                                       reserved_android if facts.kind in ANDROID_KINDS else reserved, prefixes))
         found.extend(unused_allow_findings(facts, module, allowed, own))
         found.extend(export_findings(facts, module))
         found.extend(system_lib_findings(facts, module))

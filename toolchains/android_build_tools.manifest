@@ -1,0 +1,10 @@
+# c-rigor-gate toolchain manifest v1: kind, exec, size, sha256|link target, path
+d	-	0	-	android-15
+f	x	6299424	d1096e11aba9c974644369ee3c50d239acac3f3428ffa928e5b9c14dfb7a57de	android-15/aapt2
+d	-	0	-	android-15/lib
+f	-	1074241	00ef9948f843fe395d2440ae3ef41405b8040a6d5d46493bd1902ac0ee6deae7	android-15/lib/apksigner.jar
+f	-	16614740	305622ad00535684534eb8f742cbf5e628a9abc09d8ea4d39d1babb95bf0cee5	android-15/lib/d8.jar
+d	-	0	-	android-15/lib64
+f	x	1085776	71c9f5d2e9d6e3e1875340c20a2f6b750c2c7f54f730f5fb7f1fd1d0877c8d6f	android-15/lib64/libc++.so
+f	-	63	084847d70abc41284feee7ea717e7c92eab0d1be05f048c27445a359cfe109d8	android-15/source.properties
+f	x	273032	a205d94a45c8522ca1b571dcbe190df145c818f0a29dfb366e4dd78eef4f56a7	android-15/zipalign

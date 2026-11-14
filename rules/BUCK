@@ -1,0 +1,25 @@
+# The checker of `c_android_so` (rules/android.bzl) and the scripts of `c_apk` (rules/apk.bzl) run inside Buck2 actions; this exposes them as inputs.
+export_file(
+    name = "elf_check.py",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "apk_manifest.py",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "apk_pack.py",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "apk_check.py",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "apk_lab.py",
+    visibility = ["PUBLIC"],
+)

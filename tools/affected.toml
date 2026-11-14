@@ -6,9 +6,31 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim android
 # "all" is shorthand for every one of them.
 
+# ---- 0. The Android shared object rule (first match wins, so these come before `rules/**` and `examples/**`) -------
+[[rule]]
+glob = "selftest/android.sh"
+selftests = ["android"]
+[[rule]]
+glob = "examples/android/**"
+selftests = ["android"]
+[[rule]]
+glob = "rules/android.bzl"
+selftests = ["android", "product_checks"]
+[[rule]]
+glob = "rules/elf_check.py"
+selftests = ["android"]
+[[rule]]
+glob = "rules/apk*"
+selftests = ["android", "product_checks"]
+[[rule]]
+glob = "toolchains/android_*"
+selftests = ["android", "toolchain"]
+[[rule]]
+glob = "toolchains/jdk.manifest"
+selftests = ["android", "toolchain"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"

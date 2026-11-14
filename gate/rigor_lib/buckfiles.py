@@ -21,14 +21,15 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed")
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 # T135: `c_fuzz` takes `corpus` (the form `srcs` has on a `c_fuzz`: string literals, never a glob; the macro checks the paths)
 # and `runs` (an int literal).
 # T2G1: `c_sim` takes the integer budgets `seeds`, `run_ms` and `shards` (int literals; srcs are string literals, never a glob).
 MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps"), "c_fuzz": ("corpus", "runs"), "c_test": ("threads",),
-                  "c_sim": ("seeds", "run_ms", "shards")}
+                  "c_sim": ("seeds", "run_ms", "shards"), "c_android_so": ("system_libs", "exports")}
+# `c_android_so` (T-G2) names the symbols it exports and the system libraries it links.
 # T105: `c_catalog` has keywords of its own and no `srcs`/`headers`. `pots`, `langs`, `source_lang` and `symbol`
 # are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
 # is one string that is checked as a dep, and `deps` is the usual dep list (the libraries the runtime header includes from).
@@ -38,6 +39,12 @@ CATALOG_KEYWORDS = ("name", "visibility", "deps", "pots", "po", "langs", "source
 # int literal (the only int a macro takes; no bool, no expression) and `nul` a True/False literal (the only bool), `visibility` the usual list.
 EMBED_MACRO = "c_embed"
 EMBED_KEYWORDS = ("name", "visibility", "src", "symbol", "max_bytes", "nul")
+# T-G3: `c_apk` packages one `c_android_so` of the same package (`so`, a `:name` that is not one of the macro's own
+# `__` targets) into a debug-signed APK. Its keywords are the manifest declaration (strings, `version_code` an int, `permissions` and
+# `assets` lists of strings) and nothing else: no deps, no flags, no signing argument of any kind.
+APK_MACRO = "c_apk"
+APK_KEYWORDS = ("name", "visibility", "so", "package", "label", "version_code", "version_name", "orientation", "permissions", "assets")
+APK_SO_LABEL = re.compile(r":[A-Za-z0-9.+-][A-Za-z0-9_.+-]*")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
 # (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the
@@ -47,13 +54,14 @@ BUILD_FILE = "BUCK"
 DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+)")
 GATE_THIRD_PARTY = re.compile(r"//third_party[/:]")
 TEST_MACRO = "c_test"
+ANDROID_MACRO = "c_android_so"   # nothing depends on a shared object (or on what it derives): it is a product output only
 # T128: `gate//rt:require` (facts_rt) is the one more gate label, for a library, a binary or a test only.
 REQUIRE_MACROS = ("c_library", "c_binary", TEST_MACRO)
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
 # T2G1: nothing may depend on a `c_sim` or on a target its macro derives: the world and its runner are for the simulation only.
 SIM_MACRO = "c_sim"
 SIM_DERIVED = re.compile(r"(__bin|__shard[0-9]+|__facts_unit|_facts|_facts_san|_facts_msan|_facts_tsan)?")
-TEST_DERIVED = ("", "_facts", "_facts_san", "_facts_msan", "_facts_tsan", "_results", "_coverage")
+TEST_DERIVED = ("", "_facts", "_facts_san", "_facts_msan", "_facts_tsan", "_results", "_coverage", "__lib", "__map", "_check")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.
 FORBIDDEN_NAMES = ("TARGETS", "PACKAGE", ".buckconfig", ".buckconfig.local", ".buckroot",
@@ -156,6 +164,8 @@ def load_findings(path, node):
 
 
 def _known_keywords(macro):
+    if macro == APK_MACRO:
+        return APK_KEYWORDS
     if macro == CATALOG_MACRO:
         return CATALOG_KEYWORDS
     if macro == EMBED_MACRO:
@@ -180,6 +190,10 @@ def _value_ok(macro, keyword):
         return _is_bool(node)
     if macro == EMBED_MACRO and arg in ("src", "symbol"):
         return _is_string(node)
+    if macro == APK_MACRO and arg == "version_code":
+        return _is_int(node)
+    if macro == APK_MACRO and arg == "so":
+        return _is_string(node) and APK_SO_LABEL.fullmatch(node.value) is not None and "__" not in node.value
     return _is_value(node) or (macro in GLOB_MACROS and arg in GLOB_KEYWORDS and _is_glob_value(node))
 
 
@@ -264,7 +278,7 @@ def sim_target_findings(calls, sims):
     return found
 
 
-def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None, sims=None):
+def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None):
     found, loads = [], 0
     for node in tree.body:
         is_call = isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
@@ -277,8 +291,12 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
             found.extend(call_findings(path, node, allowed, test_allowed))
             if tests is not None and isinstance(node.value.func, ast.Name) and node.value.func.id in MACROS:
                 directory = os.path.dirname(path)
-                if node.value.func.id == TEST_MACRO:
+                if node.value.func.id in (TEST_MACRO, ANDROID_MACRO, APK_MACRO):
                     tests.extend((directory, n) for n in _keyword_strings(node.value, "name"))
+                if apks is not None and node.value.func.id == ANDROID_MACRO:
+                    apks[0].update((path, n) for n in _keyword_strings(node.value, "name"))
+                if apks is not None and node.value.func.id == APK_MACRO:
+                    apks[1].extend((path, node.lineno, n) for n in _keyword_strings(node.value, "so"))
                 if node.value.func.id == SIM_MACRO and sims is not None:
                     sims.extend((directory, n) for n in _keyword_strings(node.value, "name"))
                 calls.extend((path, node.lineno, d) for d in _dep_strings(node.value)
@@ -289,16 +307,23 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
     return found
 
 
-def build_file_findings(path, data, allowed, test_allowed, tests=None, calls=None, sims=None):
+def build_file_findings(path, data, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None):
     try:
         tree = ast.parse(data.decode("utf-8"), filename=path, mode="exec")
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         return [finding("parse-error", path=path)]
-    return statement_findings(path, tree, allowed, test_allowed, tests, calls, sims)
+    return statement_findings(path, tree, allowed, test_allowed, tests, calls, apks, sims)
 
 
 def default_labels(file_name):
     return facts_third_party.load_allowed_labels(os.path.join(facts_third_party.DEFAULT_DIR, file_name))
+
+
+def apk_so_findings(sos, refs):
+    """`c_apk(so = ":x")` must name a `c_android_so` declared in the same BUCK file: `sos` is the set of (path, name) of every
+    c_android_so, `refs` the (path, line, so) of every c_apk."""
+    return [finding("bad-argument", path=path, line=line, why="so")
+            for path, line, label in refs if (path, label[1:]) not in sos]
 
 
 def walk_findings(root, allowed=None, test_allowed=None):
@@ -307,7 +332,7 @@ def walk_findings(root, allowed=None, test_allowed=None):
     allowed = default_labels(facts_third_party.ALLOWED_FILE) if allowed is None else allowed
     test_allowed = (default_labels(facts_third_party.TEST_ALLOWED_FILE) if test_allowed is None
                     else test_allowed)
-    found, tests, calls, sims = [], [], [], []
+    found, tests, calls, apks, sims = [], [], [], (set(), []), []
     for directory, subdirs, files in os.walk(root, followlinks=False):
         subdirs.sort()
         for name in sorted(files):
@@ -318,12 +343,13 @@ def walk_findings(root, allowed=None, test_allowed=None):
             elif forbidden_name(name):
                 found.append(finding("forbidden-file", path=shown))
             elif name == BUILD_FILE:
-                found.extend(build_file_findings(shown, jsonio.read_bytes(full), allowed, test_allowed, tests, calls, sims))
+                found.extend(build_file_findings(shown, jsonio.read_bytes(full), allowed, test_allowed, tests, calls, apks, sims))
         for name in subdirs:
             if os.path.islink(os.path.join(directory, name)):
                 found.append(finding("symlink", path=os.path.relpath(
                     os.path.join(directory, name), root).replace(os.sep, "/")))
     found.extend(test_target_findings(calls, tests))
+    found.extend(apk_so_findings(*apks))
     found.extend(sim_target_findings(calls, sims))
     return found
 

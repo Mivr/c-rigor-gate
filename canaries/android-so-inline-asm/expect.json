@@ -1,0 +1,9 @@
+{
+  "bypass": "inline assembly in a shared object that has no Linux build",
+  "description": "T-G2/B1: a c_android_so whose own source contains inline assembly. Its sources compile only in the android mode; the android facts must reach the semantic gate.",
+  "fail": {
+    "semantic-suppressions": [
+      "inline-asm"
+    ]
+  }
+}

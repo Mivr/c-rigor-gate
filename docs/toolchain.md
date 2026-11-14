@@ -11,6 +11,10 @@ compiling or linking: no host clang, no `/usr/include`, no `/usr/lib`.
 | Buck2 client | `/usr/local/bin/buck2` (`tools/buck2.version`; `tools/buck2` refuses any other binary) | `400f5fde930a62ff6f64513fb5a7e88fa1847afa85758cadd9484dc93446fa94` |
 | Prelude | bundled in that binary (`[external_cells] prelude = bundled`) | n/a |
 | LLVM 19.1.7 | `https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz` | `4a5ec53951a584ed36f80240f6fbf8fdd46b4cf6c7ee87cc2d5018dc37caf679` |
+| Android NDK r29 (linux zip) | `https://dl.google.com/android/repository/android-ndk-r29-linux.zip` | `4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf` |
+| Android build-tools r35 (linux zip; `c_apk`: aapt2, zipalign, apksigner and d8 jars) | `https://dl.google.com/android/repository/build-tools_r35_linux.zip` | `bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88` |
+| Android platform 35 r02 (`android.jar`) | `https://dl.google.com/android/repository/platform-35_r02.zip` | `0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0` |
+| Temurin JDK 21.0.6+7 (linux x64; java for apksigner and d8, keytool) | `https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.6%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz` | `a2650fba422283fbed20d936ce5d2a52906a5414ec17b2f7676dddb87201dbae` |
 | glibc sysroot (Chromium Debian bullseye amd64) | `https://commondatastorage.googleapis.com/chrome-linux-sysroot/f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` | `f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` |
 
 `toolchains/fetch.bzl` (`fetched_tree`) downloads each archive (hash-checked) and runs `tar` on RE to unpack only
@@ -23,14 +27,14 @@ names (`toolchains/tools.bzl`, `.project(...)`). A pattern that matches nothing 
 archive, about two minutes, once per Buck2 daemon). The action cache is client-writable (backlog B4), so the tree
 cannot just be trusted from it. Design:
 
-- `toolchains/llvm.manifest` and `toolchains/sysroot.manifest` list every member of the extracted trees (directory,
+- `toolchains/{llvm,sysroot,ndk}.manifest` list every member of the extracted trees (directory,
   file with exec bit, size and sha256, symlink with target). They are gate files (`toolchains/**`), covered by the
   gate-clean check, and a change to one is a review item of its own.
 - The `toolchain` gate of `rigor grade` (`gate/rigor_lib/grade_toolchain.py`, T073; `docs/grade.md`) runs right after
   `assemble`, before any gate that compiles, and does this in the head tree's daemon (`toolchain_verify.prepare`):
-  (1) `build toolchains//:{llvm,sysroot}_ref`, cache allowed, nothing materialised, so the tree comes from the action
+  (1) `build toolchains//:{llvm,sysroot,ndk}_ref`, cache allowed, nothing materialised, so the tree comes from the action
   cache (the unpack runs only when the cache truly lacks it); (2) `build --no-remote-cache
-  toolchains//:{llvm,sysroot}_verified`: the `verified_tree` rule (`toolchains/fetch.bzl`) runs
+  toolchains//:{llvm,sysroot,ndk}_verified`: the `verified_tree` rule (`toolchains/fetch.bzl`) runs
   `toolchains/verify_tree.py` on a worker, uncached, over the very tree of step 1 and compares every name, type,
   exec bit, size, link target and sha256 with the manifest. Buck2 keeps that tree in the daemon, so the compile and
   link actions of the builds that follow consume the digest that was verified. Warm cost: about 8 s.
@@ -49,6 +53,51 @@ cannot just be trusted from it. Design:
 - Regenerating the manifests: `toolchains/gen_manifests.sh` (a real, uncached unpack; deterministic, so a second
   run leaves `git diff` empty). Bootstrapping a new pin needs empty `*.manifest` placeholder files first (the BUCK
   file names them as sources).
+- The NDK tree is verified the same way (T-G1). `ndk.manifest` was regenerated from a fully uncached unpack (`build
+  --no-remote-cache`, the `fetched_zip_tree` action executed on RE, not served from a cache). The first regeneration
+  was byte-identical to the manifest generated from a cached tree; the committed one has one more member,
+  `bin/llvm-readobj` (the target of the `llvm-readelf` link, which dangled without it), and is otherwise unchanged. Later (S2) `unzip_members.py` matched `*` across `/` no longer: the 1930 libc++ headers, the
+  other ABIs' asm headers and the Vulkan headers dropped out of the tree (1792 manifest lines, nothing removed that a C product
+  includes), regenerated uncached again (executed on RE).
+  `selftest/toolchain.sh` has a step in which a scratch clone with one `ndk.manifest` sha256 flipped makes the
+  grader's own verifier fail (`toolchain-mismatch`, `toolchains/ndk.manifest`, the flipped path), and the committed
+  manifests pass.
+- Cost of the `ndk` entry in a Linux-only `--uncached` grade (S7, measured): the two verify commands over llvm and sysroot
+  versus over llvm, sysroot and ndk, in a warm daemon, both 0.6 s (ref 0.3 s + verify 0.3 s; 0.4 + 1.8 s on the very first
+  run that verified the ndk tree); `verify_tree.py` over the 297 MB materialised ndk tree takes 0.2 s of CPU. A fresh daemon
+  also takes the ndk tree (114 MB) from the action cache once. Not measured: a cold daemon end to end (`--isolation-dir`
+  is forbidden here and `buck2 kill` is not allowed to a lane), so that number is for the orchestrator's `validate.sh`.
+- NDK twins of the Linux facts (T-G1): `toolchains//:libc_symbols_android` (every symbol the API 28 stubs `libc.so`,
+  `libm.so`, `libdl.so`, `libandroid.so` and `liblog.so` export; the reserved-name list of an Android build) and
+  `toolchains//:ndk-system-roots` (`--system-root` for the NDK's clang and bionic header directories). The `system_libs`
+  names `android` (`-landroid`) and `log` (`-llog`) link in the android mode only; `pthread` links nothing there
+  (bionic has it in libc) and is unchanged on Linux.
+- The SDK trees of `c_apk` (T-G3) are verified the same way: `android_build_tools` (zip, `fetched_zip_tree`), `android_platform`
+  (zip) and `jdk` (a `.tar.gz`: `fetched_tree` with `gzip = True`; the `.tar.xz` command of llvm and sysroot is untouched, so
+  their action digests did not change: `aquery` of both trees is byte-identical to the previous commit, and the `linux_release`
+  `hello` actions have the same digests). The pins are the Rust kiosk's `toolchains/android.bzl` ones (URL, sha256, size). Members
+  only (`docs/products.md`, "`c_apk`"): 10, 4 and 78 manifest lines. `toolchain_verify.TREES` lists all six trees; each
+  `Linux` `--uncached` grade now verifies them too (cost: see the report of T-G3; the JDK tree is 270 MB, of which `lib/modules` 142 MB).
+  Regenerate with `toolchains/gen_manifests.sh`. It no longer stops any daemon (the pinned Buck2 forbids a private
+  `--isolation-dir`, ADR 0039, and a lane must not kill the shared one); it needs a daemon that has not built the trees, which
+  the orchestrator provides. Run in W35 after the merge with 301dc22 (llvm unpacked again on a worker, 1.6 GiB down), all six
+  manifests came out byte-identical to the committed ones, including the three SDK manifests first made by hand. `selftest/toolchain.sh` flips one sha256 in each of
+  `ndk.manifest`, `android_build_tools.manifest` and `jdk.manifest` and expects `toolchain-mismatch` for that manifest.
+- Known limitation (T-G3, root cause found in round 4): the farm's CAS does not reliably serve the build-tools files to a Buck2
+  CLIENT. Any `buck2 build --materializations all` (or `buck2 run`) of a tree that holds several of them (`aapt2`, `lib/apksigner.jar`,
+  `lib/d8.jar`, `lib64/libc++.so`, `zipalign`, ...) fails with `Error downloading digest <sha256>:<size> ... Operation made no
+  progress over multiple calls, due to input being empty` on a daemon that has not already got every blob locally; the failing file
+  differs from run to run. The action cache entry is fine (`Cache hits: 100%`), RE workers read the same blobs without trouble
+  (every RE action of `c_apk` passes), and the platform, jdk and ndk trees download from the same farm without error. Reproduced
+  from scratch clones: a tree of `{aapt2, apksigner.jar}` or `{aapt2, d8.jar}` fails while each member alone, and the pairs
+  `{aapt2, zipalign}`, `{aapt2, libc++.so}`, succeed (blobs already on the machine from an earlier success), so a machine that once
+  downloaded the blobs one by one is fine and a fresh one is not. It is not the rule: not a symlink, mode, or hardlink (the
+  extractor writes plain files, `unzip_members.py`), and the same files extracted by a different action fail identically.
+  It looks like a farm-side (NativeLink) read problem for these blobs (candidate a); report to the orchestrator.
+  What the gate does about it: **no SDK tool is ever materialized on a client.** `c_apk` and `<name>_check` run on RE only, and
+  `selftest/android.sh` reads the APK back and breaks it inside ONE RE action (`rules/apk_lab.py`, rule `apk_lab`), whose output is a
+  small log. `buck2 run` of `<name>_check[run]`, `toolchains//:aapt2`, `:zipalign`, `:apksigner` on a client may fail the same way;
+  `toolchains//:keytool` (the JDK tree) works.
 - Tests: `gate/tests/test_toolchain_verify.py`, `gate/tests/test_grade_toolchain.py`; the last step of
   `selftest/grade.sh` grades with a scratch gate copy whose `llvm.manifest` has one sha256 flipped (`toolchain` FAIL).
 
@@ -59,6 +108,7 @@ A mode is a target platform. The default (`[parser] target_platform_detector_spe
 | Mode | Command | Flags |
 |---|---|---|
 | release | `tools/buck2 test //...` | `-O2 -ftrivial-auto-var-init=zero -fstack-protector-strong -fstrict-flex-arrays=3` (T139, below) |
+| android | `tools/buck2 build --target-platforms toolchains//:android_release //...` | exactly the release list (`_RELEASE_COMPILE` in `rules/c.bzl`), NDK clang: no android-only weakening; third-party code keeps its own `-O2` as in release |
 | san | `tools/buck2 test --target-platforms toolchains//:linux_san //...` | `-O1 -g -fsanitize=address,undefined,leak -fno-sanitize-recover=all -fno-omit-frame-pointer` |
 | cov | `tools/buck2 test --target-platforms toolchains//:linux_cov //...` | `-fprofile-instr-generate -fcoverage-mapping -fcoverage-mcdc` |
 | fuzz | `tools/buck2 test --target-platforms toolchains//:linux_fuzz //...` | `-fsanitize=fuzzer,address,undefined` (+ `-O1 -g -fno-sanitize-recover=all -fno-omit-frame-pointer`) |

@@ -8,7 +8,7 @@ the toolchain actually uses. A pattern that matches nothing fails the build.
 """
 
 def _fetched_tree_impl(ctx: AnalysisContext) -> list[Provider]:
-    archive = ctx.actions.declare_output("archive.tar.xz")
+    archive = ctx.actions.declare_output("archive.tar.gz" if ctx.attrs.gzip else "archive.tar.xz")
     ctx.actions.download_file(
         archive.as_output(),
         ctx.attrs.url,
@@ -23,7 +23,7 @@ def _fetched_tree_impl(ctx: AnalysisContext) -> list[Provider]:
         "set -eu",
         cmd_args(out.as_output(), format = "mkdir -p {}"),
         cmd_args(
-            ["tar", "-xJf", archive, "-C", out.as_output(), "--wildcards", "--no-wildcards-match-slash", "-T", members] + strip,
+            ["tar", "-xzf" if ctx.attrs.gzip else "-xJf", archive, "-C", out.as_output(), "--wildcards", "--no-wildcards-match-slash", "-T", members] + strip,
             delimiter = " ",
         ),
         delimiter = "\n",
@@ -38,6 +38,7 @@ def _fetched_tree_impl(ctx: AnalysisContext) -> list[Provider]:
 fetched_tree = rule(
     impl = _fetched_tree_impl,
     attrs = {
+        "gzip": attrs.bool(default = False),    # a .tar.gz (the JDK); the default is the .tar.xz of LLVM and the sysroot
         "members": attrs.list(attrs.string()),
         "sha256": attrs.string(),
         "size_bytes": attrs.int(),
@@ -78,5 +79,55 @@ verified_tree = rule(
         "manifest": attrs.source(),
         "script": attrs.source(),
         "tree": attrs.exec_dep(),
+    },
+)
+
+# ---------------------------------------------------------------------------
+# A zip archive (the Android NDK ships as one). Same contract as `fetched_tree`: download by sha256,
+# unpack only `members` on the RE farm (`unzip_members.py`, python3 stdlib), a pattern that matches
+# nothing fails. `list_only = True` (no `members`) writes the archive's member list instead (used to author the
+# members, never in a product graph); otherwise `members` is mandatory and non-empty, and `*` in a member matches
+# inside one path component only (unzip_members.py).
+# ---------------------------------------------------------------------------
+
+def _fetched_zip_tree_impl(ctx: AnalysisContext) -> list[Provider]:
+    archive = ctx.actions.declare_output("archive.zip")
+    ctx.actions.download_file(
+        archive.as_output(),
+        ctx.attrs.url,
+        sha256 = ctx.attrs.sha256,
+        size_bytes = ctx.attrs.size_bytes,
+    )
+    if not ctx.attrs.list_only and len(ctx.attrs.members) == 0:
+        fail("{}: `members` must be a non-empty list (or `list_only = True`)".format(ctx.label))
+    if ctx.attrs.list_only:
+        out = ctx.actions.declare_output("members.txt")
+        ctx.actions.run(
+            cmd_args(["python3", "-I", ctx.attrs.script, "list", archive, out.as_output()], hidden = [archive, out.as_output()]),
+            category = "zip_list",
+            identifier = ctx.label.name,
+        )
+        return [DefaultInfo(default_output = out)]
+    members, _ = ctx.actions.write("members.txt", ctx.attrs.members, allow_args = True)
+    out = ctx.actions.declare_output("tree", dir = True)
+    ctx.actions.run(
+        cmd_args(
+            ["python3", "-I", ctx.attrs.script, "extract", archive, out.as_output(), members],
+            hidden = [archive, members, out.as_output()],
+        ),
+        category = "fetched_zip_tree",
+        identifier = ctx.label.name,
+    )
+    return [DefaultInfo(default_output = out)]
+
+fetched_zip_tree = rule(
+    impl = _fetched_zip_tree_impl,
+    attrs = {
+        "list_only": attrs.bool(default = False),
+        "members": attrs.list(attrs.string(), default = []),
+        "sha256": attrs.string(),
+        "size_bytes": attrs.int(),
+        "url": attrs.string(),
+        "script": attrs.source(),
     },
 )

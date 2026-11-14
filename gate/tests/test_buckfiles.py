@@ -204,6 +204,14 @@ class BuckFilesCase(TempDirTestCase):
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = LIBS)\n', "bad-argument")
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = [LIB])\n', "bad-argument")
 
+    def test_c_android_so_takes_exports_and_system_libs(self):
+        load = 'load("@gate//rules:c.bzl", "c_android_so")\n'
+        ok = load + 'c_android_so(name = "a", srcs = ["a.c"], deps = [":b"], exports = ["f"], system_libs = ["android", "log"])\n'
+        self.assertEqual(self.check({"BUCK": ok}, 0), [])
+        self.red(load + 'c_android_so(name = "a", srcs = ["a.c"], exports = f)\n', "bad-argument")
+        self.red(load + 'c_android_so(name = "a", srcs = ["a.c"], exports = ["f"], linker_flags = ["-s"])\n', "bad-argument")
+        self.red('load("@gate//rules:c.bzl", "c_library")\nc_library(name = "a", srcs = ["a.c"], exports = ["f"])\n', "bad-argument")
+
     def test_exported_deps_on_a_library(self):
         self.assertEqual(self.check({"BUCK": LOAD + 'c_library(name = "a", srcs = ["a.c"], exported_deps = [":c", "//p:d"])\n'}, 0), [])
 
@@ -411,6 +419,55 @@ class TestOnlyLabelCase(TempDirTestCase):
                          "q/BUCK": LOADS + 'c_library(name = "l", srcs = ["l.c"], deps = [])\n'}
                 files["p/BUCK" if dep.startswith(":") else "q/BUCK"] += \
                     'c_binary(name = "b", srcs = ["b.c"], deps = ["%s"])\n' % dep
+                self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
+
+    def test_nothing_depends_on_a_shared_object_or_on_what_it_derives(self):
+        """T-G2: `<name>__lib` is the unchecked link, `<name>__map` its script; only `<name>` is an output."""
+        for dep in (":so", ":so_facts", ":so__lib", ":so__map"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                load = 'load("@gate//rules:c.bzl", "c_android_so", "c_library")\n'
+                files = {"BUCK": load + 'c_android_so(name = "so", srcs = ["a.c"], exports = ["f"])\n'
+                                        'c_library(name = "l", srcs = ["l.c"], deps = ["%s"])\n' % dep}
+                self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
+
+    def test_c_apk_takes_the_manifest_declaration_and_one_shared_object_of_its_package(self):
+        """T-G3: keywords are the declaration only; `so` is a `:name` of a c_android_so of the same BUCK file."""
+        load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk")\n'
+        so = 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'
+        apk = ('c_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, '
+               'version_name = "0.1.0", orientation = "landscape", permissions = ["INTERNET"], assets = ["a.txt"])\n')
+        self.assertEqual(self.check({"BUCK": load + so + apk}, 0), [])
+        self.assertEqual(self.check({"BUCK": load + apk + so}, 0), [])      # declaration order does not matter
+        for extra in ('signing = "release"', 'keystore = "k.jks"', 'key = "/k"', 'deps = [":club"]', 'srcs = ["a.c"]',
+                      'min_sdk = 28', 'target_sdk = 35', 'has_code = True', 'manifest = "m.xml"', 'compiler_flags = ["-O3"]',
+                      'version_code = VERSION', 'permissions = PERMS', 'label = LABEL'):
+            with self.subTest(extra=extra):
+                self.setUp()
+                self.assertEqual({r for r, _ in self.check({"BUCK": load + so + apk[:-2] + ", " + extra + ")\n"}, 1)}, {"bad-argument"})
+
+    def test_c_apk_so_must_be_a_local_c_android_so_and_not_a_private_target(self):
+        load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk", "c_library")\n'
+        so = 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'
+        head = 'c_apk(name = "app", so = "%s", package = "org.example.club", label = "Club", version_code = 1, version_name = "0.1.0")\n'
+        for label in (":club__lib", ":club__map", "//p:club", "@gate//x:y", ":missing", "club", ""):
+            with self.subTest(so=label):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": load + so + head % label}, 1)[0][0], "bad-argument")
+        self.setUp()   # a c_library, or a c_android_so of another package, is not a shared object of this one
+        self.assertEqual(self.check({"BUCK": load + 'c_library(name = "club", srcs = ["a.c"])\n' + head % ":club"}, 1),
+                         [("bad-argument", "so")])
+        self.setUp()
+        self.assertEqual(self.check({"BUCK": load + head % ":club", "q/BUCK": load + so}, 1), [("bad-argument", "so")])
+
+    def test_nothing_depends_on_an_apk_or_on_its_check(self):
+        load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk", "c_library")\n'
+        for dep in (":app", ":app_check", ":app__lib"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                files = {"BUCK": load + 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'
+                                 'c_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, version_name = "0.1.0")\n'
+                                 'c_library(name = "l", srcs = ["l.c"], deps = ["%s"])\n' % dep}
                 self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
 
     def test_similar_names_elsewhere_are_not_refused(self):
