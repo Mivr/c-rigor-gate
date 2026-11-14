@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Self-test of c_sim (T2G1, P330 §1): the runner, the world interface, seed identity and crash handling on the fixture
-# product selftest/sim (a toy locker with one relay line and deliberate bugs), plus the invariant engines of sim/inv (T2G3, T2G4:
+# product selftest/sim (a toy locker with one relay line and deliberate bugs), plus the invariant engines of sim/inv (T2G3, T2G4, T2G5:
 # their tests in both modes and their mutants at L3).
 # Needs bash, python3 (stdlib) and tools/buck2. Scratch lives under selftest/scratch_sim and $TMPDIR.
 set -uo pipefail
@@ -49,7 +49,7 @@ for plat in "$REL" "$SAN"; do
   run "$out/unit.log" test --target-platforms "$plat" //sim:sim_unit_test || fail "$CUR: //sim:sim_unit_test failed in $plat" "$out/unit.log"
 done
 
-begin "the invariant engines (sim/inv: wire I3-I6b, events I1 I2 I9 I10 I15, audit scanner, the fixture kiosk with its three seeded bugs) pass in release and san"
+begin "the invariant engines (sim/inv: wire I3-I6b, events I1 I2 I9 I10 I15, audit scanner, views I7 I8 with the schema parser, the fixture kiosks with their seeded bugs) pass in release and san"
 for plat in "$REL" "$SAN"; do
   run "$out/inv.log" test --target-platforms "$plat" //sim/inv/... || fail "$CUR: //sim/inv/... failed in $plat" "$out/inv.log"
   grep -Eq "Pass [0-9]+" "$out/inv.log" && ! grep -Eq "Fail [1-9]|Build failure [1-9]|Fatal [1-9]|Timeout [1-9]" "$out/inv.log" || fail "$CUR: the test summary in $plat is not a clean pass" "$out/inv.log"
@@ -58,7 +58,7 @@ done
 begin "the invariant engines are mutation-tested at L3: every c_mutants target of sim/inv has zero survivors and uses no approval"
 mkdir -p "$out/mut"
 : > "$out/mut.toml"
-for m in frame wire audit events; do
+for m in frame wire audit events ui; do
   build_out mrep "$REL" "//sim/inv:${m}_mutants"
   cp "$mrep" "$out/mut/$m.json"
   printf '[module."//sim/inv:%s_mutants"]\nlevel = "L3"\n' "$m" >> "$out/mut.toml"
@@ -69,12 +69,22 @@ import json, sys
 r = json.load(open(sys.argv[1]))
 mods = r["metadata"]["modules"]
 assert r["status"] == "PASS" and r["findings"] == [], r["findings"][:3]
-assert sorted(mods) == ["//sim/inv:audit_mutants", "//sim/inv:events_mutants", "//sim/inv:frame_mutants", "//sim/inv:wire_mutants"], sorted(mods)
+assert sorted(mods) == ["//sim/inv:audit_mutants", "//sim/inv:events_mutants", "//sim/inv:frame_mutants", "//sim/inv:ui_mutants", "//sim/inv:wire_mutants"], sorted(mods)
 assert r["metadata"]["approvals_used"] == [], "an approval was used"
 for name, m in mods.items():
     assert m["survivors"] == [] and m["verdicts"]["survived"] == 0 and m["verdicts"]["unrun"] == 0 and m["total"] > 50, (name, m["verdicts"])
 PY
 echo "  $(python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1]))["metadata"]["modules"]; print(", ".join("%s: %d mutants" % (k.split(":")[1], v["total"]) for k, v in sorted(m.items())))' "$out/mut_result.json")"
+
+begin "the lockers view schema file is the text its test parses (the engine knows no product: the schema is the product's data)"
+python3 -I - <<'PY' || fail "$CUR: selftest/sim/lockers-view.schema differs from LOCKERS_SCHEMA of sim/inv/tests/ui_lockers_test.c"
+import re
+src = open("sim/inv/tests/ui_lockers_test.c").read()
+m = re.search(r"LOCKERS_SCHEMA\[\] =\n(.*?);\n", src, re.S)
+lines = re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*$', m.group(1), re.M)
+text = "".join(l.replace('\\n', "\n").replace('\\"', '"').replace("\\\\", "\\") for l in lines)
+assert text == open("selftest/sim/lockers-view.schema").read(), "differs"
+PY
 
 begin "clean world: 200 seeds PASS in release and san (2 shards), every seed run twice, 200 distinct trace hashes"
 for plat in "$REL" "$SAN"; do
