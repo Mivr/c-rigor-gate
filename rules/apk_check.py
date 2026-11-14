@@ -7,8 +7,11 @@
 Every problem is reported, one line each, prefixed by the check that found it; exit 0 only when there is none (and then OUT,
 if given, is written). The checks:
 
-  entries    the zip holds exactly AndroidManifest.xml, resources.arsc, lib/arm64-v8a/<lib> and assets/<asset> for each
-             declared asset: no other file, no directory entry, no repeated name, no signature file of another scheme;
+  entries    the zip holds exactly AndroidManifest.xml, resources.arsc, lib/arm64-v8a/<lib>, assets/<asset> for each
+             declared asset, res/xml/<name> for each declared `res_xml` and classes.dex exactly when the declaration has
+             `java_classes`: no other file, no directory entry, no repeated name, no signature file of another scheme;
+  dex        (T-G3b) classes.dex is a well-formed dex file (header, checksum, bounds) whose class_defs are exactly the
+             declared `java_classes`: none missing, none extra (a small parser of the dex format, `dex_classes` below);
   library    the object is STORED and its data starts at a multiple of 16384 bytes, and (rules/elf_check.py) it is an
              AArch64 shared object whose PT_LOAD segments are aligned to 16384 and whose dynamic symbols define exactly
              the --export list;
@@ -16,7 +19,8 @@ if given, is written). The checks:
   signature  `apksigner verify --min-sdk-version 28` accepts it, with one signer and the v3 scheme (or v2: with minSdk 28 apksigner writes v3 only), and the signer
              certificate's SHA-256 is the one in --cert-sha256 (the test-only debug key; a release key, or any other, fails);
   manifest   `aapt2 dump xmltree` of the APK's manifest is identical to that of the manifest rendered from SPEC
-             (rules/apk_manifest.py) and linked the same way: package, version, SDK levels, permissions, activity, all of it.
+             (rules/apk_manifest.py) and linked the same way: package, version, SDK levels, permissions, application class,
+             activity attributes, receivers, all of it (the expected one is linked with stand-in @xml resources, see below).
 
 `buck2 run //pkg:<name>_check -- OTHER.apk` runs the same checks on any APK (the selftest does).
 """
@@ -30,9 +34,11 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+import zlib
 
 PAGE = 16384
 ABI_DIR = "lib/arm64-v8a/"
+DEX = "classes.dex"
 
 
 def _load(opts, name):
@@ -53,9 +59,10 @@ def _tail(text):
     return " | ".join(line.strip() for line in text.strip().splitlines()[-4:])
 
 
-def entry_problems(names, lib, assets):
-    """The problems of the entry list alone."""
+def entry_problems(names, lib, assets, java=False, res_xml=()):
+    """The problems of the entry list alone (`java`: the declaration has java_classes; `res_xml`: the declared file names)."""
     want = {"AndroidManifest.xml", "resources.arsc", ABI_DIR + lib} | {"assets/" + a for a in assets}
+    want |= {"res/xml/" + r for r in res_xml} | ({DEX} if java else set())
     found = ["repeated entry %s" % n for n in sorted({n for n in names if names.count(n) > 1})]
     found += ["unexpected entry %s" % n for n in sorted(set(names) - want)]
     found += ["missing entry %s" % n for n in sorted(want - set(names))]
@@ -90,6 +97,78 @@ def library_problems(opts, apk, lib, exports):
     return found
 
 
+def _uleb(data, at):
+    value, shift = 0, 0
+    while True:
+        if at >= len(data) or shift > 28:
+            raise ValueError("a string length runs off the file")
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7F) << shift
+        shift += 7
+        if not byte & 0x80:
+            return value, at
+
+
+def dex_classes(data):
+    """The class names (`org.example.A$B`) of the class_defs of a dex file; ValueError says what is wrong with the file.
+
+    The dex format (source.android.com/docs/core/runtime/dex-format): a 0x70-byte header (magic `dex\\n0NN\\0`, adler32 of
+    everything after the first 12 bytes, file_size, header_size 0x70, little-endian tag), the string_ids (offsets of
+    `uleb128 length, MUTF-8 bytes, 0`), the type_ids (a string index each) and the class_defs (32 bytes, a type index first).
+    """
+    if len(data) < 0x70 or not (data[:4] == b"dex\n" and data[4:7].isdigit() and data[7:8] == b"\0"):
+        raise ValueError("not a dex file (magic)")
+    size, head, endian = struct.unpack_from("<III", data, 0x20)
+    if size != len(data) or head != 0x70 or endian != 0x12345678:
+        raise ValueError("bad dex header (file_size %d for %d bytes, header_size %#x, endian %#x)" % (size, len(data), head, endian))
+    if struct.unpack_from("<I", data, 8)[0] != zlib.adler32(data[12:]):
+        raise ValueError("bad dex checksum")
+    n_strings, strings_at, n_types, types_at = struct.unpack_from("<IIII", data, 0x38)
+    n_classes, classes_at = struct.unpack_from("<II", data, 0x60)
+    if (strings_at + 4 * n_strings > size or types_at + 4 * n_types > size or classes_at + 32 * n_classes > size
+            or min(strings_at, types_at, classes_at) < 0x70 and (n_strings or n_types or n_classes)):
+        raise ValueError("a dex table lies outside the file")
+    names = []
+    for index in range(n_classes):
+        type_index = struct.unpack_from("<I", data, classes_at + 32 * index)[0]
+        if type_index >= n_types:
+            raise ValueError("a class_def names the type %d of %d" % (type_index, n_types))
+        string_index = struct.unpack_from("<I", data, types_at + 4 * type_index)[0]
+        if string_index >= n_strings:
+            raise ValueError("a type_id names the string %d of %d" % (string_index, n_strings))
+        at = struct.unpack_from("<I", data, strings_at + 4 * string_index)[0]
+        _, at = _uleb(data, at)
+        end = data.find(b"\0", at)
+        if end < 0:
+            raise ValueError("a string is not terminated")
+        try:
+            descriptor = data[at:end].decode("ascii")
+        except UnicodeDecodeError:
+            raise ValueError("a class descriptor is not ASCII") from None
+        if not (descriptor.startswith("L") and descriptor.endswith(";")):
+            raise ValueError("a class_def has the type %r, not a class" % descriptor)
+        names.append(descriptor[1:-1].replace("/", "."))
+    return names
+
+
+def dex_problems(apk, declared):
+    """The problems of classes.dex against the declared class names (the entry check says when the file itself is missing)."""
+    with zipfile.ZipFile(apk) as archive:
+        try:
+            data = archive.read(DEX)
+        except KeyError:
+            return []
+    try:
+        names = dex_classes(data)
+    except (ValueError, struct.error) as exc:
+        return ["%s: %s" % (DEX, exc)]
+    found = ["%s defines %s twice" % (DEX, n) for n in sorted({n for n in names if names.count(n) > 1})]
+    found += ["%s defines %s, which is not a declared class" % (DEX, n) for n in sorted(set(names) - set(declared))]
+    found += ["%s does not define the declared class %s" % (DEX, n) for n in sorted(set(declared) - set(names))]
+    return found
+
+
 def zipalign_problems(zipalign, apk):
     code, text = _run(zipalign, "-c", "-P", "16", "-v", "4", apk)
     return [] if code == 0 else ["zipalign -c -P 16 4 refused it (exit %d): %s" % (code, _tail(text))]
@@ -119,7 +198,17 @@ def manifest_problems(opts, apk, spec, lib):
         expected_apk = os.path.join(scratch, "expected.apk")
         with open(source, "w", encoding="utf-8") as handle:
             handle.write(manifest.render(spec, lib))
-        code, text = _run(aapt2, "link", "-I", android_jar, "--manifest", source, "-o", expected_apk)
+        extra = []
+        if spec.get("res_xml"):     # the manifest points at @xml/<name>: link it with stand-ins of the same names (same resource ids)
+            os.makedirs(os.path.join(scratch, "res", "xml"))
+            for name in spec["res_xml"]:
+                with open(os.path.join(scratch, "res", "xml", name), "w", encoding="utf-8") as handle:
+                    handle.write('<?xml version="1.0" encoding="utf-8"?>\n<stand-in />\n')
+            code, text = _run(aapt2, "compile", "--dir", os.path.join(scratch, "res"), "-o", os.path.join(scratch, "res.zip"))
+            if code != 0:
+                return ["could not compile the stand-in resources (exit %d): %s" % (code, _tail(text))]
+            extra = ["-R", os.path.join(scratch, "res.zip")]
+        code, text = _run(aapt2, "link", "-I", android_jar, "--manifest", source, *extra, "-o", expected_apk)
         if code != 0:
             return ["could not link the expected manifest (exit %d): %s" % (code, _tail(text))]
         want_code, want = _run(aapt2, "dump", "xmltree", "--file", "AndroidManifest.xml", expected_apk)
@@ -168,11 +257,12 @@ def main(argv):
     try:
         with zipfile.ZipFile(apk) as archive:
             names = [i.filename for i in archive.infolist()]
-        problems = [("entries", p) for p in entry_problems(names, lib, opts["asset"])]
+        problems = [("entries", p) for p in entry_problems(names, lib, opts["asset"], bool(spec.get("java_classes")), spec.get("res_xml", ()))]
     except (zipfile.BadZipFile, OSError) as exc:
         sys.stderr.write("apk_check: %s: not a readable zip archive: %s\n" % (apk, exc))
         return 1
     problems += [("library", p) for p in library_problems(opts, apk, lib, opts["export"])]
+    problems += [("dex", p) for p in dex_problems(apk, spec.get("java_classes", ()))]
     problems += [("zipalign", p) for p in zipalign_problems(opts["zipalign"], apk)]
     problems += [("signature", p) for p in signature_problems(opts["apksigner"], apk, digest)]
     problems += [("manifest", p) for p in manifest_problems(opts, apk, spec, lib)]
@@ -182,8 +272,8 @@ def main(argv):
         return 1
     if "out" in opts:
         with open(opts["out"], "w", encoding="utf-8") as handle:
-            handle.write("ok: entries, library, zipalign, signature, manifest\n")
-    print("apk_check: %s: entries, library (16 KB), zipalign, signature, manifest all hold" % apk)
+            handle.write("ok: entries, dex, library, zipalign, signature, manifest\n")
+    print("apk_check: %s: entries, dex, library (16 KB), zipalign, signature, manifest all hold" % apk)
     return 0
 
 

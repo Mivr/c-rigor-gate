@@ -3,7 +3,8 @@
 `c_sim` is the target kind for the one check that runs the *composition* of an app (reactors, runtime, adapters, clock, files,
 network, faults) on simulated ports. T2G1 is the base: the rule, the runner, the world interface and the identity and crash
 handling, proven on a fixture product (`selftest/sim`, run by `selftest/sim.sh`). T2G2 added the judge `rigor sim` and the grade wiring
-(below). The invariants (T2G3, T2G4) and the real product come later; nothing here checks a safety property yet.
+(below). The invariants (T2G3, T2G4, T2G5) are engine code that no world taps yet, and the real product comes later; the grade checks no
+safety property until a world wires them (T2G9).
 
 ## The rule
 
@@ -177,5 +178,98 @@ regenerates and compares), PASS I3 to I6b. The recorded script paces its three f
 next flash, so the control is checked per flight; the **uncut** recordings are pinned to FAIL I5 (`GAP` and `NO_PREREAD`, nothing else). Both files contain no
 IPv4 address; the converter never copies `host` or `port` and refuses output that matches an address.
 
-**Not yet:** the event and view invariants (T2G4, T2G5) and the wiring of the engine into a world's tap (T2G9). `selftest/sim.sh` does not run these tests
-(T2G3 did not own it): `buck2 test //sim/inv/...` and the two `c_mutants` targets are the acceptance commands until a later task adds the step.
+**Not yet:** the wiring of the engines into a world's tap (T2G9). Since T2G4 `selftest/sim.sh` runs the tests of all of `//sim/inv/...`
+in release and san and judges the `c_mutants` targets (`frame`, `wire`, `audit`, `events`, and since T2G5 `ui`) with `rigor mutants` at L3.
+
+## Event and storage invariants I1, I2, I9, I10, I15 (T2G4, P330 section 2.2)
+
+`sim/inv/events.{h,c}` (with `events_names.c`) is the second engine of `sim/inv`: pure C, static memory (an `events_t` is about 4 KiB: keep it static), tested through
+its header, mutation-tested at L3 (`//sim/inv:events_mutants`, `//sim/inv:audit_mutants`: zero survivors, no approvals). It knows no product: **every record type, payload offset, phase
+and timer is configuration** (`events_cfg_t`, which the orchestrator copies from the product's `sim.toml [inv.*]`), and the two things only the product can decode, the
+book and the audit file, are read through **callbacks of the world** (`events_world_t`). It decodes frames with `sim/inv/frame.h` and shares nothing with the kiosk.
+
+**API.** `events_init(e, cfg, world)` (returns -1 for a configuration out of range, see the header), then `events_feed(e, rec)` for every record in time order (any kind: `ev fx fr io vw`
+are read, others only advance time), `events_power_cut(e, t)` BEFORE `world_crash_restart`, `events_restarted(e, t)` AFTER it, `events_finish(e, t_end)` after the drain.
+Results: `events_finding_count`, `events_finding(i)` (`inv`, `rule`, `t_ms`, `record`), `events_has_rule/has_inv/inv_mask`, `events_counts` (the antecedents of the non-vacuity check), and
+for the report `events_inv_name` ("I1") and `events_rule_name` ("no-authorisation", kebab case). A finding's **step** is the index of the record that raised it, counting every record
+fed to `events_feed` from 0 (`events_finish`, `events_restarted` findings carry the count so far); at most 16 findings are kept, `events_dropped` counts the rest. The judge maps a finding to
+`sim-invariant-violated` with the invariant id, the rule, the seed, the virtual time and the step.
+
+| Id | Rules (`events_rule_t`) | What is checked |
+|---|---|---|
+| I1 | `NO_AUTH`, `OPEN_OVERLAP`, `CORR_REUSED`, `BAD_PAYLOAD`, `HANDOVER_WITHOUT_EFFECT`, `PULSE_WITHOUT_OPEN`, `EXTRA_PULSE` | each opening `fx` is paid for by one authorising `ev` (`auth[]`, up to 4: the visitor's `staged`, the shift reactor's request) and consumes it: a second effect with no new authorisation is the **double pulse**; one effect in flight until its `open_result` (matched by corr when `corr_len` > 0, a result of another corr is a stale one and is ignored); corr unique over the last 256 effects (`corr_shared`, the shift reactor's constant, is exempt); on the wire (`fr` request, flash-on = FC05 at 0x0200..0x021D): no flash-on without a hand-over to the driver, at most `flashes_per_open` per hand-over (a row and a column coil: 2) |
+| I2 | `NOT_DURABLE`, `BOOK_UNDECODABLE` | at every flash-on frame of an opening, `book_reserves(ctx, effect_payload, len)` must answer `EV_BOOK_RESERVED` (or `EV_BOOK_EXEMPT` for an inspection, which needs none); `NOT_RESERVED` is `NOT_DURABLE`, a negative answer is `BOOK_UNDECODABLE`. The callback reads the DURABLE image of the world's simfs |
+| I9 | `CRASH_BOOK_CHANGED`, `CRASH_BOOK_UNREADABLE`, `CRASH_AUDIT_FORMAT`, `CRASH_AUDIT_GAP`, `OPEN_BEFORE_BOOT` | every durable save of the book (an `io` record of the book file, the call-end operation, outcome 0, durable bit) takes `book_digest`; after a cut the digest of the durable book must equal the last one (the first cut with no save learns it); the audit file is a prefix-valid chain (a final line without newline, a torn tail, is accepted); no opening effect before the boot `ev` of the current boot |
+| I10 | `AUDIT_FORMAT`, `AUDIT_GAP`, `AUDIT_BOUND`, `DOOR_WITHOUT_ASSIGNMENT`, `DOOR_WITHOUT_OPEN`, `SHORT_LOCKER`, `LOCKER_TABLE_FULL` | at the end the audit file (`audit_read`) has no torn tail, `"seq":N` rising by exactly one from the first line (any start), and at most `audit_max_bytes`; `door_opened` needs an earlier `locker_assigned` and at most one `door_opened` per opening effect of its locker (64 lockers tracked, more fails closed) |
+| I15 | `STUCK_PHASE`, `NO_RECOVERY`, `NOT_IDLE_AT_END` | phase rows select a record (`kind`, `a`) and set the phase 0..7 (0 idle); a stay longer than `limit_ms[phase]` is flagged once per stay (a republished view does not restart it; the check runs on every record, so a late change out of the phase is late); after the relay-clear record, the welcome phase must be entered within `recover_ms`; the run ends idle |
+
+**`io` record layout** (the gate's definition, the world fills it): `a` = operation (bits 0-7) | outcome (bits 8-11, 0 ok) | errno (12-19) | durable bit (bit 20) | disk (24-31); `b` the byte count; the bytes are the file
+name. `book_digest` must write its argument when it returns 0; `audit_read` returns the durable bytes of the audit file.
+
+**Spec decisions** (P330 left them open or `[V]`):
+* The authorising events are data, not code: `auth[]`. A retry after a failed open is legal exactly when the product's reactor emits a new authorising event for it; the engine never infers one. The product's list is `sim.toml [inv.I1]` (the
+  proposal in business-apps `plan/reviews/2026-11-13-sim-toml-proposal.md` section 3: `visit_staged` 17, the shift's inspection and end-of-shift requests, corr `LK_SHIFT_CORR`; the effect and its hand-over are both `fx 26`, told apart by
+  `b == 0xFFFFFFFF`: `has_handover = 1`, `handover_b = 0xFFFFFFFF`; two flash-on frames per door: `flashes_per_open = 2`; phase timers choose 30000, opened 8000, lockout 60000 plus the slack of P330 I15).
+* The "audit" the invariant reads is the **durable audit file** through `audit_read` (the `io` records name files, not lines), checked after every power cut and at the end; `"seq":N` is the only key the engine needs from a line.
+* The book check does not decode the book: `book_reserves` and `book_digest` are the world's, and the product proves them with P1 against its other implementation. Without a callback the check does not run and its antecedent counter
+  (`i2_checks`, `durable_saves`, `audit_lines`) stays 0, which the judge reports as a vacuous invariant.
+* An opening effect payload over 32 bytes is `BAD_PAYLOAD` (fail closed; the engine keeps 32 bytes for the callback). Corr uniqueness is over the last 256 effects (a day has thousands); a repeat beyond that is not seen.
+* A power cut drops the credits, the opening in flight, the boot flag, the phase, and each locker's pending openings; it keeps assignments (they are in the durable book).
+* A cut inside a book save: the engine accepts only the last durable digest. If the world's durable image can hold a newer book than its last `io` end record (rename durable before the call returned), the world must emit that record first; if the
+  product's reality is different this is the rule to relax with the owner, not silently.
+
+**Fixture product** (`sim/inv/tests/model.{h,c}`, `model_test`): a model of a kiosk that emits the records of a day from a seed (3 to 7 visits, a power cut on every third seed) behind the three callbacks, with three seeded bugs.
+It is a trace generator, not a `c_sim` world (the runner does not evaluate invariants until the judge is wired). The correct kiosk is green over 200 seeds; `double-pulse` (a stale second `cmd_open` after the result), `no-save-before-open`
+(the first visit pulses before its reservation is durable) and `stuck-phase` (the opened screen is republished and never left) are red on every one of 200 seeds, each with the exact invariant, rule and record index the model recorded.
+
+## View invariants I7 and I8 (T2G5, P330 section 2.3)
+
+`sim/inv/ui.{h,c}` (with `ui_schema.c` and `ui_parse.c`) is the third engine of `sim/inv`: pure C, static memory (a `ui_schema_t` is about 14 KiB and a `ui_t` about 13 KiB: keep both static),
+tested through its header, mutation-tested at L3 (`//sim/inv:ui_mutants`: 1,748 mutants, zero survivors, no approvals). It judges the **`vw` records**: `bytes` is the canonical text of the view the app
+published (compact JSON, no whitespace); `a` and `b` are the world's and are ignored. Like the other engines it knows no product, and what it needs of one is **data**:
+
+* **The shape of a view is a schema text** (`ui_schema_parse`, the grammar is at the top of `ui.h`): closed enums, objects with ordered fields, `switch` cases (the fields of the current screen; the arguments of a phrase),
+  the roles the rules read (`screen lang notice banners`, the notice's `n_kind n_dismiss n_phrase n_countdown`, a banner's `b_id b_phrase`), each banner id's dismiss intent, the keys that mean a full-screen message
+  (`forbid`), the idle screen, the default language and the notice kinds that clear on their own (`expiring`). The product owns the file; the gate parses it. **No field name of any product is in gate C code.**
+  The fixture product's schema is `URIG_SCHEMA` (`sim/inv/tests/ui_rig.c`); the lockers kiosk's, written from `vstate.h` and `ui-rules.md`, is `selftest/sim/lockers-view.schema` (its views parse: `ui_lockers_test`;
+  `selftest/sim.sh` checks that the file is the text of the test). Its `fault` texts are `lk_fault_name`'s: **[V]** to be checked against the product before a grade uses the file.
+* **The rules of the product are numbers** (`ui_cfg_t`): the `ev` types that are a dismiss and that are visitor activity, the idle time of the language reset, one slack for every timer, the I8 sample rate, the tick.
+* **The catalogue and the re-run are callbacks of the world** (`ui_world_t`): `phrase_status(ctx, "reject_invalid")` (1 in the catalogue with a Bulgarian text, 0 unknown, < 0 no Bulgarian) and
+  `replay(ctx, mode, record, dismiss, advance_ms, out, cap, &len)` (re-run the trace up to and including the record on a fresh world, apply the dismiss intent or not, run `advance_ms`, write the view published).
+
+**API.** `ui_schema_parse(s, text, len)` (an error code and `ui_schema_error_line`; a schema that failed is never ready), `ui_parse(s, bytes, len, &view, &at)` (the strict parser alone: the rule it broke and the byte it stopped at),
+`ui_init(u, schema, cfg, world)`, `ui_feed(u, rec)` for every record in time order (`vw` is judged; `ev` of the configured types is a dismiss or visitor activity; other kinds only advance time), `ui_finish(u, t_end)` after the drain.
+Results as the event engine: `ui_finding_count/ui_finding(i)` (`inv`, `rule`, `t_ms`, `record` = index of the record counting every record fed, from 0), `ui_has_rule/ui_has_inv`, `ui_dropped`, `ui_counts` (antecedents for the
+non-vacuity check: `views notices banners dismissed expired lang_checks phrases i8_checks`), `ui_inv_name` ("I7"), `ui_rule_name` (kebab case).
+
+| Rule (`ui_rule_t`) | Inv | What is checked |
+|---|---|---|
+| `syntax` `key` `enum` `float` `range` | I7 | the text is exactly the canonical form of the schema: no whitespace, a leading zero, a sign, text after the view, a key out of order, unknown or missing, a text outside its enum, a fraction or an exponent, a number over its maximum, a list over its maximum, `0` where `null` is canonical (a countdown of 0 is `null`) |
+| `full-screen-message` | I7 | the screen is not in the closed set, or a forbidden key (`message`, `text`...) stands where a key is expected: a message may only be a `notice` or a banner over a screen |
+| `notice-without-dismiss` | I7 | a notice with no `dismiss` (missing or `null`). A schema without it cannot parse, and `bannerdismiss` must give every banner id its intent |
+| `banner-order` | I7 | banner ids not strictly ascending |
+| `timeout-without-countdown` `countdown-early` | I7 | a notice of an `expiring` kind clears with no dismiss `ev` since the last view (the ui-rules: "when it reaches zero the notice clears, the same as a dismiss") and had shown `countdown_ms: null`; or clears more than `slack_ms` before the countdown of the last view ran out. A notice replaced by another is not a clear. A notice is the same notice when its text is, but for the value of its countdown |
+| `lang-not-reset` | I7 | the idle screen, `idle_reset_ms + slack_ms` after the last visitor activity (an `ev` of the activity list, or a view of another screen), in another language than the default; also on the last view at `ui_finish` |
+| `phrase-unknown` `phrase-without-bg` | I7 | a phrase of the notice or of a banner the catalogue callback does not know, or knows with an empty Bulgarian text (fit and goldens are W9) |
+| `dismiss-kept` `dismiss-screen-changed` | I8 | after `replay(DISMISS)`: the same notice is still there, or the screen under it changed |
+| `dismiss-vs-expiry` | I8 | a notice with a countdown: `replay(DISMISS_WAIT)` and `replay(WAIT)` for `countdown + tick` give different texts |
+| `replay-failed` | I8 | the world could not re-run (fails closed), or its text is not a view of the schema |
+
+**Spec decisions** (P330 left them open):
+* **Schema as data.** P330 says the view is checked "under the closed schema of `vstate.h`". The gate must not depend on business-apps, so the schema is a text the product supplies and the gate parses (the brief for T2G5);
+  the policy side (`products/<p>/ui-schema`, a pointer from `sim.toml`) is T2G2/T2G9 wiring. The grammar is small on purpose: closed enums, nullable numbers, objects, lists, `switch` cases. It is not general JSON: no floats,
+  no strings but enum texts, no nesting that a schema does not declare before its use and past six frames (so the parser has no recursion and a stack bound).
+* **A notice that "has a countdown"** is not in the view (a countdown of 0 is `null` in the canonical form). P330 says "a notice with a countdown shows `countdown_ms` non-null and positive"; the rule that can fail is the other
+  way round, and it is the one of the ui-rules: **an auto-timeout may remain only with a visible countdown**. The engine sees a timeout as a notice of an `expiring` kind that clears with no dismiss intent between two views
+  (`dismiss` `ev` types are in `ui_cfg_t`); if its last view showed no countdown, that is `timeout-without-countdown` (the fixture bug `countdown-null`). A view with `"countdown_ms":0` is a `range` finding (not canonical).
+* **`lang-not-reset`** reads "after idle" as: the idle screen with no visitor activity for `idle_reset_ms + slack_ms` (P330's "I15 timer" is the screen timers; the kiosk's language reset is its own, `idle_reset_ms`).
+* **I8 is a callback, not a second world.** The engine cannot re-run the world (it is pure); `ui_world_t.replay` is what P330 calls "re-runs the trace prefix on a fresh world". The runner of T2G9 implements it; the fixture
+  model implements it by running itself again to the record. Sampling is "every `sample_every`th notice, the first included", counted over notices (a republished notice with another countdown is the same notice).
+* **Banners get no I8 check**: P330 names the notice. Their dismiss intent is checked as schema data (every id has one).
+* The record `vw` carries the canonical text in `bytes`; the existing `events` engine's use of `vw` (`a` as a phase) is untouched and compatible: one record serves both engines.
+
+**Fixture product** (`sim/inv/tests/ui_model.{h,c}`, `ui_model_test`): a model of a kiosk that publishes the views of a day from a seed (3 to 5 visits; typing, choosing, the opened screen, a rejection dialog on every even visit,
+dismissed on every second one; English on odd visits) and answers the engine's replay by running itself again. The correct kiosk is green over 200 seeds (every notice sampled, every expiry and dismiss counted). The four bugs of the
+task are red on every one of 200 seeds with the exact rule and record the model recorded: `full-screen-message` (the third visit's rejection is a screen of its own: `full-screen-message`), `notice-without-dismiss`
+(`notice-without-dismiss`), `countdown-null` (the rejection clears with no countdown shown: `timeout-without-countdown`), `lang-not-reset` (English after the idle time: `lang-not-reset`); and one more, `dismiss-ignored`, for I8
+(the notice is still there after the dismiss: `dismiss-kept`, found by the re-run and not by the trace). It is a separate file from the T2G4 kiosk (`model.{h,c}`): its records are views, not frames.

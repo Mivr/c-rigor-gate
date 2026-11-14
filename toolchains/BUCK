@@ -318,6 +318,7 @@ tree_bin(name = "aapt2", tree = ":android_build_tools", bin = _BT + "aapt2", vis
 tree_bin(name = "zipalign", tree = ":android_build_tools", bin = _BT + "zipalign", visibility = ["PUBLIC"])
 tree_bin(name = "keytool", tree = ":jdk", bin = _JDK + "bin/keytool", visibility = ["PUBLIC"])
 java_jar(name = "apksigner", jdk = ":jdk", java = _JDK + "bin/java", tree = ":android_build_tools", jar = _BT + "lib/apksigner.jar", visibility = ["PUBLIC"])
+java_jar(name = "javac", jdk = ":jdk", java = _JDK + "bin/java", tree = ":android_build_tools", module = "jdk.compiler/com.sun.tools.javac.Main", visibility = ["PUBLIC"])
 java_jar(name = "d8", jdk = ":jdk", java = _JDK + "bin/java", tree = ":android_build_tools", jar = _BT + "lib/d8.jar", main = "com.android.tools.r8.D8", visibility = ["PUBLIC"])
 
 # The TEST-ONLY debug signing key of `c_apk` (public password `android`) and its certificate's SHA-256, which every
