@@ -1,0 +1,19 @@
+{
+  "bypass": "historical defect re-introduced",
+  "description": "T2G8 fixture: regress.patch re-introduces the fixed core_add defect (`a + b + 1`) into the fixture history's base commit. Red in the three test gates exactly like failing-test; the unpatched base is the control and must PASS. Uses full `rigor grade` (no `gates` in pin.toml) because `rigor grade --only` and the `sim` gate land with T2G2; the real canaries name `gates` and `fail: {sim: [...]}`.",
+  "fail": {
+    "tests-release": [
+      "test-not-pass"
+    ],
+    "tests-san": [
+      "test-not-pass"
+    ],
+    "tests-msan": [
+      "test-not-pass"
+    ]
+  },
+  "not_run": [
+    "fuzz",
+    "mutants"
+  ]
+}
