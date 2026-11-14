@@ -72,3 +72,16 @@ c_test(name = "ev_auth_test", srcs = ["tests/ev_auth_test.c"], deps = [":ev_rig"
 c_test(name = "ev_store_test", srcs = ["tests/ev_store_test.c"], deps = [":ev_rig"])
 c_test(name = "ev_live_test", srcs = ["tests/ev_live_test.c"], deps = [":ev_rig"])
 c_test(name = "audit_test", srcs = ["tests/audit_test.c"], deps = [":audit"])
+
+# The fixture product of T2G4: a model of a kiosk with the three seeded bugs `double-pulse`, `no-save-before-open`, `stuck-phase`.
+c_library(
+    name = "model",
+    srcs = ["tests/model.c"],
+    headers = ["tests/model.h"],
+    exported_deps = [":events", ":ev_rig"],
+)
+
+c_test(name = "model_test", srcs = ["tests/model_test.c"], deps = [":model"])
+
+c_mutants(name = "audit_mutants", module = ":audit", tests = [":audit_test"], deps = [])
+c_mutants(name = "events_mutants", module = ":events", tests = [":ev_auth_test", ":ev_store_test", ":ev_live_test", ":model_test"], deps = [":audit", ":frame", ":wire", ":ev_rig", ":model"])
