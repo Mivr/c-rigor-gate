@@ -118,5 +118,46 @@ regenerates and compares), PASS I3 to I6b. The recorded script paces its three f
 next flash, so the control is checked per flight; the **uncut** recordings are pinned to FAIL I5 (`GAP` and `NO_PREREAD`, nothing else). Both files contain no
 IPv4 address; the converter never copies `host` or `port` and refuses output that matches an address.
 
-**Not yet:** the event and view invariants (T2G4, T2G5) and the wiring of the engine into a world's tap (T2G9). `selftest/sim.sh` does not run these tests
-(T2G3 did not own it): `buck2 test //sim/inv/...` and the two `c_mutants` targets are the acceptance commands until a later task adds the step.
+**Not yet:** the view invariants (T2G5) and the wiring of the engines into a world's tap (T2G9). Since T2G4 `selftest/sim.sh` runs the tests of all of `//sim/inv/...`
+in release and san and judges the four `c_mutants` targets (`frame`, `wire`, `audit`, `events`) with `rigor mutants` at L3.
+
+## Event and storage invariants I1, I2, I9, I10, I15 (T2G4, P330 section 2.2)
+
+`sim/inv/events.{h,c}` (with `events_names.c`) is the second engine of `sim/inv`: pure C, static memory (an `events_t` is about 4 KiB: keep it static), tested through
+its header, mutation-tested at L3 (`//sim/inv:events_mutants`, `//sim/inv:audit_mutants`: zero survivors, no approvals). It knows no product: **every record type, payload offset, phase
+and timer is configuration** (`events_cfg_t`, which the orchestrator copies from the product's `sim.toml [inv.*]`), and the two things only the product can decode, the
+book and the audit file, are read through **callbacks of the world** (`events_world_t`). It decodes frames with `sim/inv/frame.h` and shares nothing with the kiosk.
+
+**API.** `events_init(e, cfg, world)` (returns -1 for a configuration out of range, see the header), then `events_feed(e, rec)` for every record in time order (any kind: `ev fx fr io vw`
+are read, others only advance time), `events_power_cut(e, t)` BEFORE `world_crash_restart`, `events_restarted(e, t)` AFTER it, `events_finish(e, t_end)` after the drain.
+Results: `events_finding_count`, `events_finding(i)` (`inv`, `rule`, `t_ms`, `record`), `events_has_rule/has_inv/inv_mask`, `events_counts` (the antecedents of the non-vacuity check), and
+for the report `events_inv_name` ("I1") and `events_rule_name` ("no-authorisation", kebab case). A finding's **step** is the index of the record that raised it, counting every record
+fed to `events_feed` from 0 (`events_finish`, `events_restarted` findings carry the count so far); at most 16 findings are kept, `events_dropped` counts the rest. The judge maps a finding to
+`sim-invariant-violated` with the invariant id, the rule, the seed, the virtual time and the step.
+
+| Id | Rules (`events_rule_t`) | What is checked |
+|---|---|---|
+| I1 | `NO_AUTH`, `OPEN_OVERLAP`, `CORR_REUSED`, `BAD_PAYLOAD`, `HANDOVER_WITHOUT_EFFECT`, `PULSE_WITHOUT_OPEN`, `EXTRA_PULSE` | each opening `fx` is paid for by one authorising `ev` (`auth[]`, up to 4: the visitor's `staged`, the shift reactor's request) and consumes it: a second effect with no new authorisation is the **double pulse**; one effect in flight until its `open_result` (matched by corr when `corr_len` > 0, a result of another corr is a stale one and is ignored); corr unique over the last 256 effects (`corr_shared`, the shift reactor's constant, is exempt); on the wire (`fr` request, flash-on = FC05 at 0x0200..0x021D): no flash-on without a hand-over to the driver, at most `flashes_per_open` per hand-over (a row and a column coil: 2) |
+| I2 | `NOT_DURABLE`, `BOOK_UNDECODABLE` | at every flash-on frame of an opening, `book_reserves(ctx, effect_payload, len)` must answer `EV_BOOK_RESERVED` (or `EV_BOOK_EXEMPT` for an inspection, which needs none); `NOT_RESERVED` is `NOT_DURABLE`, a negative answer is `BOOK_UNDECODABLE`. The callback reads the DURABLE image of the world's simfs |
+| I9 | `CRASH_BOOK_CHANGED`, `CRASH_BOOK_UNREADABLE`, `CRASH_AUDIT_FORMAT`, `CRASH_AUDIT_GAP`, `OPEN_BEFORE_BOOT` | every durable save of the book (an `io` record of the book file, the call-end operation, outcome 0, durable bit) takes `book_digest`; after a cut the digest of the durable book must equal the last one (the first cut with no save learns it); the audit file is a prefix-valid chain (a final line without newline, a torn tail, is accepted); no opening effect before the boot `ev` of the current boot |
+| I10 | `AUDIT_FORMAT`, `AUDIT_GAP`, `AUDIT_BOUND`, `DOOR_WITHOUT_ASSIGNMENT`, `DOOR_WITHOUT_OPEN`, `SHORT_LOCKER`, `LOCKER_TABLE_FULL` | at the end the audit file (`audit_read`) has no torn tail, `"seq":N` rising by exactly one from the first line (any start), and at most `audit_max_bytes`; `door_opened` needs an earlier `locker_assigned` and at most one `door_opened` per opening effect of its locker (64 lockers tracked, more fails closed) |
+| I15 | `STUCK_PHASE`, `NO_RECOVERY`, `NOT_IDLE_AT_END` | phase rows select a record (`kind`, `a`) and set the phase 0..7 (0 idle); a stay longer than `limit_ms[phase]` is flagged once per stay (a republished view does not restart it; the check runs on every record, so a late change out of the phase is late); after the relay-clear record, the welcome phase must be entered within `recover_ms`; the run ends idle |
+
+**`io` record layout** (the gate's definition, the world fills it): `a` = operation (bits 0-7) | outcome (bits 8-11, 0 ok) | errno (12-19) | durable bit (bit 20) | disk (24-31); `b` the byte count; the bytes are the file
+name. `book_digest` must write its argument when it returns 0; `audit_read` returns the durable bytes of the audit file.
+
+**Spec decisions** (P330 left them open or `[V]`):
+* The authorising events are data, not code: `auth[]`. A retry after a failed open is legal exactly when the product's reactor emits a new authorising event for it; the engine never infers one. The product's list is `sim.toml [inv.I1]` (the
+  proposal in business-apps `plan/reviews/2026-11-13-sim-toml-proposal.md` section 3: `visit_staged` 17, the shift's inspection and end-of-shift requests, corr `LK_SHIFT_CORR`; the effect and its hand-over are both `fx 26`, told apart by
+  `b == 0xFFFFFFFF`: `has_handover = 1`, `handover_b = 0xFFFFFFFF`; two flash-on frames per door: `flashes_per_open = 2`; phase timers choose 30000, opened 8000, lockout 60000 plus the slack of P330 I15).
+* The "audit" the invariant reads is the **durable audit file** through `audit_read` (the `io` records name files, not lines), checked after every power cut and at the end; `"seq":N` is the only key the engine needs from a line.
+* The book check does not decode the book: `book_reserves` and `book_digest` are the world's, and the product proves them with P1 against its other implementation. Without a callback the check does not run and its antecedent counter
+  (`i2_checks`, `durable_saves`, `audit_lines`) stays 0, which the judge reports as a vacuous invariant.
+* An opening effect payload over 32 bytes is `BAD_PAYLOAD` (fail closed; the engine keeps 32 bytes for the callback). Corr uniqueness is over the last 256 effects (a day has thousands); a repeat beyond that is not seen.
+* A power cut drops the credits, the opening in flight, the boot flag, the phase, and each locker's pending openings; it keeps assignments (they are in the durable book).
+* A cut inside a book save: the engine accepts only the last durable digest. If the world's durable image can hold a newer book than its last `io` end record (rename durable before the call returned), the world must emit that record first; if the
+  product's reality is different this is the rule to relax with the owner, not silently.
+
+**Fixture product** (`sim/inv/tests/model.{h,c}`, `model_test`): a model of a kiosk that emits the records of a day from a seed (3 to 7 visits, a power cut on every third seed) behind the three callbacks, with three seeded bugs.
+It is a trace generator, not a `c_sim` world (the runner does not evaluate invariants until the judge is wired). The correct kiosk is green over 200 seeds; `double-pulse` (a stale second `cmd_open` after the result), `no-save-before-open`
+(the first visit pulses before its reservation is durable) and `stuck-phase` (the opened screen is republished and never left) are red on every one of 200 seeds, each with the exact invariant, rule and record index the model recorded.
