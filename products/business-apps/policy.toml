@@ -2028,6 +2028,10 @@ exports = ["main"]
 allow = []
 exports = ["main"]
 
+[module."//apps/lockers/lkrx/fold_status:fs_codes_keep_test"]
+allow = []
+exports = ["main"]
+
 [module."//apps/lockers/lkrx/fold_status:fs_dialog_test"]
 allow = []
 exports = ["main"]
