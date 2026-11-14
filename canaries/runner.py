@@ -232,6 +232,17 @@ def witness_dir(canary_id):
     return os.path.join(BASE, "witness")
 
 
+def oracle_dir(canary_id):
+    """The oracle bundle a canary is graded with (T2G7): its own `oracle/`, else the shared `_oracle/bundle/` for a canary that has an
+    `oracle-policy.toml`; None for every other canary (graded without `--oracle`)."""
+    own = os.path.join(CANARIES, canary_id, "oracle")
+    if os.path.isdir(own):
+        return own
+    if os.path.isfile(os.path.join(CANARIES, canary_id, "oracle-policy.toml")):
+        return os.path.join(CANARIES, "_oracle", "bundle")
+    return None
+
+
 def signing_files(work):
     """(private key, allowed_signers file) of a throwaway key, for a canary whose verdict `rigor verify` must judge."""
     key = os.path.join(work, "key")
@@ -276,6 +287,9 @@ def grade_command(canary_id, repo, base, head, task, work, name, only=()):
                "--product", os.path.join(source, "product.toml"),
                "--work", os.path.join(work, name), "--out", os.path.join(work, OUT_NAMES[name])]
     command += ["--witness", witness_dir(canary_id)]
+    bundle = oracle_dir(canary_id)
+    if bundle is not None:
+        command += ["--oracle", bundle]
     if only:
         command += ["--only", ",".join(only)]
     return command

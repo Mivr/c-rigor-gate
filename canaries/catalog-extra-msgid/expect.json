@@ -20,6 +20,7 @@
     "tests-tsan",
     "fuzz",
     "sim",
+    "oracle",
     "mutants"
   ]
 }

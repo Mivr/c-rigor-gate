@@ -21,6 +21,7 @@
     "tests-tsan",
     "fuzz",
     "sim",
+    "oracle",
     "mutants",
     "witness-tests",
     "mutants-witness"

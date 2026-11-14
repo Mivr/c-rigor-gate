@@ -1,0 +1,19 @@
+product = "canary"
+origin = "T2G7-fixture"
+produced_from = "0000000000000000000000000000000000000000"
+
+[trace."random-0011"]
+sha256 = "a9f245780cc30295cd743e6519190c63259aa8b27b39e0fa41c70644e097e11a"
+steps = 24
+
+[trace."random-0012"]
+sha256 = "f0ad67edfb29c17085e135dcd6659dc1984cc81c0ab5e092cc3ceaa71fae73ab"
+steps = 24
+
+[trace."scripted-01"]
+sha256 = "e9c7dfe55472a9d990aa06d1575733f3d0e0fa0c150264ac3433f29fc5f3a501"
+steps = 9
+
+[trace."scripted-02"]
+sha256 = "cd7a2c3ddeed0e9644576286ce8bd30f00c772c56fdbbfe91e980d0e1ccbb2e1"
+steps = 14

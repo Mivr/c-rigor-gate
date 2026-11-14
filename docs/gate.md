@@ -81,6 +81,14 @@ recomputes what it can (seeds from the salt and the world hash, the budget from 
 invariant, fault, screen and counter must show from the spec) and trusts nothing the runner says about itself. Findings,
 fields and the malformed-input rules (exit 2) are in [sim.md](sim.md) "The judge: `rigor sim`".
 
+### `oracle --bundle DIR --results DIR [--policy P.toml] [--normalise N.toml] [--excluded E.toml] [--out F]`
+The verdict on the byte-identical replay of the hidden Rust traces (T2G7, P330 §3.4; run by `rigor grade` as the gate `oracle`).
+`--bundle` is the oracle bundle (`oracle.toml` + `files/`, the witness bundle's format family), `--results` the replayer's output,
+one `<trace id>.trace` per replayed trace. It parses the output itself and finds the first difference itself (`trace_first_diff`):
+`oracle-divergence` (trace, step, line, byte), `oracle-no-settle`, `oracle-bundle-missing`, `oracle-count-short`,
+`oracle-excluded-grew`. Findings carry ids and positions only, never trace text. A malformed bundle, trace, table or result is
+exit 2; keys, formats and the exact semantics are in [oracle.md](oracle.md).
+
 ### `approve --kind K --scope S --reason TEXT --repo-sha SHA --key KEYFILE --out DIR`
 Writes `DIR/<sha256>.json` (canonical JSON of kind, scope, reason, repo_sha; named by the hash of
 its bytes) and `DIR/<sha256>.json.sig` made with `ssh-keygen -Y sign -n c-rigor-gate`.
