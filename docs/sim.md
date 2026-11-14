@@ -79,3 +79,44 @@ proves a world is graded like a library: running them found that `c_structure` d
 turn red in gate `sim` once T2G2 wires it into `rigor grade`. There is no `sim-no-seeds` canary: the macro refuses `seeds < 1` at load time and the
 runner/merge produce `sim-no-seeds` only for a run that did not execute, which a product cannot author; that rule is covered by
 `gate/tests/test_sim_merge.py` and `selftest/sim.sh` (`--count 0`). T2G2 owns `sim-seeds-short` and `sim-missing-target`.
+
+## Wire invariants I3 to I6b (T2G3, P330 §2.1)
+
+`sim/inv` is the part of the judge that decides the hardware-safety rules, and it shares **nothing** with the kiosk or the board simulator:
+`sim/inv/frame.{h,c}` is a Modbus RTU decoder written from the rules and the framing alone (CRC-16, FC01, FC03, FC05, FC0F), and
+`sim/inv/wire.{h,c}` models the 30 coils itself from the bytes it sees. Pure C, static memory (the caller owns a `wire_t`), tested through
+the public headers, mutation-tested at L3 (`//sim/inv:frame_mutants`, `//sim/inv:wire_mutants`: zero survivors, no approvals).
+
+Input is `fr` records (`sim/trace_fmt.h`): `a` = 0 a frame the kiosk sent, 1 a frame the board sent, `t_ms` its virtual time at the tap, the bytes
+one whole frame. `wire_feed` takes records in time order, `wire_finish(t_end)` raises the deadlines that passed without an event.
+
+| Id | Rules (`wire_rule_t`) | What is checked |
+|---|---|---|
+| I3 | `ON_FRAME`, `TWO_ENERGISED` | no FC05 `0xFF00` or `0x5500` at any address (all-ON included), no FC0F with a set bit; at most two coils on, and two only from one flight |
+| I4 | `UNITS` | every flash-on (FC05 at `0x0200..0x021D`) has 1 to 8 units |
+| I5 | `NO_PREREAD`, `BEFORE_VERIFY`, `GAP`, `VERIFY_LATE` | a fresh all-30-off read before each flight (the verify read of the last flight is not one); a flash-on while the last flight is not verified; 300 ms between the verified-off answer and the next flight; the verified-off answer by first flash + 900 + 150 ms |
+| I6 | `WATCHDOG`, `BURN` | an all-off at or before first flash + 900 ms once a read showed a coil on at or after min(units x 100 + 150, 900) ms; no coil on for 1000 ms in the model |
+| I6b | `UNSAFE_FRAME` | every request in the allow-list (slave 1; FC01 read of 1..30 coils from 0..29; FC03 of `0x8000` or `0x4000`, 1 register; FC05 flash-on 1..8 units on channels 0..29; FC05 `0x00FF` value 0) with a valid CRC |
+
+A flight is the first flash-on and a second one before the verified-off read (row, then column); `wire_flight_count` and `wire_record_count` are the
+antecedents for the judge's non-vacuity check. The model: a flash-on of N units turns the coil on at the frame and lets the device turn it off between
+N x 100 - 30 and N x 100 ms later; a coil read is authoritative for the coils it covers; an all-off frame turns the model off but does not end the burn
+chain (only a read that shows the coil off does), so a coil that ignores the all-off and is read on again past 1000 ms is a burn. The board cross-check
+`wire_crosscheck(w, board_violations)` returns `WIRE_XC_BOARD_ONLY` or `WIRE_XC_ENGINE_ONLY` (`sim-model-divergence`) when the board simulator's list
+and the engine's board-observable rules (`ON_FRAME`, `TWO_ENERGISED`, `UNITS`, `BURN`) disagree.
+
+**Constants** are in `policy/sim_constants.toml`, each with the section of `hardware-safety.md` it comes from; `sim/inv/wire_consts.h` carries the same
+values and `gate/tests/test_sim_wire_data.py` fails if the two differ. One constant has no source in that file, and says so: `VERIFY_SLACK_MS` (the "frame
+deadline" of P330 §2.1 I5; 150 ms is the kiosk's own `FRAME_DEADLINE_MS`), open for the owner to confirm.
+
+**Boundaries pinned by tests:** gap 299/300 ms, units 8/9 (and 0), all-off at 899/900/901 ms, deadlines 249/250 (1 unit), 649/650 (5), 849/850 (7), 899/900 (8),
+verified-off answer at 2050/2051 ms for a flash at 1000, burn at 999/1000 ms, a coil's earliest and latest off time.
+
+**Positive control** (`selftest/sim/data`, sha256 in `SHA256SUMS`, source in `SOURCE`): the recording of the real board and the one of the club-apps
+simulator, converted by `tools/sim/fixture_to_fr.py` into `sim/inv/tests/fixtures_data.{h,c}` (generated; the unit test `test_sim_wire_data.py`
+regenerates and compares), PASS I3 to I6b. The recorded script paces its three flights 10 ms apart and reuses each verify read as the read before the
+next flash, so the control is checked per flight; the **uncut** recordings are pinned to FAIL I5 (`GAP` and `NO_PREREAD`, nothing else). Both files contain no
+IPv4 address; the converter never copies `host` or `port` and refuses output that matches an address.
+
+**Not yet:** the event and view invariants (T2G4, T2G5) and the wiring of the engine into a world's tap (T2G9). `selftest/sim.sh` does not run these tests
+(T2G3 did not own it): `buck2 test //sim/inv/...` and the two `c_mutants` targets are the acceptance commands until a later task adds the step.
