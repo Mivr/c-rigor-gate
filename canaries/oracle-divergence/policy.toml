@@ -38,5 +38,6 @@ allow = ["free"]
 exports = ["main"]
 
 [module."//oraclew:replay"]
+level = "L1"
 allow = []
 exports = ["main"]

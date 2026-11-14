@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LINE_MAX_BYTES 4096U
+#define LINE_MAX_BYTES 320U   /* the fixture's longest line (cfg) is 258 bytes; a longer one is an error, never truncated */
 #define PAD_DIGITS 4
 #define OPEN_MS 3000L
 
@@ -81,6 +81,9 @@ int main(void) {
     char line[LINE_MAX_BYTES];
     pad_t pad = {0, 0, 0L};
     while (fgets(line, (int)sizeof line, stdin) != NULL) {
+        if (strchr(line, '\n') == NULL) {
+            return 1;
+        }
         if (strncmp(line, "{\"k\":\"cfg\"", 10) == 0) {
             (void)fputs(line, stdout);
         } else if (strncmp(line, "{\"k\":\"in\"", 9) == 0) {
