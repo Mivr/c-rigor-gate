@@ -1767,12 +1767,13 @@ allow_mutable_data = true
 system_libs = ["android", "log"]
 # Writable bytes: the one static kiosk object `g` (design D15), as the Linux shell. clock_gettime: the shell reads the wall and monotonic
 # clock itself (injected into the runtime). The rest is the NDK surface of a NativeActivity: lifecycle (ANativeActivity_finish), the
-# input queue and looper, motion and key events, the window buffer (lock, geometry, unlockAndPost), and logcat (__android_log_write).
+# input queue and looper, motion and key events, the window buffer (lock, geometry, unlockAndPost), logcat (__android_log_write), and
+# the native window flags of the kiosk policy (ANativeActivity_setWindowFlags, onCreate only; the JNI calls go through the function table).
 allow = ["AInputEvent_getType", "AInputQueue_attachLooper", "AInputQueue_detachLooper", "AInputQueue_finishEvent",
     "AInputQueue_getEvent", "AInputQueue_preDispatchEvent", "AKeyEvent_getAction", "AKeyEvent_getKeyCode",
     "AKeyEvent_getMetaState", "ALooper_pollOnce", "ALooper_prepare", "ALooper_wake", "AMotionEvent_getAction",
     "AMotionEvent_getPointerCount", "AMotionEvent_getPointerId", "AMotionEvent_getX", "AMotionEvent_getY",
-    "ANativeActivity_finish", "ANativeWindow_getHeight", "ANativeWindow_getWidth", "ANativeWindow_lock",
+    "ANativeActivity_finish", "ANativeActivity_setWindowFlags", "ANativeWindow_getHeight", "ANativeWindow_getWidth", "ANativeWindow_lock",
     "ANativeWindow_setBuffersGeometry", "ANativeWindow_unlockAndPost", "__android_log_write", "memcpy", "memset", "strlen"]
 deny_exempt = ["clock_gettime"]
 exports = ["ANativeActivity_onCreate"]
