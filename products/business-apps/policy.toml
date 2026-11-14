@@ -1365,9 +1365,9 @@ exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset"
     "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
 [module."//apps/lockers/lkapp/andcfg:andcfg"]
-level = "L2"
+level = "L3"
 impl = ["apps/lockers/lkapp/andcfg/src/**"]
-allow = ["memchr", "memcpy", "memmove", "strlen"]
+allow = ["memcpy", "memmove", "strlen"]
 exports = ["lk_andcfg_external_dir", "lk_andcfg_fault_kind", "lk_andcfg_file_name", "lk_andcfg_import_staged", "lk_andcfg_missing_files_dir_message", "lk_andcfg_package", "lk_andcfg_pin_data_dir", "lk_andcfg_resolve_files_dir", "lk_andcfg_store_report", "lk_andcfg_take_request"]
 
 [module."//apps/lockers/lkapp/andcfg:andcfg_files_test"]
@@ -1397,7 +1397,7 @@ allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lkapp/andtouch:andtouch"]
-level = "L2"
+level = "L3"
 impl = ["apps/lockers/lkapp/andtouch/src/**"]
 allow = []
 exports = ["lk_atouch_scale", "lk_atouch_step"]
@@ -1411,7 +1411,7 @@ allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lkapp/blit:blit"]
-level = "L2"
+level = "L3"
 impl = ["apps/lockers/lkapp/blit/src/**"]
 allow = []
 exports = ["lk_blit_rows"]
