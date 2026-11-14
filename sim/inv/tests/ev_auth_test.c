@@ -138,6 +138,8 @@ static void t_corr_memory_is_the_last_256(ctest_t *t) {
     erig_visit(&R, 400000, 1000, 84); /* the oldest is still remembered */
     CHECK_EQ_U64(t, events_finding_count(&E), 1);
     CHECK(t, events_has_rule(&E, EV_R_CORR_REUSED));
+    erig_visit(&R, 420000, 1100, 84); /* one from the middle of the memory */
+    CHECK_EQ_U64(t, events_finding_count(&E), 2);
     begin(t); /* 257 corrs: the first is gone */
     for (uint32_t k = 0; k < 257U; k++) {
         erig_visit(&R, 10000U + 1000U * k, 1000U + k, 84);

@@ -363,16 +363,9 @@ static void t_names_for_the_report(ctest_t *t) {
     CHECK(t, events_inv_name((events_inv_t)3) == NULL);
     CHECK(t, events_rule_name((events_rule_t)0) == NULL);
     CHECK(t, events_rule_name(EV_R_COUNT) == NULL);
+    CHECK(t, events_rule_name((events_rule_t)-1) == NULL);
     CHECK_EQ_I64(t, events_rule_inv((events_rule_t)0), 0);
     CHECK_EQ_I64(t, events_rule_inv(EV_R_COUNT), 0);
-    /* every rule has a name, an invariant of its own range and a distinct name */
-    for (uint32_t r = 1; r < (uint32_t)EV_R_COUNT; r++) {
-        CHECK(t, events_rule_name((events_rule_t)r) != NULL);
-        CHECK(t, events_inv_name(events_rule_inv((events_rule_t)r)) != NULL);
-        for (uint32_t q = 1; q < r; q++) {
-            CHECK(t, strcmp(events_rule_name((events_rule_t)r), events_rule_name((events_rule_t)q)) != 0);
-        }
-    }
     static const char *const names[] = {
         "no-authorisation", "open-overlap", "corr-reused", "bad-payload", "handover-without-effect", "pulse-without-open",
         "extra-pulse", "not-durable", "book-undecodable", "crash-book-changed", "crash-book-unreadable", "crash-audit-format",
@@ -381,6 +374,7 @@ static void t_names_for_the_report(ctest_t *t) {
     CHECK_EQ_U64(t, sizeof names / sizeof names[0], (uint32_t)EV_R_COUNT - 1U);
     for (uint32_t r = 1; r < (uint32_t)EV_R_COUNT; r++) {
         CHECK_EQ_STR(t, events_rule_name((events_rule_t)r), names[r - 1U]);
+        CHECK(t, events_inv_name(events_rule_inv((events_rule_t)r)) != NULL);
     }
     /* the invariant of each rule, pinned: the order of the enum is the order of the table */
     static const events_inv_t want[] = {EV_I1, EV_I1, EV_I1, EV_I1, EV_I1, EV_I1, EV_I1, EV_I2, EV_I2, EV_I9, EV_I9, EV_I9, EV_I9, EV_I9,

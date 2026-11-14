@@ -45,9 +45,12 @@ enum {
 /* The `a` field of an `io` record (the gate's layout; the world fills it): bits 0-7 the operation, 8-11 the outcome (0 = ok),
  * 12-19 the errno, bit 20 the "durable" bit (the call ended with the data on the durable image), 24-31 the disk. `bytes` is the file
  * name, `b` the byte count. */
-#define EV_IO_KIND(a) ((a) & 0xffU)
-#define EV_IO_OUTCOME(a) (((a) >> 8) & 0xfU)
-#define EV_IO_DURABLE(a) (((a) >> 20) & 1U)
+enum {
+    EV_IO_KIND_MASK = 0xff,
+    EV_IO_OUTCOME_SHIFT = 8,
+    EV_IO_OUTCOME_MASK = 0xf,
+    EV_IO_DURABLE_SHIFT = 20
+};
 
 typedef enum { EV_I1 = 1, EV_I2 = 2, EV_I9 = 9, EV_I10 = 10, EV_I15 = 15 } events_inv_t;
 
@@ -168,9 +171,8 @@ typedef struct {
     uint64_t open_corr;
     uint8_t payload[EV_PAYLOAD_MAX];
     uint32_t payload_len;
-    uint64_t corrs[EV_CORRS];
-    uint8_t corr_used[EV_CORRS];
-    uint32_t corr_head;
+    uint64_t corrs[EV_CORRS]; /* newest first */
+    uint32_t ncorr;
     /* I9 */
     uint8_t booted, digest_known;
     uint64_t digest;

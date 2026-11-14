@@ -21,7 +21,6 @@ static void flag(events_t *e, events_rule_t rule) {
 /* `n` (0 to 8) little-endian bytes at `off`: 1 when they are all there. */
 static int le_get(const sim_rec_t *rec, uint32_t off, uint32_t n, uint64_t *out) {
     uint64_t v = 0;
-    *out = 0;
     if (n > rec->len || off > rec->len - n) {
         return 0;
     }
@@ -42,9 +41,9 @@ static int selects(const events_sel_t *s, const sim_rec_t *rec) {
 
 /* The slot of a locker id, adding it when new; -1 when the table is full. */
 static int locker_slot(events_t *e, uint32_t id) {
-    for (uint32_t i = 0; i < e->nlockers; i++) {
-        if (e->lock_id[i] == id) {
-            return (int)i;
+    for (const uint32_t *p = e->lock_id; p != e->lock_id + e->nlockers; p++) {
+        if (*p == id) {
+            return (int)(p - e->lock_id);
         }
     }
     if (e->nlockers == EV_LOCKERS) {
@@ -97,8 +96,8 @@ static void on_chain_ev(events_t *e, const sim_rec_t *rec) {
 }
 
 static int corr_seen(const events_t *e, uint64_t corr) {
-    for (uint32_t i = 0; i < EV_CORRS; i++) {
-        if (e->corr_used[i] != 0U && e->corrs[i] == corr) {
+    for (const uint64_t *p = e->corrs; p != e->corrs + e->ncorr; p++) {
+        if (*p == corr) {
             return 1;
         }
     }
@@ -123,9 +122,11 @@ static void check_corr(events_t *e, const sim_rec_t *rec) {
     if (corr_seen(e, corr)) {
         flag(e, EV_R_CORR_REUSED);
     }
-    e->corrs[e->corr_head] = corr;
-    e->corr_used[e->corr_head] = 1;
-    e->corr_head = (e->corr_head + 1U) % EV_CORRS;
+    memmove(e->corrs + 1, e->corrs, (EV_CORRS - 1U) * sizeof e->corrs[0]); /* the newest first, the 256th falls off */
+    e->corrs[0] = corr;
+    if (e->ncorr != EV_CORRS) {
+        e->ncorr++;
+    }
 }
 
 static void on_open_effect(events_t *e, const sim_rec_t *rec) {
@@ -261,9 +262,11 @@ static void on_fr(events_t *e, const sim_rec_t *rec) {
 }
 
 static int is_book_done(const events_t *e, const sim_rec_t *rec) {
-    return e->cfg.io_book[0] != 0 && strlen(e->cfg.io_book) == rec->len &&
-           memcmp(rec->bytes, e->cfg.io_book, rec->len) == 0 && EV_IO_KIND(rec->a) == e->cfg.io_done_kind &&
-           EV_IO_OUTCOME(rec->a) == 0U && EV_IO_DURABLE(rec->a) != 0U;
+    uint32_t kind = rec->a & EV_IO_KIND_MASK;
+    uint32_t outcome = (rec->a >> EV_IO_OUTCOME_SHIFT) & EV_IO_OUTCOME_MASK;
+    uint32_t durable = (rec->a >> EV_IO_DURABLE_SHIFT) & 1U;
+    return e->cfg.io_book[0] != 0 && strlen(e->cfg.io_book) == rec->len && memcmp(rec->bytes, e->cfg.io_book, rec->len) == 0 &&
+           kind == e->cfg.io_done_kind && outcome == 0U && durable != 0U;
 }
 
 static void on_io(events_t *e, const sim_rec_t *rec) {
@@ -434,7 +437,10 @@ int events_power_cut(events_t *e, uint64_t t_ms) {
     e->booted = 0;
     e->phase = 0;
     e->recovering = 0;
-    memset(&e->lcount, 0, sizeof e->lcount);
+    /* An opening before the cut pays for no door after it: the balance of every locker starts again. */
+    for (uint32_t *o = e->lcount.opens, *d = e->lcount.doors; o != e->lcount.opens + EV_LOCKERS; o++, d++) {
+        *o = *d;
+    }
     e->counts.power_cuts++;
     return 0;
 }

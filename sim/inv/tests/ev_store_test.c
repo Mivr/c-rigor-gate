@@ -402,6 +402,15 @@ static void t_locker_zero_is_a_locker(ctest_t *t) {
     CHECK_EQ_U64(t, events_finding_count(&E), 0);
 }
 
+static void t_a_locker_found_again_keeps_its_own_state(ctest_t *t) {
+    begin(t);
+    erig_ev(&R, 100, T_ASSIGNED, 0, 84);
+    erig_visit(&R, 1000, 1, 85); /* 85 enters the table with the effect, unassigned */
+    erig_ev(&R, 3000, T_DOOR, 0, 85);
+    CHECK(t, events_has_rule(&E, EV_R_DOOR_NO_ASSIGN));
+    CHECK(t, !events_has_rule(&E, EV_R_DOOR_NO_OPEN));
+}
+
 static void t_the_locker_table_fails_closed_at_64(ctest_t *t) {
     begin(t);
     for (uint32_t k = 0; k < 64U; k++) {
@@ -538,6 +547,7 @@ CTEST_SUITE("ev_store",
     { "door_unassigned", t_a_door_for_a_locker_never_assigned },
     { "per_locker", t_openings_and_doors_are_counted_per_locker },
     { "locker_zero", t_locker_zero_is_a_locker },
+    { "locker_again", t_a_locker_found_again_keeps_its_own_state },
     { "table_full", t_the_locker_table_fails_closed_at_64 },
     { "short_locker", t_a_short_locker_payload_is_a_finding },
     { "locker_width", t_one_byte_and_two_byte_lockers },

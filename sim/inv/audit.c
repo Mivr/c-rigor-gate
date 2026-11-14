@@ -4,21 +4,16 @@
 
 #define SEQ_MAX_DIGITS 18U
 
-/* What one pass over a line finds: its first and last byte, and the digits after the first `"seq":`. */
+/* What one pass over a line finds: the digits after the first `"seq":`. */
 typedef struct {
-    uint8_t first, last;
     uint32_t matched; /* bytes of the key matched so far (6 = the key was seen) */
     uint32_t digits;
     uint64_t value;
     int ended; /* the digits (or their absence) are over */
 } line_t;
 
-static void line_byte(line_t *l, uint32_t index, uint8_t c) {
+static void line_byte(line_t *l, uint8_t c) {
     static const char key[] = "\"seq\":";
-    if (index == 0U) {
-        l->first = c;
-    }
-    l->last = c;
     if (l->ended != 0) {
         return;
     }
@@ -33,13 +28,13 @@ static void line_byte(line_t *l, uint32_t index, uint8_t c) {
     }
 }
 
-/* One complete line, without its newline: accept it and take its seq. */
+/* One complete line of `n` >= 1 bytes, without its newline: accept it and take its seq. */
 static audit_result_t take_line(const uint8_t *line, uint32_t n, audit_scan_t *out) {
-    line_t l = {0, 0, 0, 0, 0, 0};
+    line_t l = {0, 0, 0, 0};
     for (uint32_t i = 0; i < n; i++) {
-        line_byte(&l, i, line[i]);
+        line_byte(&l, line[i]);
     }
-    if (l.first != (uint8_t)'{' || l.last != (uint8_t)'}' || l.digits < 1U || l.digits > SEQ_MAX_DIGITS) {
+    if (line[0] != (uint8_t)'{' || line[n - 1U] != (uint8_t)'}' || l.digits < 1U || l.digits > SEQ_MAX_DIGITS) {
         return AUDIT_FORMAT;
     }
     if (out->lines == 0U) {
@@ -63,6 +58,9 @@ audit_result_t audit_scan(const uint8_t *bytes, uint32_t len, int allow_torn, au
     uint32_t start = 0;
     for (uint32_t i = 0; i < len; i++) {
         if (bytes[i] == (uint8_t)'\n') {
+            if (i == start) {
+                return AUDIT_FORMAT; /* an empty line */
+            }
             audit_result_t r = take_line(bytes + start, i - start, out);
             if (r != AUDIT_OK) {
                 return r;

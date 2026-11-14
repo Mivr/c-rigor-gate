@@ -70,6 +70,17 @@ static void t_a_line_must_be_an_object_with_a_seq(ctest_t *t) {
     CHECK_EQ_U64(t, o.lines, 1);
 }
 
+static void t_the_key_is_matched_exactly(ctest_t *t) {
+    audit_scan_t o;
+    CHECK_EQ_I64(t, scan("{\"s\"seq\":1}\n", 0, &o), AUDIT_OK); /* a quote inside the key starts it again */
+    CHECK_EQ_U64(t, o.last_seq, 1);
+    CHECK_EQ_I64(t, scan("{\"sXseq\":1}\n", 0, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("{sseq\":1}\n", 0, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("{\"seq\"::1}\n", 0, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("{\"seq\"/1}\n", 0, &o), AUDIT_FORMAT);
+    CHECK_EQ_I64(t, scan("{\"seq\":/}\n", 0, &o), AUDIT_FORMAT);
+}
+
 static void t_the_key_may_come_late_in_the_line(ctest_t *t) {
     audit_scan_t o;
     CHECK_EQ_I64(t, scan("{\"seq\":7}\n{\"a\":\"seq\",\"b\":[1,2],\"seq\":8}\n", 0, &o), AUDIT_OK);
@@ -135,6 +146,7 @@ CTEST_SUITE("audit",
     { "empty", t_an_empty_file_is_valid },
     { "gaps", t_gaps_and_repeats },
     { "line_shape", t_a_line_must_be_an_object_with_a_seq },
+    { "key_exact", t_the_key_is_matched_exactly },
     { "late_key", t_the_key_may_come_late_in_the_line },
     { "digits", t_digit_count_is_one_to_eighteen },
     { "torn", t_a_torn_tail },
