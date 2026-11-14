@@ -11,6 +11,13 @@ fixture that fails for the wrong reason hides a disarmed check.
 contract), `expect.json`, and the product itself: `product/` (a full tree) or, when absent, the
 shared `canaries/_base/product`, plus `edit.sh` (run inside the repo on top of the base commit; its
 changes become the head commit) or `history.sh` (full control, see docs/canaries.md).
+
+Historical canaries (T2G8, `canaries/hist-<id>/`, docs/canaries.md): a canary with a `pin.toml` is graded on a
+clone of the REAL product (a repository named by `--hist-repo NAME=PATH`, or the generated fixture of its
+`history.sh`) at the pinned `base`, with `regress.patch` applied as the head commit. `tools/hist_canary.py` first
+proves provenance and that the patch still applies (else the canary is refused or `stale`, and the pack fails
+closed). The unpatched base is graded too, as the control, and must PASS. Without `regress.patch` the canary is
+`pending` (expect.json says so) and is not graded.
 """
 
 import argparse
@@ -23,6 +30,7 @@ import sys
 import tempfile
 import threading
 import time
+import importlib.util
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANARIES = os.path.join(ROOT, "canaries")
@@ -42,6 +50,10 @@ GRADER_INTEGRITY_GATES = frozenset({"toolchain"})
 # Canaries whose `contains` pins a finding of an L2 module's mutation: that module is deferred at tier `merge`
 # (docs/grade.md), so in the tier `merge` pass the pin is not applicable (the rest of the expectation still is).
 MERGE_DEFERS_CONTAINS = frozenset({"third-party-link"})
+
+HIST_REPOS = {}   # `--hist-repo NAME=PATH`: the product (and fix) repositories of the historical canaries
+OUT_NAMES = {"grade": "verdict.json", "control": "control.json"}
+HIST_TOOL = os.path.join(ROOT, "tools", "hist_canary.py")
 
 GIT_ENV = {
     "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0",
@@ -91,6 +103,59 @@ def run(args, cwd, env_extra=None, check=True):
 
 def git(repo, *args):
     return run(["git", *args], repo).stdout.strip()
+
+
+def hist_tool():
+    spec = importlib.util.spec_from_file_location("hist_canary", HIST_TOOL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def is_hist(canary_id):
+    return os.path.isfile(os.path.join(CANARIES, canary_id, "pin.toml"))
+
+
+class HistRefused(Exception):
+    """A historical canary that cannot be graded: provenance refused, or the patch is stale (fails the pack closed)."""
+
+
+def hist_task(canary_id, work, pin):
+    """The task contract of a historical canary: its own `task.toml`, else one allowing exactly the pinned paths."""
+    own = os.path.join(CANARIES, canary_id, "task.toml")
+    if os.path.isfile(own):
+        return own
+    path = os.path.join(work, "task.toml")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write('id = "hist"\nallowed = [%s]\n' % ", ".join(json.dumps(p) for p in pin["paths"]))
+    return path
+
+
+def build_hist_repo(canary_id, work):
+    """(repo, base, head, control head, pin): a clone of the product at `base`; `head` = base + regress.patch,
+    `control head` = base + an empty commit. Raises HistRefused when the canary is refused or stale."""
+    hist = hist_tool()
+    source = os.path.join(CANARIES, canary_id)
+    try:
+        ctx = hist.Context(source, HIST_REPOS, os.path.join(work))
+        verdict = hist.verify(ctx)
+    except hist.HistError as error:
+        raise HistRefused("hist_canary: %s" % error)
+    if verdict.errors:
+        raise HistRefused("refused: " + "; ".join(verdict.errors))
+    if verdict.stale:
+        raise HistRefused("stale: " + verdict.stale)
+    pin = ctx.pin
+    repo = os.path.join(work, "repo")
+    run(["git", "clone", "-q", "--shared", "--no-checkout", ctx.product, repo], work)
+    git(repo, "checkout", "-q", "-B", "control", pin["base"])
+    git(repo, "commit", "-q", "--allow-empty", "-m", "control")
+    control = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "-B", "main", pin["base"])
+    git(repo, "apply", os.path.join(source, "regress.patch"))
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", canary_id)
+    return repo, pin["base"], git(repo, "rev-parse", "HEAD"), control, pin
 
 
 def build_repo(canary_id, work):
@@ -202,6 +267,20 @@ def judge_verify(expect, verdict, signers, head):
     return why
 
 
+def grade_command(canary_id, repo, base, head, task, work, name, only=()):
+    """The `rigor grade` command line. `only` (a historical canary's `gates`) restricts the gates graded."""
+    source = os.path.join(CANARIES, canary_id)
+    command = ["python3", "-I", "-B", os.path.join(ROOT, "gate", "rigor"), "grade",
+               "--product-repo", repo, "--base", base, "--head", head,
+               "--task", task,
+               "--product", os.path.join(source, "product.toml"),
+               "--work", os.path.join(work, name), "--out", os.path.join(work, OUT_NAMES[name])]
+    command += ["--witness", witness_dir(canary_id)]
+    if only:
+        command += ["--only", ",".join(only)]
+    return command
+
+
 def grade_one(canary_id, scratch, uncached, keep=True, tier=None):
     expect = load_expect(canary_id)
     work = os.path.join(scratch, canary_id)
@@ -210,15 +289,22 @@ def grade_one(canary_id, scratch, uncached, keep=True, tier=None):
     outcome = {"id": canary_id, "expected": expected_text(expect), "pending": expect.get("pending"),
                "control": bool(expect.get("control")), "uncached": uncached, "ok": False}
     try:
-        repo, base, head = build_repo(canary_id, work)
+        control = pin = None
+        if is_hist(canary_id) and not os.path.isfile(os.path.join(CANARIES, canary_id, "regress.patch")):
+            outcome.update(got="no regress.patch", ok=False,
+                           why=["no regress.patch: %s" % ("pending, not graded" if expect.get("pending") else
+                                                          "and the canary is not pending")])
+            outcome["seconds"] = time.time() - started
+            return outcome
+        if is_hist(canary_id):
+            repo, base, head, control, pin = build_hist_repo(canary_id, work)
+        else:
+            repo, base, head = build_repo(canary_id, work)
         source = os.path.join(CANARIES, canary_id)
-        verdict = os.path.join(work, "verdict.json")
-        command = ["python3", "-I", "-B", os.path.join(ROOT, "gate", "rigor"), "grade",
-                   "--product-repo", repo, "--base", base, "--head", head,
-                   "--task", os.path.join(source, "task.toml"),
-                   "--product", os.path.join(source, "product.toml"),
-                   "--work", os.path.join(work, "grade"), "--out", verdict]
-        command += ["--witness", witness_dir(canary_id)]
+        task = hist_task(canary_id, work, pin) if pin else os.path.join(source, "task.toml")
+        only = pin.get("gates", []) if pin else []
+        command = grade_command(canary_id, repo, base, head, task, work, "grade", only)
+        verdict = os.path.join(work, OUT_NAMES["grade"])
         signers = None
         if "verify" in expect:   # graded at the tier the canary names, signed with a throwaway key
             key, signers = signing_files(work)
@@ -236,12 +322,32 @@ def grade_one(canary_id, scratch, uncached, keep=True, tier=None):
             why = judge_verify(expect, verdict, signers, head)
             outcome["why"] = outcome.get("why", []) + why
             outcome["ok"] = outcome["ok"] and not why
+        if control:
+            judge_control(outcome, canary_id, repo, base, control, task, work, only, tier)
+    except HistRefused as error:   # a refused or stale historical canary fails the pack closed
+        outcome.update(got=str(error)[:300], ok=False, stale=str(error).startswith("stale"), why=[str(error)])
     except Exception as error:  # a canary that cannot run is a failed canary, never a skipped one
         outcome.update(got="ERROR %s" % str(error)[:300], ok=False, why=["harness error"])
     outcome["seconds"] = time.time() - started
     if not keep:  # the verdict is judged; a canary's tree (buck-out) is the bulk of the scratch disk
         remove_tree(work)
     return outcome
+
+
+def judge_control(outcome, canary_id, repo, base, control, task, work, only, tier):
+    """Grade the unpatched base (an empty commit on it): it must PASS, else the red verdict proves nothing."""
+    command = grade_command(canary_id, repo, base, control, task, work, "control", only)
+    if tier is not None:
+        command += ["--tier", tier]
+    result = run(command, ROOT, {"TMPDIR": work}, check=False)
+    with open(os.path.join(work, "control.log"), "w", encoding="utf-8") as log:
+        log.write(result.stdout + result.stderr)
+    judged = judge({"control": True}, result.returncode, os.path.join(work, "control"),
+                   os.path.join(work, OUT_NAMES["control"]), work, canary_id, tier)
+    outcome["got"] += "; control %s" % judged["got"]
+    outcome["expected"] += "; control PASS"
+    outcome["why"] = outcome.get("why", []) + ["control: " + reason for reason in judged["why"]]
+    outcome["ok"] = outcome["ok"] and judged["ok"]
 
 
 def find_daemons(root):
@@ -306,6 +412,8 @@ def print_table(outcomes):
             mark = "ok"
         elif item["pending"]:
             mark = "pending(%s)" % item["pending"]
+        elif item.get("stale"):
+            mark = "STALE"
         else:
             mark = "MISS"
         rows.append((item["id"] + (" [uncached]" if item["uncached"] else ""),
@@ -420,10 +528,18 @@ def main():
                         help="grade every canary at this tier (T137). `merge` is the second pass: every canary that "
                              "is red on `mutants` at an L3 or L4 module must still be red; the pack's expectations "
                              "are the same (default: the grade's own default, nightly)")
+    parser.add_argument("--hist-repo", action="append", default=[], metavar="NAME=PATH",
+                        help="a repository a historical canary's pin.toml names (its `product` or `fix_repo`)")
     parser.add_argument("--root", default="canaries", help="the pack directory (default %(default)s; tripwires)")
     args = parser.parse_args()
     global CANARIES
     CANARIES = os.path.abspath(os.path.join(ROOT, args.root))
+    for item in args.hist_repo:
+        name, sep, path = item.partition("=")
+        if not sep or not name or not path:
+            print("--hist-repo wants NAME=PATH, got %r" % item, file=sys.stderr)
+            return 2
+        HIST_REPOS[name] = os.path.abspath(path)
     if not os.path.isdir(CANARIES):
         print("no such pack directory: %s" % CANARIES, file=sys.stderr)
         return 2

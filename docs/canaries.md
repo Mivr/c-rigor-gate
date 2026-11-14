@@ -343,3 +343,55 @@ test fails in msan; no threaded test exists in the base product, so `tests-tsan`
 
 `buckfiles` accepts `threads` on `c_test` as a boolean literal only, and refuses the derived `_facts_msan` / `_facts_tsan`
 names as deps like the other derived names. Every gate has a live canary again.
+
+## Historical canaries (T2G8, P330 section 5)
+A synthetic canary edits a fixture. A **historical canary** re-introduces a *real, already fixed* defect into the *real
+product* at a pinned commit, and the gate must turn red on it. The product at the defect's own commit had no harness
+(no `c_sim`), so the canary takes a later **base** commit that has it and applies a **regress patch**: the reverse of
+the fix, restricted to the defect's hunks. It is provenance-checked, so a canary cannot be invented.
+
+### Layout of `canaries/hist-<id>/`
+| File | Meaning |
+|---|---|
+| `pin.toml` | `product` (repository name), `base`, `bug_commit`, `fix_commit` (full 40-digit ids), `paths` (globs: the only files the patch may touch); optional `fix_repo` (the fix lives in another repository), `fix_ref` (a ref that must contain the fix, default `main`; a lane branch is allowed), `gates` (passed as `rigor grade --only a,b`; absent = the full grade) |
+| `regress.patch` | git diff, made by `tools/hist_canary.py make`, never hand-edited |
+| `expect.json` | as every canary: the red verdict of the patched base (`fail`, `not_run`, `contains`, `pending`...) |
+| `product.toml`, `policy.toml`, `expected-tests.json`, `task.toml` | gate-owned grade inputs as for any canary (`task.toml` optional: default allows exactly `paths`) |
+| `history.sh` | fixture canaries only: `bash history.sh DIR` generates the tiny deterministic history (fixed dates and names, so the commit ids in `pin.toml` reproduce) |
+
+### The tool: `tools/hist_canary.py`
+```
+tools/hist_canary.py show   canaries/hist-X [--repo NAME=PATH]...          # the hunks of git diff <fix>^ <fix>, numbered
+tools/hist_canary.py make   canaries/hist-X --select core/a.c:2 --select b.c [--context 3] [--repo ...]
+tools/hist_canary.py verify canaries/hist-X [--repo ...]
+```
+`--repo NAME=PATH` names the local clone of the product (`pin.toml` `product`) and of `fix_repo`. `make` selects whole hunks of the fix
+diff (`PATH` = all its hunks, `PATH:N,N` = hunk numbers, 1-based), reverses them (context trimmed to `--context`, at least 1), proves
+provenance and `git apply --check` on `base`, then writes `regress.patch`. `verify` exits 0, or 1 with the reason, or 2 on a usage error. It refuses:
+- a hunk that is not, up to line numbers and context, the reverse of a **distinct** hunk of the fix diff (an invented, edited or
+  duplicated hunk, a hunk of another file, an unsupported header such as rename or binary);
+- a file outside `paths`;
+- a `fix_commit` that is not an ancestor of `fix_ref`, or a `bug_commit` that is not an ancestor of `fix_commit`;
+- a patch that does not apply on `base` (**stale**).
+
+### The runner
+For a canary with a `pin.toml` the runner (`canaries/runner.py`, `--hist-repo NAME=PATH` names the repositories; a fixture needs none):
+1. runs the `verify` above; a refusal or a stale patch is a miss, so **the pack fails closed** (`STALE` in the table);
+2. clones the product at `base`, applies `regress.patch` as the head commit, and grades it (with `--only` when `pin.toml` has `gates`),
+   judged against `expect.json` exactly as any canary;
+3. grades the **unpatched base** (an empty head commit) as the control; it must PASS, or the red verdict proves nothing. The outcome is one row,
+   `expected ...; control PASS`.
+
+**pending.** A canary without `regress.patch` (the fix does not exist yet, e.g. `hist-pool-retire`) must say `"pending": "<task>"` in `expect.json`. It is listed, not graded, and
+does not fail the pack (its `pin.toml` may then name only what is known; the tool reads a pin only for canaries that have a patch); without `pending` a missing patch fails the pack. Pending is a ratchet that must reach zero.
+
+**`rigor grade --only` and the `sim` gate.** Neither exists until T2G2. The grade command and gate list are data (`gates`), so a real canary names
+`gates = ["sim", "oracle"]` and `fail: {"sim": [...]}` once T2G2 lands. The selftest canary `hist-selftest` uses the full grade today and is red in
+`tests-release`, `tests-san`, `tests-msan` (`test-not-pass`) like `failing-test`; it is the only thing to change when `--only` exists (add
+`gates` and the expected `not_run` set), and the tool, layout and runner do not change.
+
+### The fixture `hist-selftest`
+`history.sh` builds three commits from `canaries/_base/product`: c0 (two defects), c1 (the fix of both), c2 (later work = `base`).
+`regress.patch` selects only the `core_add` hunk (the `util_make_ramp` hunk is not part of the canary). Unit tests
+(`gate/tests/test_hist_canary.py`) also cover an invented hunk (refused), a duplicated hunk, a stale patch (the pack exits 1), a pending canary, a
+named `fix_ref`, and a fix in another repository.
