@@ -21,7 +21,10 @@ SIGN_TIMEOUT_SECONDS = 60
 
 def run_gates(g):
     """Run the pipeline. Returns the exception that stopped it, or None."""
+    chosen = getattr(g, "selected", None)
     for gate_id, step in grade_pipeline.GATES:
+        if chosen is not None and gate_id not in chosen:
+            continue   # `--only`: not part of this grade (nor of its order)
         started = time.monotonic()
         try:
             result = step(g)
@@ -65,7 +68,7 @@ def discard(path):
 
 
 def absolute_arguments(args):
-    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "sign_key", "work",
+    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "sim_salt", "sign_key", "work",
                  "verdict_out"):
         value = getattr(args, name, None)
         if value is not None:
@@ -87,6 +90,16 @@ def start_grading(args):
     # P002 Q1: a bad bundle is exit 2 here, before `clone`.
     witness, inputs["witness_sha256"] = verdict_inputs.snapshot_witness(
         args.witness, os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.WITNESS_NAME))
+    selected = None
+    if getattr(args, "only", None) is not None:   # a partial grade: its order file lists only what runs (and is hashed so)
+        if args.sign_key is not None:
+            raise InternalError("--only grades are never signed: --sign-key is refused")
+        ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
+        selected = grade_pipeline.selection(args.only, ids)
+        order_bytes = "".join(i + "\n" for i in ids if i in selected).encode("ascii")
+        with open(args.order_file, "wb") as handle:
+            handle.write(order_bytes)
+        inputs["order_sha256"] = jsonio.sha256_hex(order_bytes)
     product = product_layout.load_product(args.product)
     perf_source = getattr(args, "perf", None)  # callers that build args by hand may omit it
     levels = {}
@@ -98,7 +111,8 @@ def start_grading(args):
         args=args, product=product, gate_sha=gate_sha, work=work,
         src=os.path.join(work, "src"), tree=os.path.join(work, "tree"),
         results=os.path.join(work, "results"), test_results=os.path.join(work, "test-results"),
-        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean, witness=witness, perf=perf)
+        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean, witness=witness, perf=perf,
+        selected=selected)
 
 
 def file_sha256(path):
@@ -155,6 +169,10 @@ def run(args):
     return code
 
 
+def _gate_list(text):
+    return text.split(",")
+
+
 def add_parser(subparsers):
     parser = subparsers.add_parser("grade", allow_abbrev=False,
                                    help="clone, assemble, build and judge one product change")
@@ -170,6 +188,13 @@ def add_parser(subparsers):
     parser.add_argument("--perf", metavar="DIR",
                         help="perf bundle (docs/perf.md); snapshotted into <work>/inputs/perf and bound as "
                              "perf_sha256 (null without it); loaded and checked, no gate judges it yet")
+    parser.add_argument("--sim-salt", metavar="FILE",
+                        help="the salt of the simulation seeds (lowercase hex; docs/sim.md): the grader's hidden one. Only "
+                             "its sha256 enters the verdict (inputs.sim_salt_id); without it the product's "
+                             "sim-salt.public is used, else no salt")
+    parser.add_argument("--only", type=_gate_list, metavar="A,B",
+                        help="a partial grade: run these gates and what they need (grade_pipeline.selection); the others "
+                             "are left out of the order, so the verdict can PASS. Never signed (historical canaries, docs/canaries.md)")
     parser.add_argument("--sign-key")
     parser.add_argument("--work", required=True)
     parser.add_argument("--allow-dirty-gate", action="store_true",

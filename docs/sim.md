@@ -2,8 +2,9 @@
 
 `c_sim` is the target kind for the one check that runs the *composition* of an app (reactors, runtime, adapters, clock, files,
 network, faults) on simulated ports. T2G1 is the base: the rule, the runner, the world interface and the identity and crash
-handling, proven on a fixture product (`selftest/sim`, run by `selftest/sim.sh`). The invariants (T2G3, T2G4, T2G5), the judge `rigor sim`
-and the grade wiring (T2G2), tiers and the real product come later; nothing here checks a safety property yet.
+handling, proven on a fixture product (`selftest/sim`, run by `selftest/sim.sh`). T2G2 added the judge `rigor sim` and the grade wiring
+(below). The invariants (T2G3, T2G4, T2G5) are engine code that no world taps yet, and the real product comes later; the grade checks no
+safety property until a world wires them (T2G9).
 
 ## The rule
 
@@ -71,14 +72,73 @@ the environment, a file or a socket. P330 §1.2 has the full contract; this head
 `rigor buckfiles` refuses (`bad-argument`, why `sim-target`) any dep, from any macro, on a `c_sim` target or a target it derives
 (`__bin`, `__shard<k>`, `__facts_unit`, `_facts`, `_facts_san`, `_facts_msan`, `_facts_tsan`). Resolution is the one used for `c_test` targets.
 
+## The judge: `rigor sim` (T2G2, P330 §1.8)
+
+`rigor sim --results DIR --policy P.toml --facts DIR [--salt FILE] [--salt-id H] [--spec S.toml] [--regressions R.json] [--tier merge|nightly] [--out F]`,
+run by `rigor grade` as the gate `sim` (after `fuzz`; `docs/grade.md`, "Simulation in the pipeline"). Exit 0 PASS, 1 FAIL, 2 on any
+malformed input. The judge recomputes what it can and trusts nothing the runner says about itself:
+
+* **Seeds.** From `--salt` (the salt file, hex) and `stats.world_sha256` it derives `seed_i` as above and requires the hashes file and the
+  `failures` rows to name exactly the indices `0..seeds_run-1` with those seeds (every finished seed has a hashes line, every failed one a
+  failure row, none both). `stats.salt_sha256` must be the sha256 of the salt the grader gave (`--salt-id` is checked against the file).
+* **Budget.** The required seeds come from the policy and the tier, never from the target: `count < required` or `seeds_run != count` is
+  `sim-seeds-short`. 200 seeds must give 200 distinct trace hashes, recomputed from the hashes file: fewer is `sim-vacuous`.
+* **Identity.** Seeds 0 to 9 of `<id>.release.hashes` must equal the san ones (`sim-nondeterministic`, `why`).
+* **What the stats must show** (from the spec, `products/<p>/sim.toml`): every `invariants` id with `checked >= min_checked` (else `sim-vacuous`,
+  `invariant`, `count`) and `violated == 0` (else `sim-invariant-violated`); every `faults` kind `fired` and `observed` (`fault-not-observed`);
+  every `screens` name reached (`sim-vacuous`, `screen`); every `zero_counters` name at 0 (`sim-stats-counter`).
+* **Modules.** Policy modules whose `profile` is one of `[sim] profiles` must be in the link closure (`deps`, transitively) of some `c_sim`
+  facts (`sim-module-unreached`); `stats.unexercised` (the `cov` shard, later) names modules with no executed line (`sim-module-unexercised`).
+* **Soak.** At a tier with soak days the stats need `soak.days >= max(tier days, ceil(2 * bound / rate_per_day))` over every
+  `[soak.capacity.*]` row (`soak-too-short`); each `soak.failures` row is `soak-assertion` (`assertion`, `day`).
+* **Targets.** A `c_sim` target of the facts without results is `sim-not-run`; `[sim] required = true` without the (named) target is
+  `sim-missing-target`; a result for something that is no `c_sim` target of the facts is exit 2.
+
+Findings are the rows of the stats (`sim-crash`, `sim-timeout`, `sim-deadlock`, `sim-nondeterministic`, `sim-init-failed`, `sim-world-error`,
+`sim-model-divergence`, `sim-invariant-violated` with `seed`, `index` and, when the engine knows them, `invariant`, `step`, `at_ms`, `detail`) plus
+the rules above. Volatile data (seconds, counts) lives only in the metadata, which also has `tier`, `required_seeds`, `salt_id`,
+`spec_sha256` and `seed_digest`.
+
+**Results directory** (flat; anything else is exit 2): `index.json` (`{"<c_sim facts label>": "<id>"}`) and per id `<id>.stats.json`,
+`<id>.verdict`, `<id>.report`, `<id>.hashes`, `<id>.release.hashes` and optionally `<id>.failure.trace` (at most 64 KiB). The stats are the
+merged `sim-stats/1` of the runner; the judge also accepts the optional keys `invariants` (`{id: {checked, violated}}`), `faults`
+(`{kind: {fired, observed}}`), `screens`, `counters`, `soak` (`{days, failures}`) and `unexercised`, which the invariant engine (T2G3, T2G4)
+and the soak (T2G9) will write. Any other key is exit 2.
+
+**Policy** (`products/<p>/policy.toml`): `[sim] required`, `target`, `profiles`, `[sim.seeds]` (`merge`, `nightly`; defaults 200 and 2000),
+`[sim.soak_days]` (defaults 0 and 400) and `[soak.capacity.<name>]` (`event`, `bound`, `rate_per_day`). Without a `[sim]` table the
+minimum is one seed and no soak. **Spec** (`products/<p>/sim.toml`, optional): `invariants`, `faults`, `screens`, `zero_counters`,
+`[coverage] min_checked, min_fired`, and the opaque tables `[workload]`, `[fault]`, `[constants]`. **Regressions**
+(`products/<p>/sim-regressions.json`, `{"<label>": ["<16 hex seed>", ...]}`): every seed listed must be among the seeds of the run
+(`sim-regression-missing`). **Salt**: `rigor grade --sim-salt FILE` (hidden, only its sha256 is bound), else `products/<p>/sim-salt.public`,
+else none.
+
+| Finding | Meaning |
+|---|---|
+| `sim-crash`, `sim-timeout`, `sim-deadlock`, `sim-init-failed`, `sim-world-error` | a seed that did not finish (runner) |
+| `sim-nondeterministic` | two runs of a seed differ, or release and san differ on seeds 0 to 9 |
+| `sim-invariant-violated`, `sim-model-divergence` | the invariant engine (T2G3, T2G4) |
+| `sim-vacuous` | 200 seeds that are not 200 traces; an invariant, screen or notice never reached |
+| `fault-not-observed` | a fault kind that did not fire, or fired and showed no effect |
+| `sim-seeds-short` | fewer seeds than the tier's minimum, or not all of them ran |
+| `sim-module-unreached`, `sim-module-unexercised` | a `wiring`/`ui`/`safety` module no world links, or no seed executed |
+| `soak-too-short`, `soak-assertion` | the soak of the tier and the capacity rule; a failed soak assertion |
+| `sim-stats-counter` | a runtime counter that must stay 0 |
+| `sim-missing-target`, `sim-not-run`, `sim-build-failed` | no `c_sim` where the policy requires one; a target without results; one that did not build |
+| `sim-regression-missing` | a seed of `sim-regressions.json` that no run contains |
+
+Open: `sim-regression-missing` can only be satisfied once the runner can replay explicit seeds (a `--seeds` list on `sim/runner`, not in
+T2G1's runner); until then a product with a regressions file fails it, on purpose (fail closed).
+
 ## Canaries
 
 `canaries/sim-crash` and `canaries/sim-nondeterministic` (shared files in `canaries/_sim/files`) put a one-file world into the
-base product. They carry `"pending": "T2G2"`: today the grade passes them (every existing gate accepts the world, which also
-proves a world is graded like a library: running them found that `c_structure` did not know kind `c_sim`, fixed here), and they
-turn red in gate `sim` once T2G2 wires it into `rigor grade`. There is no `sim-no-seeds` canary: the macro refuses `seeds < 1` at load time and the
+base product. They were pending in T2G1 (the grade passed them: every existing gate accepts a world, which also proves a world is graded like a
+library) and are red in gate `sim` since T2G2. There is no `sim-no-seeds` canary: the macro refuses `seeds < 1` at load time and the
 runner/merge produce `sim-no-seeds` only for a run that did not execute, which a product cannot author; that rule is covered by
-`gate/tests/test_sim_merge.py` and `selftest/sim.sh` (`--count 0`). T2G2 owns `sim-seeds-short` and `sim-missing-target`.
+`gate/tests/test_sim_merge.py` and `selftest/sim.sh` (`--count 0`). T2G2 added `sim-vacuous` (a world whose workload does nothing),
+`sim-seeds-short` (the policy asks for more seeds than the target runs), `sim-missing-target` (`[sim] required = true`, no `c_sim`) and the control
+`sim-green` (a clean world with a public salt, graded PASS).
 
 ## Wire invariants I3 to I6b (T2G3, P330 §2.1)
 

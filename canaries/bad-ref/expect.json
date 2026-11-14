@@ -27,6 +27,7 @@
     "tests-stub",
     "perf",
     "fuzz",
+    "sim",
     "mutants",
     "witness-tests",
     "mutants-witness"

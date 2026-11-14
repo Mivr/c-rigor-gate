@@ -11,6 +11,7 @@
   },
   "not_run": [
     "fuzz",
+    "sim",
     "mutants",
     "witness-tests",
     "mutants-witness"

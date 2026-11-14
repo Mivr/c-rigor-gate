@@ -48,6 +48,8 @@ class Grading:
     witness: object = None
     # B13: the perf bundle loaded from its snapshot in <work>/inputs/perf (perf_bundle.Bundle), or None.
     perf: object = None
+    # `--only`: the ids of the gates this grade runs, or None for every gate
+    selected: object = None
 
 
 def gate_checkout_sha():

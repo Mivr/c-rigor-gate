@@ -20,6 +20,7 @@
     "tests-msan",
     "tests-tsan",
     "fuzz",
+    "sim",
     "mutants",
     "witness-tests",
     "mutants-witness"

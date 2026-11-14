@@ -22,6 +22,7 @@
     "tests-tsan",
     "perf",
     "fuzz",
+    "sim",
     "mutants",
     "witness-tests",
     "mutants-witness"

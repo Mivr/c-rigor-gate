@@ -22,7 +22,7 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `clone` | `git clone --no-local --no-hardlinks` of R into `<work>/src` with the hardened git environment of `gitrun` (no replace objects, grafts, fsmonitor, hooks, global config); resolves B and H **in the clone** (commit ids or refs the clone has, e.g. `origin/x`); detached checkout of H. Every later git gate reads the clone, never R. |
 | `contract`, `suppressions` | the existing gates, in process, against the clone, `--task` and `--approvals`. `suppressions` also scans **every file the layout grades at H** (the same file set `assemble` copies; T054, R001 R5) with the same patterns, line by line, so a suppression committed before B (an ungraded ancestor, e.g. under a sanitizer macro) is found. A hit that is in the diff is reported once, as `forbidden-pattern`; any other hit is `forbidden-pattern-in-tree` (error, with path, line, pattern). Approvals use the same scope text and cover both. |
 | `assemble` | builds `<work>/tree` from scratch (below). Findings: `bad-path`, `unsupported-entry` (symlink or gitlink that the layout would copy); info `ignored-by-gate` (a product path that matched `include` but is always excluded), info `product-manifest` (sha256 of the copied product files, so the verdict hash commits to them). An error here means no tree: `build` and `tests-*` are NOT_RUN. |
-| `toolchain` | grader integrity (T073, B33 a; below): is the toolchain the one `toolchains/*.manifest` pins? In an `--uncached` grade it verifies the cached LLVM and sysroot trees once, before anything compiles: PASS with info `toolchain-verified` (`manifests`: path and sha256 of each manifest), or FAIL with error `toolchain-mismatch`. A cached grade: PASS with info `toolchain-not-verified` (`reason: cached grade`). NOT_RUN in an uncached grade without a tree (`assemble` failed). Unless it passed, the gates that compile (`semantic-suppressions`, `symbols`, `build`, `structure`, `mode-divergence`, `fuzz`, `mutants`, `witness-tests`, `mutants-witness`) are NOT_RUN (the log names the reason: `<gate> not run: gate toolchain is FAIL`). |
+| `toolchain` | grader integrity (T073, B33 a; below): is the toolchain the one `toolchains/*.manifest` pins? In an `--uncached` grade it verifies the cached LLVM and sysroot trees once, before anything compiles: PASS with info `toolchain-verified` (`manifests`: path and sha256 of each manifest), or FAIL with error `toolchain-mismatch`. A cached grade: PASS with info `toolchain-not-verified` (`reason: cached grade`). NOT_RUN in an uncached grade without a tree (`assemble` failed). Unless it passed, the gates that compile (`semantic-suppressions`, `symbols`, `build`, `structure`, `mode-divergence`, `fuzz`, `sim`, `mutants`, `witness-tests`, `mutants-witness`) are NOT_RUN (the log names the reason: `<gate> not run: gate toolchain is FAIL`). |
 | `buckfiles` | `rigor buckfiles` over a copy of the product files of the tree only (never the gate's own `BUCK` files). A macro keyword is a string or a list of strings; `c_apk` (T-G3, `docs/products.md`) has keywords of its own (the manifest declaration: strings, `version_code` one int, `permissions` and `assets` lists; `so` must be `:name` of a `c_android_so` of the same BUCK file, no `__`; no `deps`, no flags, no signing keyword, `bad-argument` why `so` or `keyword`);; `c_embed` (T112, below) has keywords of its own too (`src`, `symbol` strings, `max_bytes` one int literal, `nul` one `True`/`False` literal, no `srcs`, `headers` or `deps`); `c_catalog` (T105, below) has keywords of its own (no `srcs` or `headers`, but `deps` as usual) and takes one dict, `po`, of language -> list of strings; its `runtime` is one string checked like a `deps` entry (same-cell label, or `bad-argument` why `dep`; a test or a test-derived target is `test-target`); the only computed value (T102) is a package-local source glob, in `srcs` or `headers` of `c_library`, `c_binary` and `c_test`: (1) `glob(["<pat>", ...])`, or (2) one literal non-empty string list and one such glob joined by a single `+`, in either order (`["fp.h"] + glob(["src/*.h"])`). A pattern is `src/<stem>.c` or `src/<stem>.h` (the headers use `.h`), where the stem is a plain name or has exactly one `*` (`src/*.c`, `src/a.c`); no `..`, no leading `/`, no `**`, no other subdirectory. `glob` takes one list and nothing else (no `exclude`, no keyword). Everything else (a glob in `deps`, `tests/**`, `glob + glob`, a variable, a comprehension, any other `+`) stays `bad-argument` (why `value`). The layout check (below) needs nothing: a glob matches only `.c`/`.h` files, which are code by extension and so already covered, and a pattern is not a named file. |
 | `semantic-suppressions`, `symbols` | one Buck2 build (release, `--no-remote-cache` with `--uncached`) of every `kind(c_facts, //...)` target, `gate//ctest:ctest_facts` and `toolchains//:libc_symbols`; then `rigor facts` logic with `products/<p>/policy.toml` (gate-owned, next to `product.toml`; trusted module is `gate//ctest:ctest`, and test targets need their own `[module]` entries). If the facts cannot be built (e.g. the product does not compile) both are NOT_RUN and `build` says why. Metadata has executed/cached action counts. T138: `symbols` also owns the `threads` declaration of every `c_test` (the test facts are its): `threads-undeclared` (error: the test's own objects, or any library in its link closure, reference `pthread_create` or `thrd_create` without `threads = True`, so it has no tsan result; `via` names the modules) and `threads-vacuous` (error: `threads = True` and nothing in the closure references one). A test that links a threading library without starting a thread is treated as threaded on purpose (the facts say what the closure can do, not what a run does); the declaration is read from the `threads` attribute of the test's `ctest_results` target (one `uquery`, only when the product has a test). |
 | `layering` | the architecture contract (T087, `docs/layering.md`): the facts of the `symbols` gate against `products/<p>/architecture.toml`. No such file: PASS with info `no-architecture`. Otherwise it runs only after `toolchain` and `assemble` passed. |
@@ -34,6 +34,7 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `tests-msan`, `tests-tsan` | (T138, P003 §7.1; `grade_sanmodes.py`, below) the `tests` rules over the results of the msan and tsan modes. Each builds the results targets its mode has, in one Buck2 build of the head tree (`--no-remote-cache` with `--uncached`), NOT_RUN under the conditions of `tests-san` (no clean release and san results; the release results say which ids each target holds) and, like every gate that compiles, until `toolchain` passed. `tests-msan` expects every expected id except those of a test whose link closure has a sysroot library beyond libc and pthread (no msan results target): info `msan-not-applicable` (`target`, `library`) for each; anything else missing is `missing-test`. `tests-tsan` expects exactly the ids of the tests declared `threads = True`; a product with none passes with info `no-threaded-tests`. Results that the farm could not produce because the sanitizer runtime died at start-up are the one error `sanitizer-startup` (`mode`, `prerequisite`: the RE worker must allow `personality(ADDR_NO_RANDOMIZE)`), never a list of missing tests, and never retried. Other build failures are `build-failed` (`mode`, `target`). In role `test-author` they judge presence only, as `tests-san` does. Both tiers run both gates. |
 | `tests-stub` | role `test-author` only (T041, P002 Q2; below): every new expected id fails on the stubs in both modes. Any other role: PASS with info `not-applicable`. |
 | `fuzz` | the fuzz runs of every `c_fuzz` target of the product, judged by `rigor fuzz` in process (T129, P003 §7.2; "Fuzz in the pipeline" below, `docs/fuzz.md`). Findings of the judge (`fuzz-crash`, `fuzz-missing`, `fuzz-harness-no-call`, `fuzz-not-run`, `fuzz-short`, `fuzz-regression-missing`) and `fuzz-build-failed` (a target that did not build or lacks an output). A product without a `c_fuzz` target and without a module that must be fuzzed passes with info `no-fuzz-targets`, role `test-author` with `not-applicable`. NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed (and the facts built). |
+| `sim` | the whole-app simulation of every `c_sim` target of the product, built in the san and release platforms and judged by `rigor sim` in process (T2G2, P330 §1.8; "Simulation in the pipeline" below, `docs/sim.md`). Findings of the judge (`sim-crash`, `sim-nondeterministic`, `sim-vacuous`, `sim-seeds-short`, `sim-missing-target`, `sim-not-run`, ...) and `sim-build-failed` (a target that did not build or lacks an output). A product without a `c_sim` target and without `[sim] required = true` passes with info `no-sim-targets`, role `test-author` with `not-applicable`. NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed (and the facts built). |
 | `perf` | the cost counts of the perf targets of the policy and of the perf bundle, judged against their complexity classes (T090, `docs/perf.md` "Judging"). Findings `perf-class-exceeded`, `perf-counter-unavailable`, `perf-record-bad`, `perf-build-failed`; a product without perf targets passes with info `no-perf-targets`, role `test-author` with `not-applicable`. NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. It writes `gate-perf/` into the tree, builds the `<name>_perf` targets in the release platform and removes the package again. |
 | `mutants` | mutation testing of every product module the policy puts at L2 or above (below). NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. In role `test-author`: PASS with info `not-applicable` (mutating stubs only gives `baseline-red`). |
 | `witness-tests`, `mutants-witness` | the witness gates (T039; `docs/witness.md`, P002), below. |
@@ -75,6 +76,34 @@ or green on this gate only; `selftest/grade.sh` grades a product with a clean ta
 and the four corpus and budget cases above.
 Because the libFuzzer binary of a `c_fuzz` (`<name>__bin`) is a `cxx_binary`, the mutants gate's layout query leaves out the
 binaries that a `fuzz_run` target names in its `binary` attribute (otherwise it would ask for a `level`).
+
+## Simulation in the pipeline (T2G2, P330 §1.8)
+The `sim` gate runs after `fuzz` and before `perf`, under the same NOT_RUN rule (`assemble`, `buckfiles`, `build` and both `tests-*`
+passed, the facts exist, `toolchain` passed) (`grade_sim.py`).
+
+1. **Targets.** `uquery 'kind(sim_merge, //...)'` lists every `c_sim` of the product (never the product's words about them).
+   One `build --target-platforms toolchains//:linux_san --keep-going --build-report` builds `[verdict]`, `[report]`, `[stats]`,
+   `[hashes]` of each (one retry after a transport failure), a second one in `toolchains//:linux_release` builds `[hashes]`:
+   seeds 0 to 9 must be equal in both. A target that does not build, or lacks an output, is `sim-build-failed` (error, `target`).
+2. **Salt.** `rigor grade --sim-salt FILE` (lowercase hex, at most 64 bytes) is the grader's hidden salt; without it the product's
+   `sim-salt.public` (beside `policy.toml`) is used, and without that none. The text is copied to `<work>/inputs/sim-salt` before
+   anything runs and passed to Buck2 as `-c rigor.sim_salt=HEX`. Only its sha256 enters the verdict (`inputs.sim_salt_id`).
+   A bad salt is exit 2 before `clone`.
+3. **Judging.** The outputs are copied into `<work>/sim/` (`index.json`, `t<N>.stats.json`, `.verdict`, `.report`, `.hashes`,
+   `.release.hashes`) and judged in process with the policy (`[sim]`, `[soak.capacity]`), the spec `products/<p>/sim.toml` (optional),
+   the facts of the `symbols` gate, the tier and `sim-regressions.json` (optional). Policy, spec, regressions and the public salt are
+   snapshotted into `<work>/inputs/product`.
+4. **Bound inputs.** `core.inputs` has `sim_spec_sha256` (the spec file), `sim_regressions_sha256`, `sim_salt_id` and
+   `sim_seed_digest` (sha256 over the hashes of every target's san and release `.hashes`: which seeds ran, and what they did).
+   All four are `null` when nothing of the kind exists (no `c_sim`, no salt); a salt swap changes `sim_salt_id` and the digest.
+   `rigor verify` prints them (`sim_spec_sha256 ...`) and takes `--expect-sim-salt-id` and `--expect-sim-spec-sha`.
+5. **Tiers.** The minimum seeds and the soak days come from the policy's `[sim.seeds]` and `[sim.soak_days]` for the tier of the
+   grade (table below); a target with fewer seeds is `sim-seeds-short`. Without a `[sim]` table the minimum is one seed, no soak.
+6. **Roles.** `test-author`: PASS with info `not-applicable`.
+
+Products that have no `c_sim` target and no `[sim]` policy are graded as before: the gate passes with info `no-sim-targets`.
+The canaries `sim-crash`, `sim-nondeterministic`, `sim-vacuous`, `sim-seeds-short` and `sim-missing-target` are red on this gate only;
+`sim-green` (control) is a clean world graded PASS end to end.
 
 ## `c_catalog`: translations as a const C catalog (T105, G9)
 ```
@@ -246,8 +275,9 @@ prints the tier and `--require-tier TIER` refuses a verdict of the other one.
 | `tests-msan`, `tests-tsan` (T138) | run | run, unchanged (both tiers run both gates) |
 | `mutants` | every module at L2 or above is built, run and judged | the modules that can only report are **deferred** (not built, not run); the others as in `nightly` |
 | `mutants-witness` | every module of the witness scope | the same deferral rule |
+| `sim` (T2G2) | the policy's `[sim.seeds] nightly` seeds (default 2000) and `[sim.soak_days] nightly` (default 400) | `[sim.seeds] merge` (default 200), `[sim.soak_days] merge` (default 0) |
 
-**No other gate changes with the tier.** Later tasks add a row to this table for what they move; they do not invent a
+**No other gate changes with the tier** (`sim` only moves its seed and soak minimums). Later tasks add a row to this table for what they move; they do not invent a
 second mechanism (the tier is one string, `grade_tier.tier_of`, read from `args.tier`).
 
 **The deferral rule** (`gate/rigor_lib/grade_tier.py`). A module is deferred at tier `merge` when no finding of its
@@ -414,6 +444,8 @@ the same `core_sha256`, whether the build was cold or fully cached; changing any
 | `order_sha256` | the bytes of `gate/order.txt` the verdict was built from |
 | `buckconfig_sha256` | the generated `.buckconfig` (from the `assemble` manifest) |
 | `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | `toolchains/BUCK`, the LLVM and sysroot archive pins in it, and the Buck2 binary pin (`tools/buck2.version`), all from the assembled tree and checked against the manifest |
+| `sim_spec_sha256`, `sim_regressions_sha256` | sha256 of `sim.toml` and `sim-regressions.json` beside `policy.toml`; `null` if absent |
+| `sim_salt_id`, `sim_seed_digest` | sha256 of the salt of the simulation seeds (never the salt) and the digest of the seed hashes of every `c_sim` target (`rigor sim`); `null` without a salt or a simulation run |
 | `uncached` | the `--uncached` flag (also kept as `core.uncached`) |
 | `tier` | `merge` or `nightly` (`--tier`, T137); a verdict of one tier never has the `core_sha256` of the other |
 
@@ -449,7 +481,8 @@ error (exit 2) before `clone`. `verdict.metadata.order_file` is now the snapshot
 ```
 gate/rigor verify --verdict verdict.json --allowed-signers SIGNERS \
     --expect-head <40-hex head> --expect-gate <40-hex gate commit> --expect-policy-sha <sha256 of policy.toml> \
-    [--require-uncached] [--require-tier merge|nightly] [--signature verdict.json.sig]
+    [--require-uncached] [--require-tier merge|nightly] [--signature verdict.json.sig] \
+    [--expect-sim-salt-id <sha256 of the salt>] [--expect-sim-spec-sha <sha256 of sim.toml>]
 ```
 Exit 0 only for a trustworthy PASS; exit 1 prints every reason it was rejected (`REJECTED: ...`); exit 2 is an
 internal error (unreadable file, no `ssh-keygen`). It checks, in order: the SSH signature over the exact file bytes

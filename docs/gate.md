@@ -75,6 +75,12 @@ holds, per gate, id, status, findings count and the sha256 of its canonical find
 hash commits to the findings. `metadata` (gate metadata, paths, unlisted result files) is not
 hashed.
 
+### `sim --results DIR --policy P.toml --facts DIR [--salt FILE] [--salt-id H] [--spec S.toml] [--regressions R.json] [--tier merge|nightly] [--out F]`
+The verdict on the whole-app simulation runs of a product (T2G2, P330 §1.8; run by `rigor grade` as the gate `sim`). It
+recomputes what it can (seeds from the salt and the world hash, the budget from the policy and the tier, what each
+invariant, fault, screen and counter must show from the spec) and trusts nothing the runner says about itself. Findings,
+fields and the malformed-input rules (exit 2) are in [sim.md](sim.md) "The judge: `rigor sim`".
+
 ### `approve --kind K --scope S --reason TEXT --repo-sha SHA --key KEYFILE --out DIR`
 Writes `DIR/<sha256>.json` (canonical JSON of kind, scope, reason, repo_sha; named by the hash of
 its bytes) and `DIR/<sha256>.json.sig` made with `ssh-keygen -Y sign -n c-rigor-gate`.

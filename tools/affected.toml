@@ -108,6 +108,13 @@ selftests = ["perf", "mutate", "grade", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/fuzz_gate.py"
 selftests = ["fuzz"]
+# T2G2: the judge and its policy readers are run by `rigor grade` (the sim canaries and the grade selftest).
+[[rule]]
+glob = "gate/rigor_lib/sim_judge.py"
+selftests = ["sim", "grade", "canaries"]
+[[rule]]
+glob = "gate/rigor_lib/sim_policy.py"
+selftests = ["sim", "grade", "canaries"]
 # T2G1: the `c_sim` shard merge and mode comparison run inside the sim selftest's actions.
 [[rule]]
 glob = "gate/rigor_lib/sim_*"
