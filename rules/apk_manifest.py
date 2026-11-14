@@ -34,12 +34,14 @@ LOCK_TASK_MODES = ("", "if_whitelisted")
 SOFT_INPUT_MODES = ("", "stateHidden", "stateAlwaysHidden", "adjustResize", "adjustPan", "adjustNothing")
 CATEGORIES = {"HOME": "android.intent.category.HOME", "DEFAULT": "android.intent.category.DEFAULT"}
 MAX_RECEIVERS = 8
+# Java packages the dex may never define classes in (the platform's and the AndroidX/Kotlin runtime's own).
+FORBIDDEN_PACKAGES = ("java", "javax", "android", "androidx", "dalvik", "kotlin", "com.android")
 _PACKAGE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+")
 _LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")
 _VERSION_NAME = re.compile(r"[0-9A-Za-z][0-9A-Za-z._-]{0,31}")
 _LIB = re.compile(r"lib([a-z][a-z0-9_]*)\.so")
 _KEYS = ("label", "orientation", "package", "permissions", "version_code", "version_name")
-_OPTIONAL = {"application_class": "", "receivers": [], "java_classes": [], "res_xml": [],
+_OPTIONAL = {"java_packages": None, "application_class": "", "receivers": [], "java_classes": [], "res_xml": [],
              "activity": {"launch_mode": "", "lock_task_mode": "", "exclude_from_recents": False, "soft_input_mode": "", "categories": []}}
 _ACTIVITY_KEYS = ("categories", "exclude_from_recents", "launch_mode", "lock_task_mode", "soft_input_mode")
 _RECEIVER_KEYS = ("actions", "exported", "meta_data", "name", "permission")
@@ -78,11 +80,19 @@ def _full(spec):
     full = dict(spec)
     for key, default in _OPTIONAL.items():
         full.setdefault(key, json.loads(json.dumps(default)))
+    if full["java_packages"] is None:
+        full["java_packages"] = [spec["package"]]
     return full
 
 
-def _is_class(value, package):
-    return isinstance(value, str) and _CLASS.fullmatch(value) is not None and value.startswith(package + ".") and len(value) <= 200
+def _is_class(value, packages):
+    """A class name whose package (everything before the last dot) is exactly one of `packages`."""
+    return (isinstance(value, str) and _CLASS.fullmatch(value) is not None and len(value) <= 200
+            and value.rpartition(".")[0] in packages)
+
+
+def forbidden_package(package):
+    return any(package == f or package.startswith(f + ".") for f in FORBIDDEN_PACKAGES)
 
 
 def _list_of(value, allowed):
@@ -103,12 +113,12 @@ def _activity_problems(activity):
     return found
 
 
-def _receiver_problems(receiver, package, classes, res_names):
+def _receiver_problems(receiver, packages, classes, res_names):
     if not isinstance(receiver, dict) or sorted(receiver) != list(_RECEIVER_KEYS):
         return ["a receiver must have exactly the keys %s" % ", ".join(_RECEIVER_KEYS)]
     found = []
     name = receiver["name"]
-    if not _is_class(name, package) or name not in classes:
+    if not _is_class(name, packages) or name not in classes:
         found.append("receiver %r must be one of the declared java_classes" % (name,))
     if receiver["permission"] != "" and receiver["permission"] not in RECEIVER_PERMISSIONS:
         found.append("receiver permission %r is not one of %s" % (receiver["permission"], ", ".join(sorted(RECEIVER_PERMISSIONS))))
@@ -147,21 +157,26 @@ def validate(spec):
 
 
 def _java_problems(spec, package):
+    packages = spec["java_packages"]
+    if (not isinstance(packages, list) or not packages or len(set(map(str, packages))) != len(packages)
+            or not all(isinstance(p, str) and _PACKAGE.fullmatch(p) and len(p) <= 120 and not forbidden_package(p) for p in packages)):
+        return ["java_packages must be a non-empty list without repeats of dotted lower-case package names, none of them java, javax, "
+                "android, androidx, dalvik, kotlin or com.android (or inside one)"]
     classes, res = spec["java_classes"], spec["res_xml"]
     found = []
-    if not isinstance(classes, list) or len(set(map(str, classes))) != len(classes) or not all(_is_class(c, package) for c in classes):
-        return ["java_classes must be a list without repeats of class names inside the package %s" % package]
+    if not isinstance(classes, list) or len(set(map(str, classes))) != len(classes) or not all(_is_class(c, packages) for c in classes):
+        return ["java_classes must be a list without repeats of class names, each directly in one of the java_packages %s" % ", ".join(packages)]
     if not isinstance(res, list) or len(set(map(str, res))) != len(res) or not all(isinstance(r, str) and _RES_XML.fullmatch(r) for r in res):
         return ["res_xml must be a list without repeats of file names matching %s" % _RES_XML.pattern]
     app = spec["application_class"]
-    if app != "" and (not _is_class(app, package) or app not in classes):
+    if app != "" and (not _is_class(app, packages) or app not in classes):
         found.append("application_class %r must be one of the declared java_classes" % (app,))
     found += _activity_problems(spec["activity"])
     receivers = spec["receivers"]
     if not isinstance(receivers, list) or len(receivers) > MAX_RECEIVERS:
         return found + ["receivers must be a list of at most %d" % MAX_RECEIVERS]
     for receiver in receivers:
-        found += _receiver_problems(receiver, package, classes, res)
+        found += _receiver_problems(receiver, packages, classes, res)
     names = [r.get("name") for r in receivers if isinstance(r, dict)]
     if len(set(map(str, names))) != len(names):
         found.append("receivers must not repeat a class")
