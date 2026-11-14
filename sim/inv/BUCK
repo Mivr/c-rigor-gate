@@ -90,8 +90,8 @@ c_mutants(name = "events_mutants", module = ":events", tests = [":ev_auth_test",
 # the I8 re-run-and-dismiss check through a callback of the world, the phrase catalogue through another.
 c_library(
     name = "ui",
-    srcs = ["ui.c", "ui_parse.c", "ui_schema.c"],
-    headers = ["ui.h"],
+    srcs = ["ui.c", "ui_parse.c", "ui_schema.c", "ui_schema_field.c", "ui_schema_util.c"],
+    headers = ["ui.h", "ui_schema_int.h"],
     exported_deps = ["//sim:world"],
     visibility = ["PUBLIC"],
 )
