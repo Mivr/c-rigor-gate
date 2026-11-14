@@ -1599,6 +1599,30 @@ level = "L1"
 allow = []
 exports = []
 
+[module."//apps/lockers/lkapp/jnipolicy:jnipolicy"]
+level = "L3"
+impl = ["apps/lockers/lkapp/jnipolicy/src/**"]
+allow = []
+exports = ["lk_jnip_facts", "lk_jnip_lock", "lk_jnip_native_flags", "lk_jnip_post", "lk_jnip_probe_owner",
+    "lk_jnip_probe_sdk", "lk_jnip_window"]
+
+[module."//apps/lockers/lkapp/jnipolicy:jnipolicy_lock_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/jnipolicy:jnipolicy_post_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/jnipolicy:jnipolicy_window_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/jnipolicy:testkit"]
+level = "L1"
+allow = []
+exports = []
+
 [module."//apps/lockers/lkapp/posixio:addr_test"]
 allow = ["__xstat", "accept", "bind", "close", "closedir", "fchmod", "getsockname", "in6addr_loopback",
     "listen", "mkdtemp", "opendir", "poll", "read", "readdir", "snprintf", "strlen", "write"]
