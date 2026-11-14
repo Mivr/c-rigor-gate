@@ -3,7 +3,9 @@
 Actions, all on RE with the pinned SDK (toolchains//:android_build_tools, :android_platform, :jdk):
   1. manifest   rules/apk_manifest.py renders AndroidManifest.xml from the validated declaration;
   2. link       `aapt2 link` against the platform android.jar (and the assets, if any) -> the base APK;
-  3. pack       rules/apk_pack.py adds `lib/arm64-v8a/lib<name>.so`, every entry STORED;
+  2b. java      (java_srcs only) rules/apk_java.py: javac of the pinned JDK against android.jar (-Werror, no processors), then the pinned d8
+                (--min-api 28) -> classes.dex; (res_xml only) `aapt2 compile` of res/xml/*.xml, linked with -R;
+  3. pack       rules/apk_pack.py adds classes.dex (java_srcs only) and `lib/arm64-v8a/lib<name>.so`, every entry STORED;
   4. align      `zipalign -f -P 16 4` page-aligns the stored object;
   5. sign       `apksigner sign --alignment-preserved` (it must not move what zipalign placed) with the checked-in TEST-ONLY debug key (toolchains/android_debug.keystore, public password
                 `android`, its certificate digest in toolchains/android_debug.cert.sha256). Release signing does not exist
@@ -15,7 +17,7 @@ also a runnable command: `buck2 run //pkg:<name>_check -- OTHER.apk`.
 
 load("@gate//rules:android.bzl", "AndroidSoInfo")
 
-ApkInfo = provider(fields = {"apk": Artifact, "assets": list[str], "exports": list[str], "lib": str, "spec": Artifact})
+ApkInfo = provider(fields = {"apk": Artifact, "assets": list[str], "exports": list[str], "java_srcs": list[Artifact], "lib": str, "spec": Artifact})
 
 _ENTRY = "ANativeActivity_onCreate"
 _PY = ["/usr/bin/env", "python3", "-I", "-B"]
@@ -30,10 +32,21 @@ def _apk_impl(ctx: AnalysisContext) -> list[Provider]:
     if exports != [_ENTRY]:
         fail("{}: the shared object must export exactly {} (a NativeActivity), it exports {}".format(ctx.label, _ENTRY, exports))
     spec = ctx.actions.write_json("spec.json", {
+        "activity": {
+            "categories": ctx.attrs.categories,
+            "exclude_from_recents": ctx.attrs.exclude_from_recents,
+            "launch_mode": ctx.attrs.launch_mode,
+            "lock_task_mode": ctx.attrs.lock_task_mode,
+            "soft_input_mode": ctx.attrs.soft_input_mode,
+        },
+        "application_class": ctx.attrs.application_class,
+        "java_classes": ctx.attrs.java_classes,
         "label": ctx.attrs.label,
         "orientation": ctx.attrs.orientation,
         "package": ctx.attrs.package,
         "permissions": ctx.attrs.permissions,
+        "receivers": ctx.attrs.receivers,
+        "res_xml": ctx.attrs.res_xml_names,
         "version_code": ctx.attrs.version_code,
         "version_name": ctx.attrs.version_name,
     })
@@ -51,11 +64,42 @@ def _apk_impl(ctx: AnalysisContext) -> list[Provider]:
     if ctx.attrs.assets:
         assets = ctx.actions.copied_dir("assets", {name: src for name, src in zip(ctx.attrs.asset_names, ctx.attrs.assets)})
         link.add("-A", assets)
+    if ctx.attrs.res_xml:
+        res = ctx.actions.copied_dir("res", {"xml/" + name: src for name, src in zip(ctx.attrs.res_xml_names, ctx.attrs.res_xml)})
+        compiled = ctx.actions.declare_output("res.zip")
+        ctx.actions.run(
+            cmd_args(ctx.attrs._aapt2[RunInfo], "compile", "--dir", res, "-o", compiled.as_output()),
+            category = "apk_res",
+            identifier = ctx.label.name,
+        )
+        link.add("-R", compiled)
     ctx.actions.run(link, category = "apk_link", identifier = ctx.label.name)
 
+    pack = cmd_args(_PY, ctx.attrs._pack)
+    dex = None
+    if ctx.attrs.java_srcs:
+        dex = ctx.actions.declare_output("classes.dex")
+        ctx.actions.run(
+            cmd_args(
+                _PY,
+                ctx.attrs._java,
+                "--javac", _as_command(ctx.attrs._javac[RunInfo]),
+                "--d8", _as_command(ctx.attrs._d8[RunInfo]),
+                "--android-jar", android_jar,
+                "--min-api", "28",
+                "--out", dex.as_output(),
+                ctx.attrs.java_srcs,
+            ),
+            category = "apk_java",
+            identifier = ctx.label.name,
+        )
+
     packed = ctx.actions.declare_output("packed.apk")
+    pack.add(base, so, packed.as_output())
+    if dex:
+        pack.add(dex)
     ctx.actions.run(
-        cmd_args(_PY, ctx.attrs._pack, base, so, packed.as_output()),
+        pack,
         category = "apk_pack",
         identifier = ctx.label.name,
     )
@@ -88,23 +132,37 @@ def _apk_impl(ctx: AnalysisContext) -> list[Provider]:
         category = "apk_sign",
         identifier = ctx.label.name,
     )
-    return [DefaultInfo(default_output = out), ApkInfo(apk = out, exports = exports, spec = spec, lib = so.basename, assets = ctx.attrs.asset_names)]
+    return [DefaultInfo(default_output = out), ApkInfo(apk = out, exports = exports, java_srcs = ctx.attrs.java_srcs, spec = spec, lib = so.basename, assets = ctx.attrs.asset_names)]
 
 apk = rule(
     impl = _apk_impl,
     attrs = {
         "apk_name": attrs.string(),
+        "application_class": attrs.string(default = ""),
         "asset_names": attrs.list(attrs.string(), default = []),
         "assets": attrs.list(attrs.source(), default = []),
+        "categories": attrs.list(attrs.string(), default = []),
+        "exclude_from_recents": attrs.bool(default = False),
+        "java_classes": attrs.list(attrs.string(), default = []),
+        "java_srcs": attrs.list(attrs.source(), default = []),
         "label": attrs.string(),
+        "launch_mode": attrs.string(default = ""),
+        "lock_task_mode": attrs.string(default = ""),
         "orientation": attrs.string(),
         "package": attrs.string(),
         "permissions": attrs.list(attrs.string(), default = []),
+        "receivers": attrs.list(attrs.dict(attrs.string(), attrs.any()), default = []),
+        "res_xml": attrs.list(attrs.source(), default = []),
+        "res_xml_names": attrs.list(attrs.string(), default = []),
         "so": attrs.dep(providers = [AndroidSoInfo]),
+        "soft_input_mode": attrs.string(default = ""),
         "version_code": attrs.int(),
         "version_name": attrs.string(),
         "_aapt2": attrs.exec_dep(default = "toolchains//:aapt2", providers = [RunInfo]),
         "_apksigner": attrs.exec_dep(default = "toolchains//:apksigner", providers = [RunInfo]),
+        "_d8": attrs.exec_dep(default = "toolchains//:d8", providers = [RunInfo]),
+        "_java": attrs.source(default = "gate//rules:apk_java.py"),
+        "_javac": attrs.exec_dep(default = "toolchains//:javac", providers = [RunInfo]),
         "_keystore": attrs.source(default = "toolchains//:android_debug.keystore"),
         "_manifest": attrs.source(default = "gate//rules:apk_manifest.py"),
         "_pack": attrs.source(default = "gate//rules:apk_pack.py"),

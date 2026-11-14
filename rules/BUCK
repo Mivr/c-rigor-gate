@@ -23,3 +23,8 @@ export_file(
     name = "apk_lab.py",
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "apk_java.py",
+    visibility = ["PUBLIC"],
+)

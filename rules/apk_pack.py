@@ -1,8 +1,8 @@
 """Add the native library to the base APK that `aapt2 link` wrote (stdlib only; runs in the `apk` action).
 
-    apk_pack.py BASE.apk LIB OUT.apk
+    apk_pack.py BASE.apk LIB OUT.apk [CLASSES.dex]
 
-OUT holds the entries of BASE in their order, then `lib/arm64-v8a/<basename of LIB>`. Every entry is STORED (uncompressed:
+OUT holds the entries of BASE in their order, then `classes.dex` (when given: T-G3b), then `lib/arm64-v8a/<basename of LIB>`. Every entry is STORED (uncompressed:
 the shared object must be mapped from the APK, and a stored manifest is valid), with the fixed time 1980-01-01 and mode 0644,
 so the file is a function of its inputs. zipalign then page-aligns the object, and apksigner signs.
 """
@@ -22,20 +22,23 @@ def _entry(name):
     return info
 
 
-def pack(base, lib, out):
+def pack(base, lib, out, dex=None):
     with zipfile.ZipFile(base) as source, zipfile.ZipFile(out, "w") as target:
         for info in source.infolist():
-            if info.is_dir() or info.filename.startswith("lib/"):
+            if info.is_dir() or info.filename.startswith("lib/") or info.filename == "classes.dex":
                 sys.exit("apk_pack: unexpected entry %r in the base APK" % info.filename)
             target.writestr(_entry(info.filename), source.read(info))
+        if dex is not None:
+            with open(dex, "rb") as handle:
+                target.writestr(_entry("classes.dex"), handle.read())
         with open(lib, "rb") as handle:
             target.writestr(_entry("lib/%s/%s" % (ABI, lib.rsplit("/", 1)[-1])), handle.read())
 
 
 def main(argv):
-    if len(argv) != 4:
+    if len(argv) not in (4, 5):
         sys.exit(__doc__)
-    pack(argv[1], argv[2], argv[3])
+    pack(argv[1], argv[2], argv[3], argv[4] if len(argv) == 5 else None)
     return 0
 
 
