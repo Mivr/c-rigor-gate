@@ -39,5 +39,5 @@ exports = ["main"]
 
 [module."//oraclew:replay"]
 level = "L1"
-allow = []
+allow = ["fgets", "fputs", "memset", "printf", "snprintf", "stdin", "stdout", "strchr", "strstr", "strtol"]
 exports = ["main"]
