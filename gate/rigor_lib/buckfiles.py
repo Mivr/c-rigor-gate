@@ -41,9 +41,15 @@ EMBED_MACRO = "c_embed"
 EMBED_KEYWORDS = ("name", "visibility", "src", "symbol", "max_bytes", "nul")
 # T-G3: `c_apk` packages one `c_android_so` of the same package (`so`, a `:name` that is not one of the macro's own
 # `__` targets) into a debug-signed APK. Its keywords are the manifest declaration (strings, `version_code` an int, `permissions` and
-# `assets` lists of strings) and nothing else: no deps, no flags, no signing argument of any kind.
+# `assets` lists of strings) and nothing else: no deps, no flags, no signing argument of any kind. T-G3b adds Java and resources as plain data:
+# `java_srcs`, `java_classes`, `res_xml` (lists of strings), `application_class`, `launch_mode`, `lock_task_mode`, `soft_input_mode` (strings),
+# `exclude_from_recents` (a True/False literal), `categories` (a list of strings) and `receivers`, a list of literal dicts whose keys are
+# strings and whose values are a string, a True/False, a list of strings or a dict of strings. Never XML: the macro checks every word.
 APK_MACRO = "c_apk"
-APK_KEYWORDS = ("name", "visibility", "so", "package", "label", "version_code", "version_name", "orientation", "permissions", "assets")
+APK_KEYWORDS = ("name", "visibility", "so", "package", "label", "version_code", "version_name", "orientation", "permissions", "assets",
+                "java_srcs", "java_classes", "res_xml", "application_class", "receivers", "launch_mode", "lock_task_mode",
+                "exclude_from_recents", "soft_input_mode", "categories")
+APK_STRINGS = ("application_class", "launch_mode", "lock_task_mode", "soft_input_mode")
 APK_SO_LABEL = re.compile(r":[A-Za-z0-9.+-][A-Za-z0-9_.+-]*")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
@@ -101,6 +107,15 @@ def _is_string_dict(node):
     """`{"msgid": "WORDS", ...}`: literal string keys and values."""
     return (isinstance(node, ast.Dict) and all(k is not None and _is_string(k) for k in node.keys)
             and all(_is_string(v) for v in node.values))
+
+
+def _is_receivers(node):
+    """`[{"name": "a.B", "exported": True, "actions": ["X"], "meta_data": {"k": "v"}}, ...]`: literal dicts, literal string keys."""
+    def leaf(v):
+        return _is_string(v) or _is_bool(v) or _is_string_list(v) or _is_string_dict(v)
+    return (isinstance(node, ast.List) and all(
+        isinstance(d, ast.Dict) and all(k is not None and _is_string(k) for k in d.keys) and all(leaf(v) for v in d.values)
+        for d in node.elts))
 
 
 def _is_po_dict(node):
@@ -192,6 +207,12 @@ def _value_ok(macro, keyword):
         return _is_string(node)
     if macro == APK_MACRO and arg == "version_code":
         return _is_int(node)
+    if macro == APK_MACRO and arg == "receivers":
+        return _is_receivers(node)
+    if macro == APK_MACRO and arg == "exclude_from_recents":
+        return _is_bool(node)
+    if macro == APK_MACRO and arg in APK_STRINGS:
+        return _is_string(node)
     if macro == APK_MACRO and arg == "so":
         return _is_string(node) and APK_SO_LABEL.fullmatch(node.value) is not None and "__" not in node.value
     return _is_value(node) or (macro in GLOB_MACROS and arg in GLOB_KEYWORDS and _is_glob_value(node))

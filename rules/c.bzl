@@ -570,17 +570,92 @@ def _apk_text(name, what, value, allowed, first, limit):
         if char not in allowed:
             fail("c_apk {}: `{}` has the character {!r}; allowed: {}".format(name, what, char, allowed))
 
-def c_apk(name, so, package, label, version_code, version_name, orientation = "landscape", permissions = [], assets = [], visibility = []):
+_APK_CLASS_FIRST = "abcdefghijklmnopqrstuvwxyz"
+_APK_CLASS_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.$"
+_APK_RECEIVER_KEYS = ["actions", "exported", "meta_data", "name", "permission"]
+_APK_ACTIVITY_CHOICES = {
+    "launch_mode": ["", "standard", "singleTop", "singleTask", "singleInstance"],
+    "lock_task_mode": ["", "if_whitelisted"],
+    "soft_input_mode": ["", "stateHidden", "stateAlwaysHidden", "adjustResize", "adjustPan", "adjustNothing"],
+}
+
+def _apk_closed(name, what, value, allowed):
+    if type(value) != "string" or value not in allowed:
+        fail("c_apk {}: `{}` must be one of {}, got {!r}".format(name, what, allowed, value))
+
+def _apk_class(name, what, value, package):
+    ok = type(value) == "string" and value.startswith(package + ".") and len(value) > len(package) + 1 and len(value) <= 200
+    if ok:
+        for char in value.elems():
+            ok = ok and char in _APK_CLASS_CHARS
+    if not ok:
+        fail("c_apk {}: `{}` must be a class name inside the package {} ([A-Za-z0-9_.$] only), got {!r}".format(name, what, package, value))
+
+def _apk_receivers(name, receivers, package, classes, res_names):
+    """The receivers as complete dicts (every key present), each checked against the closed vocabularies."""
+    if type(receivers) != "list" or len(receivers) > 8:
+        fail("c_apk {}: `receivers` must be a list of at most 8 dicts, got {!r}".format(name, receivers))
+    full = []
+    for receiver in receivers:
+        if type(receiver) != "dict" or [k for k in receiver if k not in _APK_RECEIVER_KEYS] or "name" not in receiver:
+            fail("c_apk {}: a receiver is a dict with `name` and optionally permission, exported, actions, meta_data; got {!r}".format(name, receiver))
+        full_one = {"actions": [], "exported": False, "meta_data": {}, "permission": ""}
+        full_one.update(receiver)
+        if full_one["name"] not in classes:
+            fail("c_apk {}: the receiver {!r} must be one of `java_classes`".format(name, full_one["name"]))
+        _apk_closed(name, "receivers permission", full_one["permission"], ["", "BIND_DEVICE_ADMIN"])
+        if type(full_one["exported"]) != "bool":
+            fail("c_apk {}: a receiver's `exported` must be True or False, got {!r}".format(name, full_one["exported"]))
+        if type(full_one["actions"]) != "list" or [a for a in full_one["actions"] if a not in ["DEVICE_ADMIN_ENABLED", "BOOT_COMPLETED"]] or len(set(full_one["actions"])) != len(full_one["actions"]):
+            fail("c_apk {}: a receiver's `actions` must be a list without repeats from [\"DEVICE_ADMIN_ENABLED\", \"BOOT_COMPLETED\"], got {!r}".format(name, full_one["actions"]))
+        meta = full_one["meta_data"]
+        if type(meta) != "dict" or [k for k in meta if k != "android.app.device_admin"] or [v for v in meta.values() if type(v) != "string" or v + ".xml" not in res_names]:
+            fail("c_apk {}: a receiver's `meta_data` must map \"android.app.device_admin\" to a name of `res_xml` (without .xml), got {!r}".format(name, meta))
+        full.append(full_one)
+    if len(set([r["name"] for r in full])) != len(full):
+        fail("c_apk {}: `receivers` must not repeat a class".format(name))
+    return full
+
+def c_apk(
+        name,
+        so,
+        package,
+        label,
+        version_code,
+        version_name,
+        orientation = "landscape",
+        permissions = [],
+        assets = [],
+        java_srcs = [],
+        java_classes = [],
+        res_xml = [],
+        application_class = "",
+        receivers = [],
+        launch_mode = "",
+        lock_task_mode = "",
+        exclude_from_recents = False,
+        soft_input_mode = "",
+        categories = [],
+        visibility = []):
     """A signed, 16 KB aligned APK `<name>.apk` of one `c_android_so` (android mode only), and its test `<name>_check`.
 
     `so` is `":<name>"` of a `c_android_so` of this package that exports exactly `ANativeActivity_onCreate`; only its checked
     output is used, never its `__lib`. The manifest is generated (rules/apk_manifest.py): `package`, `label`,
-    `version_code`, `version_name`, `orientation` and `permissions` (names from `INTERNET`) are validated there; minSdk 28 and
-    targetSdk 35 are fixed, `hasCode` is false (no Java: T-A6) and one NativeActivity loads the object. `assets` are plain
-    file names of this package, packaged under `assets/`. There is no `res` (T-A6). The APK is signed with the checked-in
+    `version_code`, `version_name`, `orientation` and `permissions` (names from `INTERNET`, `RECEIVE_BOOT_COMPLETED`) are
+    validated there; minSdk 28 and targetSdk 35 are fixed and one NativeActivity loads the object. `assets` are plain
+    file names of this package, packaged under `assets/`. The APK is signed with the checked-in
     test-only debug key and nothing else: no argument, environment variable or file of a product selects another key, and
-    `<name>_check` (rules/apk_check.py: entries, 16 KB alignment, `apksigner verify`, the debug certificate, the manifest as
+    `<name>_check` (rules/apk_check.py: entries, dex, 16 KB alignment, `apksigner verify`, the debug certificate, the manifest as
     declared, the object's LOAD alignment and exports) fails for an APK signed by any other.
+
+    Java (T-G3b), all plain data: `java_srcs` are `.java` files of this package (no path), compiled with the pinned javac
+    against android.jar (-Werror, no processors) and dexed by the pinned d8 into classes.dex (`hasCode="true"`); `java_classes`
+    lists every class the dex must define (binary names inside `package`, nested ones as `A$B`), no more, no fewer.
+    `res_xml` are `.xml` files of this package compiled by aapt2 into `res/xml/`. `application_class` and the `receivers`
+    (dicts: `name` from `java_classes`, `permission` BIND_DEVICE_ADMIN, `exported`, `actions` from DEVICE_ADMIN_ENABLED and
+    BOOT_COMPLETED, `meta_data` {"android.app.device_admin": <res_xml name without .xml>}) are manifest declarations, as are
+    the activity's `launch_mode`, `lock_task_mode` (if_whitelisted), `exclude_from_recents`, `soft_input_mode` and the extra
+    intent-filter `categories` (HOME, DEFAULT). There is no way to hand over manifest XML.
     """
     if type(so) != "string" or not so.startswith(":") or "__" in so or "/" in so:
         fail("c_apk {}: `so` must be the label \":name\" of a c_android_so of this package, got {!r}".format(name, so))
@@ -591,12 +666,37 @@ def c_apk(name, so, package, label, version_code, version_name, orientation = "l
         fail("c_apk {}: `version_code` must be an int from 1 to 2100000000, got {!r}".format(name, version_code))
     if orientation not in ["landscape", "portrait", "sensorLandscape", "unspecified"]:
         fail("c_apk {}: `orientation` must be landscape, portrait, sensorLandscape or unspecified, got {!r}".format(name, orientation))
-    if type(permissions) != "list" or [p for p in permissions if p not in ["INTERNET"]] or len(set(permissions)) != len(permissions):
-        fail("c_apk {}: `permissions` must be a list without repeats from [\"INTERNET\"], got {!r}".format(name, permissions))
+    if type(permissions) != "list" or [p for p in permissions if p not in ["INTERNET", "RECEIVE_BOOT_COMPLETED"]] or len(set(permissions)) != len(permissions):
+        fail("c_apk {}: `permissions` must be a list without repeats from [\"INTERNET\", \"RECEIVE_BOOT_COMPLETED\"], got {!r}".format(name, permissions))
     _plain_files("c_apk", "assets", assets, "")
     for asset in assets:
         if "/" in asset or asset.startswith("."):
             fail("c_apk {}: `assets` entries must be plain file names of this package, got {!r}".format(name, asset))
+    _plain_files("c_apk", "java_srcs", java_srcs, ".java")
+    _plain_files("c_apk", "res_xml", res_xml, ".xml")
+    for item in java_srcs + res_xml:
+        if "/" in item or item.startswith(".") or "\\" in item:
+            fail("c_apk {}: `java_srcs` and `res_xml` entries must be plain file names of this package (no path), got {!r}".format(name, item))
+    if len(set(java_srcs)) != len(java_srcs) or len(set(res_xml)) != len(res_xml):
+        fail("c_apk {}: `java_srcs` and `res_xml` must not repeat a file".format(name))
+    if type(java_classes) != "list" or bool(java_classes) != bool(java_srcs) or len(set(java_classes)) != len(java_classes):
+        fail("c_apk {}: `java_classes` must list the classes of `java_srcs` without repeats, and be empty exactly when `java_srcs` is, got {!r}".format(name, java_classes))
+    for cls in java_classes:
+        _apk_class(name, "java_classes", cls, package)
+    if application_class != "":
+        _apk_class(name, "application_class", application_class, package)
+        if application_class not in java_classes:
+            fail("c_apk {}: `application_class` {!r} must be one of `java_classes`".format(name, application_class))
+    if type(res_xml) == "list" and [r for r in res_xml if len(r) > 44 or not r[0] in _APK_CLASS_FIRST or [c for c in r[:-4].elems() if c not in "abcdefghijklmnopqrstuvwxyz0123456789_"]]:
+        fail("c_apk {}: `res_xml` names must be lower-case [a-z][a-z0-9_]* plus .xml (at most 40 characters before it), got {!r}".format(name, res_xml))
+    res_names = res_xml
+    full_receivers = _apk_receivers(name, receivers, package, java_classes, res_names)
+    for key, value in [("launch_mode", launch_mode), ("lock_task_mode", lock_task_mode), ("soft_input_mode", soft_input_mode)]:
+        _apk_closed(name, key, value, _APK_ACTIVITY_CHOICES[key])
+    if type(exclude_from_recents) != "bool":
+        fail("c_apk {}: `exclude_from_recents` must be True or False, got {!r}".format(name, exclude_from_recents))
+    if type(categories) != "list" or [c for c in categories if c not in ["HOME", "DEFAULT"]] or len(set(categories)) != len(categories):
+        fail("c_apk {}: `categories` must be a list without repeats from [\"HOME\", \"DEFAULT\"], got {!r}".format(name, categories))
     apk(
         name = name,
         apk_name = name + ".apk",
@@ -609,6 +709,17 @@ def c_apk(name, so, package, label, version_code, version_name, orientation = "l
         permissions = permissions,
         assets = assets,
         asset_names = assets,
+        java_srcs = java_srcs,
+        java_classes = java_classes,
+        res_xml = res_xml,
+        res_xml_names = res_xml,
+        application_class = application_class,
+        receivers = full_receivers,
+        launch_mode = launch_mode,
+        lock_task_mode = lock_task_mode,
+        exclude_from_recents = exclude_from_recents,
+        soft_input_mode = soft_input_mode,
+        categories = categories,
         target_compatible_with = _ANDROID_ONLY,
         visibility = visibility,
     )

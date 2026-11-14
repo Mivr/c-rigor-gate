@@ -21,3 +21,45 @@ c_apk(
     version_name = "0.1.0",
     visibility = ["PUBLIC"],    # the self-test (selftest/android.sh) breaks this APK in a scratch package
 )
+
+# The same shared object with Java (T-G3b): classes.dex (a Runnable, a DeviceAdminReceiver, an Application and a boot receiver), one
+# res/xml file, the manifest declarations of a dedicated device (receivers, application class, HOME launcher, lock task) and
+# its check `app_java_check`. The dex must define exactly `java_classes`.
+c_apk(
+    name = "app_java",
+    so = ":club",
+    package = "org.example.club",
+    label = "Club Java example",
+    version_code = 1,
+    version_name = "0.1.0",
+    permissions = ["RECEIVE_BOOT_COMPLETED"],
+    java_srcs = ["Tick.java", "Admin.java"],
+    java_classes = [
+        "org.example.club.Tick",
+        "org.example.club.Admin",
+        "org.example.club.Admin$App",
+        "org.example.club.Admin$Boot",
+    ],
+    res_xml = ["device_admin.xml"],
+    application_class = "org.example.club.Admin$App",
+    receivers = [
+        {
+            "name": "org.example.club.Admin",
+            "permission": "BIND_DEVICE_ADMIN",
+            "exported": True,
+            "actions": ["DEVICE_ADMIN_ENABLED"],
+            "meta_data": {"android.app.device_admin": "device_admin"},
+        },
+        {
+            "name": "org.example.club.Admin$Boot",
+            "exported": True,
+            "actions": ["BOOT_COMPLETED"],
+        },
+    ],
+    launch_mode = "singleTask",
+    lock_task_mode = "if_whitelisted",
+    exclude_from_recents = True,
+    soft_input_mode = "stateHidden",
+    categories = ["HOME", "DEFAULT"],
+    visibility = ["PUBLIC"],    # the self-test (selftest/android.sh) breaks this APK in a scratch package
+)

@@ -446,6 +446,26 @@ class TestOnlyLabelCase(TempDirTestCase):
                 self.setUp()
                 self.assertEqual({r for r, _ in self.check({"BUCK": load + so + apk[:-2] + ", " + extra + ")\n"}, 1)}, {"bad-argument"})
 
+    def test_c_apk_java_and_resource_declarations_are_literal_data_only(self):
+        """T-G3b: java_srcs, res_xml, receivers (literal dicts) and the activity words; never a variable, a call or a raw manifest."""
+        load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk")\n'
+        so = 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'
+        head = 'c_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, version_name = "0.1.0", %s)\n'
+        good = ('java_srcs = ["A.java"], java_classes = ["org.example.club.A"], res_xml = ["d.xml"], application_class = "org.example.club.A", '
+                'receivers = [{"name": "org.example.club.A", "permission": "BIND_DEVICE_ADMIN", "exported": True, "actions": ["BOOT_COMPLETED"], '
+                '"meta_data": {"android.app.device_admin": "d"}}], launch_mode = "singleTask", lock_task_mode = "if_whitelisted", '
+                'exclude_from_recents = True, soft_input_mode = "stateHidden", categories = ["HOME", "DEFAULT"]')
+        self.assertEqual(self.check({"BUCK": load + so + head % good}, 0), [])
+        for bad in ('java_srcs = JAVA', 'java_srcs = glob(["*.java"])', 'receivers = RECEIVERS', 'receivers = [RECEIVER]',
+                    'receivers = [{"name": NAME}]', 'receivers = [{NAME: "x"}]', 'receivers = [{"name": "a", "x": 1}]',
+                    'receivers = [{"name": "a", "meta_data": {"k": ["v"]}}]', 'receivers = [{**R}]', 'receivers = {"name": "a"}',
+                    'exclude_from_recents = "true"', 'launch_mode = LAUNCH', 'categories = CATS', 'application_class = 5',
+                    'java_flags = ["-nowarn"]', 'processors = ["p.P"]', 'raw_manifest = "<receiver/>"', 'manifest_xml = "<a/>"',
+                    'javac_flags = []', 'dex_flags = []'):
+            with self.subTest(bad=bad):
+                self.setUp()
+                self.assertEqual({r for r, _ in self.check({"BUCK": load + so + head % bad}, 1)}, {"bad-argument"})
+
     def test_c_apk_so_must_be_a_local_c_android_so_and_not_a_private_target(self):
         load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk", "c_library")\n'
         so = 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'

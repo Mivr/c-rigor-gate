@@ -72,34 +72,58 @@ the `c_android_so`'s own sources. Example: `examples/android`. Self-test: `selft
 `gate/tests/test_elf_check.py`, `gate/tests/test_grade_android.py`.
 
 ## `c_apk`: a signed APK of one `c_android_so` (T-G3)
-`c_apk(name, so, package, label, version_code, version_name, orientation, permissions, assets, visibility)` packages the
+`c_apk(name, so, package, label, version_code, version_name, orientation, permissions, assets, java_srcs, java_classes, res_xml, application_class, receivers, launch_mode, lock_task_mode, exclude_from_recents, soft_input_mode, categories, visibility)` packages the
 checked output of ONE `c_android_so` of the same BUCK file (`so = ":club"`; never its `__lib`, `buckfiles` refuses any `__`
 or foreign label) into `<name>.apk`, and defines `<name>_check`. Android mode only. No other keyword exists: no `deps`, no
-`srcs`, no flag, no manifest file, no SDK level, no signing argument (`buckfiles` and the macro both refuse them).
+`srcs`, no flag, no manifest file or manifest XML, no javac or d8 option, no annotation processor, no SDK level, no signing
+argument (`buckfiles` and the macro both refuse them).
 The shared object must export exactly `ANativeActivity_onCreate`.
 
 | Step (all on RE, pinned SDK) | What |
 |---|---|
-| manifest | `rules/apk_manifest.py` renders AndroidManifest.xml from the declaration. Validated: `package` (dotted lower-case), `label`, `version_name` (patterns), `version_code` (1..2100000000), `orientation` (landscape, portrait, sensorLandscape, unspecified), `permissions` (from `INTERNET`). Fixed: minSdk 28, targetSdk 35, `hasCode="false"`, `extractNativeLibs="false"`, one NativeActivity whose `lib_name` is the soname. |
-| link | `aapt2 link` against platform-35 `android.jar` (and `assets`, plain file names under `assets/`) |
-| pack | `rules/apk_pack.py` adds `lib/arm64-v8a/lib<name>.so`; every entry STORED, fixed time and mode |
+| manifest | `rules/apk_manifest.py` renders AndroidManifest.xml from the declaration. Validated: `package` (dotted lower-case), `label`, `version_name` (patterns), `version_code` (1..2100000000), `orientation` (landscape, portrait, sensorLandscape, unspecified), `permissions` (from `INTERNET`, `RECEIVE_BOOT_COMPLETED`), and the Java declarations below. Fixed: minSdk 28, targetSdk 35, `hasCode="true"` exactly when `java_srcs` is given (else `"false"`), `extractNativeLibs="false"`, one NativeActivity whose `lib_name` is the soname. |
+| java (`java_srcs` only) | `rules/apk_java.py` runs the pinned JDK's javac (`java -m jdk.compiler/com.sun.tools.javac.Main`, `toolchains//:javac`) on the sources against platform-35 `android.jar` as boot class path: `-source 8 -target 8`, `-Xlint:all,-options`, `-Werror`, `-proc:none` (no annotation processor), `-implicit:none`, UTF-8. Then the pinned d8 (`--min-api 28 --lib android.jar`) into exactly one `classes.dex`. |
+| res (`res_xml` only) | `aapt2 compile` of the files placed under `res/xml/`, passed to the link with `-R` |
+| link | `aapt2 link` against platform-35 `android.jar` (and `assets`, plain file names under `assets/`, and the compiled `res_xml`) |
+| pack | `rules/apk_pack.py` adds `classes.dex` (when there is Java) and `lib/arm64-v8a/lib<name>.so`; every entry STORED, fixed time and mode |
 | align | `zipalign -f -P 16 4` (the stored object starts at a multiple of 16384) |
 | sign | `apksigner sign` with the **TEST-ONLY debug key** `toolchains/android_debug.keystore` (public password `android`, alias `androiddebugkey`; its certificate SHA-256 is `toolchains/android_debug.cert.sha256`). It protects nothing: every product signs with the same public key. |
 
+**Java and XML resources (T-G3b)**, all closed data (no manifest XML is accepted anywhere):
+- `java_srcs`: plain `.java` file names of the BUCK package (a path such as `sub/X.java` or `../x/X.java` is refused). `java_classes`:
+  the binary names (`org.example.club.A`, nested `org.example.club.A$B`) the dex must define, inside `package`; non-empty exactly
+  when `java_srcs` is. Lambdas and other d8 synthetics would appear as classes of their own and must be declared too.
+- `res_xml`: plain `[a-z][a-z0-9_]*.xml` names, compiled by aapt2 into `res/xml/<name>.xml`.
+- `application_class`: one of `java_classes` (the manifest's `android:name` of `<application>`).
+- `receivers`: list (at most 8) of dicts with `name` (one of `java_classes`), `permission` (`""` or `BIND_DEVICE_ADMIN`), `exported`
+  (True/False, always written out), `actions` (from `DEVICE_ADMIN_ENABLED`, `BOOT_COMPLETED`) and `meta_data` (only
+  `"android.app.device_admin"`, mapped to a `res_xml` name without `.xml`).
+- Activity: `launch_mode` (standard, singleTop, singleTask, singleInstance), `lock_task_mode` (`if_whitelisted`), `exclude_from_recents`,
+  `soft_input_mode` (stateHidden, stateAlwaysHidden, adjustResize, adjustPan, adjustNothing) and `categories` (HOME, DEFAULT: added
+  after LAUNCHER to the MAIN intent filter).
+- `permissions` allow-list, each entry justified: `INTERNET` (sockets of the app), `RECEIVE_BOOT_COMPLETED` (a `BOOT_COMPLETED`
+  receiver of a dedicated device that must come back after a power cut). `BIND_DEVICE_ADMIN` is a receiver `permission`, never a
+  `uses-permission`. Adding to any of these closed lists is a gate change with its own review and a unit and selftest case.
+- Without `java_srcs`, `res_xml` and the new keywords the rendered manifest and the APK are byte-for-byte what they were before T-G3b
+  (proved on `examples/android:app`, sha256 `186b1b6d...68ae` before and after).
+- Why not `--release 8`: it needs the JDK's `lib/ct.sym`, which the pinned tree does not hold (a member added to the tree means a new
+  manifest and a new fetch). `-source 8 -target 8 -bootclasspath android.jar` is the same language level and checks against the real
+  platform API; `-Xlint:all` stays on with `-Werror`, except the `options` category, whose only message is "source value 8 is obsolete".
+
 `<name>_check` (a build action; `buck2 build` of it fails when the APK is not acceptable, and the grader builds the
 `_check` of every `c_apk`, `grade_checks._android_facts`) runs `rules/apk_check.py`: **entries** (exactly the manifest,
-`resources.arsc`, the object and the declared assets; no other file, no META-INF, no repeated name), **library** (STORED,
+`resources.arsc`, the object, the declared assets, `res/xml/<name>.xml` for each `res_xml` and `classes.dex` exactly when there is Java; no other file, no META-INF, no repeated name), **dex**
+(`classes.dex` parses as a dex file by the small parser in `apk_check.py`: magic, header, adler32, bounds; its `class_defs` are exactly `java_classes`, none missing, none extra), **library** (STORED,
 data at a multiple of 16384, then `rules/elf_check.py`: AArch64 shared object, LOAD alignment 16384, dynamic exports exactly
 `ANativeActivity_onCreate`), **zipalign** (`-c -P 16 -v 4`), **signature** (`apksigner verify --min-sdk-version 28`: one
 signer, v2 or v3 scheme (with minSdk 28 apksigner writes v3 only), and the signer certificate's SHA-256 equals the debug
-certificate's), **manifest** (`aapt2 dump xmltree` of the APK equals that of the manifest rendered again from the declaration).
+certificate's), **manifest** (`aapt2 dump xmltree` of the APK equals that of the manifest rendered again from the declaration, receivers, application class and activity attributes included; the expected one is linked with stand-in `res/xml` files of the same names, so the resource ids agree).
 `<name>_check[run]` is the same command without the APK (`buck2 run --target-platforms toolchains//:android_release
 '//pkg:<name>_check[run]' -- OTHER.apk`).
 
 **Release signing does not exist yet.** Nothing in `rules/apk*` reads an environment variable, a file of the product or a
 config value; a release-signed APK fails the `signature` check by its certificate digest, so a release step must be a
-separate, gate-owned step outside `c_apk` with its own check (open item, with `res/` and Java: `java_srcs`, `classes.dex`,
-`d8` (fetched and verified, unused until then) belong to T-A6).
+separate, gate-owned step outside `c_apk` with its own check (open item). The lockers' own Java and JNI belong to T-A6.
 
 **Pins** (the Rust kiosk's `toolchains/android.bzl`, owner-approved; same URLs, sha256 and sizes): build-tools r35
 (`build-tools_r35_linux.zip`, sha256 `bd3a4966...1d88`), platform-35 r02 (`platform-35_r02.zip`, `0988caca...c8e0`), Temurin
@@ -107,10 +131,13 @@ JDK 21.0.6+7 (`OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz`, `a2650fba...db
 `aapt2`, `zipalign`, `lib64/libc++.so`, `apksigner.jar`, `d8.jar`; `android.jar`; `bin/java`, `bin/keytool`, `lib/modules`,
 the JVM and its libraries, `conf`, `lib/security`. Each tree has a manifest (`toolchains/{android_build_tools,android_platform,jdk}.manifest`)
 and is verified by the `toolchain` grade gate with the other three (`toolchain_verify.TREES`). The tools are `toolchains//:aapt2`,
-`:zipalign`, `:keytool`, `:apksigner`, `:d8` (RunInfo).
+`:zipalign`, `:keytool`, `:apksigner`, `:d8`, `:javac` (RunInfo; javac is a module of the JDK's `lib/modules`, no `bin/javac` is fetched).
 
-Example: `examples/android:app`. Self-test: `selftest/android.sh` (builds the APK and breaks it: a misaligned APK, an extra file,
-a wrong export, an APK signed by another key, another manifest, each must fail with its own check). Unit tests:
+Examples: `examples/android:app` (no Java), `examples/android:app_java` (a Runnable, a DeviceAdminReceiver with application and boot
+receiver, one `res/xml` file, the dedicated-device activity attributes). Self-test: `selftest/android.sh` (builds the APK and breaks
+it: a misaligned APK, an extra file, a wrong export, an APK signed by another key, another manifest; and the Java one: a dex with an
+extra class, a missing declared class, a corrupt dex, no dex, an undeclared res file, an undeclared receiver; a `java_srcs` file outside the
+package, an unknown attribute and a javac warning are refused at analysis or by `-Werror`; each must fail with its own check). Unit tests:
 `gate/tests/test_apk_rules.py`, `test_buckfiles.py`, `test_grade_android.py`, `test_toolchain_verify.py`.
 
 ## G25: the allocation deny list (P002)

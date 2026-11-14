@@ -267,21 +267,28 @@ tree_bin = rule(
 )
 
 def _java_jar_impl(ctx: AnalysisContext) -> list[Provider]:
-    """`java -jar JAR` (or `java -cp JAR MAIN`) with the pinned JDK. No perf data file, no host JAVA_HOME or user settings."""
+    """`java -jar JAR` (or `java -cp JAR MAIN`, or `java -m MODULE`) with the pinned JDK. No perf data file, no host JAVA_HOME or user settings."""
     jdk = _tree(ctx.attrs.jdk)
-    tree = _tree(ctx.attrs.tree)
-    jar = tree.project(ctx.attrs.jar)
-    args = cmd_args(jdk.project(ctx.attrs.java), "-XX:-UsePerfData", "-Xshare:auto", "-Xmx1g", hidden = [jdk, tree])
-    args.add(["-cp", jar, ctx.attrs.main] if ctx.attrs.main else ["-jar", jar])
+    hidden = [jdk]
+    tail = []
+    if ctx.attrs.module:
+        tail = ["-m", ctx.attrs.module]     # a module of the JDK's own `lib/modules` (javac: jdk.compiler/com.sun.tools.javac.Main)
+    else:
+        tree = _tree(ctx.attrs.tree)
+        hidden.append(tree)
+        jar = tree.project(ctx.attrs.jar)
+        tail = ["-cp", jar, ctx.attrs.main] if ctx.attrs.main else ["-jar", jar]
+    args = cmd_args(jdk.project(ctx.attrs.java), "-XX:-UsePerfData", "-Xshare:auto", "-Xmx1g", tail, hidden = hidden)
     return [DefaultInfo(), RunInfo(args = args)]
 
 java_jar = rule(
     impl = _java_jar_impl,
     attrs = {
-        "jar": attrs.string(),
+        "jar": attrs.string(default = ""),
         "java": attrs.string(),
         "jdk": attrs.dep(),
         "main": attrs.string(default = ""),
+        "module": attrs.string(default = ""),
         "tree": attrs.dep(),
     },
 )
