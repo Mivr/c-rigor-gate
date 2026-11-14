@@ -1364,6 +1364,66 @@ exports = ["kit_ack", "kit_ack_len", "kit_append", "kit_body", "kit_calls_reset"
     "kit_state_text", "kit_step", "kit_step_cmd", "kit_step_snap", "kit_stored", "kit_text", "kit_tls_rig",
     "kit_who_len", "kit_whoami", "kit_wide", "main"]
 
+[module."//apps/lockers/lkapp/andcfg:andcfg"]
+level = "L3"
+impl = ["apps/lockers/lkapp/andcfg/src/**"]
+allow = ["memchr", "memcpy", "memmove", "strlen"]
+exports = ["lk_andcfg_external_dir", "lk_andcfg_fault_kind", "lk_andcfg_file_name", "lk_andcfg_import_staged", "lk_andcfg_missing_files_dir_message", "lk_andcfg_package", "lk_andcfg_pin_data_dir", "lk_andcfg_resolve_files_dir", "lk_andcfg_store_report", "lk_andcfg_take_request"]
+
+[module."//apps/lockers/lkapp/andcfg:andcfg_files_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/andcfg:andcfg_paths_test"]
+allow = ["bcmp", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/andcfg:andcfg_pin_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/andkeys:andkeys"]
+level = "L3"
+impl = ["apps/lockers/lkapp/andkeys/src/**"]
+allow = []
+exports = ["lk_andkeys_map"]
+
+[module."//apps/lockers/lkapp/andkeys:andkeys_map_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/andkeys:andkeys_oracle_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/andtouch:andtouch"]
+level = "L3"
+impl = ["apps/lockers/lkapp/andtouch/src/**"]
+allow = []
+exports = ["lk_atouch_scale", "lk_atouch_step"]
+
+[module."//apps/lockers/lkapp/andtouch:andtouch_scale_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/andtouch:andtouch_step_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/blit:blit"]
+level = "L3"
+impl = ["apps/lockers/lkapp/blit/src/**"]
+allow = []
+exports = ["lk_blit_rows"]
+
+[module."//apps/lockers/lkapp/blit:blit_copy_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/blit:blit_refuse_test"]
+allow = []
+exports = ["main"]
+
 [module."//apps/lockers/lkapp/checkconfig:cc_book_test"]
 allow = ["bcmp", "memcpy", "memmove", "memset", "snprintf", "strcat", "strchr", "strlen", "strstr"]
 allow_builtins = ["__builtin_trap"]
@@ -1676,6 +1736,22 @@ exports = ["lkrt_audit_map", "lkrt_core_init", "lkrt_core_stats", "lkrt_core_ste
 level = "L1"
 allow = []
 exports = []
+
+[module."//apps/lockers/lkapp/shell_android:club"]
+level = "L1"
+allow_mutable_data = true
+system_libs = ["android", "log"]
+# Writable bytes: the one static kiosk object `g` (design D15), as the Linux shell. clock_gettime: the shell reads the wall and monotonic
+# clock itself (injected into the runtime). The rest is the NDK surface of a NativeActivity: lifecycle (ANativeActivity_finish), the
+# input queue and looper, motion and key events, the window buffer (lock, geometry, unlockAndPost), and logcat (__android_log_write).
+allow = ["AInputEvent_getType", "AInputQueue_attachLooper", "AInputQueue_detachLooper", "AInputQueue_finishEvent",
+    "AInputQueue_getEvent", "AInputQueue_preDispatchEvent", "AKeyEvent_getAction", "AKeyEvent_getKeyCode",
+    "AKeyEvent_getMetaState", "ALooper_pollOnce", "ALooper_prepare", "ALooper_wake", "AMotionEvent_getAction",
+    "AMotionEvent_getPointerCount", "AMotionEvent_getPointerId", "AMotionEvent_getX", "AMotionEvent_getY",
+    "ANativeActivity_finish", "ANativeWindow_getHeight", "ANativeWindow_getWidth", "ANativeWindow_lock",
+    "ANativeWindow_setBuffersGeometry", "ANativeWindow_unlockAndPost", "__android_log_write", "memcpy", "memset", "strlen"]
+deny_exempt = ["clock_gettime"]
+exports = ["ANativeActivity_onCreate"]
 
 [module."//apps/lockers/lkapp/shell_linux:lockers"]
 level = "L1"
