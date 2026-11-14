@@ -21,13 +21,14 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog", "c_embed", "c_android_so", "c_apk")
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 # T135: `c_fuzz` takes `corpus` (the form `srcs` has on a `c_fuzz`: string literals, never a glob; the macro checks the paths)
 # and `runs` (an int literal).
+# T2G1: `c_sim` takes the integer budgets `seeds`, `run_ms` and `shards` (int literals; srcs are string literals, never a glob).
 MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps"), "c_fuzz": ("corpus", "runs"), "c_test": ("threads",),
-                  "c_android_so": ("system_libs", "exports")}
+                  "c_sim": ("seeds", "run_ms", "shards"), "c_android_so": ("system_libs", "exports")}
 # `c_android_so` (T-G2) names the symbols it exports and the system libraries it links.
 # T105: `c_catalog` has keywords of its own and no `srcs`/`headers`. `pots`, `langs`, `source_lang` and `symbol`
 # are strings or lists of strings, `po` is a dict of string -> list of strings (the only dict a macro takes), `runtime`
@@ -57,6 +58,9 @@ ANDROID_MACRO = "c_android_so"   # nothing depends on a shared object (or on wha
 # T128: `gate//rt:require` (facts_rt) is the one more gate label, for a library, a binary or a test only.
 REQUIRE_MACROS = ("c_library", "c_binary", TEST_MACRO)
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
+# T2G1: nothing may depend on a `c_sim` or on a target its macro derives: the world and its runner are for the simulation only.
+SIM_MACRO = "c_sim"
+SIM_DERIVED = re.compile(r"(__bin|__shard[0-9]+|__facts_unit|_facts|_facts_san|_facts_msan|_facts_tsan)?")
 TEST_DERIVED = ("", "_facts", "_facts_san", "_facts_msan", "_facts_tsan", "_results", "_coverage", "__lib", "__map", "_check")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.
@@ -180,6 +184,8 @@ def _value_ok(macro, keyword):
         return _is_int(node)
     if macro == "c_fuzz" and arg == "runs":
         return _is_int(node)
+    if macro == "c_sim" and arg in ("seeds", "run_ms", "shards"):
+        return _is_int(node)
     if (macro == EMBED_MACRO and arg == "nul") or (macro == TEST_MACRO and arg == "threads"):
         return _is_bool(node)
     if macro == EMBED_MACRO and arg in ("src", "symbol"):
@@ -252,7 +258,27 @@ def test_target_findings(calls, tests):
     return found
 
 
-def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None, apks=None):
+def sim_target_findings(calls, sims):
+    """A dep may not name a `c_sim` or a target it derives (`__bin`, `__shard<k>`, `_facts*`): same resolution as
+    `test_target_findings` (`:x` by directory, `//pkg:x` by trailing path; over-matching is a refusal)."""
+    found = []
+    for path, line, label in calls:
+        if label.startswith("//"):
+            package, _, name = label[2:].rpartition(":")
+            here = None
+        else:
+            package, name, here = None, label[1:], os.path.dirname(path)
+        for sim_dir, sim_name in sims:
+            if not name.startswith(sim_name) or not SIM_DERIVED.fullmatch(name[len(sim_name):]):
+                continue
+            if here == sim_dir if package is None else (
+                    package == sim_dir or (sim_dir != "" and package.endswith("/" + sim_dir))):
+                found.append(finding("bad-argument", path=path, line=line, why="sim-target"))
+                break
+    return found
+
+
+def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None):
     found, loads = [], 0
     for node in tree.body:
         is_call = isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
@@ -271,6 +297,8 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
                     apks[0].update((path, n) for n in _keyword_strings(node.value, "name"))
                 if apks is not None and node.value.func.id == APK_MACRO:
                     apks[1].extend((path, node.lineno, n) for n in _keyword_strings(node.value, "so"))
+                if node.value.func.id == SIM_MACRO and sims is not None:
+                    sims.extend((directory, n) for n in _keyword_strings(node.value, "name"))
                 calls.extend((path, node.lineno, d) for d in _dep_strings(node.value)
                              if DEP_LABEL.fullmatch(d))
         else:
@@ -279,12 +307,12 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
     return found
 
 
-def build_file_findings(path, data, allowed, test_allowed, tests=None, calls=None, apks=None):
+def build_file_findings(path, data, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None):
     try:
         tree = ast.parse(data.decode("utf-8"), filename=path, mode="exec")
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         return [finding("parse-error", path=path)]
-    return statement_findings(path, tree, allowed, test_allowed, tests, calls, apks)
+    return statement_findings(path, tree, allowed, test_allowed, tests, calls, apks, sims)
 
 
 def default_labels(file_name):
@@ -304,7 +332,7 @@ def walk_findings(root, allowed=None, test_allowed=None):
     allowed = default_labels(facts_third_party.ALLOWED_FILE) if allowed is None else allowed
     test_allowed = (default_labels(facts_third_party.TEST_ALLOWED_FILE) if test_allowed is None
                     else test_allowed)
-    found, tests, calls, apks = [], [], [], (set(), [])
+    found, tests, calls, apks, sims = [], [], [], (set(), []), []
     for directory, subdirs, files in os.walk(root, followlinks=False):
         subdirs.sort()
         for name in sorted(files):
@@ -315,13 +343,14 @@ def walk_findings(root, allowed=None, test_allowed=None):
             elif forbidden_name(name):
                 found.append(finding("forbidden-file", path=shown))
             elif name == BUILD_FILE:
-                found.extend(build_file_findings(shown, jsonio.read_bytes(full), allowed, test_allowed, tests, calls, apks))
+                found.extend(build_file_findings(shown, jsonio.read_bytes(full), allowed, test_allowed, tests, calls, apks, sims))
         for name in subdirs:
             if os.path.islink(os.path.join(directory, name)):
                 found.append(finding("symlink", path=os.path.relpath(
                     os.path.join(directory, name), root).replace(os.sep, "/")))
     found.extend(test_target_findings(calls, tests))
     found.extend(apk_so_findings(*apks))
+    found.extend(sim_target_findings(calls, sims))
     return found
 
 

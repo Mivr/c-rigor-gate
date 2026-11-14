@@ -132,12 +132,12 @@ _ANDROID_ATTRS["_roots"] = attrs.exec_dep(default = "toolchains//:ndk-system-roo
 c_android_structure_rule = rule(impl = _structure_impl, attrs = _ANDROID_ATTRS)
 
 def c_structure(name, module, srcs, headers = [], deps = [], kind = "c_library", facts_name = ""):
-    """Structure facts of `module` (a c_library, c_binary, c_test or c_fuzz target); release mode only.
+    """Structure facts of `module` (a c_library, c_binary, c_test, c_fuzz or c_sim target); release mode only.
 
     `module`, `srcs` and `headers` may live in another package than the target (the grading driver's
     generated package); `facts_name` is the name the module is known by when it is not the target's
     (a `c_fuzz` reads a `<name>__facts_unit` library but is `<name>`)."""
-    if kind not in ["c_library", "c_binary", "c_test", "c_fuzz"]:
+    if kind not in ["c_library", "c_binary", "c_test", "c_fuzz", "c_sim"]:
         fail("c_structure: bad kind {!r}".format(kind))
     c_structure_rule(
         name = name,

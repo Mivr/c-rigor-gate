@@ -21,7 +21,7 @@ from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, findin
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
 GATE_ID = "policy-check"
-PRODUCT_KINDS = ("c_library", "c_binary")
+PRODUCT_KINDS = ("c_library", "c_binary", "c_sim")
 
 
 def declared_profiles(label, table):

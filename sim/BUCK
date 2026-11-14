@@ -1,0 +1,32 @@
+load("@gate//rules:c.bzl", "c_library", "c_test")
+
+# The world interface a `c_sim` product implements (docs/sim.md): headers only.
+c_library(
+    name = "world",
+    headers = ["world.h", "trace_fmt.h"],
+    visibility = ["PUBLIC"],
+)
+
+# Gate-owned pieces of the runner that have no `main`: the trace hash, SHA-256 and the seeded workload.
+c_library(
+    name = "kit",
+    srcs = ["trace.c", "sha256.c", "workload.c"],
+    headers = ["sha256.h", "workload.h"],
+    deps = [":world"],
+    visibility = ["PUBLIC"],
+)
+
+# The gate-owned runner: `main`, the seeds, the identity check. Linked into every `c_sim` binary by the rule.
+c_library(
+    name = "runner",
+    srcs = ["runner.c", "args.c", "seedrun.c"],
+    headers = ["runner.h", "seedrun.h"],
+    deps = [":kit", ":world"],
+    visibility = ["PUBLIC"],
+)
+
+c_test(
+    name = "sim_unit_test",
+    srcs = ["tests/sim_unit_test.c"],
+    deps = [":kit", ":world"],
+)

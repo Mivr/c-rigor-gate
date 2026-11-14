@@ -41,7 +41,7 @@ SAN_RULE = "c_san_facts"
 # The modes compared with release (T138): the mode, and the rule of its facts twins.
 MODE_RULES = (("san", SAN_RULE), ("msan", "c_msan_facts"), ("tsan", "c_tsan_facts"))
 PLATFORMS = {"san": SAN, "msan": "toolchains//:linux_msan", "tsan": "toolchains//:linux_tsan"}
-KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", ANDROID_KIND)
+KINDS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", ANDROID_KIND)
 MAX_STRUCTURE_LEVEL = "L3"
 _ROOT = "root//"
 _GATE = "gate//"

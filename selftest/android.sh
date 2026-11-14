@@ -381,5 +381,11 @@ printf '#include <stddef.h>\nvoid ANativeActivity_onCreate(void *a, void *b, siz
 must_fail_with "must export exactly ANativeActivity_onCreate" build --target-platforms $AND //selftest/scratch_android:app
 rm -rf "$scratch"
 
+mkdir -p "$scratch"; : > "$scratch/w.c"
+printf 'load("@gate//rules:c.bzl", "c_sim")\nc_sim(name = "world", srcs = ["w.c"])\n' > "$scratch/BUCK"
+must_fail_with "incompatible|Incompatible" build --target-platforms $AND //selftest/scratch_android:world
+echo "  a c_sim is incompatible with the android mode (it does not interact with c_android_so / c_apk)"
+rm -rf "$scratch"
+
 echo "elapsed ${SECONDS}s"
 echo "ALL CHECKS PASSED ($step)"
