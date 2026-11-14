@@ -143,6 +143,10 @@ selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "
 [[rule]]
 glob = "sim/**"
 selftests = ["sim"]
+# T2G3: the recordings-to-`fr` converter; its checks are gate unit tests, which always run.
+[[rule]]
+glob = "tools/sim/**"
+selftests = []
 # T128: the gate-owned header `gate//rt:require`; every gate that reads dependencies and headers meets it.
 [[rule]]
 glob = "rt/**"
@@ -150,6 +154,10 @@ selftests = ["require", "product_checks", "structure", "mutate", "grade", "canar
 [[rule]]
 glob = "examples/**"
 selftests = ["toolchain", "ctest", "product_checks"]
+# T2G3: the constants of the wire invariants; the C engine (sim/inv) and gate/tests/test_sim_wire_data.py read them.
+[[rule]]
+glob = "policy/sim_constants.toml"
+selftests = ["sim"]
 [[rule]]
 glob = "policy/**"
 selftests = ["product_checks"]
