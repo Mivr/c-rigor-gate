@@ -140,6 +140,38 @@ class JavaManifestTest(unittest.TestCase):
                         manifest.render(dict(JAVA, **{key: value}), "libclub.so")
                     self.assertIn("apk_manifest:", str(raised.exception))
 
+    def test_a_listed_second_package_is_accepted_and_only_a_listed_one(self):
+        two = dict(JAVA, java_packages=["org.example.club", "org.example.owner"],
+                   java_classes=JAVA["java_classes"] + ["org.example.owner.Owner", "org.example.owner.Owner$Boot"])
+        self.assertEqual(manifest.validate(two), [])
+        text = manifest.render(dict(two, application_class="org.example.owner.Owner$Boot",
+                                    receivers=[dict(JAVA["receivers"][0], name="org.example.owner.Owner")]), "libclub.so")
+        self.assertIn('android:name="org.example.owner.Owner"', text)
+        self.assertIn('android:name="org.example.owner.Owner$Boot"', text)
+        for key, value in (("java_classes", JAVA["java_classes"] + ["org.example.owner.Owner"]),                 # not listed
+                           ("java_classes", JAVA["java_classes"] + ["org.example.club.sub.Deep"]),                 # a sub-package is not listed
+                           ("application_class", "org.example.owner.Owner"),                                       # listed, but not declared
+                           ("java_packages", ["org.example.owner"])):                                              # the app package dropped
+            with self.subTest(key=key, value=value), self.assertRaises(SystemExit):
+                manifest.render(dict(JAVA, **{key: value}), "libclub.so")
+        with self.assertRaises(SystemExit):                      # a receiver in an unlisted package
+            manifest.render(dict(two, java_classes=two["java_classes"] + ["org.other.R"],
+                                 receivers=[dict(JAVA["receivers"][0], name="org.other.R")]), "libclub.so")
+
+    def test_the_package_list_is_closed(self):
+        for value in ([], "org.example.club", ["org.example.*"], ["org.example"] * 2, ["Org.example"], ["org"], ["org.example.club."],
+                      ["org..x"], ["org.1x"], [5], ["org.example.club", "org.example.club"]):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                manifest.render(dict(JAVA, java_packages=value), "libclub.so")
+        for prefix in manifest.FORBIDDEN_PACKAGES:
+            for package in (prefix, prefix + ".x", prefix + ".x.y"):
+                with self.subTest(package=package):
+                    spec = dict(JAVA, java_packages=["org.example.club", package], java_classes=JAVA["java_classes"] + [package + ".C"])
+                    problems = manifest.validate(spec)
+                    self.assertTrue(problems and "java_packages" in problems[0])
+        self.assertEqual(manifest.validate(dict(JAVA, java_packages=["org.example.club", "org.javax.x"])), [])
+        self.assertEqual(manifest.validate(dict(JAVA, java_packages=["org.example.club", "androidy.x"], java_classes=JAVA["java_classes"])), [])
+
     def test_unknown_keys_and_raw_xml_are_not_a_declaration(self):
         for extra in ("manifest_xml", "raw_manifest", "application"):
             self.assertTrue(manifest.validate(dict(JAVA, **{extra: "<receiver/>"})))
@@ -264,7 +296,7 @@ class JavaToolsTest(TempDirTestCase):
             pack.main(["x", "a", "b", "c", "d", "e"])
 
     def test_apk_java_takes_exactly_its_arguments_and_only_java_files(self):
-        full = ["x", "--javac", "j", "--d8", "d", "--android-jar", "a.jar", "--min-api", "28", "--out", "o.dex", "A.java"]
+        full = ["x", "--javac", "j", "--d8", "d", "--android-jar", "a.jar", "--min-api", "28", "--out", "o.dex", "--package", "p.q", "A.java"]
         for drop in range(1, 11, 2):
             with self.subTest(drop=full[drop]), self.assertRaises(SystemExit):
                 java.main(full[:drop] + full[drop + 2:])
@@ -273,6 +305,22 @@ class JavaToolsTest(TempDirTestCase):
                 java.main(full + bad)
         with self.assertRaises(SystemExit):
             java.main(full[:-1])         # no source
+        with self.assertRaises(SystemExit):
+            java.main(full[:-3] + ["A.java"])      # no package
+
+    def test_every_source_must_be_in_a_listed_package(self):
+        files = {"a.java": "// c\npackage org.example.club;\nclass A {}\n", "b.java": "  package   org.example.owner ;\nclass B {}\n",
+                 "c.java": "package org.evil;\nclass C {}\n", "d.java": "class D {}\n", "e.java": "/* package org.example.club; */\nclass E {}\n"}
+        for name, text in files.items():
+            (self.tmp / name).write_text(text)
+        paths = {n: str(self.tmp / n) for n in files}
+        listed = ["org.example.club", "org.example.owner"]
+        self.assertEqual(java.package_problems([paths["a.java"], paths["b.java"]], listed), [])
+        self.assertEqual(len(java.package_problems([paths["c.java"]], listed)), 1)
+        self.assertIn("org.evil, which is not in java_packages", java.package_problems([paths["c.java"]], listed)[0])
+        self.assertIn("has no package line", java.package_problems([paths["d.java"]], listed)[0])
+        self.assertIn("is in the package org.example.club, which is not", java.package_problems([paths["a.java"]], ["org.example.owner"])[0])
+        self.assertIn("has no package line", java.package_problems([paths["e.java"]], listed)[0])
 
     def test_javac_is_run_with_werror_without_processors_and_with_the_boot_class_path(self):
         seen = []
