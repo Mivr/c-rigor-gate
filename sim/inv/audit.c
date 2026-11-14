@@ -6,10 +6,10 @@
 
 /* What one pass over a line finds: the digits after the first `"seq":`. */
 typedef struct {
+    int ended; /* the digits (or their absence) are over */
     uint32_t matched; /* bytes of the key matched so far (6 = the key was seen) */
     uint32_t digits;
     uint64_t value;
-    int ended; /* the digits (or their absence) are over */
 } line_t;
 
 static void line_byte(line_t *l, uint8_t c) {
@@ -30,9 +30,9 @@ static void line_byte(line_t *l, uint8_t c) {
 
 /* One complete line of `n` >= 1 bytes, without its newline: accept it and take its seq. */
 static audit_result_t take_line(const uint8_t *line, uint32_t n, audit_scan_t *out) {
-    line_t l = {0, 0, 0, 0};
-    for (uint32_t i = 0; i < n; i++) {
-        line_byte(&l, line[i]);
+    line_t l = {0};
+    for (const uint8_t *p = line; p != line + n; p++) {
+        line_byte(&l, *p);
     }
     if (line[0] != (uint8_t)'{' || line[n - 1U] != (uint8_t)'}' || l.digits < 1U || l.digits > SEQ_MAX_DIGITS) {
         return AUDIT_FORMAT;

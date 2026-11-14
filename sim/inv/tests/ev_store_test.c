@@ -311,6 +311,19 @@ static void t_a_cut_closes_the_pulse_window_and_the_phase(ctest_t *t) {
     CHECK(t, !events_has_rule(&E, EV_R_STUCK_PHASE));
 }
 
+static void t_a_cut_drops_the_openings_of_every_locker(ctest_t *t) {
+    begin(t);
+    for (uint32_t k = 0; k < 20U; k++) {
+        erig_visit(&R, 1000U + 1000U * k, 1U + k, 1000U + k);
+    }
+    CHECK_EQ_I64(t, events_power_cut(&E, 30000), 0);
+    erig_ev_bare(&R, 30001, T_BOOT);
+    erig_ev(&R, 30010, T_ASSIGNED, 0, 1019);
+    erig_ev(&R, 30020, T_DOOR, 0, 1019);
+    CHECK(t, erig_finding_is(&R, 0, EV_I10, EV_R_DOOR_NO_OPEN, 123));
+    CHECK_EQ_U64(t, events_finding_count(&E), 1);
+}
+
 static void t_a_cut_keeps_assignments_and_drops_openings(ctest_t *t) {
     begin(t);
     erig_ev(&R, 100, T_ASSIGNED, 0, 84);
@@ -539,6 +552,7 @@ CTEST_SUITE("ev_store",
     { "no_audit_callback", t_without_audit_callback_nothing_is_read },
     { "cut_forgets", t_a_cut_forgets_the_volatile_state },
     { "cut_window_phase", t_a_cut_closes_the_pulse_window_and_the_phase },
+    { "cut_all_lockers", t_a_cut_drops_the_openings_of_every_locker },
     { "cut_keeps_assignments", t_a_cut_keeps_assignments_and_drops_openings },
     { "boot_allows", t_a_boot_event_after_a_cut_allows_openings },
     { "boot_rule_off", t_the_boot_rule_is_off_without_a_boot_event },
