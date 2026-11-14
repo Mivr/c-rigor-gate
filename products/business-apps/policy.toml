@@ -2378,6 +2378,10 @@ exports = ["lkui_notices"]
 allow = ["memcpy", "memset"]
 exports = ["main"]
 
+[module."//apps/lockers/lkui/notices:notices_bar_test"]
+allow = ["memset"]
+exports = ["main"]
+
 [module."//apps/lockers/lkui/notices:notices_dismiss_arg_test"]
 allow = ["memset"]
 exports = ["main"]
