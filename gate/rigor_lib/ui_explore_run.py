@@ -55,6 +55,9 @@ class Step:
     starved: object = None
     error: object = None
     images: dict = field(default_factory=dict)
+    misrouted: object = None      # a u2 tap pressed another non-root node than the one its target names
+    noop: object = None           # a tap that must change nothing changed the model
+    image_box: object = None      # (x, y, w, h) of the evidence image of the node a tap pressed
     key: object = None
     proj: object = None
     key_before: object = None
@@ -168,6 +171,23 @@ def _one(session, run, word, catalogue):
         return False
     step.proj = projection(step.obs, step.now, catalogue.key)
     step.key = key_hash(step.proj)
+    return _evidence(session, run, step)
+
+
+def _evidence(session, run, step):
+    """The image of the node a tap pressed, fetched after the step is complete, so that the step's own outcome and its
+    findings stand when the evidence cannot be read: then a pseudo step `evidence` carries the error and the run ends."""
+    if step.image_box is None:
+        return True
+    try:
+        image = words_mod.box_image(session, step.image_box)
+    except ProbeError as error:
+        run.steps.append(Step(len(run.steps), "evidence", error=error, key_before=step.key, proj_before=step.proj,
+                              origin=step.origin))
+        run.error = (len(run.steps) - 1, error)
+        return False
+    if image is not None:
+        step.images["tap-node.png"] = image
     return True
 
 

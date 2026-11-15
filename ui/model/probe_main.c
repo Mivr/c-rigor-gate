@@ -86,6 +86,7 @@ static void close_lvprobe(probe_t *p)
     lvprobe_close(p->lv);
     p->disp = NULL;
     p->framed = false;
+    p->tick_set = false;   /* the next session's tick offset is taken at its first frame */
 }
 
 /* ---- handlers ------------------------------------------------------------------------------------------------ */
@@ -482,6 +483,8 @@ int main(void)
     p.lv = &g_lv;
     p.disp = NULL;
     p.framed = false;
+    p.tick_set = false;
+    p.tick_offset = 0;
     g_tail_len = 0;
     if (p.model == NULL || !fits(snprintf(g_reply, sizeof g_reply, "%s", GREETING)) || !emit()) {
         return 2;

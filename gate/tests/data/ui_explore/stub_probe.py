@@ -43,13 +43,19 @@ line is appended to that file (the tests read the advances), and the probe's pid
     badorder     announces `tap hit-test` (out of the documented order)
     dupcap       announces `tap tap`
 
-The frame-facts modes announce every capability (`frame-facts ink hit-test tap apply-missed crop`, as the C probe does)
+Intent 7 creates an object (a `life` line in the next frame only) in these modes. The frame-facts modes announce every capability (`frame-facts ink hit-test tap apply-missed crop`, as the C probe does)
 and model a 4x2 display: walk node 0 the screen, node 1 a 2x2 button at (0, 0) whose tap presses like intent 1; while
 the notice is shown the button's tap changes nothing (the F3b canary) and intent 1 is `ok apply missed`:
 
     facts        correct frame records, hit-test, tap, crop and ink
     framebad     the button's `node` record has 20 fields
     frametype    the frame has a record of an unknown type
+    framenum     the button's `node` record has a non-numeric index
+    refuselife   a refused wedge line creates an object (a `life` line in the next frame)
+    framework    the button's tap only queues the press; it runs when `frame` runs the product's due work
+    misroute     a transparent overlay (node 2, not a root) covers the button and takes every tap
+    tapnone      `tap` replies `ok tap none 1`
+    wide         the display is 9000 pixels wide and the button 9000 wide (crops are banded and the image capped)
     tapblocked   `hit-test` and `tap` reply blocked
     tapdisagree  `tap` presses the screen where `hit-test` found the button
     noframe      `hit-test` replies `err hit-test no-frame`
@@ -69,11 +75,12 @@ import time
 
 MODE = sys.argv[1]
 NOTICE_MS = 3000
-FACTS = ("facts", "framebad", "frametype", "tapblocked", "tapdisagree", "noframe", "toolarge", "blankchange", "cropbad")
+FACTS = ("facts", "framebad", "frametype", "tapblocked", "tapdisagree", "noframe", "toolarge", "blankchange", "cropbad",
+         "refuselife", "framework", "misroute", "tapnone", "framenum", "wide")
 SCREEN = "node\t0\t-1\t0\tlv_obj\t0\t0\t3\t1\t0\t1\t-1\t-1\t0\t0\tffffff\t255\t255\t1\t0\t0"
 BUTTON = "node\t1\t0\t1\tlv_button\t0\t0\t1\t1\t0\t1\t-1\t-1\t0\t0\t2196f3\t255\t255\t1\t0\t0"
-FACT_FRAME = ["lvprobe\t1\t2", "frame\t4\t2\t0badcafe", SCREEN, "region\t0\t0badcafe", BUTTON, "region\t1\t12345678",
-              "life\t0\tcreated\t0\t-1\t0\tlv_\\x01obj"]
+OVERLAY = "node\t2\t0\t1\tlv_obj\t0\t0\t3\t1\t0\t1\t-1\t-1\t0\t0\tffffff\t0\t0\t1\t0\t0"
+FACT_FRAME = ["lvprobe\t1\t2", "frame\t4\t2\t0badcafe", SCREEN, "region\t0\t0badcafe", BUTTON, "region\t1\t12345678"]
 LOG = os.environ.get("UI_STUB_LOG")
 
 
@@ -91,6 +98,8 @@ class Model:
         self.seq = 0
         self.trace = []
         self.patches = ["create\tscreen\t-\t-\t-"]
+        self.life = ["life\t0\tcreated\t0\t-1\t0\t=lv_\\x01obj"]   # in the first frame after its event only
+        self.queued = False
         self.event("boot")
 
     def event(self, kind):
@@ -111,6 +120,13 @@ class Model:
         self.event("press-%d" % os.getpid() if MODE == "nondet" else "press")
 
     def apply(self, kind, ident, text):
+        if MODE in FACTS and kind == 3 and ident == 7:
+            self.life.append("life\t%d\tcreated\t0\t-1\t0\t=lv_label" % len(self.trace))
+            self.event("create")
+            return "ok apply"
+        if MODE == "refuselife" and kind == 2 and text == "-":
+            self.life.append("life\t9\tcreated\t0\t-1\t0\t=lv_label")
+            return "ok apply refused"
         if MODE == "refuseall":
             return "ok apply refused"
         if kind == 3 and ident == 2 and self.notice:
@@ -219,29 +235,57 @@ def special(cmd, model, state):
     return None
 
 
-def fact_frame():
+def fact_frame(model):
+    """The frame records, then the `life` lines queued since the last frame (each in one frame only)."""
     frame = list(FACT_FRAME)
     if MODE == "framebad":
         frame[4] = BUTTON.rsplit("\t", 1)[0]
     if MODE == "frametype":
         frame.append("bogus\t1")
+    if MODE == "framenum":
+        frame[4] = BUTTON.replace("node\t1\t", "node\tx\t")
+    if MODE == "misroute":
+        frame[0] = "lvprobe\t1\t3"
+        frame.insert(6, OVERLAY)
+    if MODE == "wide":
+        frame[1] = "frame\t9000\t2\t0badcafe"
+        frame[4] = BUTTON.replace("\t1\t1\t0\t1\t-1", "\t8999\t1\t0\t1\t-1")
+    frame += model.life
+    model.life = []
     return frame
+
+
+def hit(words):
+    """The node at a point: the overlay (misroute mode) covers everything, else the button holds x < 2, y < 2."""
+    if MODE == "misroute":
+        return 2
+    return 1 if int(words[1]) < 2 and int(words[2]) < 2 else 0
 
 
 def facts(words, model):
     """Replies of the frame-facts modes to frame, hit-test, tap, crop and ink; None for every other command."""
     cmd = words[0]
     if cmd == "frame":
-        return ["err frame too-large"] if MODE == "toolarge" else ["ok frame lines %d" % len(fact_frame())] + fact_frame()
+        if MODE == "toolarge":
+            return ["err frame too-large"]
+        if model.queued:            # framework: the press queued by the tap runs when the frame runs due work
+            model.queued = False
+            model.press()
+        frame = fact_frame(model)
+        return ["ok frame lines %d" % len(frame)] + frame
     if cmd == "hit-test":
         if MODE in ("tapblocked", "noframe"):
             return ["ok hit-test blocked" if MODE == "tapblocked" else "err hit-test no-frame"]
-        return ["ok hit-test %d" % (1 if int(words[1]) < 2 and int(words[2]) < 2 else 0)]
+        return ["ok hit-test %d" % hit(words)]
     if cmd == "tap":
         if MODE == "tapblocked":
             return ["ok tap blocked"]
-        node = 0 if MODE == "tapdisagree" else (1 if int(words[1]) < 2 and int(words[2]) < 2 else 0)
-        if node == 1 and not model.notice:
+        if MODE == "tapnone":
+            return ["ok tap none 1"]
+        node = 0 if MODE == "tapdisagree" else hit(words)
+        if node == 1 and not model.notice and MODE == "framework":
+            model.queued = True
+        elif node == 1 and not model.notice:
             model.press()
         if node == 0 and MODE == "blankchange":
             model.event("blank")

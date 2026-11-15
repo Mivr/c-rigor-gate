@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from rigor_lib import jsonio, ui_contract
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_grammar import SEMANTIC_FIELDS, TEXT_MAX, printable, unescape
+from rigor_lib.ui_explore_probe import CAPABILITIES
 
 SCHEMA = "ui-events/1"
 CLASSES = ("u1", "u2", "u3", "u4", "u5", "e1", "t1")
@@ -44,7 +45,8 @@ _DIGITS = re.compile(r"[0-9]{0,%d}" % TEXT_MAX)
 _SELECTOR_MAX = 1024                      # a node key or role in its escaped record spelling (model.h grammar)
 _REASON = re.compile(r"[ -~]{1,400}")
 _TOP = ("schema", "product", "app", "version", "max_wait_ms", "drain_ms", "key") + CLASSES
-_OPTIONAL_TOP = ("starvation",)
+_OPTIONAL_TOP = ("starvation", "requires")
+_CLASS = re.compile(r"[a-z][a-z0-9_]{0,63}")     # an LVGL class name (`lv_button`): a u2 tap's declared target
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,7 @@ class Catalogue:
     key: Key
     events: tuple       # every event, class order then file order
     sha256: str
+    requires: tuple = ()    # probe capabilities the catalogue needs (`requires`), in CAPABILITIES order
 
     def __post_init__(self):
         object.__setattr__(self, "_index", {event.id: event for event in self.events})
@@ -157,9 +160,25 @@ def _intent(where, raw):
             "arg": _int(where + ".arg", raw["arg"], -2**31, 2**31 - 1)}
 
 
-def _point(where, raw):
-    _keys(where, raw, ("id", "x", "y"))
-    return {"x": _int(where + ".x", raw["x"], 0, 65535), "y": _int(where + ".y", raw["y"], 0, 65535)}
+def _point(where, raw, aimed=False):
+    _keys(where, raw, ("id", "x", "y"), ("target",) if aimed else ())
+    out = {"x": _int(where + ".x", raw["x"], 0, 65535), "y": _int(where + ".y", raw["y"], 0, 65535)}
+    if "target" in raw:
+        out["target"] = _str(where + ".target", raw["target"], _CLASS)
+    return out
+
+
+def _aimed(where, raw):
+    return _point(where, raw, aimed=True)
+
+
+def _requires(raw):
+    if raw is None:
+        return ()
+    if type(raw) is not list or any(type(c) is not str or c not in CAPABILITIES for c in raw) \
+            or len(set(raw)) != len(raw):
+        _fail("requires", "must be a list of distinct probe capabilities (%s)" % ", ".join(CAPABILITIES))
+    return tuple(c for c in CAPABILITIES if c in raw)
 
 
 def _code(where, raw):
@@ -215,7 +234,7 @@ def _events(cls, raw, seen, max_wait):
         if cls == "t1":
             spec = _time(where, item, max_wait)
         else:
-            spec = {"u1": _intent, "u2": _point, "u3": _point, "u4": _code, "u5": _intent, "e1": _env}[cls](where, item)
+            spec = {"u1": _intent, "u2": _aimed, "u3": _point, "u4": _code, "u5": _intent, "e1": _env}[cls](where, item)
         if cls in APPLY_CLASSES:
             spec["expect"] = _enum(where + ".expect", item["expect"], EXPECT)
         out.append(Event(ident, cls, tuple(sorted(spec.items()))))
@@ -324,7 +343,7 @@ def loads(data):
     return Catalogue(_str("product", document["product"], _NAME), _str("app", document["app"], _NAME),
                      _int("version", document["version"], 1, 2**31 - 1), max_wait, drain, firings, window,
                      _key(document["key"]),
-                     tuple(events), jsonio.sha256_hex(data))
+                     tuple(events), jsonio.sha256_hex(data), _requires(document.get("requires")))
 
 
 def load(path):

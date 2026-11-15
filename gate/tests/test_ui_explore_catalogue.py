@@ -39,12 +39,19 @@ class CatalogueTest(unittest.TestCase):
         for path in (h.TOY_COARSE, h.FIXTURE):
             load(path.read_text())
 
-    def test_the_selftest_toy_catalogue_has_a_probe_tap_and_a_complement_tap(self):
-        catalogue = load(h.SELFTEST_TOY.read_text())
-        taps = [(e.cls, e.id, e.get("x"), e.get("y")) for e in catalogue.events if e.cls in ("u2", "u3")]
-        self.assertEqual(taps, [("u2", "probe-press", 58, 58), ("u3", "probe-blank", 150, 10)])
-        self.assertEqual([e.id for e in catalogue.events if e.cls not in ("u2", "u3")],
-                         [e.id for e in load(TEXT).events])
+    def test_the_stub_catalogue_is_the_selftest_toy_catalogue_but_its_taps_and_requires(self):
+        """The unit tests' stub catalogue may differ from the selftest's toy catalogue only by the two tap events and the
+        capabilities the toy requires: every other key, field and event table is the same."""
+        toy, stub = load(h.SELFTEST_TOY.read_text()), load(TEXT)
+        taps = [(e.cls, e.id, dict(e.spec)) for e in toy.events if e.cls in ("u2", "u3")]
+        self.assertEqual(taps, [("u2", "probe-press", {"x": 58, "y": 58, "target": "lv_button"}),
+                                ("u3", "probe-blank", {"x": 150, "y": 10})])
+        self.assertEqual([e for e in toy.events if e.cls not in ("u2", "u3")], list(stub.events))
+        self.assertEqual((toy.requires, stub.requires),
+                         (("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop"), ()))
+        for name in ("product", "app", "version", "max_wait_ms", "drain_ms", "starve_firings", "starve_window_frames",
+                     "key"):
+            self.assertEqual(getattr(toy, name), getattr(stub, name), name)
 
     def test_a_pad_macro_and_derived_facts(self):
         text = TEXT.replace('{ id = "code-empty", boundary = "empty", via = "wedge", hex = "", expect = "refuse" },',

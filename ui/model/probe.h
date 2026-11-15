@@ -38,6 +38,8 @@ typedef struct {
     lvprobe_t *lv;          /* the lvprobe of the session (static storage); open exactly when `disp` is not NULL */
     struct _lv_display_t *disp;   /* the display lvprobe observes, NULL while it is closed */
     bool framed;            /* a `frame` succeeded and no command changed the model since */
+    bool tick_set;          /* tick_offset is taken (at the session's first frame) */
+    uint32_t tick_offset;   /* lv_tick_get() - (uint32_t)now: constant while only uim_step moves the tick */
 } probe_t;
 
 /* The shape of the records of one call (model.h): field count and which fields are decimal numbers. */
@@ -69,7 +71,8 @@ char *probe_payload(size_t *cap);
 /* The lvprobe seam (docs/ui-model.md, "Frame facts"); arguments are NULL-terminated. probe_frame.c: */
 bool probe_cmd_frame(probe_t *p, char **arg);
 /* probe_records.c: one `life` line of event `e` at out[*at..cap): node and parent are written as -1 unless `indexed`; the class name is
- * escaped by the record grammar, `-` when it is empty. LVPROBE_ERR_TRUNC when it does not fit (`*at` does not move). */
+ * `=` and its name escaped by the record grammar (`=` alone when it is empty, so no name reads as a marker).
+ * LVPROBE_ERR_TRUNC when it does not fit (`*at` does not move). */
 lvprobe_status_t probe_life_line(const lvprobe_life_t *e, bool indexed, char *out, size_t cap, size_t *at);
 /* probe_input.c: */
 bool probe_cmd_hit_test(probe_t *p, char **arg);
@@ -88,6 +91,10 @@ lvprobe_status_t probe_lv_settle(probe_t *p, bool *flushed);
 typedef enum { PROBE_WORK_OK, PROBE_WORK_FAILED, PROBE_WORK_CONTRACT } probe_work_t;
 /* uim_settle, its result checked (UIM_OK; UIM_ERROR fails; anything else breaks the contract). */
 probe_work_t probe_model_settle(probe_t *p, bool *worked);
+/* The gate owns LVGL's tick: the first call of a session records lv_tick_get() - (uint32_t)now, every later call is
+ * true only while that offset is unchanged (a tick from a clock, a callback or an apply that moves it is caught at the
+ * next check, whenever the clock moved). Checked at frame, tap, ink and crop. */
+bool probe_tick_ok(probe_t *p);
 /* `x y`: decimal (`*syntax`), and on a frame inside the display. */
 bool probe_point(const probe_t *p, char **arg, int32_t *x, int32_t *y, bool *syntax);
 bool probe_point_err(const probe_t *p, bool syntax);

@@ -90,8 +90,8 @@ def check_session(s):
          "notice in Bulgarian")
     assert fit(shown, 5)[2] == "1" and fit(shown, 5)[6] == "6", "drawn; Montserrat has none of its 6 Cyrillic glyphs"
     assert fit(shown, 6)[-1] == "0" and fit(s.frame(15), 6)[-1] == "1" and fit(s.frame(17), 6)[-1] == "0", "clipped"
-    assert [l for l in s.frame(19) if l.startswith("life")] == ["life\t1\tcreated\t0\t-1\t1\tlv_label"]
-    assert [l for l in s.frame(21) if l.startswith("life")] == ["life\t2\tdeleted\t0\t13\t1\tlv_label"]
+    assert [l for l in s.frame(19) if l.startswith("life")] == ["life\t1\tcreated\t0\t-1\t1\t=lv_label"]
+    assert [l for l in s.frame(21) if l.startswith("life")] == ["life\t2\tdeleted\t0\t13\t1\t=lv_label"]
     need(s.frame(23), "node\t12\t1\t1\tlv_obj\t0\t0\t159\t119\t0\t1\t-1\t-1\t0\t0\tffffff\t0\t0\t1\t0\t0", "overlay, clickable")
     assert s.head(24, "trace") == "ok trace lines 0"
     assert s.head(25, "hit-test 53 45") == "ok hit-test %d" % OVERLAY, "the hit query names the overlay"
@@ -122,11 +122,15 @@ BAD_TAIL = [
     ("frame", "err frame model-contract"),                                              # uim_settle refused (frame)
     ("tap 53 45", "err tap model-contract"), ("semantic", "err semantic not-open"),     # uim_settle refused (tap)
     ("frame", "err frame model-contract"),                                              # larger than the ink scratch
+    ("frame", "err frame model-contract"), ("semantic", "err semantic not-open"),       # a clock between frames
+    ("frame", "err frame model-contract"), ("semantic", "err semantic not-open"),       # work past the retake bound
+    ("frame", "fail frame"), ("semantic", "err semantic not-open"),                     # uim_settle fails (frame)
+    ("tap 53 45", "fail tap"), ("semantic", "err semantic not-open"),                   # uim_settle fails (tap)
 ]
 
 
 def check_bad(cmd_file, out_file):
-    got = [(c, h) for c, h, _ in replies(cmd_file, out_file) if h.startswith("err ") and
+    got = [(c, h) for c, h, _ in replies(cmd_file, out_file) if h.startswith(("err ", "fail ")) and
            c.split(" ")[0] in ("frame", "semantic", "tap", "apply")]
     assert got[-len(BAD_TAIL):] == BAD_TAIL, got[-len(BAD_TAIL):]
 

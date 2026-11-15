@@ -313,7 +313,7 @@ node	14	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
 region	14	7ba8afcf
 node	15	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
 region	15	7ba8afcf
-life	1	created	0	-1	1	lv_label
+life	1	created	0	-1	1	=lv_label
 ok apply
 ok frame lines 45
 lvprobe	1	15
@@ -360,7 +360,7 @@ node	13	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
 region	13	5e9ef28a
 node	14	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
 region	14	5e9ef28a
-life	2	deleted	0	13	1	lv_label
+life	2	deleted	0	13	1	=lv_label
 ok apply
 ok frame lines 44
 lvprobe	1	15

@@ -146,13 +146,14 @@ lvprobe's, defined in docs/ui-lvprobe.md ("Text format", "Definitions"):
 | `label` | 15 | `label`, i, font id or `-`, line_h, align, align_drawn, long, dotted, lines, natural_w, natural_h, laid_w, laid_h, `=`text, full_text or `-` (after its node, labels only) |
 | `fit` | 8 | `fit`, i, drawn, unsupported, glyphs box, visible box, missing (placeholder glyphs), clipped (after `label`) |
 | `region` | 3 | `region`, i, hash (FNV-1a of the node's coords inside the display) |
-| `life` | 7 | written by the probe: `life`, seq (lvprobe's running number since `open`), `created` or `deleted`, late (`1`: found on a screen observed late), node, parent, class |
+| `life` | 7 | written by the probe: `life`, seq (lvprobe's running number since `open`), `created` or `deleted`, late (`1`: found on a screen observed late), node, parent, `=` and the class |
 
 `life`: node is the walk index of a deleted object in the **previous reported** frame's walk (-1 for a creation), parent
 its parent's index there (or -1). An event drained after a walk this same `frame` command took and did not report (a
 retried snapshot) would carry indexes of that unreported walk: it is written with node and parent -1. class is the
-object's class name escaped by the record grammar (a TAB is `\t`, a non-ASCII byte `\xHH`), `-` when it is empty; a
-long or non-ASCII name is data (the line takes at most 64 + 4 x its length bytes). The first frame after an `open` has no
+object's class name after the prefix `=`, escaped by the record grammar (a TAB is `\t`, a non-ASCII byte `\xHH`): an
+empty name is `=` and a class named `-` is `=-`, so no name reads as a marker; a long or non-ASCII name is data (the line
+takes at most 64 + 4 x its length bytes). A `life` line is in the first frame after its event only. The first frame after an `open` has no
 `life` lines: lvprobe starts observing at that frame and logs what changes after it. `ink` and `noink` records (8 and 3
 fields, docs/ui-lvprobe.md) come from the `ink` command only. A judge keys nodes through the scene, never through the
 index (lvprobe, "Walk order and index").
@@ -161,15 +162,22 @@ index (lvprobe, "Walk order and index").
 `FULL` (a cap), `OVERFLOW` (lifecycle events lost) and a payload that cannot hold the lines are `err frame too-large`.
 `model-contract`: `FORMAT` (not one full-size XRGB8888 buffer in DIRECT mode, no refresh timer, a rotated display),
 `GONE` (the display was deleted), `LVGL` (LVGL refused something: normally the product's doing, such as its pool), a
-display that never settles or keeps changing, a display with more pixels than the ink scratch, a display with more than
-one pointer indev, a `uim_settle` result other than `UIM_OK`/`UIM_ERROR`, and a moved tick (below). Anything else is
+display that never settles or keeps changing (`uim_settle` that still works after `PROBE_FRAME_TRIES` snapshots included),
+a display with more pixels than the ink scratch, a display with more than one pointer indev, a `uim_settle` result other
+than `UIM_OK`/`UIM_ERROR`, and a moved tick (below). A `uim_settle` that returns `UIM_ERROR` is `fail frame` or `fail
+tap`, and poisons. The explorer receives every `err` of these as `probe-internal-error` kind `protocol`
+(docs/ui-explore.md, "Deviations"). Anything else is
 `err frame internal`. Each poisons the session. In `ink`, an unstable or unsettled node is settled and retried once
 (lvprobe's rule); still unstable is `noink unstable`; a retry settle that flushed drops the frame (the checksum the last
 `frame` reported would be older than the buffer `crop` reads), so the next `crop`, `tap` or `hit-test` needs a new frame.
 
-**The tick is the gate's.** The probe reads `lv_tick_get()` before and after the snapshot of `frame`, the tap and its
-settle, `ink` and `crop`; if it moved, a product drives LVGL's tick from something other than `uim_step` (a real clock, a
-tick callback): `err <command> model-contract` (poisons, except after the read-only `crop`).
+**The tick is the gate's.** At the first frame after `open` the probe records `lv_tick_get() - (uint32_t)now` (the
+virtual clock), and at every later check (before and after the snapshot of `frame`, the tap and its settle, `ink`,
+`crop`) it requires the same offset. Only `uim_step` moves both together, so a product that drives LVGL's tick from a
+real clock or a tick callback, or an `apply` or a settle that moves it, is caught at the next check whenever the clock
+moved, not only when a millisecond boundary falls inside one command: `err <command> model-contract` (poisons, except
+after the read-only `crop`). The frame toy has three fixtures: a tick callback that moves on every read, a settle that
+moves the tick, and a clock that moves only between frames (which a before/after comparison would miss).
 
 **Caps and the per-frame byte budget** (`ui/model/probe.h`): `PROBE_LV_NODES` 512 objects, `PROBE_LV_TEXT` 16384 bytes
 of label text, `PROBE_LV_LIFE` 1024 lifecycle events between two frames, 16 screens, `PROBE_LV_SCRATCH_PX` = 1280 x 800
@@ -187,6 +195,10 @@ never a truncated reply.
 display at the moment lvprobe is opened (the first `frame` of the session) carries the taps; a display with none gets a
 pointer indev lvprobe creates; a display with more than one is ambiguous and refused (`err frame model-contract`); one the
 product creates later in the session is not used (docs/ui-lvprobe.md, "Which indev").
+
+**A display the product deletes.** When lvprobe reports the display gone (`GONE`, from `hit-test`, `crop` or any
+other call), the frame is dropped (`framed` false): no later command reads the display again until a `frame`, which
+compares the model's display pointer with LVGL's list by address only and refuses it (`err frame model-contract`).
 
 **Hit query and tap.** `hit-test` is `lvprobe_hit_test` (LVGL's `lv_indev_search_obj` over sys, top, active and bottom
 roots): no input event is sent; only LVGL's own `LV_EVENT_HIT_TEST` reaches objects with `LV_OBJ_FLAG_ADV_HITTEST`.

@@ -85,7 +85,7 @@ bool probe_cmd_ink(probe_t *p, char **arg)
     char *out = probe_payload(&cap);
     size_t at = 0;
     long lines = 0;
-    uint32_t tick = 0;
+    bool tick = false;
     lvprobe_status_t st;
     if (arg[0] != NULL && !probe_parse_u64(arg[0], &want)) {
         return probe_reply_err("ink", "bad-arguments");
@@ -96,9 +96,9 @@ bool probe_cmd_ink(probe_t *p, char **arg)
     if (arg[0] != NULL && (want >= count || is_root(p, (uint16_t)want))) {
         return probe_reply_err("ink", "bad-arguments");   /* no such node, or a screen or layer root */
     }
-    tick = lv_tick_get();
+    tick = probe_tick_ok(p);
     st = arg[0] != NULL ? ink_range(p, (uint16_t)want, (uint16_t)(want + 1u), &at) : ink_range(p, 0, count, &at);
-    st = (st == LVPROBE_OK && lv_tick_get() != tick) ? LVPROBE_ERR_FORMAT : st;
+    st = (st == LVPROBE_OK && (!tick || !probe_tick_ok(p))) ? LVPROBE_ERR_FORMAT : st;
     if (st != LVPROBE_OK) {
         return probe_fatal(p, probe_why(st));
     }
@@ -133,7 +133,7 @@ bool probe_cmd_crop(probe_t *p, char **arg)
     size_t row = 0;
     lv_area_t box;
     unsigned k;
-    uint32_t tick = 0;
+    bool tick = false;
     lvprobe_status_t st;
     for (k = 0; k < 4u; k++) {
         if (!probe_parse_u64(arg[k], &v[k])) {
@@ -147,10 +147,11 @@ bool probe_cmd_crop(probe_t *p, char **arg)
         return probe_reply_err("crop", "bad-arguments");
     }
     row = (size_t)v[2] * 4u;
-    tick = lv_tick_get();
+    tick = probe_tick_ok(p);
     st = lvprobe_crop(p->lv, &box, (uint8_t *)(void *)g_scratch, sizeof g_scratch, &len);
-    if (st != LVPROBE_OK || len != row * (size_t)v[3] || lv_tick_get() != tick) {
-        return probe_refuse(p, st != LVPROBE_OK ? "internal" : len != row * (size_t)v[3] ? "internal" : "model-contract");
+    if (st != LVPROBE_OK || len != row * (size_t)v[3] || !tick || !probe_tick_ok(p)) {
+        /* GONE (the product deleted the display) and every other status drop the frame: nothing reads it again */
+        return probe_refuse(p, st != LVPROBE_OK ? probe_why(st) : len != row * (size_t)v[3] ? "internal" : "model-contract");
     }
     for (k = 0; k < v[3]; k++) {
         probe_to_hex((const unsigned char *)&g_scratch[(size_t)k * row], row, out + at);

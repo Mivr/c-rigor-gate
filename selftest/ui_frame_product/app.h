@@ -51,6 +51,8 @@ lv_display_t *app_second_display(void);   /* a second, real display (created onc
 bool app_extra_pointer(void);             /* a second pointer indev on the display */
 void app_moving_tick(void);               /* LVGL's tick from a callback that moves on every read */
 void app_fixture_reset(void);             /* forget the fixtures (at start, after lv_init) */
+void app_rare_clock(void);                /* LVGL's tick from a clock that app_clock_moves() moves by 1 ms */
+void app_clock_moves(void);
 
 /* Scene nodes the model reports: 0 title, 1 button, 2 notice, 3 fit. */
 #define APP_NODES 4u

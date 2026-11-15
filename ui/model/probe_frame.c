@@ -161,20 +161,21 @@ static lvprobe_status_t encode(const probe_t *p, const snap_t *s, char *out, siz
     return st;
 }
 
-/* Takes the snapshot of the attached display and writes it; LVGL's tick must not move meanwhile (the gate owns it). */
+/* Takes the snapshot of the attached display and writes it; LVGL's tick must keep the session's offset (the gate owns
+ * it: probe_tick_ok, before and after). */
 static bool take(probe_t *p, snap_t *s)
 {
     size_t cap = 0;
     char *out = probe_payload(&cap);
     size_t at = 0;
     long lines = 0;
-    uint32_t tick = lv_tick_get();
+    bool tick = probe_tick_ok(p);
     lvprobe_status_t st = snapshot(p, s);
     if (s->work == PROBE_WORK_FAILED) {
         p->opened = false;
         return probe_reply_plain("frame", false);
     }
-    st = (s->work == PROBE_WORK_CONTRACT || lv_tick_get() != tick) ? LVPROBE_ERR_FORMAT : st;
+    st = (s->work == PROBE_WORK_CONTRACT || !tick || !probe_tick_ok(p)) ? LVPROBE_ERR_FORMAT : st;
     st = st == LVPROBE_OK ? encode(p, s, out, cap, &at) : st;
     if (st != LVPROBE_OK) {
         return probe_fatal(p, probe_why(st));

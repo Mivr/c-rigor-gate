@@ -102,5 +102,24 @@ semantic
 open 0 2
 frame
 open 0 1
+apply 3 19 0 -
+frame
+frame
+semantic
+open 0 1
+frame
+apply 3 20 0 -
+frame
+semantic
+open 0 1
+apply 3 21 0 -
+frame
+semantic
+open 0 1
+apply 3 22 0 -
+frame
+tap 53 45
+semantic
+open 0 1
 frame
 quit

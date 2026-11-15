@@ -308,7 +308,10 @@ class Session:
             return "blocked"
         if len(words) != 4 or words[:2] != ["ok", "tap"]:
             raise ProbeError("protocol", "tap", NOT_A_REPLY, line)
-        return (self._node("tap", words[2], line), self._node("tap", words[3], line))
+        pressed, clicked = self._node("tap", words[2], line), self._node("tap", words[3], line)
+        if pressed is None and clicked is not None:
+            raise ProbeError("protocol", "tap", "a tap that clicked a node it did not press", line)
+        return pressed, clicked
 
     def crop(self, x, y, w, h):
         """The RGBA bytes of the box (x, y, w, h) of the current frame: h lines of 8 w lowercase hex digits."""

@@ -8,7 +8,9 @@
  * starts a second 0 ms animation, whose work retitles it "Done" (so a frame must take its snapshot again after work). Broken on purpose: 11 frames a second
  * display, 12 frames a pointer that is no display, 13 adds a second pointer indev, 14 moves LVGL's tick from a clock, 15
  * makes this apply return a value outside the enum, 16 makes the next uim_settle return UIM_REFUSED, 17 the one after
- * it, 18 makes the uim_settle after the next move LVGL's tick itself. `open <t> 2` starts on a
+ * it, 18 makes the uim_settle after the next move LVGL's tick itself, 19 drives LVGL's tick from a clock that moves
+ * between frames (never within one command), 20 makes every uim_settle run work (it never quiets), 21 makes the next
+ * uim_settle fail, 22 the one after it. `open <t> 2` starts on a
  * display larger than the probe's ink scratch. The trace carries the handlers' events too. */
 #include <stdio.h>
 #include <string.h>
@@ -29,6 +31,9 @@ struct uim {
     int bad_result;       /* returned by apply 15 */
     unsigned refuse_in;   /* the uim_settle call (counting from 1) that returns UIM_REFUSED, 0 none */
     unsigned tick_in;     /* the uim_settle call that moves LVGL's tick, 0 none */
+    unsigned error_in;    /* the uim_settle call that returns UIM_ERROR, 0 none */
+    bool busy;            /* every uim_settle runs work (it never quiets) */
+    bool rare_clock;      /* LVGL's tick comes from a clock that moves between frames */
     char trace[LOG_MAX];
     size_t trace_len;
 };
@@ -115,6 +120,9 @@ bool uim_open(uim_t *m, uint64_t clock_origin_ms, uint64_t seed)
     m->bad_result = 0;
     m->refuse_in = 0;
     m->tick_in = 0;
+    m->error_in = 0;
+    m->busy = false;
+    m->rare_clock = false;
     m->open = app_start(seed == 2u) && event(m, "boot");
     return m->open;
 }
@@ -161,8 +169,14 @@ static uim_result_t fixture(uim_t *m, unsigned id)
         return (uim_result_t)m->bad_result;
     } else if (id == 16u || id == 17u) {
         m->refuse_in = id - 15u;
-    } else {
+    } else if (id == 18u) {
         m->tick_in = 2;
+    } else if (id == 19u) {
+        m->rare_clock = true;
+        app_rare_clock();
+    } else {
+        m->busy = id == 20u;
+        m->error_in = id == 20u ? 0u : id - 20u;
     }
     return UIM_OK;
 }
@@ -193,7 +207,7 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     if (!m->open) {
         return UIM_ERROR;
     }
-    if (in->kind != UIM_IN_INTENT || in->id < 1u || in->id > 18u) {
+    if (in->kind != UIM_IN_INTENT || in->id < 1u || in->id > 22u) {
         return UIM_REFUSED;
     }
     r = in->id == 1u ? press(m) : change(m, in->id);
@@ -215,6 +229,13 @@ uim_result_t uim_settle(uim_t *m, bool *worked)
     }
     if (m->refuse_in > 0u && --m->refuse_in == 0u) {
         return UIM_REFUSED;
+    }
+    if (m->error_in > 0u && --m->error_in == 0u) {
+        return UIM_ERROR;
+    }
+    if (m->busy) {
+        *worked = true;   /* broken on purpose: there is always more work */
+        return event(m, "busy") ? UIM_OK : UIM_ERROR;
     }
     return run_work(m, worked, &pressed) ? UIM_OK : UIM_ERROR;
 }
@@ -251,6 +272,9 @@ bool uim_frame(uim_t *m, struct _lv_display_t **disp)
     if (!m->open) {
         return false;
     }
+    if (m->rare_clock) {
+        app_clock_moves();   /* a wall clock moved since the last frame, never during one */
+    }
     app_draw();
     *disp = m->frame_mode == 11 ? app_second_display()
             : m->frame_mode == 12 ? (struct _lv_display_t *)(uintptr_t)(const void *)g_not_a_display
@@ -273,7 +297,9 @@ static bool node_line(unsigned i, uim_buf_t *out)
     }
     for (k = 0; node.text[k] != '\0' && at + 5u < sizeof text; k++) {
         unsigned char c = (unsigned char)node.text[k];
-        n = (c < 0x20u || c > 0x7eu) ? snprintf(text + at, sizeof text - at, "\\x%02x", (unsigned)c)
+        n = c == '\t' ? snprintf(text + at, sizeof text - at, "\\t")
+            : c == '\n' ? snprintf(text + at, sizeof text - at, "\\n")
+            : (c < 0x20u || c > 0x7eu) ? snprintf(text + at, sizeof text - at, "\\x%02x", (unsigned)c)
             : c == '\\' ? snprintf(text + at, sizeof text - at, "\\\\")
                          : snprintf(text + at, sizeof text - at, "%c", (char)c);
         at += n > 0 ? (size_t)n : 0u;

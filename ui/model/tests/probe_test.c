@@ -126,19 +126,20 @@ static const char *life(const char *name, bool indexed, size_t cap)
 static void t_a_life_line_escapes_its_class_name_and_marks_an_empty_one(ctest_t *t)
 {
     static char lng[301];
-    CHECK(t, strcmp(life("lv_label", true, 2048), "life\t7\tdeleted\t1\t3\t1\tlv_label\n") == 0);
-    CHECK(t, strcmp(life("lv_label", false, 2048), "life\t7\tdeleted\t1\t-1\t-1\tlv_label\n") == 0);
-    CHECK(t, strcmp(life("a\tb\nc\\d", true, 2048), "life\t7\tdeleted\t1\t3\t1\ta\\tb\\nc\\\\d\n") == 0);
-    CHECK(t, strcmp(life("", true, 2048), "life\t7\tdeleted\t1\t3\t1\t-\n") == 0);
-    CHECK(t, strcmp(life(NULL, true, 2048), "life\t7\tdeleted\t1\t3\t1\t-\n") == 0);
-    CHECK(t, strcmp(life("\xd0\xba\x01", true, 2048), "life\t7\tdeleted\t1\t3\t1\t\\xd0\\xba\\x01\n") == 0);
+    CHECK(t, strcmp(life("lv_label", true, 2048), "life\t7\tdeleted\t1\t3\t1\t=lv_label\n") == 0);
+    CHECK(t, strcmp(life("lv_label", false, 2048), "life\t7\tdeleted\t1\t-1\t-1\t=lv_label\n") == 0);
+    CHECK(t, strcmp(life("a\tb\nc\\d", true, 2048), "life\t7\tdeleted\t1\t3\t1\t=a\\tb\\nc\\\\d\n") == 0);
+    CHECK(t, strcmp(life("", true, 2048), "life\t7\tdeleted\t1\t3\t1\t=\n") == 0);
+    CHECK(t, strcmp(life("-", true, 2048), "life\t7\tdeleted\t1\t3\t1\t=-\n") == 0);   /* a class named `-` */
+    CHECK(t, strcmp(life(NULL, true, 2048), "life\t7\tdeleted\t1\t3\t1\t=\n") == 0);
+    CHECK(t, strcmp(life("\xd0\xba\x01", true, 2048), "life\t7\tdeleted\t1\t3\t1\t=\\xd0\\xba\\x01\n") == 0);
     CHECK_EQ_I64(t, check(NULL, life("a\tb\xd0\xba", true, 2048)), 1);
     memset(lng, 'x', 300);
     lng[300] = '\0';
-    CHECK_EQ_I64(t, (int64_t)strlen(life(lng, true, 2048)), 22 + 300);   /* a long name is data */
-    CHECK(t, strcmp(life("lv_label", true, 22 + 8), "TRUNC") == 0);          /* the LF and one spare byte */
-    CHECK(t, strcmp(life("lv_label", true, 22 + 8 + 1), "life\t7\tdeleted\t1\t3\t1\tlv_label\n") == 0);
-    CHECK(t, strcmp(life("\xd0", true, 21 + 3), "TRUNC") == 0);                 /* an escape is never cut */
+    CHECK_EQ_I64(t, (int64_t)strlen(life(lng, true, 2048)), 23 + 300);   /* a long name is data */
+    CHECK(t, strcmp(life("lv_label", true, 23 + 8), "TRUNC") == 0);          /* the LF and one spare byte */
+    CHECK(t, strcmp(life("lv_label", true, 23 + 8 + 1), "life\t7\tdeleted\t1\t3\t1\t=lv_label\n") == 0);
+    CHECK(t, strcmp(life("\xd0", true, 22 + 3), "TRUNC") == 0);                 /* an escape is never cut */
 }
 
 CTEST_SUITE("probe", {"life_line", t_a_life_line_escapes_its_class_name_and_marks_an_empty_one},

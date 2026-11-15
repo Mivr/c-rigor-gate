@@ -203,6 +203,7 @@ def explore(args):
     except BudgetSpent:
         caps, greeting = None, _budget_finding(args, catalogue, word, 0)
     if caps is not None:
+        _check_requires(catalogue, caps)
         _check_taps(catalogue, caps, paths)
         strategies.check_cost(catalogue, args, paths, caps)
         config = Config(config.probe, config.deadline_s, catalogue, budget, caps)
@@ -229,6 +230,13 @@ def explore(args):
     for item in found:
         item.pop(PRIVATE, None)
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
+
+
+def _check_requires(catalogue, caps):
+    missing = [cap for cap in catalogue.requires if cap not in caps]
+    if missing:
+        raise InternalError("the catalogue requires the probe capabilities %s, which the probe does not announce"
+                            % ", ".join(missing))
 
 
 def _check_taps(catalogue, caps, paths):

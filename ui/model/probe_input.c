@@ -30,8 +30,8 @@ bool probe_cmd_hit_test(probe_t *p, char **arg)
 }
 
 /* After the press and release: the product's due work (`uim_settle`), then refreshes to a quiet frame; the tick must
- * not have moved. True when the tap goes on; false when the reply is made (`fail tap` or an `err`), in `*reply`. */
-static bool after_tap(probe_t *p, uint32_t tick, bool *reply)
+ * keep the session's offset. True when the tap goes on; false when the reply is made (`fail tap` or an `err`). */
+static bool after_tap(probe_t *p, bool tick, bool *reply)
 {
     bool worked = false;
     bool flushed = false;
@@ -43,7 +43,7 @@ static bool after_tap(probe_t *p, uint32_t tick, bool *reply)
         return false;
     }
     st = w == PROBE_WORK_OK ? probe_lv_settle(p, &flushed) : LVPROBE_ERR_FORMAT;
-    st = (st == LVPROBE_OK && lv_tick_get() != tick) ? LVPROBE_ERR_FORMAT : st;
+    st = (st == LVPROBE_OK && (!tick || !probe_tick_ok(p))) ? LVPROBE_ERR_FORMAT : st;
     if (st != LVPROBE_OK) {
         *reply = probe_fatal(p, probe_why(st));
         return false;
@@ -63,7 +63,7 @@ bool probe_cmd_tap(probe_t *p, char **arg)
     char b[16];
     const char *pressed = NULL;
     const char *clicked = NULL;
-    uint32_t tick = 0;
+    bool tick = false;
     bool reply = false;
     lvprobe_status_t st;
     if (!probe_point(p, arg, &x, &y, &syntax)) {
@@ -71,7 +71,7 @@ bool probe_cmd_tap(probe_t *p, char **arg)
     }
     p->framed = false;
     memset(&hit, 0, sizeof hit);
-    tick = lv_tick_get();
+    tick = probe_tick_ok(p);
     st = lvprobe_hit(p->lv, x, y, &hit);
     if (st != LVPROBE_OK && st != LVPROBE_ERR_BLOCKED) {
         return probe_fatal(p, probe_why(st));

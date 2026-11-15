@@ -177,7 +177,11 @@ lvprobe_status_t probe_life_line(const lvprobe_life_t *e, bool indexed, char *ou
         return LVPROBE_ERR_TRUNC;
     }
     end += (size_t)n;
-    if (!put_escaped(name[0] != '\0' ? name : "-", out, cap, &end) || cap - end <= 1u) {
+    if (cap - end <= 2u) {
+        return LVPROBE_ERR_TRUNC;
+    }
+    out[end++] = '=';   /* the class field is `=` and the escaped name: an empty name is `=`, a class `-` is `=-` */
+    if (!put_escaped(name, out, cap, &end) || cap - end <= 1u) {
         return LVPROBE_ERR_TRUNC;
     }
     out[end++] = '\n';

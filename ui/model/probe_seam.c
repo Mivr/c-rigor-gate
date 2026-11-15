@@ -70,6 +70,16 @@ probe_work_t probe_model_settle(probe_t *p, bool *worked)
     return r == UIM_ERROR ? PROBE_WORK_FAILED : PROBE_WORK_CONTRACT;
 }
 
+bool probe_tick_ok(probe_t *p)
+{
+    uint32_t offset = lv_tick_get() - (uint32_t)p->now;
+    if (!p->tick_set) {
+        p->tick_set = true;
+        p->tick_offset = offset;
+    }
+    return offset == p->tick_offset;
+}
+
 bool probe_point(const probe_t *p, char **arg, int32_t *x, int32_t *y, bool *syntax)
 {
     uint64_t vx = 0;

@@ -8,6 +8,8 @@ version = 1
 # logs (trace, patches) are fetched during a long advance (a whole number of 16 ms frames).
 max_wait_ms = 10000
 drain_ms = 1024
+# The toy is driven through the C probe, which announces every capability; the explorer refuses a probe without them.
+requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop"]
 
 # Every semantic field is in the key; so are the deadline bucket and the enabled env inputs (the two facts).
 [key]
@@ -23,11 +25,12 @@ events = [
   { id = "tap-press", intent = 1, arg = 0, expect = "accept" },
 ]
 
-# U2 probe taps (hit query, then a tap through the production pointer path) at the button's centre; U3 complement
+# U2 probe taps (hit query, then a tap through the production pointer path) at the button's centre, aimed at the
+# lv_button whose box holds the point; U3 complement
 # taps at a point no interactive node covers, which must change nothing (the scrim takes it while the notice shows).
 [u2]
 events = [
-  { id = "probe-press", x = 58, y = 58 },
+  { id = "probe-press", x = 58, y = 58, target = "lv_button" },
 ]
 
 [u3]
