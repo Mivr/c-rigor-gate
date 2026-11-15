@@ -87,7 +87,8 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/lkui/screens:testkit",
            "//apps/lockers/relay/driver:testkit",
            "//apps/lockers/relay/opener_sm:testkit",
-           "//apps/fiscal/dtc/ports:fake"]
+           "//apps/fiscal/dtc/ports:fake",
+           "//apps/fiscal/dtsafe/guard:testkit"]
 
 [layer."lib-io"]
 modules = ["//lib/io/**"]
@@ -151,7 +152,7 @@ modules = ["//apps/fiscal/dtc/ports:ports", "//apps/fiscal/dtc/types:types"]
 modules = []
 
 [layer."fiscal-safety"]
-modules = []
+modules = ["//apps/fiscal/dtsafe/guard:guard"]
 
 [layer."fiscal-adapters"]
 modules = []
