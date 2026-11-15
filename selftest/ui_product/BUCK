@@ -34,3 +34,38 @@ c_library(
     srcs = ["misdef.c"],
     deps = ["gate//ui/model:model"],
 )
+
+# U05: the shared core of two deliberately broken model adapters for the explorer (it defines no `uim_` symbol).
+c_library(
+    name = "fixture",
+    srcs = ["fixture.c"],
+    headers = ["fixture.h"],
+    deps = [":toy"],
+)
+
+# A nondeterministic adapter (the trace carries the process id): `rigor ui-explore` gives model-nondeterministic.
+c_library(
+    name = "model_nondet",
+    srcs = ["model_nondet.c"],
+    deps = [":fixture", ":toy", "gate//ui/model:model"],
+)
+
+c_ui_probe(name = "probe_nondet", model = ":model_nondet")
+
+# A starving adapter (a timer that re-arms itself 1 ms later forever): `rigor ui-explore` gives timer-starvation.
+c_library(
+    name = "model_starve",
+    srcs = ["model_starve.c"],
+    deps = [":fixture", ":toy", "gate//ui/model:model"],
+)
+
+c_ui_probe(name = "probe_starve", model = ":model_starve")
+
+# A correct adapter with a perpetual 250 ms tick: settle ends, until-change is one event, no finding.
+c_library(
+    name = "model_tick",
+    srcs = ["model_tick.c"],
+    deps = [":fixture", ":toy", "gate//ui/model:model"],
+)
+
+c_ui_probe(name = "probe_tick", model = ":model_tick")

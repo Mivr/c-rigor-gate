@@ -1,0 +1,59 @@
+# The event catalogue and abstraction key of the toy app (U05; schema ui-events/1, docs/ui-explore.md).
+# A real product's catalogue is owner-sealed (P004 8.5); this one is the selftest's fixture.
+schema = "ui-events/1"
+product = "selftest"
+app = "toy"
+version = 1
+# The longest virtual wait of one path word (a deadline further away is timer-unreachable), and how often the
+# logs (trace, patches) are fetched during a long advance (a whole number of 16 ms frames).
+max_wait_ms = 10000
+drain_ms = 1024
+
+# Every semantic field is in the key; so are the deadline bucket and the enabled env inputs (the two facts).
+[key]
+fields = ["role", "label", "x", "y", "w", "h", "enabled", "intent", "flags", "style", "importance", "input_policy", "wrap_policy"]
+facts = ["deadline", "env-inputs"]
+derived = []
+ignore = []
+
+# U1 intent taps (until lvprobe gives the rendered tree, the intent of the one interactive node).
+[u1]
+events = [
+  { id = "tap-press", intent = 1, arg = 0, expect = "accept" },
+]
+
+# U2 probe taps and U3 complement taps need a tap command, which ui-probe/1 does not have yet.
+[u2]
+events = []
+
+[u3]
+events = []
+
+# U4 code macros through the wedge, by boundary class; the toy refuses an empty line in every state.
+[u4]
+events = [
+  { id = "code-empty", boundary = "empty", via = "wedge", hex = "", expect = "refuse" },
+  { id = "code-one-digit", boundary = "one-digit", via = "wedge", hex = "37", expect = "accept" },
+  { id = "code-non-digit", boundary = "non-digit", via = "wedge", hex = "41ff", expect = "accept" },
+]
+
+# U5 language: the toy has none.
+[u5]
+events = []
+
+# E1 environment replies: the toy's one env input.
+[e1]
+events = [
+  { id = "env-offline", env = 1, arg = 0, hex = "", expect = "accept" },
+]
+
+# T1 virtual-time events.
+[t1]
+events = [
+  { id = "fire-due", kind = "fire-due" },
+  { id = "before-due", kind = "before-due" },
+  { id = "one-frame", kind = "advance", ms = 16 },
+  { id = "idle-10s", kind = "advance", ms = 10000 },
+  { id = "until-change", kind = "until-change" },
+  { id = "at-10s", kind = "at", offset_ms = 10000 },
+]

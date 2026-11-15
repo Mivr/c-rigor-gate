@@ -51,6 +51,10 @@ selftests = ["ui"]
 [[rule]]
 glob = "selftest/ui_frame_product/**"
 selftests = ["ui"]
+# U05: the explorer driver (`rigor ui-explore`); only the ui selftest runs it.
+[[rule]]
+glob = "gate/rigor_lib/ui_explore*"
+selftests = ["ui"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"
@@ -170,7 +174,7 @@ selftests = []
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
-selftests = ["grade", "product_checks", "structure", "mutate", "canaries"]
+selftests = ["grade", "product_checks", "structure", "mutate", "canaries", "ui"]
 [[rule]]
 glob = "gate/order.txt"
 selftests = ["grade", "canaries"]

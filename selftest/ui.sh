@@ -3,6 +3,9 @@
 # app's model adapter in release and san; the scripted sessions in selftest/ui_product (session.in, bad.in) must produce
 # the checked-in transcripts byte for byte, twice per mode; and the symbols gate confines the `uim_*` names: the model
 # adapter and the probe pass, product code that references or defines one is flagged.
+# U05: `rigor ui-explore` drives the toy probe (sweep, bfs, walk, replay) with the toy's event catalogue; two deliberately
+# broken adapters (probe_nondet, probe_starve), a correct one with a perpetual tick (probe_tick) and a too coarse key give
+# their findings (or none), byte-identical across invocations, and each finding replays.
 # Needs bash, python3 (stdlib) and tools/buck2. Runs in place on //selftest/ui_product. Scratch lives under $TMPDIR.
 set -uo pipefail
 
@@ -217,6 +220,7 @@ gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_du
 cp "$f_misdef" "$out/f_misdef_legacy.json"; f_misdef_legacy="$out/f_misdef_legacy.json"
 gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy lvp ctest
 
+<<<<<<< ours
 begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
 for plat in "$REL" "$SAN"; do
   run "$out/lvprobe.log" test --target-platforms "$plat" //ui/lvprobe/... || fail "$CUR: //ui/lvprobe/... failed in $plat" "$out/lvprobe.log"
@@ -224,4 +228,130 @@ for plat in "$REL" "$SAN"; do
 done
 
 bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
+=======
+# ---- U05: rigor ui-explore, the explorer driver ------------------------------------------------------------------------
+CAT="$prod/toy.events.toml"
+FIX="$prod/fixture.events.toml"
+# explore <name> <wanted exit> <probe> <catalogue> <args...>: runs the explorer; findings in $out/x.<name>.json
+explore() {
+  local name="$1" want="$2" bin="$3" cat="$4"; shift 4
+  "${RIGOR[@]}" ui-explore --probe "$bin" --catalogue "$cat" --out "$out/x.$name.json" --summary "$out/x.$name.sum" "$@" \
+    > "$out/x.$name.txt" 2>&1
+  local rc=$?
+  [ "$rc" = "$want" ] || fail "$CUR: ui-explore $name exited $rc, wanted $want" "$out/x.$name.txt"
+}
+# expect <name> <python expression over F (the findings) and S (the summary)>: fails unless it is true
+expect() {
+  python3 -I - "$out/x.$1.json" "$out/x.$1.sum" "$2" <<'PY' || fail "$CUR: $1: wanted $2" "$out/x.$1.txt"
+import json, sys
+F = [json.loads(line) for line in open(sys.argv[1])]
+S = json.load(open(sys.argv[2]))
+ids = lambda check: [f["id"] for f in F if f["check"] == check]
+all_of = lambda check: [f for f in F if f["check"] == check]
+one = lambda check: all_of(check)[0]
+sys.exit(0 if eval(sys.argv[3]) else 1)
+PY
+}
+# same <a> <b>: two runs gave byte-identical, non-empty findings files
+same() {
+  [ -s "$out/x.$1.json" ] || fail "$CUR: $1 has no findings to compare" "$out/x.$1.txt"
+  cmp -s "$out/x.$1.json" "$out/x.$2.json" || fail "$CUR: the findings of $1 and $2 differ"
+}
+# replays <name> <probe> <catalogue>: every finding of run <name> but depth-unsaturated replays from its evidence paths
+replays() {
+  local name="$1" bin="$2" cat="$3" ident dir n=0
+  for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit("/",1)[1]) for l in open(sys.argv[1]) if json.loads(l)["check"] != "depth-unsaturated"]' "$out/x.$name.json"); do
+    dir="$out/ev.$name/$ident"
+    [ -f "$dir/paths.json" ] || fail "$CUR: $name: no evidence paths for $ident" "$out/x.$name.txt"
+    "${RIGOR[@]}" ui-explore --probe "$bin" --catalogue "$cat" --strategy replay --paths "$dir/paths.json" \
+      --out "$out/rp.json" > "$out/rp.txt" 2>&1
+    [ "$?" -le 1 ] || fail "$CUR: replay of $ident failed" "$out/rp.txt"
+    grep -q "/$ident\"" "$out/rp.json" || fail "$CUR: the replay of $name's $ident does not give $ident" "$out/rp.txt"
+    n=$((n + 1))
+  done
+  [ "$n" -gt 0 ] || fail "$CUR: $name has no finding to replay" "$out/x.$name.txt"
+  echo "  $n findings of $name replayed to their ids"
+}
+OPENW="open 1000000000 7"
+SEED=(--origin-ms 1000000000 --seed 7)
+
+begin "ui-explore sweep on the toy: C1 = 100 % (both domain entries) evaluated, no finding, byte-identical, release and san"
+for mode in rel san; do
+  eval "bin=\$probe_$mode"
+  explore "sweep.$mode.1" 0 "$bin" "$CAT" --strategy sweep "${SEED[@]}" --require C1
+  explore "sweep.$mode.2" 0 "$bin" "$CAT" --strategy sweep "${SEED[@]}" --require C1
+  cmp -s "$out/x.sweep.$mode.1.sum" "$out/x.sweep.$mode.2.sum" || fail "$CUR: two sweep summaries ($mode) differ"
+  expect "sweep.$mode.1" 'F == [] and S["domain_count"] == 2 and S["domain_visited"] == [0, 1] and S["evaluated"] == ["C1"]'
+done
+
+begin "ui-explore bfs on the toy terminates saturated (states per depth, C8 evaluated); depth 1 is depth-unsaturated, byte-identical twice"
+explore bfs.1 0 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8
+expect bfs.1 'F == [] and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 77 and S["evaluated"] == ["C8"] and S["events"]["code-empty"] == {"accepted_states": 0, "refused_states": 7, "missed_states": 0}'
+explore shallow.1 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
+explore shallow.2 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
+same shallow.1 shallow.2
+expect shallow.1 'len(ids("depth-unsaturated")) == 1 and one("depth-unsaturated")["observed"]["reasons"] == ["last-depth-adds-states"] and one("depth-unsaturated")["observed"]["states_per_depth"] == [1, 2] and len(ids("ui-coverage-gap")) == 22 and len(F) == 23'
+echo "  states per depth [1, 2, 4, 0]; depth 1: depth-unsaturated + 22 C8 gaps, byte-identical"
+
+begin "a nondeterministic adapter (pid in the trace) is model-nondeterministic at the press, byte-identical twice, and replays"
+build_out probe_nondet "$REL" "$P:probe_nondet"
+explore nondet.1 1 "$probe_nondet" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.nondet.1"
+explore nondet.2 1 "$probe_nondet" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.nondet.2"
+same nondet.1 nondet.2
+expect nondet.1 'F == all_of("model-nondeterministic") and len(F) == 1 and F[0]["observed"] == {"step": 1, "word": "tap-press", "part": "trace", "item": 0} and F[0]["path"] == ["'"$OPENW"'", "tap-press"]'
+replays nondet.1 "$probe_nondet" "$FIX"
+
+begin "an adapter whose deadline never moves gives timer-starvation (33 firings in one 1024 ms window), byte-identical twice, which replays"
+build_out probe_starve "$REL" "$P:probe_starve"
+explore starve.1 1 "$probe_starve" "$FIX" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100 --evidence "$out/ev.starve.1"
+explore starve.2 1 "$probe_starve" "$FIX" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100 --evidence "$out/ev.starve.2"
+same starve.1 starve.2
+expect starve.1 'len(ids("timer-starvation")) == 1 and one("timer-starvation")["observed"]["firings"] == 33 and one("timer-starvation")["observed"]["limit"] == 32 and one("timer-starvation")["path"][:2] == ["'"$OPENW"'", "tap-press"] and len(ids("ui-coverage-gap")) == 9 and len(ids("depth-unsaturated")) == 1 and len(F) == 11'
+replays starve.1 "$probe_starve" "$FIX"
+
+begin "an adapter with a perpetual 250 ms tick: bfs terminates with no finding (settle ends, until-change is one event)"
+build_out probe_tick "$REL" "$P:probe_tick"
+explore tick 0 "$probe_tick" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8
+expect tick 'F == [] and S["detail"]["states_per_depth"][-1] == 0 and S["evaluated"] == ["C8"]'
+echo "  states per depth $(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["detail"]["states_per_depth"])' "$out/x.tick.sum")"
+
+begin "a key that omits the label and geometry is key-too-coarse (info) on the toy, and the findings replay"
+explore coarse 0 "$probe_rel" "$prod/toy_coarse.events.toml" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.coarse"
+expect coarse 'len(ids("key-too-coarse")) == 2 and len(F) == 2 and all(f["severity"] == "info" for f in F) and [f["observed"]["witness_path"] for f in F if f["path"] == ["'"$OPENW"'", "env-offline"]] == [["'"$OPENW"'", "tap-press"]]'
+replays coarse "$probe_rel" "$prod/toy_coarse.events.toml"
+
+begin "ui-explore walks on the toy (2 seeds x 3 clock origins) give no finding, evaluate nothing, and are byte-identical twice"
+explore walk.1 0 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
+explore walk.2 0 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
+cmp -s "$out/x.walk.1.sum" "$out/x.walk.2.sum" || fail "$CUR: two walk summaries differ"
+expect walk.1 'F == [] and S["runs"] == 6 and S["evaluated"] == []'
+explore walk.req 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11 --walk-length 3 --extra-origins 0 --require C8
+expect walk.req 'ids("ui-coverage-gap") and F[0]["observed"] == {"criterion": "C8", "evaluated": False}'
+
+begin "no probe process this selftest started is still alive"
+python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" <<'PY' || fail "$CUR: probe processes left behind"
+import os, sys, time
+root, binaries = sys.argv[1], {os.path.realpath(os.path.join(sys.argv[1], b)) for b in sys.argv[2:]}
+stub = os.path.join(root, "gate/tests/data/ui_explore/stub_probe.py").encode()
+def live():
+    """Live processes running one of the probe binaries (by /proc/<pid>/exe) or the unit tests' stub probe."""
+    out = []
+    for pid in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            state = open("/proc/%s/stat" % pid).read().rsplit(")", 1)[1].split()[0]
+            cmd = open("/proc/%s/cmdline" % pid, "rb").read().split(b"\0")
+            exe = os.path.realpath("/proc/%s/exe" % pid)
+        except OSError:
+            continue
+        if state != "Z" and (exe in binaries or any(stub in part for part in cmd)):
+            out.append(pid)
+    return out
+end = time.monotonic() + 5
+while live() and time.monotonic() < end:
+    time.sleep(0.05)
+if live():
+    print("alive:", live()); sys.exit(1)
+PY
+echo "  none"
+>>>>>>> theirs
 echo "ui selftest passed"
