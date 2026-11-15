@@ -16,18 +16,24 @@ facts = ["deadline", "env-inputs"]
 derived = []
 ignore = []
 
-# U1 intent taps (until lvprobe gives the rendered tree, the intent of the one interactive node).
+# U1 intent taps: the press intent, delivered by the adapter as a tap at the button through the app's own pointer. While
+# the notice shows, its transparent clickable scrim takes that tap: `ok apply missed` (the toy's intended F3b canary).
 [u1]
 events = [
   { id = "tap-press", intent = 1, arg = 0, expect = "accept" },
 ]
 
-# U2 probe taps and U3 complement taps need a tap command, which ui-probe/1 does not have yet.
+# U2 probe taps (hit query, then a tap through the production pointer path) at the button's centre; U3 complement
+# taps at a point no interactive node covers, which must change nothing (the scrim takes it while the notice shows).
 [u2]
-events = []
+events = [
+  { id = "probe-press", x = 58, y = 58 },
+]
 
 [u3]
-events = []
+events = [
+  { id = "probe-blank", x = 150, y = 10 },
+]
 
 # U4 code macros through the wedge, by boundary class; the toy refuses an empty line in every state.
 [u4]

@@ -275,14 +275,30 @@ for mode in rel san; do
   expect "sweep.$mode.1" 'F == [] and S["domain_count"] == 2 and S["domain_visited"] == [0, 1] and S["evaluated"] == ["C1"]'
 done
 
-begin "ui-explore bfs on the toy terminates saturated (states per depth, C8 evaluated); depth 1 is depth-unsaturated, byte-identical twice"
-explore bfs.1 0 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8
-expect bfs.1 'F == [] and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 77 and S["evaluated"] == ["C8"] and S["events"]["code-empty"] == {"accepted_states": 0, "refused_states": 7, "missed_states": 0}'
+begin "ui-explore bfs on the toy terminates saturated (states per depth, C8 evaluated) and finds the intended F3b canary: in each of the 4 states where the notice shows, its transparent scrim takes the press (tap-press: ok apply missed; probe-press: a tap that changes nothing, with the scrim's image), 8 intent-missed that replay; depth 1 is depth-unsaturated; byte-identical twice"
+explore bfs.1 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8 --evidence "$out/ev.bfs.1"
+explore bfs.2 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8 --evidence "$out/ev.bfs.2"
+same bfs.1 bfs.2
+expect bfs.1 'F == all_of("intent-missed") and len(F) == 8 and sorted(f["observed"]["word"] for f in F) == ["probe-press"] * 4 + ["tap-press"] * 4 and all(f["observed"]["applies"] == ["missed"] for f in F) and len({f["state"]["key"] for f in F}) == 4 and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 91 and S["evaluated"] == ["C8"] and S["events"]["code-empty"] == {"accepted_states": 0, "refused_states": 7, "missed_states": 0} and S["events"]["tap-press"] == {"accepted_states": 3, "refused_states": 0, "missed_states": 4} and S["events"]["probe-press"] == {"accepted_states": 3, "refused_states": 0, "missed_states": 4} and S["events"]["probe-blank"] == {"accepted_states": 0, "refused_states": 7, "missed_states": 0}'
+# the missed probe taps carry the PNG of the node that took them (the 160x120 scrim), fetched with crop
+python3 -I - "$out/x.bfs.1.json" "$out/ev.bfs.1" <<'PY' || fail "$CUR: the evidence images of the missed taps"
+import json, struct, sys, zlib
+found = [json.loads(line) for line in open(sys.argv[1])]
+taps = [f for f in found if f["observed"]["word"] == "probe-press"]
+assert len(taps) == 4 and all(f["id"].rsplit("/", 1)[1] + "/tap-node.png" in f["evidence"] for f in taps)
+for f in taps:
+    data = open("%s/%s" % (sys.argv[2], f["id"].rsplit("/", 1)[1] + "/tap-node.png"), "rb").read()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", data[16:24]) == (160, 120)
+    raw = zlib.decompress(data[41:-16])
+    assert len(raw) == 120 * (1 + 160 * 4) and all(raw[r * 641] == 0 for r in range(120))
+assert not any("tap-node.png" in "".join(f["evidence"]) for f in found if f["observed"]["word"] == "tap-press")
+PY
+replays bfs.1 "$probe_rel" "$CAT"
 explore shallow.1 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
 explore shallow.2 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
 same shallow.1 shallow.2
-expect shallow.1 'len(ids("depth-unsaturated")) == 1 and one("depth-unsaturated")["observed"]["reasons"] == ["last-depth-adds-states"] and one("depth-unsaturated")["observed"]["states_per_depth"] == [1, 2] and len(ids("ui-coverage-gap")) == 22 and len(F) == 23'
-echo "  states per depth [1, 2, 4, 0]; depth 1: depth-unsaturated + 22 C8 gaps, byte-identical"
+expect shallow.1 'len(ids("depth-unsaturated")) == 1 and one("depth-unsaturated")["observed"]["reasons"] == ["last-depth-adds-states"] and one("depth-unsaturated")["observed"]["states_per_depth"] == [1, 2] and len(ids("ui-coverage-gap")) == 26 and len(F) == 27'
+echo "  states per depth [1, 2, 4, 0]; 8 intent-missed (the scrim canary); depth 1: depth-unsaturated + 26 C8 gaps, byte-identical"
 
 begin "a nondeterministic adapter (pid in the trace) is model-nondeterministic at the press, byte-identical twice, and replays"
 build_out probe_nondet "$REL" "$P:probe_nondet"
@@ -306,18 +322,19 @@ explore tick 0 "$probe_tick" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-
 expect tick 'F == [] and S["detail"]["states_per_depth"][-1] == 0 and S["evaluated"] == ["C8"]'
 echo "  states per depth $(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["detail"]["states_per_depth"])' "$out/x.tick.sum")"
 
-begin "a key that omits the label and geometry is key-too-coarse (info) on the toy, and the findings replay"
-explore coarse 0 "$probe_rel" "$prod/toy_coarse.events.toml" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.coarse"
-expect coarse 'len(ids("key-too-coarse")) == 2 and len(F) == 2 and all(f["severity"] == "info" for f in F) and [f["observed"]["witness_path"] for f in F if f["path"] == ["'"$OPENW"'", "env-offline"]] == [["'"$OPENW"'", "tap-press"]]'
+begin "a key that omits the label and geometry is key-too-coarse (info) on the toy (beside the scrim canary's 2 intent-missed), and the findings replay"
+explore coarse 1 "$probe_rel" "$prod/toy_coarse.events.toml" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.coarse"
+expect coarse 'len(ids("key-too-coarse")) == 2 and len(ids("intent-missed")) == 2 and len(F) == 4 and all(f["severity"] == "info" for f in all_of("key-too-coarse")) and [f["observed"]["witness_path"] for f in F if f["path"] == ["'"$OPENW"'", "env-offline"]] == [["'"$OPENW"'", "tap-press"]]'
 replays coarse "$probe_rel" "$prod/toy_coarse.events.toml"
 
-begin "ui-explore walks on the toy (2 seeds x 3 clock origins) give no finding, evaluate nothing, and are byte-identical twice"
-explore walk.1 0 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
-explore walk.2 0 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
+begin "ui-explore walks on the toy (2 seeds x 3 clock origins) find only the scrim canary (intent-missed), evaluate nothing, and are byte-identical twice"
+explore walk.1 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
+explore walk.2 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
 cmp -s "$out/x.walk.1.sum" "$out/x.walk.2.sum" || fail "$CUR: two walk summaries differ"
-expect walk.1 'F == [] and S["runs"] == 6 and S["evaluated"] == []'
+same walk.1 walk.2
+expect walk.1 'F == all_of("intent-missed") and len(F) == 2 and S["runs"] == 6 and S["evaluated"] == []'
 explore walk.req 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11 --walk-length 3 --extra-origins 0 --require C8
-expect walk.req 'ids("ui-coverage-gap") and F[0]["observed"] == {"criterion": "C8", "evaluated": False}'
+expect walk.req 'len(ids("ui-coverage-gap")) == 1 and one("ui-coverage-gap")["observed"] == {"criterion": "C8", "evaluated": False} and len(ids("intent-missed")) == 1 and len(F) == 2'
 
 begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
 for plat in "$REL" "$SAN"; do

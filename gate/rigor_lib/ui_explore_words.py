@@ -15,7 +15,9 @@ same step lengths as one long advance; it only bounds the work per command and t
 """
 
 from rigor_lib.errors import InternalError
+from rigor_lib.ui_explore_grammar import BUF_MAX
 from rigor_lib.ui_explore_key import key_hash, projection
+from rigor_lib.ui_explore_png import write_png
 from rigor_lib.ui_explore_probe import FRAME_MS, TIME_MAX_MS, ProbeError
 
 SPAN_FRAMES = 64
@@ -36,11 +38,15 @@ def collect(session, step):
     step.acc_trace.extend(session.records("trace"))
 
 
-def snapshot(session, step):
+def observe(session, step):
+    """Patches and trace into the step, then the model's state (semantic, deadline, env inputs, frame records)."""
     collect(session, step)
-    obs = {"semantic": session.records("semantic"), "due": session.next_due(), "env": session.env_inputs(),
-           "frame": session.frame()}
-    return snapshot_of(obs)
+    return {"semantic": session.records("semantic"), "due": session.next_due(), "env": session.env_inputs(),
+            "frame": session.frame()}
+
+
+def snapshot(session, step):
+    return snapshot_of(observe(session, step))
 
 
 # ---- inputs ---------------------------------------------------------------------------------------------------
@@ -66,7 +72,75 @@ def inputs(session, step, before, sends):
     for label, send in sends:
         if before is None:
             before = snapshot(session, step)
-        before = _input(session, step, before, send, label)
+        before = tap_input(session, step, before, send) if label == "tap" else \
+            _input(session, step, before, send, label)
+
+
+# ---- catalogue taps (u2, u3): docs/ui-explore.md "Taps" ---------------------------------------------------------
+def node_box(frame, node):
+    """(x, y, w, h) of walk node `node` cut to the display, from the frame's `frame` and `node` records; None if empty."""
+    size = next((r for r in frame if r.fields[0] == "frame"), None)
+    record = next((r for r in frame if r.fields[0] == "node" and r.fields[1] == str(node)), None)
+    if size is None or record is None:
+        return None
+    width, height = int(size.fields[1]), int(size.fields[2])
+    x1, y1, x2, y2 = (int(v) for v in record.fields[5:9])
+    x1, y1, x2, y2 = max(x1, 0), max(y1, 0), min(x2, width - 1), min(y2, height - 1)
+    return None if x2 < x1 or y2 < y1 else (x1, y1, x2 - x1 + 1, y2 - y1 + 1)
+
+
+def node_image(session, frame, node):
+    """PNG bytes of walk node `node`'s box in the current frame, fetched in row bands that each fit one `crop` reply;
+    None from a probe without frame facts or crop, or for an empty box."""
+    if not all(cap in session.caps for cap in ("frame-facts", "crop")):
+        return None
+    box = node_box(frame, node)
+    if box is None:
+        return None
+    x, y, w, h = box
+    rows = (BUF_MAX - 1) // (8 * w + 1)
+    data = b"".join(session.crop(x, top, w, min(rows, y + h - top)) for top in range(y, y + h, rows))
+    return write_png(w, h, data)
+
+
+def _tap_result(event, expect, got, changed):
+    """The outcome of a catalogue tap, or a ProbeError when the probe contradicts itself or a tap that must change
+    nothing changed the model."""
+    if (expect == "blocked") != (got == "blocked"):
+        raise ProbeError("contract", "tap", "the hit query and the tap disagree on whether a tap is processed")
+    pressed = None if got == "blocked" else got[0]
+    if got != "blocked" and pressed != expect:
+        raise ProbeError("contract", "tap", "the tap pressed another node than the hit query found")
+    if event.cls == "u3" or pressed is None:
+        if changed:
+            what = "a complement tap" if event.cls == "u3" else "a tap that pressed nothing"
+            raise ProbeError("contract", "tap", "%s changed the model: %s" % (what, ", ".join(changed)))
+        return "refused"
+    return "ok" if changed else "missed"
+
+
+def tap_input(session, step, before, event):
+    """`hit-test x y`, then `tap x y`, then a snapshot. u2: `ok` when the tap pressed a node and changed the model,
+    `missed` when it pressed one and changed nothing (with the node's image), `refused` when it was blocked or pressed
+    nothing (and then nothing may change). u3: `refused`, and nothing may change."""
+    x, y = event.get("x"), event.get("y")
+    expect = session.hit_test(x, y)
+    got = session.tap(x, y)
+    marks = (len(step.acc_patches), len(step.acc_trace))
+    obs = observe(session, step)
+    after = snapshot_of(obs)
+    changed = [name for name, mark in zip(("patches", "trace"), marks) if len(getattr(step, "acc_" + name)) > mark]
+    changed += [name for name in ("semantic", "due", "env") if after[name] != before[name]]
+    result = _tap_result(event, expect, got, changed)
+    if result == "refused" and after["frame"] != before["frame"]:
+        raise ProbeError("contract", "tap", "a tap that must change nothing changed the frame")
+    if result == "missed":
+        image = node_image(session, obs["frame"], got[0])
+        if image is not None:
+            step.images["tap-node.png"] = image
+    step.applies.append(result)
+    step.outcome.append("tap %s" % result)
+    return after
 
 
 def input_sends(session, event):
@@ -82,7 +156,7 @@ def input_sends(session, event):
         digits = [("apply", lambda d=int(d): apply(3, event.get("digit_intent"), d, "")) for d in event.get("digits")]
         return digits + [("apply", lambda: apply(3, event.get("enter_intent"), 0, ""))]
     if cls in ("u2", "u3"):
-        return [("tap", lambda: session.tap(event.get("x"), event.get("y")))]
+        return [("tap", event)]
     raise InternalError("event %s is not an input" % event.id)
 
 

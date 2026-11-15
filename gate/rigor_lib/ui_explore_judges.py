@@ -72,14 +72,16 @@ def starvation_judge(catalogue_key):
 
 def missed_judge(catalogue_key):
     """`intent-missed`: an input reached the product through the production path, but the product did not produce the
-    intent it was aimed at (`ok apply missed`, a probe with apply-missed)."""
+    intent it was aimed at (`ok apply missed`, a probe with apply-missed; or a catalogue tap that pressed a node and
+    changed nothing, whose node box is the evidence image `tap-node.png`)."""
     def judge(step, path, contract):
         del contract
         if step.result != "missed":
             return []
         return [make("intent-missed", ["missed", step.key_before, step.word],
                      state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
-                     [view.word for view in path] + [step.word], {"word": step.word, "applies": list(step.applies)})]
+                     [view.word for view in path] + [step.word], {"word": step.word, "applies": list(step.applies)},
+                     dict(step.images) or None)]
     return judge
 
 

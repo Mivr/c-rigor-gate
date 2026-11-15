@@ -3,7 +3,8 @@
 The UI gate drives a product through one small, gate-owned interface, `ui/model/model.h`. A product implements it in a
 model adapter (a `c_library`); `c_ui_probe` links the adapter with the gate's `main` (`ui/model/probe_main.c` and its
 helpers) into a probe binary that speaks a line protocol on stdin and stdout. The probe reads the rendered frame through
-`gate//ui/lvprobe` (U02, docs/ui-lvprobe.md; "Frame facts" below, U05a); the Python driver is U05. Selftest:
+`gate//ui/lvprobe` (U02, docs/ui-lvprobe.md; "Frame facts" below, U05a). Its client is the explorer, `rigor ui-explore`
+(U05, docs/ui-explore.md), which speaks this protocol exactly as written here. Selftest:
 `selftest/ui.sh` on the toy app in `selftest/ui_product/`, and `selftest/ui_frame.sh` (called by it) on the frame toy in
 `selftest/ui_frame_product/`.
 
@@ -71,10 +72,13 @@ and ended by LF; any other byte (TAB, CR, NUL, anything above `0x7e`) makes it m
 leading zeros, no overflow; `arg` may carry a `-` (never `-0`) and must fit `int32`; `id` must fit `uint32`. Text is `-`
 (empty) or lowercase hex of 1 to 256 bytes, none of them `00`. The first line the probe writes is the greeting.
 
-**The greeting.** `ui-probe/1 ready` followed by the capabilities, each a single space and a token of lowercase letters,
-digits and `-`, each at most once; today exactly `ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop`. The
-protocol name stays `ui-probe/1`: a capability only adds commands or replies, it never changes an existing one. A driver
-reads the tokens after `ready` as a set and refuses a catalogue that needs one the probe does not announce.
+**The greeting.** `ui-probe/1 ready` followed by the capabilities, each a single space and a token, each at most once
+and in this fixed order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop` (a capability added later is
+appended to the list). This probe announces all six: `ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop`.
+A greeting with no capability is an older probe of the same protocol. The protocol name stays `ui-probe/1`: a capability
+only adds commands or replies, it never changes an existing one. The explorer refuses an unknown, repeated or unordered
+capability (a protocol finding) and a catalogue that needs one the probe does not announce (taps need `hit-test` and
+`tap`).
 `frame-facts`: `frame` carries the lvprobe records below; `ink`, `hit-test`, `tap`, `crop`: those commands;
 `apply-missed`: `apply` can reply `ok apply missed`.
 

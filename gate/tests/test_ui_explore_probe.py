@@ -82,9 +82,12 @@ class SessionTest(TempDirTestCase):
 
     def test_capabilities_and_taps(self):
         session = self.session("tapcap")
-        self.assertEqual(session.caps, ("tap",))
+        self.assertEqual(session.caps, ("hit-test", "tap"))
         session.open(1000, 7)
-        self.assertEqual(session.tap(10, 20), "refused")
+        self.assertIsNone(session.hit_test(10, 20))
+        self.assertEqual(session.tap(10, 20), (None, None))
+        with self.assertRaises(InternalError):
+            session.crop(0, 0, 1, 1)
         plain = self.session("good")
         plain.open(1000, 7)
         with self.assertRaises(InternalError):

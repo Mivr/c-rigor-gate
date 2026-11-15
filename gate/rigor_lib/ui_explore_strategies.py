@@ -8,7 +8,7 @@ from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_coverage import Exploration, key_facts_judge
 from rigor_lib.ui_explore_judges import (CoarseTable, make, missed_judge, probe_error_judge, run_step_judges,
                                          run_twice_judge, starvation_judge, state_of, unreachable_judge)
-from rigor_lib.ui_explore_probe import ORIGIN_MAX_MS, BudgetSpent
+from rigor_lib.ui_explore_probe import ORIGIN_MAX_MS, TAP_CAPS, BudgetSpent
 from rigor_lib.ui_explore_run import run_twice
 
 STRATEGIES = ("sweep", "bfs", "walk", "replay")
@@ -33,7 +33,7 @@ class Explorer:
                             missed_judge(catalogue.key)]
         self.step_judges += list(step_judges)
         self.run_judges = [probe_error_judge(catalogue.key), run_twice_judge(catalogue.key)] + list(run_judges)
-        self.sendable = [e.id for e in catalogue.events if e.cls not in ("u2", "u3") or "tap" in caps]
+        self.sendable = [e.id for e in catalogue.events if e.cls not in ("u2", "u3") or all(c in caps for c in TAP_CAPS)]
         self.exploration = Exploration(catalogue, word)
         self.coarse = CoarseTable(catalogue.key)
         self.findings = []
@@ -88,7 +88,7 @@ def check_cost(catalogue, args, paths, caps):
     window for the settle check); walk 2 x seeds x origins x (length x the longest span + a window); replay 2 x the
     spans of its words; sweep has no time words."""
     window = catalogue.starve_window_frames * 16
-    sendable = [e.id for e in catalogue.events if e.cls not in ("u2", "u3") or "tap" in caps]
+    sendable = [e.id for e in catalogue.events if e.cls not in ("u2", "u3") or all(c in caps for c in TAP_CAPS)]
     if args.strategy == "bfs":
         worst = 2 * args.max_states * sum(word_span(catalogue, e) + window for e in sendable)
     elif args.strategy == "walk":

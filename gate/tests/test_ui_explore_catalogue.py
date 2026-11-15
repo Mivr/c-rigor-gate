@@ -39,6 +39,13 @@ class CatalogueTest(unittest.TestCase):
         for path in (h.TOY_COARSE, h.FIXTURE):
             load(path.read_text())
 
+    def test_the_selftest_toy_catalogue_has_a_probe_tap_and_a_complement_tap(self):
+        catalogue = load(h.SELFTEST_TOY.read_text())
+        taps = [(e.cls, e.id, e.get("x"), e.get("y")) for e in catalogue.events if e.cls in ("u2", "u3")]
+        self.assertEqual(taps, [("u2", "probe-press", 58, 58), ("u3", "probe-blank", 150, 10)])
+        self.assertEqual([e.id for e in catalogue.events if e.cls not in ("u2", "u3")],
+                         [e.id for e in load(TEXT).events])
+
     def test_a_pad_macro_and_derived_facts(self):
         text = TEXT.replace('{ id = "code-empty", boundary = "empty", via = "wedge", hex = "", expect = "refuse" },',
                             '{ id = "pad-max", boundary = "max", via = "pad", digits = "123", digit_intent = 10, '
