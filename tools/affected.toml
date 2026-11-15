@@ -335,3 +335,14 @@ selftests = ["sanmodes"]
 [[rule]]
 glob = "selftest/sanmodes/**"
 selftests = ["sanmodes"]
+# U03: the UI model interface, the probe main, `c_ui_probe` and their selftest. There is no `ui` selftest name in
+# tools/affected.py yet, so the nearest group that builds LVGL stands in; selftest/ui.sh is run by hand until U-series adds the name.
+[[rule]]
+glob = "ui/**"
+selftests = ["third_party"]
+[[rule]]
+glob = "selftest/ui.sh"
+selftests = ["third_party"]
+[[rule]]
+glob = "selftest/ui_product/**"
+selftests = ["third_party"]

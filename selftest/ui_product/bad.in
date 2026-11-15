@@ -1,0 +1,10 @@
+semantic
+open 0 1
+bogus
+apply 9 0 0 -
+advance 18446744073709551616
+ open 0 1
+advance 5 6
+advance 00
+apply 1 0 0 4
+quit

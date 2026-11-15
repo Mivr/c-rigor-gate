@@ -1,0 +1,11 @@
+ui-probe/1 ready
+err semantic not-open
+ok open
+err ? unknown-command
+err apply bad-arguments
+err advance bad-arguments
+err ? malformed
+err advance bad-arguments
+err advance bad-arguments
+err apply bad-arguments
+ok quit

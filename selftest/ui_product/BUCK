@@ -1,0 +1,36 @@
+load("@gate//rules:c.bzl", "c_library")
+load("@gate//rules:ui.bzl", "c_ui_probe")
+
+# The toy LVGL app.
+c_library(
+    name = "toy",
+    srcs = ["toy.c"],
+    headers = ["toy.h"],
+    exported_deps = ["gate//third_party/lvgl:lvgl"],
+    visibility = ["PUBLIC"],
+)
+
+# Its model adapter: implements ui/model/model.h.
+c_library(
+    name = "model",
+    srcs = ["model.c"],
+    deps = [":toy", "gate//ui/model:model"],
+    visibility = ["PUBLIC"],
+)
+
+# The probe binary of that model.
+c_ui_probe(name = "probe", model = ":model")
+
+# Ordinary product code that calls a `uim_*` symbol: flagged by the symbols gate.
+c_library(
+    name = "misuse",
+    srcs = ["misuse.c"],
+    deps = [":model", "gate//ui/model:model"],
+)
+
+# Ordinary product code that defines a `uim_*` symbol: flagged by the symbols gate as an export it does not declare.
+c_library(
+    name = "misdef",
+    srcs = ["misdef.c"],
+    deps = ["gate//ui/model:model"],
+)

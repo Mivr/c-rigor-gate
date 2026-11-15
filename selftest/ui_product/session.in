@@ -1,0 +1,22 @@
+domain-count
+open 1000 7
+env-inputs
+frame
+semantic
+patches
+next-due
+apply 3 1 0 -
+next-due
+semantic
+advance 1500
+next-due
+advance 4000
+next-due
+semantic
+apply 2 0 0 3432
+trace
+patches
+domain-at 1
+semantic
+domain-at 2
+quit
