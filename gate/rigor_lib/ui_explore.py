@@ -18,6 +18,7 @@ from rigor_lib.ui_explore_judges import CHECKS, PRIVATE, make
 from rigor_lib.ui_explore_probe import CAPABILITIES, TAP_CAPS, Budget, BudgetSpent, ProbeError, Session, kill_all
 from rigor_lib.ui_explore_judges import probe_error_judge
 from rigor_lib.ui_explore_run import Config, Run, Step, check_words
+from rigor_lib.ui_judge_findings import JudgeSet
 
 PATHS_SCHEMA = "ui-explore-paths/1"
 SUMMARY_SCHEMA = "ui-explore-summary/1"
@@ -55,6 +56,8 @@ def add_parser(subparsers):
     parser.add_argument("--strategy", required=True, choices=strategies.STRATEGIES)
     parser.add_argument("--out", required=True, help="findings, one JSON line each")
     parser.add_argument("--contract", help="the UI contract (ui-contract/1) handed to the judges")
+    parser.add_argument("--judges", type=_list(r"[a-z][a-z-]{0,31}"),
+                        help="judges to run besides the explorer's own: ui-scene,ui-fit (they need --contract)")
     parser.add_argument("--origin-ms", type=_uint)
     parser.add_argument("--seed", type=_uint, help="the seed of every `open`")
     parser.add_argument("--depth", type=_uint, help="bfs: the depth bound")
@@ -192,6 +195,7 @@ def explore(args):
     """(findings, summary) of one ui-explore run."""
     _check_args(args)
     catalogue, contract = _load(args)
+    judges = JudgeSet(args.judges, contract, catalogue.key) if args.judges is not None else None
     budget = Budget(args.budget_s)
     config = Config(os.path.abspath(args.probe), args.deadline_ms / 1000.0, catalogue, budget)
     paths = load_paths(args.paths, catalogue, CAPABILITIES) if args.strategy == "replay" else None
@@ -207,7 +211,10 @@ def explore(args):
         _check_taps(catalogue, caps, paths)
         strategies.check_cost(catalogue, args, paths, caps)
         config = Config(config.probe, config.deadline_s, catalogue, budget, caps)
-    explorer = strategies.Explorer(config, contract, word, caps or ())
+    if judges is not None and caps is not None and "frame-facts" not in caps:
+        raise InternalError("--judges need a probe that announces frame-facts")
+    explorer = strategies.Explorer(config, contract, word, caps or (),
+                                   step_judges=[judges.step_judge] if judges else ())
     evaluated, extra, spent = [], [], greeting is not None
     detail = {}
     if greeting is not None:
@@ -223,6 +230,8 @@ def explore(args):
             extra.extend(found)
             if done:
                 evaluated.append(criterion)
+        if judges is not None:
+            extra.extend(judges.finish(word))
     extra.extend(not_evaluated(c, explorer.exploration) for c in (args.require or ()) if c not in evaluated)
     found = _dedupe(explorer.all_findings() + extra)
     if args.evidence:

@@ -1,0 +1,56 @@
+# The event catalogue of the U06 canary app (ui-events/1, docs/ui-explore.md; docs/ui-judges.md "Canaries"). A selftest
+# fixture: intent v (1..16) puts the scene into the state with exactly one defect of one check; `open` is the clean state.
+schema = "ui-events/1"
+product = "selftest"
+app = "canary"
+version = 1
+max_wait_ms = 1000
+drain_ms = 1024
+requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop"]
+
+[key]
+fields = ["role", "label", "x", "y", "w", "h", "enabled", "intent", "flags", "style", "importance", "input_policy", "wrap_policy"]
+facts = ["deadline", "env-inputs"]
+derived = []
+ignore = []
+
+# U1: one variant per check of the ui-scene and ui-fit judges.
+[u1]
+events = [
+  { id = "v-occluded", intent = 1, arg = 0, expect = "accept" },
+  { id = "v-overlay", intent = 2, arg = 0, expect = "accept" },
+  { id = "v-small", intent = 3, arg = 0, expect = "accept" },
+  { id = "v-spacing", intent = 4, arg = 0, expect = "accept" },
+  { id = "v-bounds", intent = 5, arg = 0, expect = "accept" },
+  { id = "v-overlap", intent = 6, arg = 0, expect = "accept" },
+  { id = "v-font", intent = 7, arg = 0, expect = "accept" },
+  { id = "v-hierarchy", intent = 8, arg = 0, expect = "accept" },
+  { id = "v-raw", intent = 9, arg = 0, expect = "accept" },
+  { id = "v-wrap", intent = 10, arg = 0, expect = "accept" },
+  { id = "v-overflow", intent = 11, arg = 0, expect = "accept" },
+  { id = "v-clipped", intent = 12, arg = 0, expect = "accept" },
+  { id = "v-dots", intent = 13, arg = 0, expect = "accept" },
+  { id = "v-unmeasurable", intent = 14, arg = 0, expect = "accept" },
+  { id = "v-glyph", intent = 15, arg = 0, expect = "accept" },
+  { id = "v-unmatched", intent = 16, arg = 0, expect = "accept" },
+]
+
+[u2]
+events = []
+
+[u3]
+events = []
+
+[u4]
+events = []
+
+[u5]
+events = []
+
+[e1]
+events = []
+
+[t1]
+events = [
+  { id = "fire-due", kind = "fire-due" },
+]

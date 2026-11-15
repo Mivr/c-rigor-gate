@@ -353,6 +353,7 @@ for plat in "$REL" "$SAN"; do
 done
 
 bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
+bash selftest/ui_judges.sh || fail "selftest/ui_judges.sh (the ui-scene and ui-fit judges on the canary) failed"
 
 begin "no probe process this selftest started is still alive"
 python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" <<'PY' || fail "$CUR: probe processes left behind"

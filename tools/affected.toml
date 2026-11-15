@@ -55,6 +55,16 @@ selftests = ["ui"]
 [[rule]]
 glob = "gate/rigor_lib/ui_explore*"
 selftests = ["ui"]
+# U06: the ui-scene and ui-fit judges, their canary product and selftest (selftest/ui_judges.sh, run by selftest/ui.sh).
+[[rule]]
+glob = "gate/rigor_lib/ui_judge_*"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_judges.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_canary_product/**"
+selftests = ["ui"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"
