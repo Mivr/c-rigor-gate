@@ -3093,6 +3093,36 @@ impl = ["lib/fmt/httphdr/src/**"]
 allow = ["memchr"]
 exports = ["http_header_line", "http_headers_end", "http_text_ok"]
 
+[module."//lib/fmt/httpin:httpin"]
+level = "L3"
+impl = ["lib/fmt/httpin/src/**"]
+allow = ["bcmp", "memchr", "memcmp", "memset"]
+exports = ["httpin_parse"]
+
+[module."//lib/fmt/httpin:parse_basic_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//lib/fmt/httpin:parse_field_test"]
+allow = ["memchr", "memset", "snprintf"]
+exports = ["main"]
+
+[module."//lib/fmt/httpin:parse_length_test"]
+allow = ["memset", "snprintf"]
+exports = ["main"]
+
+[module."//lib/fmt/httpin:parse_limits_test"]
+allow = ["memset", "snprintf"]
+exports = ["main"]
+
+[module."//lib/fmt/httpin:parse_reqline_test"]
+allow = ["memchr", "memset", "snprintf"]
+exports = ["main"]
+
+[module."//lib/fmt/httpin:parse_split_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
 [module."//lib/fmt/httpredir:complexity_redirect_test"]
 allow = ["memset"]
 exports = ["main"]
