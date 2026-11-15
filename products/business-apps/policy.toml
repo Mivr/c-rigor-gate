@@ -5242,3 +5242,34 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dt/batch:batch"]
+level = "L3"
+impl = ["apps/fiscal/dt/batch/src/**"]
+allow = []
+exports = ["bt_reply_acks", "bt_reply_parse", "bt_write"]
+
+[module."//apps/fiscal/dt/batch:batch_write_test"]
+allow = ["core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put_str", "memcpy", "memset", "snprintf", "strcmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/batch:batch_refuse_test"]
+allow = ["core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put_str", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/batch:batch_cap_test"]
+allow = ["bcmp", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/batch:batch_reply_parse_test"]
+allow = ["bcmp", "core_str_from_cstr", "memset", "snprintf"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/batch:batch_acks_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/batch:golden"]
+level = "L1"
+allow = []
+exports = ["bt_golden_json"]
