@@ -4,19 +4,31 @@ env-inputs
 frame
 semantic
 patches
+trace
+trace
 next-due
 apply 3 1 0 -
 next-due
+apply 3 1 0 -
 semantic
-advance 1500
+advance 1005
 next-due
-advance 4000
+advance 3990
+advance 4013
 next-due
-semantic
-apply 2 0 0 3432
 trace
 patches
+apply 2 0 0 3432
+apply 2 0 0 01ff
+apply 2 0 0 -
+apply 1 1 0 -
+trace
 domain-at 1
+patches
+domain-at 0
+patches
 semantic
-domain-at 2
+open 2000 8
+advance 2010
+trace
 quit

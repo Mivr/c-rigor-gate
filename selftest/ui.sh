@@ -51,47 +51,74 @@ for mode in rel san; do
   echo "  $mode: $(wc -l < "$prod/session.out") reply lines, 2 identical runs"
 done
 
-begin "a strict protocol: bad, unknown and out-of-order commands get err lines and exit 1 (transcript bad.out)"
+begin "a strict protocol: bad, unknown and out-of-order commands get err lines and exit 1 (transcript bad.out), nothing on stderr"
 for mode in rel san; do
   eval "bin=\$probe_$mode"
   session "$bin" "$prod/bad.in" "$out/b.$mode"
   [ "$rc" = 1 ] || fail "$CUR: $mode exited $rc, wanted 1" "$out/b.$mode"
+  [ ! -s "$out/b.$mode.err" ] || fail "$CUR: $mode wrote to stderr" "$out/b.$mode.err"
   cmp -s "$out/b.$mode" "$prod/bad.out" || { diff "$prod/bad.out" "$out/b.$mode" > "$out/d.txt"; fail "$CUR: $mode differs from bad.out" "$out/d.txt"; }
 done
-printf 'open 0 1\n' | "$probe_rel" > "$out/eof.txt" 2>&1; rc=$?
-[ "$rc" = 1 ] && [ "$(tail -1 "$out/eof.txt")" = "err ? eof-without-quit" ] || fail "$CUR: EOF without quit: rc=$rc" "$out/eof.txt"
-head -c 600 /dev/zero | tr '\0' 'a' | { cat; printf '\nquit\n'; } | "$probe_rel" > "$out/long.txt" 2>&1; rc=$?
-[ "$rc" = 1 ] && [ "$(sed -n 2p "$out/long.txt")" = "err ? line-too-long" ] && [ "$(tail -1 "$out/long.txt")" = "ok quit" ] || fail "$CUR: long line: rc=$rc" "$out/long.txt"
-echo "  err replies counted; EOF without quit and a 600-byte line are refused"
+# expect_reply <name> <mode> <wanted last lines (a printf format)> <printf input>: runs the probe on stdin, wants rc 1 and those last lines
+expect_tail() {
+  local name="$1" bin="$2" want="$3" input="$4" n
+  printf "$input" | "$bin" > "$out/t.$name" 2> "$out/t.$name.err"; rc=$?
+  [ "$rc" = 1 ] || fail "$CUR: $name: exit $rc, wanted 1" "$out/t.$name"
+  [ ! -s "$out/t.$name.err" ] || fail "$CUR: $name wrote to stderr" "$out/t.$name.err"
+  n="$(printf "$want" | wc -l)"
+  [ "$(tail -n "$n" "$out/t.$name")" = "$(printf "$want" | head -n "$n")" ] || fail "$CUR: $name: wrong replies" "$out/t.$name"
+}
+for mode in rel san; do
+  eval "bin=\$probe_$mode"
+  # a last line without newline is not parsed with the leftovers of the previous line
+  expect_tail "nonl.$mode" "$bin" 'ok advance 5000\nerr ? malformed\nerr ? eof-without-quit\n' 'open 0 1\nadvance 5000\nadvance 6'
+  expect_tail "eof.$mode" "$bin" 'ok open\nerr ? eof-without-quit\n' 'open 0 1\n'
+  expect_tail "nul.$mode" "$bin" 'err ? malformed\nok quit\n' 'quit\0junk\nquit\n'
+  expect_tail "after.$mode" "$bin" 'ok quit\nerr ? after-quit\n' 'quit\njunk\n'
+  head -c 641 /dev/zero | tr '\0' 'a' > "$out/long.in"; printf '\nquit\n' >> "$out/long.in"
+  "$bin" < "$out/long.in" > "$out/t.long.$mode" 2>&1; rc=$?
+  [ "$rc" = 1 ] && [ "$(sed -n 2p "$out/t.long.$mode")" = "err ? line-too-long" ] && [ "$(tail -1 "$out/t.long.$mode")" = "ok quit" ] || fail "$CUR: long line ($mode): rc=$rc" "$out/t.long.$mode"
+  printf 'quit\n\n\n' | "$bin" > "$out/t.quietend.$mode" 2>&1 || fail "$CUR: empty lines after quit must be accepted ($mode)" "$out/t.quietend.$mode"
+done
+echo "  err replies counted; unterminated last line, embedded NUL, input after quit, a 641-byte line: refused, in release and san"
 
-begin "the symbols gate confines uim_*: the model adapter and the probe pass; product code that references or defines one is flagged"
+begin "a failing model call poisons the session (every later command is not-open until open), a refusal does not"
+printf 'open 0 1\napply 3 666 0 -\nsemantic\nopen 0 1\napply 3 99 0 -\nsemantic\nquit\n' | "$probe_san" > "$out/poison.txt" 2>&1
+[ "$(sed -n 2,6p "$out/poison.txt" | cut -c1-30)" = "$(printf 'ok open\nfail apply\nerr semantic not-open\nok open\nok apply refused')" ] || fail "$CUR: poison/refusal replies" "$out/poison.txt"
+
+begin "rigor buckfiles accepts the product tree (c_ui_probe, its load, the model header dep)"
+"${RIGOR[@]}" buckfiles --root "$prod" --out "$out/bf.json" > "$out/bf.txt" 2>&1 || fail "$CUR: buckfiles refuses $prod" "$out/bf.txt"
+
+begin "the symbols gate reserves the uim_ prefix: the adapter and the probe pass under an unmodified product-style policy; product code that references or defines one is flagged"
 for t in model toy misuse misdef probe; do build_out "f_$t" "$REL" "$P:${t}_facts"; done
 build_out f_hdr "$REL" //ui/model:model_facts
 build_out f_main "$REL" //ui/model:probe_facts
 build_out f_lvgl "$REL" //third_party/lvgl:lvgl_symbols
+build_out f_ctest "$REL" //ctest:ctest_facts
 build_out libc "$REL" toolchains//:libc_symbols
-python3 -I - "$out" "$prod" <<'PY' || fail "$CUR: could not write the policy"
+python3 -I - "$out" <<'PY' || fail "$CUR: could not write the policy"
 import sys
-out, prod = sys.argv[1:3]
-UIM = ["uim_instance", "uim_open", "uim_env_inputs", "uim_apply", "uim_next_due", "uim_advance", "uim_frame",
+out = sys.argv[1]
+UIM = ["uim_instance", "uim_open", "uim_env_inputs", "uim_apply", "uim_next_due", "uim_step", "uim_frame",
        "uim_semantic", "uim_patches", "uim_domain_count", "uim_domain_at", "uim_trace"]
-head = open("policy/hello.toml").read().split("[module.")[0]
-head = head.replace('trusted = ["//ctest:ctest"]', "trusted = []")
-# Every uim_* name is denied everywhere; the one module exempt from that is the probe main, which calls the model.
-head = head.replace('"clone", "killpg"', ", ".join('"%s"' % u for u in UIM) + ',\n        "clone", "killpg"')
+# The policy of a product: the gate's global block as it is (no uim_ entry of any kind), then the modules.
+text = open("policy/hello.toml").read()
+head = text.split("[module.")[0]
+assert head.count("[global]") == 1 and "uim_" not in head
 toy = ["toy_start", "toy_display", "toy_press", "toy_take_press", "toy_show_notice", "toy_hide_notice", "toy_notice_due",
-       "toy_step", "toy_title", "toy_button_text", "toy_notice_text", "toy_notice_shown", "toy_draw"]
+       "toy_step", "toy_node", "toy_notice_shown", "toy_draw"]
+probe = ["main", "probe_parse_u64", "probe_parse_i32", "probe_parse_text", "probe_to_hex", "probe_check_records",
+         "probe_advance_to", "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
 q = lambda names: "[" + ", ".join('"%s"' % n for n in names) + "]"
-mods = '''
+mods = """
 [module."//ui/model:model"]
 allow = []
 exports = []
 
 [module."//ui/model:probe"]
-allow = ["fgetc", "fputs", "fputc", "fflush", "snprintf", "strlen", "strcmp", "stdin", "stdout"]
-deny_exempt = %s
+allow = ["fgetc", "fputs", "fputc", "fwrite", "fflush", "snprintf", "strlen", "strcmp", "memchr", "memset", "stdin", "stdout"]
 allow_mutable_data = true
-exports = ["main"]
+exports = %s
 
 [module."//selftest/ui_product:toy"]
 third_party = ["gate//third_party/lvgl:lvgl"]
@@ -100,20 +127,21 @@ allow_mutable_data = true
 exports = %s
 
 [module."//selftest/ui_product:model"]
-allow = ["snprintf", "memcpy", "strlen"]
+allow = ["snprintf", "memcpy", "memset", "strlen"]
 allow_mutable_data = true
 exports = %s
 
 [module."//selftest/ui_product:probe"]
 allow = []
 exports = []
-''' % (q(UIM), q(toy), q(UIM))
-case = '''
+""" % (q(probe), q(toy), q(UIM))
+case = """
 [module."//selftest/ui_product:%s"]
 allow = []
 exports = %s
-'''
+"""
 open(out + "/policy.good.toml", "w").write(head + mods)
+open(out + "/policy.misdef_legacy.toml", "w").write(head + mods + '\n[module."//selftest/ui_product:misdef"]\nallow = []\n')   # no exports key
 for name, exports in (("misuse", ["misuse_peek"]), ("misdef", [])):
     open(out + "/policy.%s.toml" % name, "w").write(head + mods + case % (name, q(exports)))
 PY
@@ -125,8 +153,8 @@ gate_case() {
   shift
   sets=("$@")
   local fd="$out/fd.$name"; rm -rf "$fd"; mkdir -p "$fd"
-  local s
-  for s in "${sets[@]}"; do cp "$(eval echo "\$f_$s")" "$fd/$s.json"; done
+  local s src
+  for s in "${sets[@]}"; do eval "src=\$f_$s"; cp "$src" "$fd/$s.json" || fail "$CUR: no facts for $s"; done
   "${RIGOR[@]}" facts --gate symbols --facts "$fd" --policy "$out/policy.$name.toml" --libc "$libc" --out "$out/r.$name.json" > "$out/r.$name.txt" 2>&1
   local rc=$?
   [ "$rc" = "$want" ] || fail "$CUR: $name exited $rc, wanted $want" "$out/r.$name.txt"
@@ -140,8 +168,11 @@ if got != want or (doc["status"] == "PASS") != (not want):
 PY
   echo "  $name -> exit $rc ${expected[*]:-}"
 }
-gate_case good 0 -- hdr main lvgl model toy probe
-gate_case misuse 1 "denied-symbol:uim_instance" "denied-symbol:uim_open" -- hdr main lvgl model toy probe misuse
-gate_case misdef 1 "unexpected-export:uim_next_due" -- hdr main lvgl model toy probe misdef
+gate_case good 0 -- hdr main lvgl model toy probe ctest
+gate_case misuse 1 "ui-model-symbol:uim_instance" "ui-model-symbol:uim_open" -- hdr main lvgl model toy probe misuse ctest
+gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_due" -- hdr main lvgl model toy probe misdef ctest
+# a policy table without an exports key (a legacy table) cannot hide it: the prefix is reserved by the gate itself
+cp "$f_misdef" "$out/f_misdef_legacy.json"; f_misdef_legacy="$out/f_misdef_legacy.json"
+gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy ctest
 
 echo "ui selftest passed"

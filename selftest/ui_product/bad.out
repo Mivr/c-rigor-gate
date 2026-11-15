@@ -1,5 +1,13 @@
 ui-probe/1 ready
+err env-inputs not-open
+err apply not-open
+err next-due not-open
+err advance not-open
+err frame not-open
 err semantic not-open
+err patches not-open
+err domain-at not-open
+err trace not-open
 ok open
 err ? unknown-command
 err apply bad-arguments
@@ -8,4 +16,38 @@ err ? malformed
 err advance bad-arguments
 err advance bad-arguments
 err apply bad-arguments
+err ? malformed
+err ? malformed
+err ? malformed
+err ? malformed
+err ? malformed
+err advance bad-arguments
+err ? line-too-long
+err apply bad-arguments
+err apply bad-arguments
+ok apply
+err apply bad-arguments
+ok apply
+err apply bad-arguments
+err apply bad-arguments
+err apply bad-arguments
+ok apply refused
+err apply bad-arguments
+err domain-at bad-arguments
+err domain-at bad-arguments
+err ? malformed
+err ? malformed
+ok apply
+err trace model-contract
+err open bad-arguments
+err advance bad-arguments
+fail apply
+err semantic not-open
+err frame not-open
+ok open
+ok semantic lines 3
+title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
+button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
+notice	label		8	90	0	16	1	-	hidden	body	normal	none	none
 ok quit
+err ? after-quit

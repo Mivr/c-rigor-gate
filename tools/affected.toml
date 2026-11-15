@@ -6,7 +6,7 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim android
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim android ui
 # "all" is shorthand for every one of them.
 
 # ---- 0. The Android shared object rule (first match wins, so these come before `rules/**` and `examples/**`) -------
@@ -31,6 +31,19 @@ selftests = ["android", "toolchain"]
 [[rule]]
 glob = "toolchains/jdk.manifest"
 selftests = ["android", "toolchain"]
+# U03: the UI model interface, the probe main, `c_ui_probe` and their selftest (selftest/ui.sh).
+[[rule]]
+glob = "rules/ui.bzl"
+selftests = ["ui"]
+[[rule]]
+glob = "ui/**"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_product/**"
+selftests = ["ui"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"
@@ -335,14 +348,3 @@ selftests = ["sanmodes"]
 [[rule]]
 glob = "selftest/sanmodes/**"
 selftests = ["sanmodes"]
-# U03: the UI model interface, the probe main, `c_ui_probe` and their selftest. There is no `ui` selftest name in
-# tools/affected.py yet, so the nearest group that builds LVGL stands in; selftest/ui.sh is run by hand until U-series adds the name.
-[[rule]]
-glob = "ui/**"
-selftests = ["third_party"]
-[[rule]]
-glob = "selftest/ui.sh"
-selftests = ["third_party"]
-[[rule]]
-glob = "selftest/ui_product/**"
-selftests = ["third_party"]

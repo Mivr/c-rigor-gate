@@ -103,19 +103,27 @@ void toy_step(uint32_t ms)
     (void)lv_timer_handler();
 }
 
-const char *toy_title(void)
+bool toy_node(unsigned i, toy_node_t *out)
 {
-    return lv_label_get_text(g_title);
-}
-
-const char *toy_button_text(void)
-{
-    return lv_label_get_text(g_button_label);
-}
-
-const char *toy_notice_text(void)
-{
-    return lv_label_get_text(g_notice);
+    static const char *const keys[TOY_NODES] = {"title", "button", "notice"};
+    static const char *const roles[TOY_NODES] = {"label", "button", "label"};
+    lv_obj_t *objs[TOY_NODES];
+    objs[0] = g_title;
+    objs[1] = g_button;
+    objs[2] = g_notice;
+    if (i >= TOY_NODES || objs[i] == NULL) {
+        return false;
+    }
+    lv_obj_update_layout(objs[i]);
+    out->key = keys[i];
+    out->role = roles[i];
+    out->text = i == 1u ? lv_label_get_text(g_button_label) : lv_label_get_text(objs[i]);
+    out->x = lv_obj_get_x(objs[i]);
+    out->y = lv_obj_get_y(objs[i]);
+    out->w = lv_obj_get_width(objs[i]);
+    out->h = lv_obj_get_height(objs[i]);
+    out->hidden = i == 2u && lv_obj_is_hidden(g_notice);
+    return true;
 }
 
 bool toy_notice_shown(void)

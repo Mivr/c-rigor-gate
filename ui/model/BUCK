@@ -10,7 +10,8 @@ c_library(
 # The gate-owned `main` of a probe binary (ui-probe/1). Linked by `c_ui_probe` (rules/ui.bzl) and by nothing else.
 c_library(
     name = "probe",
-    srcs = ["probe_main.c"],
+    srcs = ["probe_main.c", "probe_parse.c", "probe_records.c", "probe_time.c"],
+    headers = ["probe.h"],
     deps = [":model"],
     visibility = ["PUBLIC"],
 )

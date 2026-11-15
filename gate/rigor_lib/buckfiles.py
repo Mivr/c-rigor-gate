@@ -21,7 +21,17 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk")
+UI_LOAD_PATH = "@gate//rules:ui.bzl"
+UI_MACRO = "c_ui_probe"
+# U03: `c_ui_probe(name, model, deps, visibility)` builds the probe binary of a UI model adapter (`model`, a `:name` of the
+# package or a `//pkg:name` label: checked as a dep). An adapter (and anything else that includes ui/model/model.h) may
+# name the gate's header library `gate//ui/model:model`; the gate's probe library is never nameable (the macro adds it).
+UI_KEYWORDS = ("name", "model", "deps", "visibility")
+UI_MODEL_LABEL = "gate//ui/model:model"
+UI_MODEL_MACROS = ("c_library", "c_binary", "c_test")
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk", UI_MACRO)
+# What each permitted load statement may import: one statement per file, in any order.
+LOADS = {LOAD_PATH: tuple(m for m in MACROS if m != UI_MACRO), UI_LOAD_PATH: (UI_MACRO,)}
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 # T135: `c_fuzz` takes `corpus` (the form `srcs` has on a `c_fuzz`: string literals, never a glob; the macro checks the paths)
@@ -159,6 +169,8 @@ def _dep_problem(node, allowed, test_allowed, macro):
         label = element.value
         if label == facts_rt.LABEL and macro in REQUIRE_MACROS:
             continue
+        if label == UI_MODEL_LABEL and macro in UI_MODEL_MACROS:
+            continue
         if label in allowed or (macro == TEST_MACRO and label in test_allowed):
             continue
         if label in test_allowed:
@@ -171,14 +183,16 @@ def _dep_problem(node, allowed, test_allowed, macro):
 def load_findings(path, node):
     call = node.value
     ok = (len(call.args) >= 1 and not call.keywords and all(_is_string(a) for a in call.args)
-          and call.args[0].value == LOAD_PATH
-          and all(a.value in MACROS for a in call.args[1:]))
+          and call.args[0].value in LOADS
+          and all(a.value in LOADS[call.args[0].value] for a in call.args[1:]))
     if ok:
         return []
     return [finding("bad-load", path=path, line=node.lineno)]
 
 
 def _known_keywords(macro):
+    if macro == UI_MACRO:
+        return UI_KEYWORDS
     if macro == APK_MACRO:
         return APK_KEYWORDS
     if macro == CATALOG_MACRO:
@@ -197,6 +211,8 @@ def _value_ok(macro, keyword):
         return _is_string_dict(node)
     if macro == EMBED_MACRO and arg == "max_bytes":
         return _is_int(node)
+    if macro == UI_MACRO and arg == "model":
+        return _is_string(node)
     if macro == "c_fuzz" and arg == "runs":
         return _is_int(node)
     if macro == "c_sim" and arg in ("seeds", "run_ms", "shards"):
@@ -234,8 +250,8 @@ def call_findings(path, node, allowed, test_allowed):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
         elif keyword.arg == "runtime" and not _is_string(keyword.value):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
-        elif keyword.arg in ("deps", "exported_deps", "runtime"):
-            value = keyword.value if keyword.arg != "runtime" else ast.List(elts=[keyword.value])
+        elif keyword.arg in ("deps", "exported_deps", "runtime") or (macro == UI_MACRO and keyword.arg == "model"):
+            value = keyword.value if keyword.arg in ("deps", "exported_deps") else ast.List(elts=[keyword.value])
             why = _dep_problem(value, allowed, test_allowed, macro)
             if why is not None:
                 found.append(finding("bad-argument", path=path, line=node.lineno, why=why))
@@ -244,7 +260,8 @@ def call_findings(path, node, allowed, test_allowed):
 
 def _dep_strings(call):
     """The labels a macro call depends on: `deps`, and the `runtime` of a `c_catalog`."""
-    return _keyword_strings(call, "deps") + _keyword_strings(call, "exported_deps") + (_keyword_strings(call, "runtime") if call.func.id == CATALOG_MACRO else [])
+    return _keyword_strings(call, "deps") + _keyword_strings(call, "exported_deps") + (_keyword_strings(call, "runtime") if call.func.id == CATALOG_MACRO else []) \
+        + (_keyword_strings(call, "model") if call.func.id == UI_MACRO else [])
 
 
 def _keyword_strings(call, name):
@@ -300,19 +317,20 @@ def sim_target_findings(calls, sims):
 
 
 def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None):
-    found, loads = [], 0
+    found, loads = [], []
     for node in tree.body:
         is_call = isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
         if is_call and isinstance(node.value.func, ast.Name) and node.value.func.id == "load":
-            loads += 1
             found.extend(load_findings(path, node))
-            if loads > 1:
+            first = node.value.args[0].value if node.value.args and _is_string(node.value.args[0]) else None
+            if loads and (first not in LOADS or first in loads):   # a second load is one more of the permitted files
                 found.append(finding("extra-load", path=path, line=node.lineno))
+            loads.append(first)
         elif is_call:
             found.extend(call_findings(path, node, allowed, test_allowed))
             if tests is not None and isinstance(node.value.func, ast.Name) and node.value.func.id in MACROS:
                 directory = os.path.dirname(path)
-                if node.value.func.id in (TEST_MACRO, ANDROID_MACRO, APK_MACRO):
+                if node.value.func.id in (TEST_MACRO, ANDROID_MACRO, APK_MACRO, UI_MACRO):
                     tests.extend((directory, n) for n in _keyword_strings(node.value, "name"))
                 if apks is not None and node.value.func.id == ANDROID_MACRO:
                     apks[0].update((path, n) for n in _keyword_strings(node.value, "name"))

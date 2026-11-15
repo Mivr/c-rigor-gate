@@ -2,22 +2,59 @@ ui-probe/1 ready
 ok domain-count 2
 ok open
 ok env-inputs 1 1:1:0:-
-ok frame 1
-ok semantic 47 6c6162656c20546f790a627574746f6e20507265737320696e74656e743d310a6e6f746963652068696464656e200a
-ok patches 58 6372656174652073637265656e206c6162656c3a546f7920627574746f6e3a5072657373206c6162656c3a6e6f746963652868696464656e290a
+ok frame lines 0
+ok semantic lines 3
+title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
+button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
+notice	label		8	90	0	16	1	-	hidden	body	normal	none	none
+ok patches lines 4
+create	screen	-	-	-
+create	title	text	-	Toy
+create	button	text	-	Press
+create	notice	hidden	-	1
+ok trace lines 1
+0	boot	1000
+ok trace lines 0
 ok next-due none
 ok apply
 ok next-due 4000
-ok semantic 53 6c6162656c20546f790a627574746f6e20507265737320696e74656e743d310a6e6f746963652073686f776e20507265737365640a
-ok advance
+ok apply refused
+ok semantic lines 3
+title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
+button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
+notice	label	Pressed	8	90	58	16	1	-	-	body	normal	none	none
+ok advance 1005
 ok next-due 4000
-ok advance
+ok advance 3990
+ok advance 4013
 ok next-due none
-ok semantic 54 6c6162656c20546f790a627574746f6e20507265737320696e74656e743d310a6e6f746963652068696464656e20507265737365640a
+ok trace lines 2
+1	press	1000
+2	notice_timeout	4000
+ok patches lines 2
+set	notice	hidden	1	0
+set	notice	hidden	0	1
 ok apply
-ok trace 34 626f6f740a70726573730a6e6f746963652074696d656f75740a6c696e652034320a
-ok patches 24 73686f77206e6f746963650a68696465206e6f746963650a
+ok apply
+ok apply refused
+ok apply
+ok trace lines 3
+3	line	4013
+4	line	4013
+5	env_offline	4013
 ok domain-at
-ok semantic 53 6c6162656c20546f790a627574746f6e20507265737320696e74656e743d310a6e6f746963652073686f776e20507265737365640a
-fail domain-at
+ok patches lines 2
+set	notice	hidden	1	0
+set	notice	hidden	1	0
+ok domain-at
+ok patches lines 1
+set	notice	hidden	0	1
+ok semantic lines 3
+title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
+button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
+notice	label	Pressed	8	90	58	16	1	-	hidden	body	normal	none	none
+ok open
+ok advance 2010
+ok trace lines 1
+0	boot	2000
 ok quit

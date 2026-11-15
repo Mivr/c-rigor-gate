@@ -36,10 +36,23 @@ uint64_t toy_notice_due(void);
 /* Move LVGL's tick by `ms` and run its timers once. */
 void toy_step(uint32_t ms);
 
-/* The text of the title, the button label and the notice, and whether the notice is shown. */
-const char *toy_title(void);
-const char *toy_button_text(void);
-const char *toy_notice_text(void);
+/* One node of the scene as the model reports it. */
+typedef struct {
+    const char *key;
+    const char *role;
+    const char *text;
+    int32_t x;
+    int32_t y;
+    int32_t w;
+    int32_t h;
+    bool hidden;
+} toy_node_t;
+
+#define TOY_NODES 3u
+
+/* The node `i` (0 title, 1 button, 2 notice) with its geometry from LVGL; false if `i` is out of range. */
+bool toy_node(unsigned i, toy_node_t *out);
+
 bool toy_notice_shown(void);
 
 /* Draw the scene now (what a frame does). */
