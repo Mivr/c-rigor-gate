@@ -5247,16 +5247,16 @@ exports = ["main"]
 level = "L3"
 impl = ["apps/fiscal/dt/month/src/**"]
 allow = []
-exports = []
+exports = ["mo_fold"]
 
 [module."//apps/fiscal/dt/month:month_fold_test"]
-allow = []
+allow = ["memcpy", "memset"]
 exports = ["main"]
 
 [module."//apps/fiscal/dt/month:month_refuse_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/fiscal/dt/month:month_limits_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
