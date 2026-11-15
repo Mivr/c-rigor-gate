@@ -42,7 +42,7 @@ class ProbeFailureTest(h.ExploreCase):
 
     def test_an_extra_line_after_a_reply_is_not_the_next_reply(self):
         self.one("extra", {"kind": "protocol", "command": "frame", "step": 1,
-                           "detail": "output before the command was sent"})
+                           "detail": "a line that is not the reply to this command"})
 
     def test_output_after_ok_quit(self):
         item = self.one("quitgarbage", {"kind": "protocol", "command": "quit", "step": 2,
@@ -77,7 +77,9 @@ class ProbeFailureTest(h.ExploreCase):
     def test_the_evidence_keeps_the_probe_bytes(self):
         _, found = self.replay("extra", [[h.OPEN, PRESS]], "--evidence", str(self.tmp / "ev"), code=1)
         name = found[0]["id"].rsplit("/", 1)[1]
-        self.assertEqual((self.tmp / "ev" / name / "error.json").read_text(), '{"raw":"stray output\\n"}\n')
+        # the stray line is caught before `frame` is sent or read as its reply, whichever the timing gives
+        self.assertIn((self.tmp / "ev" / name / "error.json").read_text(),
+                      ('{"raw":"stray output\\n"}\n', '{"raw":"stray output"}\n'))
 
 
 class TimeTest(h.ExploreCase):

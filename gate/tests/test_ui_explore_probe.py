@@ -100,7 +100,7 @@ class SessionTest(TempDirTestCase):
         session = self.session("extra")
         session.open(1000, 7)
         session.apply(3, 1, 0, "")
-        self.assertEqual(self.assert_error(session.frame, "protocol", "frame").raw, "stray output\n")
+        self.assertIn(self.assert_error(session.frame, "protocol", "frame").raw, ("stray output\n", "stray output"))
         session = self.session("failnext")
         session.open(1000, 7)
         self.assert_error(session.next_due, "protocol", "next-due")

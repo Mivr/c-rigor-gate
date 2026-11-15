@@ -38,6 +38,9 @@ MAX_LINES = BUF_MAX                     # every line of a framed reply carries a
 # the commands whose model call may return false (docs/ui-model.md); a `fail` reply to any other is a protocol error
 FAILABLE = ("open", "env-inputs", "apply", "advance", "frame", "semantic", "patches", "trace", "domain-at")
 LIVE = set()
+# Output nobody asked for may arrive before the next command is sent or be read as its reply, depending on timing:
+# both are the same finding, with the same gate text.
+NOT_A_REPLY = "a line that is not the reply to this command"
 
 
 class ProbeError(Exception):
@@ -122,7 +125,7 @@ class Session:
         while not self._eof and self._read_ready(0):
             pass
         if self._buf:
-            raise ProbeError("protocol", command, "output before the command was sent", _raw(self._buf))
+            raise ProbeError("protocol", command, NOT_A_REPLY, _raw(self._buf))
 
     def _send(self, command):
         name = command.split(" ")[0]
@@ -185,21 +188,21 @@ class Session:
     def _exact(self, command, *allowed):
         line, _ = self._reply(command)
         if line not in allowed:
-            raise ProbeError("protocol", command.split(" ")[0], "an unexpected reply", line)
+            raise ProbeError("protocol", command.split(" ")[0], NOT_A_REPLY, line)
         return line
 
     def _number(self, command, name):
         line, _ = self._reply(command)
         head = "ok %s " % name
         if not line.startswith(head) or not UNSIGNED.fullmatch(line[len(head):]):
-            raise ProbeError("protocol", name, "an unexpected reply", line)
+            raise ProbeError("protocol", name, NOT_A_REPLY, line)
         return int(line[len(head):])
 
     def _lines(self, name):
         line, limit = self._reply(name)
         head = "ok %s lines " % name
         if not line.startswith(head) or not UNSIGNED.fullmatch(line[len(head):]):
-            raise ProbeError("protocol", name, "an unexpected reply", line)
+            raise ProbeError("protocol", name, NOT_A_REPLY, line)
         count, out, total = int(line[len(head):]), [], 0
         if count > MAX_LINES:
             raise ProbeError("protocol", name, "a reply announcing more lines than the payload limit allows", line)
@@ -257,7 +260,7 @@ class Session:
             return None
         head = "ok next-due "
         if not line.startswith(head) or not UNSIGNED.fullmatch(line[len(head):]):
-            raise ProbeError("protocol", "next-due", "an unexpected reply", line)
+            raise ProbeError("protocol", "next-due", NOT_A_REPLY, line)
         due = int(line[len(head):])
         if due <= self.now:
             raise ProbeError("zero-delay", "next-due", "a deadline at or before now", line)
@@ -297,7 +300,7 @@ class Session:
         limit = self._limit()
         line = self._line("quit", limit)
         if line != "ok quit":
-            raise ProbeError("protocol", "quit", "an unexpected reply", line)
+            raise ProbeError("protocol", "quit", NOT_A_REPLY, line)
         self._proc.stdin.close()
         while not self._eof:
             if self._buf:
