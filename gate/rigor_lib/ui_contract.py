@@ -37,7 +37,7 @@ PENDING_TABLES = {"importance": "7"}
 DESIGN_THRESHOLDS = frozenset(("probe_grid_pct", "feedback_target_frames", "frame_hz", "dwell_base_ms",
                                "dwell_floor_ms", "dwell_chars_per_word", "flicker_floor_ms",
                                "relational_geometry_tol_px", "hierarchy_ratio_k"))
-# The finding ids of P004 3.1 to 3.9; an exception may name one of them (a later task extends the list).
+# The finding ids of P004 3.1 to 3.9 and of the judges that add their own; an exception may name one of them.
 EXCEPTION_RULES = frozenset((
     'a11y-stage-mismatch', 'align-mismatch', 'blocked-target-live', 'busy-indicator-late',
     'clock-origin-divergence', 'contrast-low', 'countdown-wrong', 'covered-node',
@@ -57,6 +57,8 @@ EXCEPTION_RULES = frozenset((
     'text-overflow', 'text-overlap', 'text-scale-2x', 'toggle-group-indistinct',
     'toggle-state-invisible', 'touch-target-small', 'unresponsive-intent', 'value-split',
     'wrap-policy-undeclared',
+    # U06: the ui-scene and ui-fit judges' own findings that an owner may except (docs/ui-judges.md)
+    'fit-unmeasurable', 'glyph-missing', 'stage-unmatched',
 ))
 EXTRA_ELEMENTS = frozenset(("countdown", "dismiss", "done", "cancel", "numpad", "language_switch",
                             "size_buttons"))
