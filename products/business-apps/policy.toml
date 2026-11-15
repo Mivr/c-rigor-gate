@@ -5247,24 +5247,24 @@ exports = ["main"]
 level = "L3"
 impl = ["apps/fiscal/dt/batch/src/**"]
 allow = []
-exports = []
+exports = ["bt_reply_acks", "bt_reply_parse", "bt_write"]
 
 [module."//apps/fiscal/dt/batch:batch_write_test"]
-allow = []
+allow = ["core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put_str", "memcpy", "memset", "snprintf", "strcmp", "strstr"]
 exports = ["main"]
 
 [module."//apps/fiscal/dt/batch:batch_refuse_test"]
-allow = []
+allow = ["core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put_str", "memset"]
 exports = ["main"]
 
 [module."//apps/fiscal/dt/batch:batch_cap_test"]
-allow = []
+allow = ["bcmp", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "memset"]
 exports = ["main"]
 
 [module."//apps/fiscal/dt/batch:batch_reply_parse_test"]
-allow = []
+allow = ["bcmp", "core_str_from_cstr", "memset", "snprintf"]
 exports = ["main"]
 
 [module."//apps/fiscal/dt/batch:batch_acks_test"]
-allow = []
+allow = ["memset"]
 exports = ["main"]
