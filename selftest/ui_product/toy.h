@@ -1,4 +1,5 @@
-/* The toy LVGL app of the UI gate selftest (U03): one screen with a title, one button and one timed notice.
+/* The toy LVGL app of the UI gate selftest (U03): one screen with a title, one button and one timed notice whose
+ * transparent scrim covers the screen while it shows (U05a), and the app's own pointer indev.
  * Product rules apply: static memory, no libc allocation, LVGL from the gate. */
 #ifndef SELFTEST_UI_PRODUCT_TOY_H
 #define SELFTEST_UI_PRODUCT_TOY_H
@@ -18,7 +19,8 @@ bool toy_start(void);
 /* The display of the running app, or NULL when it is not started. */
 lv_display_t *toy_display(void);
 
-/* Click the button (the same event a tap sends). */
+/* Tap the centre of the button through the app's pointer indev (the production input path). While the notice shows,
+ * its transparent clickable scrim covers the screen and takes the tap (the F3b canary): the button gets no click. */
 void toy_press(void);
 
 /* True once per click since the last call (the button's handler records it). */

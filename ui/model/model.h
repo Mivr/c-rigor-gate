@@ -18,7 +18,8 @@
  *    model: a failure of those does not poison. A buffer that is too small is a failure, never a truncation. A breach of
  *    this interface that the gate detects (`model-contract`) poisons the session as well, after those two calls excepted.
  *  - REFUSAL IS NOT FAILURE. `uim_apply` returns UIM_REFUSED when the input is not enabled in the current state (a
- *    normal outcome of exploration); the model is then unchanged and the session continues.
+ *    normal outcome of exploration); the model is then unchanged and the session continues. Neither is UIM_MISSED (the
+ *    input went through the production path and did not produce its intent: the model may have changed).
  *  - TIME. All times are virtual milliseconds on one monotonic axis that starts at `clock_origin_ms` (at most
  *    UIM_ORIGIN_MAX_MS) and moves only through `uim_step`, which the GATE calls; the model never moves its own clock.
  *    `UIM_NO_DEADLINE` means "never".
@@ -63,7 +64,10 @@ typedef struct {
 typedef enum {
     UIM_ERROR = 0,      /* the call failed: the session is poisoned */
     UIM_OK = 1,         /* the input was delivered */
-    UIM_REFUSED = 2     /* the input is not enabled in this state; nothing changed */
+    UIM_REFUSED = 2,    /* the input is not enabled in this state; nothing changed */
+    UIM_MISSED = 3      /* delivered through the production path (an input handler, a tap through the product's
+                         * indev), but the product did not produce the intent it was aimed at (an overlay took the
+                         * tap); the model may have changed. Not a failure: the session goes on */
 } uim_result_t;
 
 /* Caller storage for text output: the callee writes `len` bytes (no NUL needed) into `data[0..cap)`. */
@@ -111,7 +115,8 @@ bool uim_open(uim_t *m, uint64_t clock_origin_ms, uint64_t seed);
 bool uim_env_inputs(uim_t *m, uim_input_t *out, uint16_t cap, uint16_t *count);
 
 /* Deliver one input (an item of `uim_env_inputs`, a wedge line, or an intent) at the current virtual time and run the
- * product to its next stable scene without moving the clock. UIM_REFUSED: not enabled in this state, model unchanged. */
+ * product to its next stable scene without moving the clock. UIM_REFUSED: not enabled in this state, model unchanged.
+ * UIM_MISSED: delivered, but the product did not produce the intent (the model may have changed, the scene is stable). */
 uim_result_t uim_apply(uim_t *m, const uim_input_t *in);
 
 /* The virtual time of the next pending deadline (a notice timeout, a countdown, a debounce), or UIM_NO_DEADLINE (also

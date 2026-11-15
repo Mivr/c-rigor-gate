@@ -8,11 +8,12 @@ c_library(
 )
 
 # The gate-owned `main` of a probe binary (ui-probe/1). Linked by `c_ui_probe` (rules/ui.bzl) and by nothing else.
+# It reads the rendered frame through gate//ui/lvprobe (probe.h includes its header, hence an exported dep).
 c_library(
     name = "probe",
     srcs = ["probe_main.c", "probe_frame.c", "probe_parse.c", "probe_records.c", "probe_time.c"],
     headers = ["probe.h"],
-    exported_deps = [":model"],
+    exported_deps = [":model", "gate//ui/lvprobe:lvprobe"],
     visibility = ["PUBLIC"],
 )
 

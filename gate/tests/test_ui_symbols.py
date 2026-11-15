@@ -128,3 +128,34 @@ class UiPrefix(TempDirTestCase):
     def test_the_at_spelling_is_not_a_label_at_all(self):
         targets, labels = self.impostor("@gate//ui/model:probe")
         self.run_gate("symbols", targets + [CTEST], policy=policy(*labels), expect_code=2)
+
+    # --- U05a: the probe library's dependency on the gate's lvprobe, given without facts, grants nothing ---
+
+    def lvprobe_case(self, dep, user=PROBE_LIB, allow=("printf",), code=1):
+        """Error findings (rule, symbol or dep) when `user` (the probe library, or a product library beside it) depends on
+        `dep`, of which no facts are given, and references `lvprobe_open`; the policy of `user` allows `allow`."""
+        targets = self.probe_set()
+        if user == PROBE_LIB:
+            targets[1] = facts(PROBE_LIB, [unit(defined=["main"], undefined=["uim_open", "lvprobe_open"])],
+                               deps=[HEADERS, dep])
+        else:
+            targets.append(facts(user, [unit(defined=["f"], undefined=["lvprobe_open"])], deps=[dep]))
+        others = [label for label in self.LABELS + (user,) if label != user]
+        text = policy(*others) + '[module."%s"]\nallow = [%s]\n' % (user, ", ".join('"%s"' % a for a in allow))
+        outcome, result = self.run_gate("symbols", targets + [CTEST], policy=text, expect_code=code)
+        return sorted((f["rule"], f.get("symbol", f.get("dep", ""))) for f in result["findings"] if f["severity"] == "error")
+
+    def test_the_probe_librarys_lvprobe_without_facts_is_no_missing_dep_and_grants_nothing(self):
+        for dep in ("gate//ui/lvprobe:lvprobe", "//ui/lvprobe:lvprobe"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                self.assertEqual(self.lvprobe_case(dep), [("undeclared-symbol", "lvprobe_open")])
+                self.setUp()
+                self.assertEqual(self.lvprobe_case(dep, allow=("uim_open", "lvprobe_open"), code=0), [])
+
+    def test_any_other_label_or_module_without_facts_is_still_a_missing_dep(self):
+        self.assertEqual(self.lvprobe_case("gate//ui/lvprobe:lvprobe2", allow=("lvprobe_open",)),
+                         [("missing-dep-facts", "gate//ui/lvprobe:lvprobe2")])
+        self.setUp()
+        self.assertEqual(self.lvprobe_case("gate//ui/lvprobe:lvprobe", user="//p:lib", allow=()),
+                         [("missing-dep-facts", "gate//ui/lvprobe:lvprobe"), ("undeclared-symbol", "lvprobe_open")])

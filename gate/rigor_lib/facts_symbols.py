@@ -29,6 +29,11 @@ GATE_ID = "symbols"
 UI_PREFIX = "uim_"
 UI_PROBE = "gate//ui/model:probe"
 UI_MODEL = "gate//ui/model:model"
+# U05a: the probe library reads the rendered frame through the gate's lvprobe. Its facts are optional for that one edge
+# (the U03 selftest and a product that collects no facts of it): without them the dependency grants nothing, so every
+# name the probe library takes from it must be in the probe library's own `allow`, as its libc names are. Only the gate's
+# probe library (its exact label) has the edge; any other module's dependency without facts is `missing-dep-facts`.
+UI_LVPROBE = "gate//ui/lvprobe:lvprobe"
 
 
 def ui_exempt(products):
@@ -89,6 +94,8 @@ def dep_exports(facts, facts_by_label, libs, module, found):
                 continue
         elif dep in facts_by_label:
             owner = facts_by_label[dep]
+        elif facts.label == UI_PROBE and facts_third_party.canonical(dep) == UI_LVPROBE:
+            continue    # the probe library's lvprobe, given without facts: it grants nothing (see UI_LVPROBE)
         else:
             found.append(finding("missing-dep-facts", target=facts.label, dep=dep))
             continue
