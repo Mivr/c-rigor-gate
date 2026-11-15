@@ -5247,7 +5247,7 @@ exports = ["main"]
 level = "L3"
 impl = ["apps/fiscal/dt/retry/src/**"]
 allow = []
-exports = []
+exports = ["rt_classify", "rt_next"]
 
 [module."//apps/fiscal/dt/retry:retry_classify_x_test"]
 allow = []
