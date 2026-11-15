@@ -148,7 +148,7 @@ modules = ["//apps/lockers/lkapp/**"]
 modules = ["//apps/fiscal/dtc/ports:ports", "//apps/fiscal/dtc/types:types"]
 
 [layer."fiscal-domain"]
-modules = ["//apps/fiscal/dt/batch:batch"]
+modules = ["//apps/fiscal/dt/batch:batch", "//apps/fiscal/dt/batch:golden"]
 
 [layer."fiscal-safety"]
 modules = []
