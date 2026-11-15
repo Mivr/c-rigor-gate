@@ -1,25 +1,38 @@
 /* The model adapter of the frame toy (selftest/ui_frame.sh): implements ui/model/model.h on top of app.h.
- * Intents: 1 press the button (through the app's pointer: UIM_MISSED when the overlay takes the tap), 2 and 3 make the
- * overlay clickable or not, 4 and 5 squeeze the fit label or give it room, 6 adds APP_MANY labels (a frame too large for
- * one reply), 7 adds one label and 8 deletes it (lifecycle events). No env input, no timer. The trace carries the input
- * handlers' events, so a hit query that fires nothing leaves it empty. */
+ * Input handlers and animation callbacks only queue work; run_work runs it (in uim_apply, uim_step and uim_settle).
+ * Intents: 1 press the button through the app's pointer (UIM_MISSED when the overlay takes the tap; a press shows the
+ * notice for NOTICE_MS), 2 and 3 make the overlay clickable or not, 4 and 5 squeeze the fit label or give it room, 6 adds
+ * APP_MANY labels (too large for one reply), 7 adds one label and 8 deletes it (lifecycle events), 9 animates the bar
+ * for ANIM_MS (a deadline; its end retitles the screen "Done"), 10 starts a 0 ms animation and returns without running
+ * it (LVGL runs it at the next refresh: the frame must run the work it posts). Broken on purpose: 11 frames a second
+ * display, 12 frames a pointer that is no display, 13 adds a second pointer indev, 14 moves LVGL's tick from a clock, 15
+ * makes this apply return a value outside the enum, 16 makes the next uim_settle return UIM_REFUSED, 17 the one after
+ * it, 18 makes the uim_settle after the next move LVGL's tick itself. `open <t> 2` starts on a
+ * display larger than the probe's ink scratch. The trace carries the handlers' events too. */
 #include <stdio.h>
 #include <string.h>
 
 #include "selftest/ui_frame_product/app.h"
 #include "ui/model/model.h"
 
-enum { LOG_MAX = 4096, LINE = 160 };
+enum { LOG_MAX = 4096, LINE = 160, NOTICE_MS = 3000, ANIM_MS = 100 };
 
 struct uim {
     bool open;
     uint64_t now;
     uint64_t seq;
+    uint64_t notice_due;
+    uint64_t anim_due;
+    int frame_mode;       /* 0 the display, 11 a second display, 12 no display */
+    int bad_result;       /* returned by apply 15 */
+    unsigned refuse_in;   /* the uim_settle call (counting from 1) that returns UIM_REFUSED, 0 none */
+    unsigned tick_in;     /* the uim_settle call that moves LVGL's tick, 0 none */
     char trace[LOG_MAX];
     size_t trace_len;
 };
 
 static struct uim g_model;
+static const int g_not_a_display[4];
 
 uim_t *uim_instance(void)
 {
@@ -39,7 +52,6 @@ static bool event(uim_t *m, const char *type)
     return true;
 }
 
-/* The handlers' events, in the order they fired. */
 static bool handler_events(uim_t *m)
 {
     static const char *const names[] = {"button_pressed", "button_clicked", "overlay_pressed", "overlay_clicked",
@@ -53,14 +65,48 @@ static bool handler_events(uim_t *m)
     return true;
 }
 
+/* Runs the queued work at the current time; `*worked` if any ran, `*pressed` if a press did. */
+static bool run_work(uim_t *m, bool *worked, bool *pressed)
+{
+    app_work_t w;
+    *worked = false;
+    *pressed = false;
+    if (!handler_events(m)) {
+        return false;
+    }
+    while (app_take_work(&w)) {
+        *worked = true;
+        if (w == APP_WORK_PRESS) {
+            *pressed = true;
+            app_show_notice(true);
+            m->notice_due = m->now + NOTICE_MS;
+        } else {
+            app_set_title("Done");
+            m->anim_due = UIM_NO_DEADLINE;
+        }
+        if (!event(m, w == APP_WORK_PRESS ? "press" : "anim_done")) {
+            return false;
+        }
+    }
+    if (*worked) {
+        app_draw();
+    }
+    return true;
+}
+
 bool uim_open(uim_t *m, uint64_t clock_origin_ms, uint64_t seed)
 {
-    (void)seed;
     m->open = false;
     m->seq = 0;
     m->trace_len = 0;
     m->now = clock_origin_ms;
-    m->open = app_start() && event(m, "boot");
+    m->notice_due = UIM_NO_DEADLINE;
+    m->anim_due = UIM_NO_DEADLINE;
+    m->frame_mode = 0;
+    m->bad_result = 0;
+    m->refuse_in = 0;
+    m->tick_in = 0;
+    m->open = app_start(seed == 2u) && event(m, "boot");
     return m->open;
 }
 
@@ -74,19 +120,44 @@ bool uim_env_inputs(uim_t *m, uim_input_t *out, uint16_t cap, uint16_t *count)
 
 static uim_result_t press(uim_t *m)
 {
-    bool clicked = app_press();
-    if (!handler_events(m)) {
+    bool worked = false;
+    bool pressed = false;
+    app_press();
+    if (!run_work(m, &worked, &pressed)) {
         return UIM_ERROR;
     }
-    if (!clicked) {
-        return UIM_MISSED;
-    }
-    app_show_notice();
-    app_draw();
-    return event(m, "press") ? UIM_OK : UIM_ERROR;
+    return pressed ? UIM_OK : UIM_MISSED;
 }
 
-static uim_result_t change(unsigned id)
+static uim_result_t animate(uim_t *m, uint32_t ms)
+{
+    if (!app_animate(ms)) {
+        return UIM_ERROR;
+    }
+    m->anim_due = ms > 0u ? m->now + ms : UIM_NO_DEADLINE;
+    return UIM_OK;
+}
+
+static uim_result_t fixture(uim_t *m, unsigned id)
+{
+    if (id == 11u || id == 12u) {
+        m->frame_mode = (int)id;
+    } else if (id == 13u) {
+        return app_extra_pointer() ? UIM_OK : UIM_ERROR;
+    } else if (id == 14u) {
+        app_moving_tick();
+    } else if (id == 15u) {
+        m->bad_result = 7;
+        return (uim_result_t)m->bad_result;
+    } else if (id == 16u || id == 17u) {
+        m->refuse_in = id - 15u;
+    } else {
+        m->tick_in = 2;
+    }
+    return UIM_OK;
+}
+
+static uim_result_t change(uim_t *m, unsigned id)
 {
     if (id == 2u || id == 3u) {
         app_cover(id == 2u);
@@ -96,8 +167,12 @@ static uim_result_t change(unsigned id)
         return app_many() ? UIM_OK : UIM_ERROR;
     } else if (id == 7u) {
         return app_add() ? UIM_OK : UIM_REFUSED;
-    } else {
+    } else if (id == 8u) {
         app_drop();
+    } else if (id == 9u || id == 10u) {
+        return animate(m, id == 9u ? ANIM_MS : 0u);
+    } else {
+        return fixture(m, id);
     }
     return UIM_OK;
 }
@@ -108,30 +183,57 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     if (!m->open) {
         return UIM_ERROR;
     }
-    if (in->kind != UIM_IN_INTENT || in->id < 1u || in->id > 8u) {
+    if (in->kind != UIM_IN_INTENT || in->id < 1u || in->id > 18u) {
         return UIM_REFUSED;
     }
-    r = in->id == 1u ? press(m) : change(in->id);
-    if (r == UIM_OK && in->id != 1u) {
+    r = in->id == 1u ? press(m) : change(m, in->id);
+    if (r == UIM_OK && in->id != 1u && in->id != 10u && in->id != 14u) {
         app_draw();
     }
     return r;
 }
 
+uim_result_t uim_settle(uim_t *m, bool *worked)
+{
+    bool pressed = false;
+    *worked = false;
+    if (!m->open) {
+        return UIM_ERROR;
+    }
+    if (m->tick_in > 0u && --m->tick_in == 0u) {
+        lv_tick_inc(5);   /* broken on purpose: the product moves the tick the gate owns */
+    }
+    if (m->refuse_in > 0u && --m->refuse_in == 0u) {
+        return UIM_REFUSED;
+    }
+    return run_work(m, worked, &pressed) ? UIM_OK : UIM_ERROR;
+}
+
 uint64_t uim_next_due(const uim_t *m)
 {
-    (void)m;
-    return UIM_NO_DEADLINE;
+    if (!m->open) {
+        return UIM_NO_DEADLINE;
+    }
+    return m->notice_due < m->anim_due ? m->notice_due : m->anim_due;
 }
 
 bool uim_step(uim_t *m, uint32_t ms)
 {
+    bool worked = false;
+    bool pressed = false;
     if (!m->open || ms < 1u || ms > UIM_FRAME_MS) {
         return false;
     }
     app_step(ms);
     m->now += ms;
-    return true;
+    if (m->now >= m->notice_due) {
+        app_show_notice(false);
+        m->notice_due = UIM_NO_DEADLINE;
+        if (!event(m, "notice_timeout")) {
+            return false;
+        }
+    }
+    return run_work(m, &worked, &pressed);
 }
 
 bool uim_frame(uim_t *m, struct _lv_display_t **disp)
@@ -140,7 +242,9 @@ bool uim_frame(uim_t *m, struct _lv_display_t **disp)
         return false;
     }
     app_draw();
-    *disp = app_display();
+    *disp = m->frame_mode == 11 ? app_second_display()
+            : m->frame_mode == 12 ? (struct _lv_display_t *)(uintptr_t)(const void *)g_not_a_display
+                                  : app_display();
     return *disp != NULL;
 }
 

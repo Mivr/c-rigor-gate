@@ -1,4 +1,5 @@
-/* The record grammar check of semantic, patches and trace (model.h). */
+/* The record grammar check of semantic, patches and trace (model.h), and the `life` line writer of the frame reply. */
+#include <stdio.h>
 #include <string.h>
 
 #include "ui/model/probe.h"
@@ -126,4 +127,60 @@ long probe_check_records(const probe_spec_t *spec, const char *buf, size_t len)
         start = i + 1u;
     }
     return lines;
+}
+
+/* ---- the `life` line of the frame reply (docs/ui-model.md, "Frame facts") ---------------------------------- */
+
+/* Appends `s` escaped by the record grammar (docs/ui-model.md) to out[*at..cap), one byte always left free; false if
+ * it does not fit. */
+static bool put_escaped(const char *s, char *out, size_t cap, size_t *at)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t i;
+    for (i = 0; s[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)s[i];
+        char e[4] = {'\\', '\\', '\0', '\0'};
+        size_t n = 2;
+        if (c == '\t' || c == '\n') {
+            e[1] = c == '\t' ? 't' : 'n';
+        } else if (c < 0x20u || c > 0x7eu) {
+            e[1] = 'x';
+            e[2] = hex[c >> 4];
+            e[3] = hex[c & 15u];
+            n = 4;
+        } else if (c != '\\') {
+            e[0] = (char)c;
+            n = 1;
+        }
+        if (cap - *at <= n) {
+            return false;
+        }
+        memcpy(out + *at, e, n);
+        *at += n;
+    }
+    return true;
+}
+
+/* `life`, 7 fields: seq, created|deleted, late, node, parent, class. */
+lvprobe_status_t probe_life_line(const lvprobe_life_t *e, bool indexed, char *out, size_t cap, size_t *at)
+{
+    size_t end = *at;
+    const char *name = e->class_name != NULL ? e->class_name : "";
+    int n = 0;
+    if (end >= cap) {
+        return LVPROBE_ERR_TRUNC;
+    }
+    n = snprintf(out + end, cap - end, "life\t%lu\t%s\t%u\t%d\t%d\t", (unsigned long)e->seq,
+                 e->created != 0u ? "created" : "deleted", (unsigned)e->late, indexed ? (int)e->node : -1,
+                 indexed ? (int)e->parent : -1);
+    if (n <= 0 || (size_t)n >= cap - end) {
+        return LVPROBE_ERR_TRUNC;
+    }
+    end += (size_t)n;
+    if (!put_escaped(name[0] != '\0' ? name : "-", out, cap, &end) || cap - end <= 1u) {
+        return LVPROBE_ERR_TRUNC;
+    }
+    out[end++] = '\n';
+    *at = end;
+    return LVPROBE_OK;
 }

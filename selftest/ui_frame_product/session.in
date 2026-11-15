@@ -6,8 +6,11 @@ hit-test 53 45
 trace
 crop 140 100 8 2
 ink
-apply 3 1 0 -
+frame
+tap 53 45
 trace
+next-due
+semantic
 frame
 apply 3 4 0 -
 frame
@@ -29,9 +32,10 @@ trace
 apply 3 3 0 -
 frame
 hit-test 53 45
-tap 53 45
-trace
 apply 3 1 0 -
+trace
+apply 3 10 0 -
+frame
 trace
 open 1000 1
 frame

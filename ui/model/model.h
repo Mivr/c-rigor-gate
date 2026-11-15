@@ -132,9 +132,17 @@ uint64_t uim_next_due(const uim_t *m);
  * honoured) and never passes the target; a deadline therefore always ends a step exactly. */
 bool uim_step(uim_t *m, uint32_t ms);
 
+/* Run every piece of product work that is due at the current virtual time (an intent an input handler queued, work an
+ * LVGL animation callback posted) to a stable scene. The clock does not move. `*worked` says whether anything ran (an
+ * event was processed, a scene was published). UIM_OK, or UIM_ERROR (poisons, like a failing `uim_apply`); UIM_REFUSED
+ * and UIM_MISSED are not valid results here. The gate calls it after a tap and while it takes a frame. */
+uim_result_t uim_settle(uim_t *m, bool *worked);
+
 /* The scene as drawn: the model makes sure the current scene is adopted by LVGL and rendered, and stores its
- * display in `*disp`, which must not be NULL on success. The display stays valid until the next call that changes the
- * model. */
+ * display in `*disp`, which must not be NULL on success. DISPLAY LIFETIME: one display, from the first `uim_frame` after
+ * `uim_open` until the next `uim_open`; every `uim_frame` of that span returns the same display, which stays in LVGL's
+ * display list. The gate compares the pointer with LVGL's list before it touches it: another display, or a pointer that
+ * is not in the list, is a contract violation. */
 bool uim_frame(uim_t *m, struct _lv_display_t **disp);
 
 /* The semantic projection of the scene (records above) into `out`. Read-only. */

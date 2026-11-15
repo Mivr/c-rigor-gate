@@ -129,33 +129,61 @@ class UiPrefix(TempDirTestCase):
         targets, labels = self.impostor("@gate//ui/model:probe")
         self.run_gate("symbols", targets + [CTEST], policy=policy(*labels), expect_code=2)
 
-    # --- U05a: the probe library's dependency on the gate's lvprobe, given without facts, grants nothing ---
+    # --- U05a: the `lvprobe_` and `lvp_` prefixes are the gate's lvprobe library's ---
 
-    def lvprobe_case(self, dep, user=PROBE_LIB, allow=("printf",), code=1):
-        """Error findings (rule, symbol or dep) when `user` (the probe library, or a product library beside it) depends on
-        `dep`, of which no facts are given, and references `lvprobe_open`; the policy of `user` allows `allow`."""
+    LVPROBE = "gate//ui/lvprobe:lvprobe"
+
+    def lv(self, extra, code, trusted=(LVPROBE,)):
+        """(rule, target, symbol, use) of the ui-lvprobe findings of the probe set, the lvprobe library (trusted) and
+        `extra` (each a module of the policy)."""
+        lib = facts(self.LVPROBE, [unit(defined=["lvprobe_open", "lvp_next"], undefined=["lvp_next", "printf"])])
         targets = self.probe_set()
-        if user == PROBE_LIB:
-            targets[1] = facts(PROBE_LIB, [unit(defined=["main"], undefined=["uim_open", "lvprobe_open"])],
-                               deps=[HEADERS, dep])
-        else:
-            targets.append(facts(user, [unit(defined=["f"], undefined=["lvprobe_open"])], deps=[dep]))
-        others = [label for label in self.LABELS + (user,) if label != user]
-        text = policy(*others) + '[module."%s"]\nallow = [%s]\n' % (user, ", ".join('"%s"' % a for a in allow))
-        outcome, result = self.run_gate("symbols", targets + [CTEST], policy=text, expect_code=code)
-        return sorted((f["rule"], f.get("symbol", f.get("dep", ""))) for f in result["findings"] if f["severity"] == "error")
+        targets[1] = facts(PROBE_LIB, [unit(defined=["main"], undefined=["uim_open", "lvprobe_open"])],
+                           deps=[HEADERS, self.LVPROBE])
+        modules = [f["label"] for f in extra if f["label"] not in trusted]
+        result = self.run_ui(targets + [lib] + extra, *self.LABELS, *modules, code=code, trusted=trusted)
+        return sorted((f["rule"], f["target"], f["symbol"], f["use"]) for f in result["findings"]
+                      if f["rule"] == "ui-lvprobe-symbol")
 
-    def test_the_probe_librarys_lvprobe_without_facts_is_no_missing_dep_and_grants_nothing(self):
-        for dep in ("gate//ui/lvprobe:lvprobe", "//ui/lvprobe:lvprobe"):
-            with self.subTest(dep=dep):
-                self.setUp()
-                self.assertEqual(self.lvprobe_case(dep), [("undeclared-symbol", "lvprobe_open")])
-                self.setUp()
-                self.assertEqual(self.lvprobe_case(dep, allow=("uim_open", "lvprobe_open"), code=0), [])
+    def test_the_lvprobe_library_and_the_probe_librarys_references_pass(self):
+        self.assertEqual(self.lv([], code=0), [])
 
-    def test_any_other_label_or_module_without_facts_is_still_a_missing_dep(self):
-        self.assertEqual(self.lvprobe_case("gate//ui/lvprobe:lvprobe2", allow=("lvprobe_open",)),
-                         [("missing-dep-facts", "gate//ui/lvprobe:lvprobe2")])
-        self.setUp()
-        self.assertEqual(self.lvprobe_case("gate//ui/lvprobe:lvprobe", user="//p:lib", allow=()),
-                         [("missing-dep-facts", "gate//ui/lvprobe:lvprobe"), ("undeclared-symbol", "lvprobe_open")])
+    def test_the_lvprobe_library_needs_its_facts_like_any_dependency(self):
+        targets = self.probe_set()
+        targets[1] = facts(PROBE_LIB, [unit(defined=["main"], undefined=["uim_open", "lvprobe_open"])],
+                           deps=[HEADERS, self.LVPROBE])
+        result = self.run_ui(targets, *self.LABELS, code=1)
+        self.assertIn(("missing-dep-facts", self.LVPROBE),
+                      [(f["rule"], f.get("dep")) for f in result["findings"] if f["severity"] == "error"])
+
+    def test_a_product_module_may_neither_define_nor_reference_an_lvprobe_name(self):
+        bad = facts("//p:lib", [unit(defined=["lvp_mine", "lvprobe_x"], undefined=["lvprobe_open", "lvp_next"])])
+        self.assertEqual(self.lv([bad], code=1),
+                         [("ui-lvprobe-symbol", "//p:lib", "lvp_mine", "defined"),
+                          ("ui-lvprobe-symbol", "//p:lib", "lvp_next", "referenced"),
+                          ("ui-lvprobe-symbol", "//p:lib", "lvprobe_open", "referenced"),
+                          ("ui-lvprobe-symbol", "//p:lib", "lvprobe_x", "defined")])
+
+    def test_the_probe_library_may_reference_but_not_define_one(self):
+        targets = self.probe_set()
+        targets[1] = facts(PROBE_LIB, [unit(defined=["main", "lvp_helper"], undefined=["uim_open", "lvprobe_open"])],
+                           deps=[HEADERS, self.LVPROBE])
+        lib = facts(self.LVPROBE, [unit(defined=["lvprobe_open"])])
+        result = self.run_ui(targets + [lib], *self.LABELS, code=1, trusted=(self.LVPROBE,))
+        self.assertEqual([(f["target"], f["symbol"], f["use"]) for f in result["findings"] if f["rule"] == "ui-lvprobe-symbol"],
+                         [(PROBE_LIB, "lvp_helper", "defined")])
+
+    def test_no_other_spelling_of_the_lvprobe_library_is_the_gates(self):
+        for label in ("//ui/lvprobe:lvprobe", "root//ui/lvprobe:lvprobe", "gate//ui/lvprobe:lvprobe2",
+                      "gate//ui/lvprobe/x:lvprobe", "gate//ui/lvprobex:lvprobe"):
+            with self.subTest(label=label):
+                self.setUp()
+                fake = facts(label, [unit(defined=["lvprobe_open"], undefined=["lvp_next"])])
+                self.assertEqual(self.lv([fake], code=1),
+                                 [("ui-lvprobe-symbol", label, "lvp_next", "referenced"),
+                                  ("ui-lvprobe-symbol", label, "lvprobe_open", "defined")])
+
+    def test_a_trusted_list_cannot_bypass_the_lvprobe_prefixes(self):
+        bad = facts("//p:lib", [unit(undefined=["lvprobe_open"])])
+        self.assertEqual(self.lv([bad], code=1, trusted=(self.LVPROBE, "//p:lib")),
+                         [("ui-lvprobe-symbol", "//p:lib", "lvprobe_open", "referenced")])

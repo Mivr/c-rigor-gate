@@ -1,0 +1,8 @@
+open 0 1
+apply 3 9 0 -
+next-due
+advance 48
+advance 100
+advance 200
+trace
+quit

@@ -21,8 +21,8 @@ ink 01
 ink -1
 ink 0
 ink 1
-ink 11
 ink 13
+ink 15
 ink 99999999999999999999999
 hit-test 1
 hit-test 1 2 3
@@ -69,4 +69,38 @@ open 0 1
 apply 3 6 0 -
 frame
 semantic
+open 0 1
+frame
+apply 3 11 0 -
+frame
+semantic
+open 0 1
+apply 3 12 0 -
+frame
+open 0 1
+apply 3 13 0 -
+frame
+open 0 1
+apply 3 14 0 -
+frame
+open 0 1
+apply 3 18 0 -
+frame
+tap 53 45
+semantic
+open 0 1
+apply 3 15 0 -
+semantic
+open 0 1
+apply 3 16 0 -
+frame
+open 0 1
+apply 3 17 0 -
+frame
+tap 53 45
+semantic
+open 0 2
+frame
+open 0 1
+frame
 quit

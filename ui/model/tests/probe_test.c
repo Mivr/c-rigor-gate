@@ -103,7 +103,46 @@ static void t_arguments_are_parsed_strictly(ctest_t *t)
     CHECK(t, probe_parse_u64("0", &u) && u == 0u);
 }
 
-CTEST_SUITE("probe", {"the_field_count_is_exact", t_the_field_count_is_exact_and_a_surplus_tab_is_refused_before_any_mask_is_shifted},
+/* One `life` line into a fresh buffer of `cap` bytes: the text, or "TRUNC" (and then `at` did not move). */
+static const char *life(const char *name, bool indexed, size_t cap)
+{
+    static char out[2048];
+    lvprobe_life_t e;
+    size_t at = 0;
+    memset(&e, 0, sizeof e);
+    e.seq = 7;
+    e.created = 0;
+    e.late = 1;
+    e.node = 3;
+    e.parent = 1;
+    e.class_name = name;
+    memset(out, 0, sizeof out);
+    if (probe_life_line(&e, indexed, out, cap, &at) != LVPROBE_OK) {
+        return at == 0u ? "TRUNC" : "TRUNC-but-moved";
+    }
+    return at == strlen(out) ? out : "bad length";
+}
+
+static void t_a_life_line_escapes_its_class_name_and_marks_an_empty_one(ctest_t *t)
+{
+    static char lng[301];
+    CHECK(t, strcmp(life("lv_label", true, 2048), "life\t7\tdeleted\t1\t3\t1\tlv_label\n") == 0);
+    CHECK(t, strcmp(life("lv_label", false, 2048), "life\t7\tdeleted\t1\t-1\t-1\tlv_label\n") == 0);
+    CHECK(t, strcmp(life("a\tb\nc\\d", true, 2048), "life\t7\tdeleted\t1\t3\t1\ta\\tb\\nc\\\\d\n") == 0);
+    CHECK(t, strcmp(life("", true, 2048), "life\t7\tdeleted\t1\t3\t1\t-\n") == 0);
+    CHECK(t, strcmp(life(NULL, true, 2048), "life\t7\tdeleted\t1\t3\t1\t-\n") == 0);
+    CHECK(t, strcmp(life("\xd0\xba\x01", true, 2048), "life\t7\tdeleted\t1\t3\t1\t\\xd0\\xba\\x01\n") == 0);
+    CHECK_EQ_I64(t, check(NULL, life("a\tb\xd0\xba", true, 2048)), 1);
+    memset(lng, 'x', 300);
+    lng[300] = '\0';
+    CHECK_EQ_I64(t, (int64_t)strlen(life(lng, true, 2048)), 22 + 300);   /* a long name is data */
+    CHECK(t, strcmp(life("lv_label", true, 22 + 8), "TRUNC") == 0);          /* the LF and one spare byte */
+    CHECK(t, strcmp(life("lv_label", true, 22 + 8 + 1), "life\t7\tdeleted\t1\t3\t1\tlv_label\n") == 0);
+    CHECK(t, strcmp(life("\xd0", true, 21 + 3), "TRUNC") == 0);                 /* an escape is never cut */
+}
+
+CTEST_SUITE("probe", {"life_line", t_a_life_line_escapes_its_class_name_and_marks_an_empty_one},
+            {"the_field_count_is_exact", t_the_field_count_is_exact_and_a_surplus_tab_is_refused_before_any_mask_is_shifted},
             {"trace_numbers", t_a_trace_record_has_unsigned_numbers_in_fields_one_and_three},
             {"escapes", t_escapes_are_only_for_bytes_without_another_spelling},
             {"semantic_numbers_and_flag", t_the_semantic_numbers_and_the_enabled_flag_are_exact},

@@ -98,51 +98,59 @@ printf 'open 0 1\napply 3 666 0 -\nsemantic\nopen 0 1\napply 3 99 0 -\nsemantic\
 begin "rigor buckfiles accepts the product tree (c_ui_probe, its load, the model header dep)"
 "${RIGOR[@]}" buckfiles --root "$prod" --out "$out/bf.json" > "$out/bf.txt" 2>&1 || fail "$CUR: buckfiles refuses $prod" "$out/bf.txt"
 
-begin "the symbols gate reserves the uim_ prefix: the adapter and the probe pass under an unmodified product-style policy; product code that references or defines one is flagged"
+begin "the symbols gate reserves the uim_ prefix: the adapter and the probe pass under an unmodified product-style policy (the gate's lvprobe trusted); product code that references or defines one is flagged"
 for t in model toy misuse misdef probe; do build_out "f_$t" "$REL" "$P:${t}_facts"; done
 build_out f_hdr "$REL" //ui/model:model_facts
 build_out f_main "$REL" //ui/model:probe_facts
+build_out f_lvp "$REL" //ui/lvprobe:lvprobe_facts
 build_out f_lvgl "$REL" //third_party/lvgl:lvgl_symbols
 build_out f_ctest "$REL" //ctest:ctest_facts
 build_out libc "$REL" toolchains//:libc_symbols
 # relabel <src> <dest>: the facts of a product build print the gate's own targets as `gate//...`; this root cell is the gate,
-# so `//ui/model:...` is rewritten to that spelling (label and deps), the way a product repo's facts read.
+# so `//ui/model:...` and `//ui/lvprobe:...` are rewritten to that spelling (label and deps), the way a product repo's facts read.
 relabel() {
   python3 -I - "$1" "$2" <<'PY' || fail "$CUR: relabel $1"
 import json, sys
 doc = json.load(open(sys.argv[1]))
-fix = lambda x: "gate" + x if x.startswith("//ui/model:") else x
+fix = lambda x: "gate" + x if x.startswith(("//ui/model:", "//ui/lvprobe:")) else x
 doc["label"] = fix(doc["label"])
 doc["deps"] = sorted(fix(d) for d in doc["deps"])
 json.dump(doc, open(sys.argv[2], "w"))
 PY
 }
-# The libc (and other non-gate) symbols the probe library really references: from its facts, checked against the
-# checked-in list so that a change of the probe's imports is visible in review, and the policy's `allow` is built from it.
+# The libc, LVGL and other symbols the probe library really references that no gate dependency defines (not the model's
+# `uim_*`, not what the gate's lvprobe exports): from the facts, checked against the checked-in list so that a change of
+# the probe's imports is visible in review, and the policy's `allow` is built from it.
 relabel "$f_main" "$out/probe_lib.json"
-python3 -I - "$out/probe_lib.json" > "$out/probe_libc.actual" <<'PY' || fail "$CUR: cannot read the probe library facts"
+python3 -I - "$out/probe_lib.json" "$f_lvp" > "$out/probe_imports.actual" <<'PY' || fail "$CUR: cannot read the probe library facts"
 import json, sys
 doc = json.load(open(sys.argv[1]))
+lvprobe = {s for u in json.load(open(sys.argv[2]))["units"] for s in u["defined"]}
 defined = {s for u in doc["units"] for s in u["defined"]}
-undefined = {s for u in doc["units"] for s in u["undefined"]} - defined
+undefined = {s for u in doc["units"] for s in u["undefined"]} - defined - lvprobe
 print("\n".join(sorted(s for s in undefined if not s.startswith("uim_"))))
 PY
-cmp -s "$out/probe_libc.actual" "$prod/probe_libc.expected" || { diff "$prod/probe_libc.expected" "$out/probe_libc.actual" > "$out/d.txt"; fail "$CUR: the probe library's imports differ from $prod/probe_libc.expected" "$out/d.txt"; }
+cmp -s "$out/probe_imports.actual" "$prod/probe_imports.expected" || { diff "$prod/probe_imports.expected" "$out/probe_imports.actual" > "$out/d.txt"; fail "$CUR: the probe library's imports differ from $prod/probe_imports.expected" "$out/d.txt"; }
 python3 -I - "$out" <<'PY' || fail "$CUR: could not write the policy"
 import sys
 out = sys.argv[1]
-UIM = ["uim_instance", "uim_open", "uim_env_inputs", "uim_apply", "uim_next_due", "uim_step", "uim_frame",
+UIM = ["uim_instance", "uim_open", "uim_env_inputs", "uim_apply", "uim_settle", "uim_next_due", "uim_step", "uim_frame",
        "uim_semantic", "uim_patches", "uim_domain_count", "uim_domain_at", "uim_trace"]
 # The policy of a product: the gate's global block as it is (no uim_ entry of any kind), then the modules.
 text = open("policy/hello.toml").read()
 head = text.split("[module.")[0]
-assert head.count("[global]") == 1 and "uim_" not in head
+assert head.count("[global]") == 1 and "uim_" not in head and head.count('trusted = ["//ctest:ctest"]') == 1
+# the gate's lvprobe is a gate-owned library like ctest: trusted, its facts given, its exports grant the probe's calls
+head = head.replace('trusted = ["//ctest:ctest"]', 'trusted = ["//ctest:ctest", "gate//ui/lvprobe:lvprobe"]')
 toy = ["toy_start", "toy_display", "toy_press", "toy_take_press", "toy_show_notice", "toy_hide_notice", "toy_notice_due",
        "toy_step", "toy_node", "toy_notice_shown", "toy_draw"]
 probe = ["main", "probe_parse_u64", "probe_parse_i32", "probe_parse_text", "probe_to_hex", "probe_hex_digit",
          "probe_check_records", "probe_advance_to", "probe_reply_err", "probe_reply_plain", "probe_reply_lines",
-         "probe_payload", "probe_cmd_frame", "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
-libc = open(out + "/probe_libc.actual").read().split()
+         "probe_payload", "probe_cmd_frame", "probe_cmd_ink", "probe_cmd_hit_test", "probe_cmd_tap", "probe_cmd_crop",
+         "probe_life_line", "probe_why", "probe_fatal", "probe_refuse", "probe_reply_words", "probe_lv_settle",
+         "probe_model_settle", "probe_point", "probe_point_err", "probe_node_word",
+         "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
+libc = open(out + "/probe_imports.actual").read().split()
 q = lambda names: "[" + ", ".join('"%s"' % n for n in names) + "]"
 mods = """
 [module."gate//ui/model:model"]
@@ -202,12 +210,12 @@ if got != want or (doc["status"] == "PASS") != (not want):
 PY
   echo "  $name -> exit $rc ${expected[*]:-}"
 }
-gate_case good 0 -- hdr main lvgl model toy probe ctest
-gate_case misuse 1 "ui-model-symbol:uim_instance" "ui-model-symbol:uim_open" -- hdr main lvgl model toy probe misuse ctest
-gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_due" -- hdr main lvgl model toy probe misdef ctest
+gate_case good 0 -- hdr main lvgl model toy probe lvp ctest
+gate_case misuse 1 "ui-model-symbol:uim_instance" "ui-model-symbol:uim_open" -- hdr main lvgl model toy probe misuse lvp ctest
+gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_due" -- hdr main lvgl model toy probe misdef lvp ctest
 # a policy table without an exports key (a legacy table) cannot hide it: the prefix is reserved by the gate itself
 cp "$f_misdef" "$out/f_misdef_legacy.json"; f_misdef_legacy="$out/f_misdef_legacy.json"
-gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy ctest
+gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy lvp ctest
 
 begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
 for plat in "$REL" "$SAN"; do

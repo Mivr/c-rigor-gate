@@ -40,7 +40,8 @@ virtual clock and the seed of `uim_open` influence output), and:
 | `uim_apply(m, in)` | deliver an env input, a wedge line or an intent; `UIM_OK`, `UIM_REFUSED`, `UIM_MISSED` or `UIM_ERROR` |
 | `uim_next_due(m)` | the next deadline or `UIM_NO_DEADLINE` (also before `open`), strictly later than now on a stable scene |
 | `uim_step(m, ms)` | the time primitive above |
-| `uim_frame(m, &disp)` | adopt and render the scene; `disp` must not be NULL |
+| `uim_settle(m, &worked)` | run every piece of product work due at the current virtual time (an intent a handler queued, work an animation callback posted) to a stable scene, without moving the clock; `*worked` if anything ran. `UIM_OK` or `UIM_ERROR` (poisons); `UIM_REFUSED`/`UIM_MISSED` break the contract. The gate calls it after a tap and while taking a frame |
+| `uim_frame(m, &disp)` | adopt and render the scene; `disp` must not be NULL. **Display lifetime:** one display from the first `uim_frame` after `uim_open` until the next `uim_open`, always in LVGL's display list |
 | `uim_semantic`, `uim_patches`, `uim_trace` | text records (below); patches and trace clear their log |
 | `uim_domain_count()`, `uim_domain_at(m, i)` | the optional view-domain sweep (the gate only asks for `i < count`) |
 
@@ -86,8 +87,8 @@ reads the tokens after `ready` as a set and refuses a catalogue that needs one t
 | `advance <to_ms>` | `ok advance <now_ms>` or `fail advance` (poisons); `to_ms` before now, more than 600000 ms ahead or past 2^52 is `err advance bad-arguments` |
 | `frame` | `ok frame lines <n>` and the n frame-fact lines ("Frame facts"), `fail frame` (poisons), or an `err frame` (poisons) |
 | `ink` / `ink <i>` | `ok ink lines <n>`: one `ink` or `noink` record per node of the current frame's walk that is not a root (or of node i). Never run implicitly; costs two refreshes per drawn node. `i` out of range or a root: `bad-arguments` |
-| `hit-test <x> <y>` | `ok hit-test <i>`, `ok hit-test none` or `ok hit-test blocked`: what LVGL's own pointer search finds at the point; no handler runs. Read-only: an `err` does not poison |
-| `tap <x> <y>` | `ok tap <pressed> <clicked>` (node indexes or `none`) or `ok tap blocked`: a press and release through the production pointer path, then a settle to a quiet frame. An input: an `err` poisons, `blocked` does not |
+| `hit-test <x> <y>` | `ok hit-test <i>`, `ok hit-test none` or `ok hit-test blocked`: what LVGL's own pointer search finds at the point. No input event is sent, so no product handler runs, EXCEPT LVGL's own `LV_EVENT_HIT_TEST`, which the search sends to objects with `LV_OBJ_FLAG_ADV_HITTEST` (advanced hit-testing) and which a product may handle. Read-only: an `err` does not poison |
+| `tap <x> <y>` | `ok tap <pressed> <clicked>` (node indexes or `none`) or `ok tap blocked`: a press and release through the production pointer path, then `uim_settle` (so an intent the click queued runs at the tap's time: `trace`, `semantic` and `next-due` right after the tap show it), then refreshes to a quiet frame. An input: an `err` or `fail tap` (the settle failed) poisons, `blocked` does not |
 | `crop <x> <y> <w> <h>` | `ok crop lines <h>`: one line per row, 8 lowercase hex digits (`rrggbbaa`) per pixel. The region must lie inside the display and `h x (8 w + 1) <= 65535` (160x51 fits, 160x52 does not); otherwise `bad-arguments`. Read-only |
 | `semantic`, `patches`, `trace` | `ok <name> lines <n>` followed by exactly n record lines, verbatim; `fail <name>` (patches and trace poison) |
 | `domain-count` | `ok domain-count <n>` (allowed before `open`) |
@@ -111,56 +112,82 @@ the probe; it poisons the session except after `env-inputs`, `semantic` and `hit
 A last line without LF is `err ? malformed` followed by `err ? eof-without-quit`. Exit status 0 when no protocol error
 occurred and `quit` ended the session, 1 otherwise, 2 if stdout cannot be written. Static memory only.
 
-## Frame facts (U05a, `probe_frame.c`)
+## Frame facts (U05a; `probe_frame.c`, `probe_input.c`, `probe_pixels.c`, `probe_seam.c`)
 
-`frame` calls `uim_frame`, then reads the returned display with lvprobe, in the order docs/ui-lvprobe.md ("Calls and the
-seam") prescribes: the lifecycle events queued since the previous frame (`lvprobe_life`, every frame), refreshes until
-one flushes nothing (`lvprobe_settle`, at most `PROBE_SETTLE_MAX` = 8), `lvprobe_walk`, `lvprobe_frame` (checksum and
-region hashes). "Settle and retry" statuses (`STALE`, `UNSETTLED`, or an event that arrived during the snapshot) repeat
-the whole snapshot, at most `PROBE_FRAME_TRIES` = 4 times; still moving is `err frame model-contract`. The reply is then
-streamed into the payload: `lvprobe_encode_head`, one `lvprobe_encode_node` call per node at its offset (never one
-buffer for the whole tree), then one `life` line per lifecycle event. The probe checks every byte (printable ASCII and
-TAB, LF-terminated) before the header goes out, so a reply is whole or it is one `err` line.
+`frame` calls `uim_frame` and checks the display against LVGL's display list (by address, before anything touches it)
+and against the session's display: no display, a pointer that is not in the list, or another display than the session's
+is `err frame model-contract`. On the first frame of a session it opens lvprobe on it. Then it takes a snapshot, in the
+order docs/ui-lvprobe.md ("Calls and the seam") prescribes: the lifecycle events queued since the previous frame
+(`lvprobe_life`), refreshes until one flushes nothing (`lvprobe_settle`, at most `PROBE_SETTLE_MAX` = 8), then
+**`uim_settle`**, then `lvprobe_walk` and `lvprobe_frame` (checksum and region hashes). The refreshes run the LVGL
+animations and the refresh that are due at the current tick (`lv_refr_now`), and an animation's callback may post product
+work: `uim_settle` runs it, and if anything ran (`worked`), or a status says "settle and retry" (`STALE`, `UNSETTLED`, an
+event during the snapshot), the whole snapshot is taken again, at most `PROBE_FRAME_TRIES` = 4 times; still moving is
+`err frame model-contract`, a failing `uim_settle` is `fail frame`. A product whose steps run its animations at the step's
+tick (the frame toy sets LVGL's animation timer period to 1 ms) sees no difference in timing whether frames are taken or
+not (`selftest/ui_frame.sh`, "a frame changes no timing"). The reply is then streamed into the payload:
+`lvprobe_encode_head`, one `lvprobe_encode_node` call per node at its offset (never one buffer for the whole tree), then
+one `life` line per lifecycle event. The probe checks every byte (printable ASCII and TAB, LF-terminated) before the
+header goes out, so a reply is whole or it is one `err` line.
 
-The record types, their fields and their meaning are lvprobe's (docs/ui-lvprobe.md, "Text format" and "Definitions"):
-`lvprobe` (version, node count) and `frame` (w, h, checksum: FNV-1a of the frame) first, then per node in walk order
-`node`, for a label `label` and `fit` (glyph and visible boxes, `missing`, `clipped`; `unsupported` is per-node data,
-not an error), `region` (the node's region hash). `ink` and `noink` records come from the `ink` command only. A judge keys
-nodes through the scene, never through the index (lvprobe, "Walk order and index"). The probe adds one record type:
+**The records of a `frame` reply**, in this order (fields TAB-separated, never empty; integers decimal, colours 6 and
+hashes 8 lowercase hex digits; boxes `x1,y1,x2,y2` or `-`; escaping as in "Record grammar" above). All but `life` are
+lvprobe's, defined in docs/ui-lvprobe.md ("Text format", "Definitions"):
 
-| Line | Fields | Order |
+| Line | Fields | Meaning (docs/ui-lvprobe.md) |
 |---|---|---|
-| `life` | 7 | `life`, seq (lvprobe's running number), `created` or `deleted`, late (1: found on a screen observed late), node (the walk index of the deleted object in the previous walk, -1 for a creation), parent (walk index or -1), class |
+| `lvprobe` | 3 | `lvprobe`, format version `1`, node count of the walk |
+| `frame` | 4 | `frame`, w, h, crc (FNV-1a over B, G, R of every pixel) |
+| `node` | 21 | `node`, i, parent, depth, class, x1, y1, x2, y2, hidden, clickable, clip, scroll, scroll_x, scroll_y, bg, bg_opa, bg_opa_drawn, bg_opa_exact, bg_grad, bg_image (one per node, walk order: bottom layer, active screen, top layer, sys layer) |
+| `label` | 15 | `label`, i, font id or `-`, line_h, align, align_drawn, long, dotted, lines, natural_w, natural_h, laid_w, laid_h, `=`text, full_text or `-` (after its node, labels only) |
+| `fit` | 8 | `fit`, i, drawn, unsupported, glyphs box, visible box, missing (placeholder glyphs), clipped (after `label`) |
+| `region` | 3 | `region`, i, hash (FNV-1a of the node's coords inside the display) |
+| `life` | 7 | written by the probe: `life`, seq (lvprobe's running number since `open`), `created` or `deleted`, late (`1`: found on a screen observed late), node, parent, class |
 
-The first frame after an `open` has no `life` lines: lvprobe starts observing at that frame (on the display `uim_frame`
-returned) and logs what changes after it. A different display later in the same session is `err frame model-contract`.
+`life`: node is the walk index of a deleted object in the **previous reported** frame's walk (-1 for a creation), parent
+its parent's index there (or -1). An event drained after a walk this same `frame` command took and did not report (a
+retried snapshot) would carry indexes of that unreported walk: it is written with node and parent -1. class is the
+object's class name escaped by the record grammar (a TAB is `\t`, a non-ASCII byte `\xHH`), `-` when it is empty; a
+long or non-ASCII name is data (the line takes at most 64 + 4 x its length bytes). The first frame after an `open` has no
+`life` lines: lvprobe starts observing at that frame and logs what changes after it. `ink` and `noink` records (8 and 3
+fields, docs/ui-lvprobe.md) come from the `ink` command only. A judge keys nodes through the scene, never through the
+index (lvprobe, "Walk order and index").
 
 **Statuses.** A per-node `unsupported` (walk) or an unmeasurable ink (`noink unstable`, `noink transformed`) is data.
-`FULL` (a cap), `OVERFLOW` (lifecycle events lost) and a payload that cannot hold the lines are `err frame too-large`;
-`FORMAT` (not one full-size XRGB8888 buffer in DIRECT mode, no refresh timer, a rotated display), `GONE` (the display was
-deleted) and a display that never settles are `err frame model-contract`; anything else is `err frame internal`. Each
-poisons the session. In `ink`, an unstable or unsettled node is settled and retried once (lvprobe's rule); still
-unstable is `noink unstable`.
+`FULL` (a cap), `OVERFLOW` (lifecycle events lost) and a payload that cannot hold the lines are `err frame too-large`.
+`model-contract`: `FORMAT` (not one full-size XRGB8888 buffer in DIRECT mode, no refresh timer, a rotated display),
+`GONE` (the display was deleted), `LVGL` (LVGL refused something: normally the product's doing, such as its pool), a
+display that never settles or keeps changing, a display with more pixels than the ink scratch, a display with more than
+one pointer indev, a `uim_settle` result other than `UIM_OK`/`UIM_ERROR`, and a moved tick (below). Anything else is
+`err frame internal`. Each poisons the session. In `ink`, an unstable or unsettled node is settled and retried once
+(lvprobe's rule); still unstable is `noink unstable`; a retry settle that flushed drops the frame (the checksum the last
+`frame` reported would be older than the buffer `crop` reads), so the next `crop`, `tap` or `hit-test` needs a new frame.
+
+**The tick is the gate's.** The probe reads `lv_tick_get()` before and after the snapshot of `frame`, the tap and its
+settle, `ink` and `crop`; if it moved, a product drives LVGL's tick from something other than `uim_step` (a real clock, a
+tick callback): `err <command> model-contract` (poisons, except after the read-only `crop`).
 
 **Caps and the per-frame byte budget** (`ui/model/probe.h`): `PROBE_LV_NODES` 512 objects, `PROBE_LV_TEXT` 16384 bytes
 of label text, `PROBE_LV_LIFE` 1024 lifecycle events between two frames, 16 screens, `PROBE_LV_SCRATCH_PX` = 1280 x 800
-ink pixels (the largest node box). The lines of one reply hold at most `UIM_BUF_MAX` - 1 = 65535 bytes. A node takes at
-most `LVPROBE_LINE_FIXED` (1024) + 4 x (class name + text + full text) bytes and a `life` line at most 96; typical: 60 to
-90 bytes for a plain node with its region, a label about 100 more plus 4 per UTF-8 byte of its text. lvprobe measured a
-Bulgarian screen of 84 objects at 14,790 bytes; the toy's frame (9 objects) is about 1 KB. A frame over the budget (the frame toy's
-400 labels, `selftest/ui_frame_product/bad.in`) is `err frame too-large`, never a truncated reply.
+ink pixels. A display with more pixels than the scratch is refused when lvprobe is opened (`err frame model-contract`), so
+`ink` can never run out of scratch later. The lines of one reply hold at most `UIM_BUF_MAX` - 1 = 65535 bytes. A node
+takes at most `LVPROBE_LINE_FIXED` (1024) + 4 x (class name + text + full text) bytes, a `life` line at most 64 + 4 x
+its class name; typical: 60 to 90 bytes for a plain node with its region, a label about 100 more plus 4 per UTF-8 byte of
+its text. lvprobe measured a Bulgarian screen of 84 objects at 14,790 bytes; the frame toy's frame (15 objects) is about
+2 KB. A frame over the budget (the frame toy's 400 labels, `selftest/ui_frame_product/bad.in`) is `err frame too-large`,
+never a truncated reply.
 
-**Storage and order.** The probe owns the lvprobe object (`probe_main.c`) and all its storage (`probe_frame.c`), static.
-lvprobe is closed before every `uim_open` (the model may delete the display) and before exit; `lvprobe_close` finds
-neither display nor indev when they are already gone. **Which indev:** the first pointer indev of the display in LVGL's
-list (the product's own) carries the taps; with none, lvprobe creates its own (docs/ui-lvprobe.md, "Which indev").
+**Storage and order.** The probe owns the lvprobe object (`probe_main.c`) and all its storage (`probe_frame.c`,
+`probe_pixels.c`), static. lvprobe is closed before every `uim_open` (the model may delete the display) and before exit;
+`lvprobe_close` finds neither display nor indev when they are already gone. **Which indev:** the pointer indev of the
+display at the moment lvprobe is opened (the first `frame` of the session) carries the taps; a display with none gets a
+pointer indev lvprobe creates; a display with more than one is ambiguous and refused (`err frame model-contract`); one the
+product creates later in the session is not used (docs/ui-lvprobe.md, "Which indev").
 
 **Hit query and tap.** `hit-test` is `lvprobe_hit_test` (LVGL's `lv_indev_search_obj` over sys, top, active and bottom
-roots): no input event is sent, so no product handler runs and the trace stays as it was. `tap` is `lvprobe_hit`: a press
-and release through the pointer indev, the product's handlers run; then the probe refreshes to a quiet frame. The reply
-names the walk index of the pressed and of the clicked object; an object outside the walk is `err tap internal`. A tap
-moves no clock and calls no model function: a product whose handlers queue work for its next step shows it after the next
-`advance` (the interface has no "run queued work now" call).
+roots): no input event is sent; only LVGL's own `LV_EVENT_HIT_TEST` reaches objects with `LV_OBJ_FLAG_ADV_HITTEST`.
+`tap` is `lvprobe_hit` (the product's handlers run), then `uim_settle`, then refreshes to a quiet frame. The reply names
+the walk index of the pressed and of the clicked object; an object outside the walk is `err tap internal`.
 
 ## `c_ui_probe` (`rules/ui.bzl`)
 
@@ -172,7 +199,7 @@ modes of any `c_binary`; the grade uses release and san. A product BUCK file loa
 and may name `gate//ui/model:model` (the header) in the `deps` of a library, binary or test; it can never name the probe
 library, in any spelling.
 
-## Confinement of the `uim_` symbols (P004 6.3)
+## Confinement of the `uim_`, `lvprobe_` and `lvp_` symbols (P004 6.3)
 
 The `symbols` gate reserves the prefix itself (`ui-model-symbol`, `gate/rigor_lib/facts_symbols.py`), whatever the
 product's policy file says (a `trusted` entry included) and with no policy entry of any kind: a product module that
@@ -189,22 +216,26 @@ every other spelling never match. A product cannot have the package either: `rig
 `third_party/**`. A probe binary that does not have exactly one dependency besides the gate's two libraries is
 `ui-probe-shape`, and then nothing is exempt for it.
 
+**The lvprobe prefixes (U05a).** The same gate rule reserves `lvprobe_` and `lvp_` (`ui-lvprobe-symbol`,
+`UI_LVPROBE_PREFIXES`): a product module that defines or references such a symbol is a finding, whatever its policy says
+(a `trusted` entry included). Only `gate//ui/lvprobe:lvprobe`, in exactly that spelling, may define them, and only the
+gate's probe library may reference them (it may not define one). `//ui/lvprobe:lvprobe`, `root//...` and every other
+spelling are not the gate's (`gate/tests/test_ui_symbols.py`). The lvprobe library is a gate-owned library like
+`ctest`: a product's facts include it, its policy lists it as `trusted`, and its exports grant the probe library's calls
+(there is no "no facts" exception for it).
+
 A product policy still needs ordinary entries for the gate libraries in the product's facts, keyed `gate//ui/model:model`
-and `gate//ui/model:probe` (`selftest/ui.sh` relabels the root-cell facts to that spelling): the probe library with `allow`
-= the non-gate symbols it imports, `allow_mutable_data = true` and its `exports` (`main` and the `probe_*` helpers).
-`selftest/ui_product/probe_libc.expected` is the checked-in list of those imports; `ui.sh` derives it from the facts and
-fails on any difference, and builds the policy's `allow` from it. Making the gate's UI libraries exempt from a product's
+and `gate//ui/model:probe` (`selftest/ui.sh` relabels the root-cell facts of `//ui/model:...` and `//ui/lvprobe:...` to that
+spelling), and `gate//ui/lvprobe:lvprobe` in `trusted`: the probe library with `allow` = the symbols it imports that no
+gate dependency defines (libc and the few LVGL calls it makes itself), `allow_mutable_data = true` and its `exports`
+(`main` and the `probe_*` helpers). `selftest/ui_product/probe_imports.expected` is the checked-in list of those imports;
+`ui.sh` derives it from the facts and fails on any difference, and builds the policy's `allow` from it. Making the gate's UI libraries exempt from a product's
 policy, layering and RAM budget, as `gate//rt:require` is, is a separate task.
 
 ## Known gaps
 
 * lvprobe's font ids are not mapped (`lvprobe_map_font`): every label's font field is `-`. The gate does not know the
   product's fonts; mapping them needs a model call or a sealed table (a later task).
-* The probe library's exports are a fixed list in `selftest/ui.sh`'s product policy, so `frame`, `ink`, `hit-test`, `tap`
-  and `crop` share the one entry point `probe_cmd_frame` (by `p->cmd`), and `probe_frame.c` holds all of the seam.
-* The probe library's dependency on `gate//ui/lvprobe` needs no facts in the `symbols` gate (`UI_LVPROBE` in
-  `gate/rigor_lib/facts_symbols.py`): without them it grants nothing, so the lvprobe and LVGL names the probe library
-  calls are in its `allow`, from `selftest/ui_product/probe_libc.expected`.
 
 * `tools/validate.sh` learned the `ui` name (one case and the lane order) so that a selected `ui` runs.
 * The `model-contract` cases for a NULL display, an env input of the wrong kind, `n > UIM_ENV_MAX` and a changed buffer

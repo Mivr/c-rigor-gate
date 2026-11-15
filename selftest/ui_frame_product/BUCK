@@ -4,7 +4,7 @@ load("@gate//rules:ui.bzl", "c_ui_probe")
 # The frame toy of selftest/ui_frame.sh (U05a) and its model adapter: implements ui/model/model.h.
 c_library(
     name = "model",
-    srcs = ["app.c", "model.c"],
+    srcs = ["app.c", "app_fixture.c", "model.c"],
     headers = ["app.h"],
     deps = ["gate//ui/model:model"],
     exported_deps = ["gate//third_party/lvgl:lvgl"],

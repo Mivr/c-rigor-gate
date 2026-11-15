@@ -190,6 +190,20 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     return UIM_REFUSED;
 }
 
+/* A probe tap at the button leaves a press queued (the button's handler records it): run it now, as an apply would. */
+uim_result_t uim_settle(uim_t *m, bool *worked)
+{
+    *worked = false;
+    if (!m->open) {
+        return UIM_ERROR;
+    }
+    if (!toy_take_press()) {
+        return UIM_OK;
+    }
+    *worked = true;
+    return show(m, "Pressed") && event(m, "press") ? UIM_OK : UIM_ERROR;
+}
+
 uint64_t uim_next_due(const uim_t *m)
 {
     uint64_t notice = toy_notice_due();
