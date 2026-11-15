@@ -176,6 +176,10 @@ def c_third_party(
         if path not in files:
             fail("{}: {} is not in the manifest".format(name, path))
     src = name + "_src"
+    # Development mirror (docs/toolchain.md, "Local execution"): `[gate] mirror.<sha256> = <url>` in
+    # .buckconfig.local replaces the URL on a host that cannot reach the pinned one. The sha256 and the
+    # size are still checked by the download, so the bytes cannot differ.
+    url = read_root_config("gate", "mirror." + sha256, url)
     third_party_tree(name = src, url = url, sha256 = sha256, size_bytes = size_bytes, top = top, dirs = dirs, files = files)
 
     def ref(path):

@@ -15,6 +15,11 @@ def re_properties(worker_image: str) -> dict[str, str]:
         props["sb.worker_image"] = worker_image
     return props
 
+# Owner-sanctioned (2026-11-15) development profile for machines that cannot reach the farm:
+# `[gate] local_exec = true` in .buckconfig.local runs every action on this host instead.
+# The default, and the only mode a grade verdict may come from, is RE only.
+_LOCAL_EXEC = read_root_config("gate", "local_exec", "false") == "true"
+
 def _exec_platform_impl(ctx: AnalysisContext) -> list[Provider]:
     constraints = {}
     constraints.update(ctx.attrs.cpu_configuration[ConfigurationInfo].constraints)
@@ -24,8 +29,8 @@ def _exec_platform_impl(ctx: AnalysisContext) -> list[Provider]:
         label = ctx.label.raw_target(),
         configuration = cfg,
         executor_config = CommandExecutorConfig(
-            local_enabled = False,
-            remote_enabled = True,
+            local_enabled = _LOCAL_EXEC,
+            remote_enabled = not _LOCAL_EXEC,
             remote_execution_properties = re_properties(ctx.attrs.worker_image),
             remote_execution_use_case = "buck2-default",
         ),

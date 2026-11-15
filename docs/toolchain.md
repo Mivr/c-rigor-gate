@@ -276,3 +276,20 @@ none can turn a fail into a pass. Outputs are byte-identical across cold runs (t
 lines); a warm run executes 0 actions. Self-test: `selftest/fuzz.sh`.
 
 Self-test: `selftest/toolchain.sh`. Its remote-execution step asserts on the fresh-nonce actions only: every compile, archive, link and test run of the stamped scratch targets must be `re(...)`, and no action anywhere may be `local`. Unchanged dependencies (the fetched LLVM and sysroot, ctest) may be `cache` or `re`, because whether they appear as cache hits depends on farm and daemon history, not on the product.
+
+## Local execution (development only; owner-sanctioned 2026-11-15)
+
+For a machine that cannot reach the farm and does not have the pinned client. **A grade verdict never comes from such
+a machine**: the default, and the only mode a verdict may come from, is RE only with the pinned client. Three untracked
+switches, all off unless the files exist:
+
+- `.buckconfig.local` with `[gate] local_exec = true`: `toolchains/platforms.bzl` and the test execution profile in
+  `toolchains/BUCK` run every action on this host instead of on the farm. Toolchains are the same sha256-pinned trees.
+- `.buckconfig.local` with `[gate] mirror.<sha256> = <url>`: `rules/third_party.bzl` downloads that archive from the
+  mirror. The pinned sha256 and size are still checked. (The LVGL tag archive is byte-reproducible with
+  `git archive --format=tar --prefix=lvgl-9.6.0/ v9.6.0 | gzip -n -6`.)
+- `tools/buck2.local` with `bin=<path>` and `sha256=<hex>`: `tools/buck2` runs that binary after checking that hash.
+  Upstream Buck2 `2026-10-15` analyses and builds this repo; it is not the pinned fork build.
+
+Known gaps of such a machine: no `ssh-keygen` means the signing tests of `gate/tests` cannot run; sanitizer modes that
+need the workers' seccomp profile may not start; times are not comparable with the farm.
