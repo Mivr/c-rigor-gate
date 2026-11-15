@@ -87,8 +87,8 @@ lvprobe_status_t lvprobe_frame(lvprobe_t *p)
     p->frame_h = (int32_t)b->header.h;
     p->has_frame = true;
     for (i = 0; i < p->count; i++) {
-        p->nodes[i].region_hash = hash_box(b, &p->nodes[i].coords);
-        p->nodes[i].has_region = true;
+        p->cfg.nodes[i].region_hash = hash_box(b, &p->cfg.nodes[i].coords);
+        p->cfg.nodes[i].has_region = true;
     }
     return LVPROBE_OK;
 }

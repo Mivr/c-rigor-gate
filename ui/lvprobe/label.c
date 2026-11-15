@@ -23,10 +23,10 @@ static bool pool_put(lvprobe_t *p, const char *s, size_t len)
 {
     size_t i;
     for (i = 0; i < len && s[i] != '\0'; i++) {
-        if (p->text_used + 1u >= LVPROBE_TEXT_BYTES) {
+        if (p->text_used + 1u >= p->cfg.text_bytes) {
             return false;
         }
-        p->text[p->text_used] = s[i];
+        p->cfg.text[p->text_used] = s[i];
         p->text_used++;
     }
     return true;
@@ -34,10 +34,10 @@ static bool pool_put(lvprobe_t *p, const char *s, size_t len)
 
 static const char *pool_end(lvprobe_t *p, const char *start)
 {
-    if (p->text_used >= LVPROBE_TEXT_BYTES) {
+    if (p->text_used >= p->cfg.text_bytes) {
         return NULL;
     }
-    p->text[p->text_used] = '\0';
+    p->cfg.text[p->text_used] = '\0';
     p->text_used++;
     return start;
 }
@@ -45,7 +45,7 @@ static const char *pool_end(lvprobe_t *p, const char *start)
 /* The label's own text: in DOTS mode LVGL overwrote LV_LABEL_DOT_NUM + 1 bytes at dot_begin and kept them in dot[]. */
 static const char *full_text(lvprobe_t *p, const lv_label_t *label)
 {
-    const char *start = &p->text[p->text_used];
+    const char *start = &p->cfg.text[p->text_used];
     size_t kept = 0;
     bool ok = pool_put(p, label->text, label->dot_begin);
     while (ok && kept < LV_LABEL_DOT_NUM + 1u && label->dot[kept] != '\0') {
@@ -99,7 +99,7 @@ static void sizes(lvprobe_node_t *n, const lv_label_t *label)
 lvprobe_status_t lvp_label_facts(lvprobe_t *p, lvprobe_node_t *n)
 {
     const lv_label_t *label = (const lv_label_t *)n->obj;
-    const char *start = &p->text[p->text_used];
+    const char *start = &p->cfg.text[p->text_used];
     uint16_t i;
 
     n->is_label = true;
@@ -132,7 +132,7 @@ static void glyph_cb(lv_draw_task_t *t, lv_draw_glyph_dsc_t *dsc, lv_draw_fill_d
     if (p == NULL || p->glyph_node == LVPROBE_NONE || dsc == NULL || dsc->letter_coords == NULL) {
         return;
     }
-    n = &p->nodes[p->glyph_node];
+    n = &p->cfg.nodes[p->glyph_node];
     lvp_box_add(&n->glyphs, &n->has_glyphs, dsc->letter_coords);
     if (dsc->g != NULL && dsc->g->resolved_font == NULL && n->missing < UINT16_MAX) {
         n->missing++; /* LVGL draws a placeholder box: no font in the fallback chain has the glyph */
@@ -142,7 +142,7 @@ static void glyph_cb(lv_draw_task_t *t, lv_draw_glyph_dsc_t *dsc, lv_draw_fill_d
 /* A label draw task of the node: record its clip, then let LVGL's iterator place every glyph with the clip open. */
 static void capture(lvprobe_t *p, uint16_t index, lv_draw_task_t *t)
 {
-    lvprobe_node_t *n = &p->nodes[index];
+    lvprobe_node_t *n = &p->cfg.nodes[index];
     lv_draw_label_dsc_t *dsc = lv_draw_task_get_label_dsc(t);
     if (dsc == NULL || dsc->base.obj != n->obj || dsc->base.part != LV_PART_MAIN) {
         return;
@@ -189,11 +189,11 @@ static bool chain_clip(const lvprobe_t *p, const lvprobe_node_t *n, lv_area_t *c
     lvp_display_area(p, clip);
     while (at != LVPROBE_NONE && steps < LVPROBE_MAX_DEPTH) {
         lv_area_t box;
-        lvp_child_clip_box(&p->nodes[at], &box);
+        lvp_child_clip_box(&p->cfg.nodes[at], &box);
         if (!lvp_box_cut(clip, &box)) {
             return false;
         }
-        at = p->nodes[at].parent;
+        at = p->cfg.nodes[at].parent;
         steps++;
     }
     return true;
@@ -217,31 +217,85 @@ static bool content_cut(const lvprobe_node_t *n, bool chain_open, const lv_area_
     return !lvp_box_cut(&own, &ext) || !lvp_box_cut(&own, &content);
 }
 
+/* LVGL renders a drop shadow or a layered descendant through a sub-layer it really dispatches: not measured. */
+static bool needs_sub_layer(const lvprobe_node_t *n)
+{
+    lv_obj_t *obj = n->obj;
+    int32_t depth = 0;
+    uint32_t visits = 0;
+    if (lv_obj_get_style_drop_shadow_opa(obj, LV_PART_MAIN) > LV_OPA_MIN) {
+        return true;
+    }
+    obj = lvp_next(obj, n->obj, &depth);
+    while (obj != NULL && visits < LVP_VISIT_CAP) {
+        if (lv_obj_get_layer_type(obj) != LV_LAYER_TYPE_NONE || lv_obj_get_style_drop_shadow_opa(obj, LV_PART_MAIN) > LV_OPA_MIN) {
+            return true;
+        }
+        visits++;
+        obj = lvp_next(obj, n->obj, &depth);
+    }
+    return false;
+}
+
+/* The layer opacity lv_obj_refr hands the label: every ancestor's and its own `opa`, mixed below LV_OPA_MAX. */
+static lv_opa_t layer_opa(const lvprobe_t *p, const lvprobe_node_t *n)
+{
+    lv_opa_t opa = LV_OPA_COVER;
+    const lvprobe_node_t *cur = n;
+    uint32_t steps = 0;
+    while (steps <= LVPROBE_MAX_DEPTH) {
+        lv_opa_t own = lv_obj_get_style_opa(cur->obj, LV_PART_MAIN);
+        if (own < LV_OPA_MAX) {
+            opa = LV_OPA_MIX2(opa, own);
+        }
+        if (cur->parent == LVPROBE_NONE) {
+            break;
+        }
+        cur = &p->cfg.nodes[cur->parent];
+        steps++;
+    }
+    return opa;
+}
+
+static void dry_draw(lvprobe_t *p, uint16_t index, const lv_area_t *clip)
+{
+    lvprobe_node_t *n = &p->cfg.nodes[index];
+    bool rendered = n->obj->rendered != 0u;
+    lv_layer_init(&p->layer);
+    p->layer.user_data = p;
+    p->layer.display = p->disp;
+    p->layer.color_format = LV_COLOR_FORMAT_XRGB8888;
+    p->layer.opa = layer_opa(p, n);
+    lvp_display_area(p, &p->layer.buf_area);
+    p->layer._clip_area = *clip;
+    p->layer.phy_clip_area = *clip;
+    lv_obj_redraw(&p->layer, n->obj);
+    drain(p, index);
+    if (!rendered) {
+        n->obj->rendered = 0; /* lv_obj_redraw marks it; the probe rendered nothing */
+    }
+}
+
 lvprobe_status_t lvp_label_draw(lvprobe_t *p, uint16_t index)
 {
-    lvprobe_node_t *n = &p->nodes[index];
+    lvprobe_node_t *n = &p->cfg.nodes[index];
     lv_area_t clip;
     bool open;
 
     if (!lvp_draw_chain(p, n)) {
         return LVPROBE_OK; /* hidden or fully transparent: not drawn and not clipped */
     }
+    if (needs_sub_layer(n)) {
+        return LVPROBE_ERR_UNSUPPORTED;
+    }
     open = chain_clip(p, n, &clip);
     if (open) {
-        lv_layer_init(&p->layer);
-        p->layer.user_data = p;
-        p->layer.display = p->disp;
-        p->layer.color_format = LV_COLOR_FORMAT_XRGB8888;
-        lvp_display_area(p, &p->layer.buf_area);
-        p->layer._clip_area = clip;
-        p->layer.phy_clip_area = clip;
-        lv_obj_redraw(&p->layer, n->obj);
-        drain(p, index);
+        dry_draw(p, index, &clip);
     }
     if (n->drawn) {
         n->clipped = n->has_glyphs && !lvp_box_in(&n->glyphs, &n->visible);
     } else {
-        n->clipped = n->natural.x > 0 && content_cut(n, open, &clip); /* text that takes room */
+        n->clipped = n->natural.x > 0 && layer_opa(p, n) > LV_OPA_MIN && content_cut(n, open, &clip);
     }
     return LVPROBE_OK;
 }

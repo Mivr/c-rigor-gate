@@ -15,6 +15,13 @@ enum { TK_W = 320, TK_H = 240, TK_LINE_H = 16 };
 extern lvprobe_t tk_probe;
 extern uint32_t tk_scratch[TK_W * TK_H];
 
+/* The default configuration over the kit's static storage (default capacities, full scratch, no product indev). */
+lvprobe_config_t tk_config(void);
+size_t tk_pool_used(void);                    /* LVGL pool bytes in use */
+uint32_t tk_layer_count(lv_display_t *disp);  /* layers on the display's list (sub-layers LVGL renders) */
+/* Undo the record escaping of docs/ui-model.md in place; false on a violation. */
+bool tk_unescape(char *s);
+
 /* Monospace test font, line height 16, baseline 2 px above the bottom, solid 1 bpp glyphs, each box 1 px right of the
  * pen: ' ' (advance 10, no box), '.' (advance 10, 2x2 at line rows 12..13), 'A' (advance 10, 8x12 at rows 2..13),
  * U+0419 (Cyrillic Й: advance 10, 8x14 at rows 0..13), U+0401 (Cyrillic Ё: advance 10, 8x18 at rows -4..13, so it

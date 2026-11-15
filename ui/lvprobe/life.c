@@ -18,7 +18,7 @@ static int16_t find_addr(const lvprobe_t *p, const void *addr)
         return (int16_t)live;
     }
     for (i = 0; i < p->count; i++) {
-        if (p->nodes[i].obj == NULL && p->nodes[i].addr == addr) {
+        if (p->cfg.nodes[i].obj == NULL && p->cfg.nodes[i].addr == addr) {
             return (int16_t)i;
         }
     }
@@ -29,8 +29,8 @@ static void forget_addr(lvprobe_t *p, const void *addr)
 {
     uint16_t i;
     for (i = 0; i < p->count; i++) {
-        if (p->nodes[i].obj == NULL && p->nodes[i].addr == addr) {
-            p->nodes[i].addr = NULL;
+        if (p->cfg.nodes[i].obj == NULL && p->cfg.nodes[i].addr == addr) {
+            p->cfg.nodes[i].addr = NULL;
         }
     }
 }
@@ -39,11 +39,11 @@ static void life_push(lvprobe_t *p, bool created, bool late, const lv_obj_t *obj
 {
     lvprobe_life_t *e;
     p->life_seq++;
-    if (p->life_count >= LVPROBE_LIFE_CAP) {
+    if (p->life_count >= p->cfg.life_cap) {
         p->life_lost++;
         return;
     }
-    e = &p->life[p->life_count];
+    e = &p->cfg.life[p->life_count];
     p->life_count++;
     e->seq = p->life_seq;
     e->created = created ? 1u : 0u;
@@ -78,8 +78,8 @@ void lvp_on_created(lvprobe_t *p, lv_obj_t *child)
 static void forget_screen(lvprobe_t *p, uint16_t i)
 {
     p->screen_count--;
-    p->screens[i] = p->screens[p->screen_count];
-    p->screens[p->screen_count] = NULL;
+    p->cfg.screens[i] = p->cfg.screens[p->screen_count];
+    p->cfg.screens[p->screen_count] = NULL;
 }
 
 void lvp_on_deleted(lvprobe_t *p, lv_obj_t *obj)
@@ -88,10 +88,10 @@ void lvp_on_deleted(lvprobe_t *p, lv_obj_t *obj)
     uint16_t i;
     life_push(p, false, false, obj);
     if (at != LVPROBE_NONE) {
-        p->nodes[at].obj = NULL;
+        p->cfg.nodes[at].obj = NULL;
     }
     for (i = 0; i < p->screen_count; i++) {
-        if (p->screens[i] == obj) {
+        if (p->cfg.screens[i] == obj) {
             forget_screen(p, i);
             break;
         }
@@ -102,7 +102,7 @@ static bool observed(const lvprobe_t *p, const lv_obj_t *screen)
 {
     uint16_t i;
     for (i = 0; i < p->screen_count; i++) {
-        if (p->screens[i] == screen) {
+        if (p->cfg.screens[i] == screen) {
             return true;
         }
     }
@@ -126,7 +126,7 @@ lvprobe_status_t lvp_scan_screens(lvprobe_t *p, bool log)
     uint32_t i;
     uint16_t k = 0;
     while (k < p->screen_count) { /* a screen deleted without our callback (removed by the app) */
-        if (on_display(d, p->screens[k])) {
+        if (on_display(d, p->cfg.screens[k])) {
             k++;
         } else {
             forget_screen(p, k);
@@ -138,10 +138,10 @@ lvprobe_status_t lvp_scan_screens(lvprobe_t *p, bool log)
         if (screen == NULL || observed(p, screen)) {
             continue;
         }
-        if (p->screen_count >= LVPROBE_MAX_SCREENS) {
+        if (p->screen_count >= p->cfg.max_screens) {
             return LVPROBE_ERR_FULL;
         }
-        p->screens[p->screen_count] = screen;
+        p->cfg.screens[p->screen_count] = screen;
         p->screen_count++;
         if (log) {
             p->gen++;
@@ -166,11 +166,14 @@ lvprobe_status_t lvprobe_life(lvprobe_t *p, lvprobe_life_t *out, uint16_t cap, u
     st = lvp_scan_screens(p, true);
     take = p->life_count < cap ? p->life_count : cap;
     for (i = 0; i < take; i++) {
-        out[i] = p->life[i];
+        out[i] = p->cfg.life[i];
     }
+    for (i = take; i < p->life_count; i++) { /* the rest stays queued, oldest first */
+        p->cfg.life[i - take] = p->cfg.life[i];
+    }
+    p->life_count = (uint16_t)(p->life_count - take);
     *n = take;
-    *lost = p->life_lost + (uint32_t)(p->life_count - take);
-    p->life_count = 0;
+    *lost = p->life_lost;
     p->life_lost = 0;
     if (st == LVPROBE_OK && p->fault != LVPROBE_OK) {
         st = p->fault;
@@ -180,4 +183,9 @@ lvprobe_status_t lvprobe_life(lvprobe_t *p, lvprobe_life_t *out, uint16_t cap, u
         return st;
     }
     return *lost > 0u ? LVPROBE_ERR_OVERFLOW : LVPROBE_OK;
+}
+
+uint16_t lvprobe_life_pending(const lvprobe_t *p)
+{
+    return (p == NULL || !p->open) ? 0u : p->life_count;
 }

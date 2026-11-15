@@ -342,11 +342,12 @@ action cannot get single files as input. Every LVGL compile action gets the whol
 `c_third_party_private_headers(name, lib, files, visibility)` (rules/third_party.bzl) gives gate-owned code the
 private headers of a `c_third_party` library: every `.h` of the manifest `files`, at its own path, from `:<lib>_src`,
 exported `-isystem` like `:<lib>_headers` (whose forced configuration it re-exports). It is header-only: no sources, no
-flags, nothing to link, so the library's objects and computed exports are unchanged. `visibility` must be gate-cell
-package patterns (`//dir/...`), never `PUBLIC`, and the label is not in `ALLOWED_LABELS`, so no product can name it
-(`buckfiles` refuses any other `gate//` label). Its facts are `<name>_symbols`: a facts file of kind `c_third_party`
-with no units (it exports nothing), the same shape as `<lib>_symbols`, so a gate `c_library` that depends on it has
-facts for every dependency. All headers are exported, not a hand-picked subset, because the private headers include
+flags, nothing to link, so the library's objects and computed exports are unchanged. `visibility` must be `//ui/...`
+or a package pattern below it (`//ui/<dir>/...`): never `PUBLIC`, never `//...`, never another tree; and the label is
+not in `ALLOWED_LABELS`, so no product can name it (`buckfiles` refuses any other `gate//` label). Its facts are
+`<name>_symbols`: a facts file of kind `c_third_party` with no units (it exports nothing), the same shape as
+`<lib>_symbols` and, like it, built in the release mode only, so a gate `c_library` that depends on it has facts for
+every dependency. All headers are exported, not a hand-picked subset, because the private headers include
 each other and the public tree by relative path (`src/core/lv_obj_private.h` -> `../lvgl_public.h` ->
 `../include/lvgl/lvgl.h`).
 

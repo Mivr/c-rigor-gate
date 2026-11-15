@@ -1,6 +1,7 @@
 /* gate//ui/lvprobe through its public header: settling, the walk, node facts and every capacity limit (U02).
  * The label subclass is built with LVGL's class API (LVGL's private class structure), not with the probe's. */
 #include "ui/lvprobe/tests/testkit.h"
+#include "src/core/lv_obj_private.h"
 
 #include "src/core/lv_obj_class_private.h"
 #include "src/widgets/label/lv_label_private.h"
@@ -84,11 +85,11 @@ static void t_bg_facts_are_what_is_drawn(ctest_t *t)
     lv_obj_set_style_bg_image_src(fancy, LV_SYMBOL_OK, 0);
     CHECK(t, tk_walk(t));
     n = tk_node(t, faded);
-    CHECK(t, n != NULL && n->bg_rgb == 0x123456u && n->bg_opa == 255u && n->bg_opa_drawn == 126u);
+    CHECK(t, n != NULL && n->bg_rgb == 0x123456u && n->bg_opa == 255u && n->bg_opa_drawn == 127u);
     n = tk_node(t, child);
-    CHECK(t, n != NULL && n->bg_rgb == 0x654321u && n->bg_opa_drawn == 126u);
-    n = tk_node(t, layered);
-    CHECK(t, n != NULL && n->bg_opa_drawn == 127u);
+    CHECK(t, n != NULL && n->bg_rgb == 0x654321u && n->bg_opa_drawn == 127u);
+    n = tk_node(t, layered); /* LVGL treats a factor at or above LV_OPA_MAX as opaque: 255 x 128 is 128 */
+    CHECK(t, n != NULL && n->bg_opa_drawn == 128u);
     n = tk_node(t, inner);
     CHECK(t, n != NULL && n->bg_opa == 128u && n->bg_opa_drawn == 64u);
     n = tk_node(t, fancy);
@@ -150,7 +151,7 @@ static void t_every_capacity_limit_is_an_error(ctest_t *t)
     int i;
     uint16_t n = 0;
     uint32_t lost = 0;
-    static lvprobe_life_t life[LVPROBE_LIFE_CAP];
+    static lvprobe_life_t life[LVPROBE_DEFAULT_LIFE];
     for (i = 0; i <= LVPROBE_MAX_FONTS; i++) {
         g_fonts[i] = tk_mono;
         CHECK_EQ_I64(t, lvprobe_map_font(&tk_probe, &g_fonts[i], (uint16_t)i),
@@ -179,10 +180,47 @@ static void t_every_capacity_limit_is_an_error(ctest_t *t)
     CHECK_EQ_I64(t, lvprobe_walk(&tk_probe), LVPROBE_ERR_FULL);
     CHECK_EQ_U64(t, lvprobe_count(&tk_probe), 0);
     lv_obj_clean(lv_screen_active());
-    for (i = 0; i <= LVPROBE_MAX_SCREENS; i++) {
+    for (i = 0; i <= LVPROBE_DEFAULT_SCREENS; i++) {
         (void)lv_obj_create(NULL);
     }
-    CHECK_EQ_I64(t, lvprobe_life(&tk_probe, life, LVPROBE_LIFE_CAP, &n, &lost), LVPROBE_ERR_FULL);
+    CHECK_EQ_I64(t, lvprobe_life(&tk_probe, life, LVPROBE_DEFAULT_LIFE, &n, &lost), LVPROBE_ERR_FULL);
+    tk_stop(disp);
+}
+
+/* A label LVGL draws through a sub-layer (drop shadow) is refused, and refusing changes nothing in LVGL. */
+static void t_a_label_with_a_drop_shadow_is_unsupported(ctest_t *t)
+{
+    lv_display_t *disp = tk_start(t);
+    lv_obj_t *label = tk_label(lv_screen_active(), "AA", 10, 10);
+    size_t pool;
+    uint32_t layers;
+    bool flushed = false;
+    lv_obj_set_style_drop_shadow_opa(label, LV_OPA_COVER, 0);
+    lv_obj_set_style_drop_shadow_radius(label, 4, 0);
+    CHECK(t, !tk_walk(t));
+    pool = tk_pool_used();
+    layers = tk_layer_count(disp);
+    CHECK_EQ_I64(t, lvprobe_walk(&tk_probe), LVPROBE_ERR_UNSUPPORTED);
+    CHECK_EQ_U64(t, tk_pool_used(), pool);
+    CHECK_EQ_U64(t, tk_layer_count(disp), layers);
+    CHECK_EQ_I64(t, lvprobe_settle(&tk_probe, &flushed), LVPROBE_OK);
+    CHECK(t, !flushed);
+    tk_stop(disp);
+}
+
+/* The dry redraw leaves LVGL's `rendered` mark as it was (a label laid out but never drawn stays unrendered). */
+static void t_the_walk_does_not_mark_labels_rendered(ctest_t *t)
+{
+    lv_display_t *disp = tk_start(t);
+    lv_obj_t *label;
+    const lvprobe_node_t *n;
+    lv_display_enable_invalidation(disp, false);
+    label = tk_label(lv_screen_active(), "AA", 10, 10);
+    CHECK(t, tk_walk(t));
+    CHECK_EQ_U64(t, label->rendered, 0);
+    n = tk_node(t, label);
+    CHECK(t, n != NULL && n->drawn && n->has_glyphs);
+    lv_display_enable_invalidation(disp, true);
     tk_stop(disp);
 }
 
@@ -192,4 +230,6 @@ CTEST_SUITE("lvprobe_walk",
             { "bg_facts_are_what_is_drawn", t_bg_facts_are_what_is_drawn },
             { "an_item_scrolled_out_has_its_scroll_context", t_an_item_scrolled_out_has_its_scroll_context },
             { "a_label_subclass_is_a_label", t_a_label_subclass_is_a_label },
-            { "every_capacity_limit_is_an_error", t_every_capacity_limit_is_an_error })
+            { "every_capacity_limit_is_an_error", t_every_capacity_limit_is_an_error },
+            { "a_label_with_a_drop_shadow_is_unsupported", t_a_label_with_a_drop_shadow_is_unsupported },
+            { "the_walk_does_not_mark_labels_rendered", t_the_walk_does_not_mark_labels_rendered })

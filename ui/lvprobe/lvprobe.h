@@ -21,17 +21,19 @@
 
 #include "lvgl.h"
 
-enum {
-    LVPROBE_MAX_NODES = 512,    /* objects in one walk */
-    LVPROBE_MAX_DEPTH = 32,     /* nesting depth of the walked tree (a root has depth 0) */
-    LVPROBE_TEXT_BYTES = 16384, /* all label texts of one walk (drawn and original), NULs included */
-    LVPROBE_MAX_FONTS = 16,     /* font identities the caller can map */
-    LVPROBE_LIFE_CAP = 64,      /* lifecycle events kept between two `lvprobe_life` calls */
-    LVPROBE_MAX_SCREENS = 16    /* screens of the display the probe observes */
-};
-
 #define LVPROBE_FONT_UNMAPPED 0xFFFFu
 #define LVPROBE_NONE (-1)
+
+/* Capacities are open-time configuration (lvprobe_config_t); these are the documented defaults. */
+enum {
+    LVPROBE_DEFAULT_NODES = 512,   /* objects in one walk (at most 32767) */
+    LVPROBE_DEFAULT_TEXT = 16384,  /* bytes of all label texts of one walk (drawn and original), NULs included */
+    LVPROBE_DEFAULT_SCREENS = 16,  /* screens of the display the probe observes */
+    LVPROBE_DEFAULT_LIFE = 1024,   /* lifecycle ring: a screen switch of 512 objects deleted and 512 created */
+    LVPROBE_MAX_DEPTH = 32,        /* nesting depth of the walked tree (a root has depth 0), fixed */
+    LVPROBE_MAX_FONTS = 16,        /* font identities the caller can map, fixed */
+    LVPROBE_LINE_FIXED = 1024      /* bytes of a node's encoded lines besides its escaped strings (see encode) */
+};
 
 typedef enum {
     LVPROBE_OK = 0,
@@ -45,8 +47,9 @@ typedef enum {
     LVPROBE_ERR_OVERFLOW, /* lifecycle events were lost since the previous `lvprobe_life` */
     LVPROBE_ERR_UNSETTLED,/* the display has dirty areas or pending layout: call lvprobe_settle first */
     LVPROBE_ERR_STALE,    /* objects were created or deleted, or the screen changed, since the last walk */
-    LVPROBE_ERR_BLOCKED   /* LVGL would not process a tap now (screen-load animation, indev disabled or waiting
-                           * for a release, no display) */
+    LVPROBE_ERR_BLOCKED,  /* LVGL did not process the tap (before it: indev disabled, a screen-load animation
+                           * running, waiting for a release; or the release itself was not processed) */
+    LVPROBE_ERR_UNSUPPORTED /* a label LVGL draws through a sub-layer (drop shadow, layered child): not measured */
 } lvprobe_status_t;
 
 /* One object of the last walk. Read-only for the caller. Boxes are LVGL areas (inclusive corners, absolute display
@@ -55,6 +58,7 @@ typedef enum {
  * through the scene, never through the index. */
 typedef struct {
     lv_obj_t *obj;             /* NULL once LVGL deleted it; never dereference it yourself */
+    bool seen;                 /* private: reached in the last liveness traversal */
     const void *addr;          /* private: the object's address, kept after deletion for parent lookups */
     const char *class_name;    /* LVGL's class name ("lv_obj", "lv_label", "lv_button", "lv_image") */
     int16_t parent;            /* index of the parent node, LVPROBE_NONE for a root (layer or screen) */
@@ -121,19 +125,33 @@ typedef struct {
     int32_t node;              /* its index in the last walk, or NONE */
 } lvprobe_hit_t;
 
+/* Open-time configuration: the caller's storage and its capacities. Every pointer is required. */
+typedef struct {
+    lvprobe_node_t *nodes;     /* max_nodes nodes */
+    uint16_t max_nodes;
+    char *text;                /* text_bytes bytes */
+    size_t text_bytes;
+    lvprobe_life_t *life;      /* life_cap entries */
+    uint16_t life_cap;
+    lv_obj_t **screens;        /* max_screens entries */
+    uint16_t max_screens;
+    uint32_t *scratch;         /* scratch_px pixels for lvprobe_ink (a node's box + ext draw size) */
+    size_t scratch_px;
+    lv_indev_t *indev;         /* the product's pointer indev for taps, or NULL for a probe-owned one */
+} lvprobe_config_t;
+
 /* The probe. Caller-owned (static storage, zero-initialised before the first open); all fields are private. */
 typedef struct {
     bool open;
     lvprobe_status_t fault;    /* sticky error raised inside an LVGL callback, reported by the next walk/life */
     lv_display_t *disp;
-    lv_indev_t *indev;
+    lvprobe_config_t cfg;
     bool own_indev;
+    lv_indev_read_cb_t product_read;
     lv_point_t press_at;
     bool pressed;
     bool tapping;
     lvprobe_hit_t hit;
-    uint32_t *scratch;
-    size_t scratch_px;
     uint32_t flushes;
     uint32_t gen;              /* structural changes seen */
     uint32_t walk_gen;
@@ -141,15 +159,11 @@ typedef struct {
     lv_obj_t *walk_screen;
     int32_t glyph_node;
     uint16_t count;
-    lvprobe_node_t nodes[LVPROBE_MAX_NODES];
-    char text[LVPROBE_TEXT_BYTES];
     size_t text_used;
     const lv_font_t *fonts[LVPROBE_MAX_FONTS];
     uint16_t font_ids[LVPROBE_MAX_FONTS];
     uint16_t font_count;
-    lv_obj_t *screens[LVPROBE_MAX_SCREENS];
     uint16_t screen_count;
-    lvprobe_life_t life[LVPROBE_LIFE_CAP];
     uint16_t life_count;
     uint32_t life_lost;
     uint32_t life_seq;
@@ -159,21 +173,21 @@ typedef struct {
     lv_layer_t layer;          /* the never-rendered layer label draw tasks are created on (user_data: the probe) */
 } lvprobe_t;
 
-/* Open a probe on `disp`. `indev`: the product's pointer indev, through which taps then go (its read callback and
- * user data are swapped in for the two reads of a tap and restored), or NULL for a probe-owned indev. `scratch`
- * holds `scratch_px` pixels for `lvprobe_ink` (a node's box + ext draw size; width x height always suffices). Starts
- * observing object creation and deletion on every screen and layer. An open probe is LVPROBE_ERR_ARG. */
-lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, lv_indev_t *indev, uint32_t *scratch,
-                              size_t scratch_px);
+/* Open a probe on `disp` with `cfg` (copied). The display needs its refresh timer and a full-size XRGB8888 buffer
+ * in DIRECT mode for frame facts (LVPROBE_ERR_FORMAT otherwise). With `cfg->indev` taps go through the product's
+ * indev (its read callback is replaced for the two reads of a tap, nothing else); with NULL the probe creates one.
+ * Starts observing object creation and deletion on every screen and layer. An open probe is LVPROBE_ERR_ARG. */
+lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, const lvprobe_config_t *cfg);
 
-/* Stop observing; delete the probe's own indev. Call before deleting the display. */
+/* Stop observing; delete the probe's own indev. Safe after the display (or the indev) was deleted: the probe then
+ * finds neither in LVGL's lists and touches neither. */
 void lvprobe_close(lvprobe_t *p);
 
 /* Give `font` the identity `id` in walk facts (at most LVPROBE_MAX_FONTS fonts). */
 lvprobe_status_t lvprobe_map_font(lvprobe_t *p, const lv_font_t *font, uint16_t id);
 
-/* Let LVGL refresh the display once (`lv_refr_now`: layout and dirty areas; no timers). `*flushed` says whether
- * anything was flushed: a settled, quiet frame is one where it is false (P004 metrics §4.1). */
+/* Let LVGL refresh the display once (`lv_refr_now`: animations advanced by the ticks elapsed, layout, dirty areas;
+ * no other timer). `*flushed` says whether anything was flushed: a settled, quiet frame is one where it is false. */
 lvprobe_status_t lvprobe_settle(lvprobe_t *p, bool *flushed);
 
 /* 1 (O3 tree) and `clipped` (2). Needs a settled display (LVPROBE_ERR_UNSETTLED otherwise); renders nothing and
@@ -184,15 +198,20 @@ uint16_t lvprobe_count(const lvprobe_t *p);
 const lvprobe_node_t *lvprobe_node(const lvprobe_t *p, uint16_t index);   /* NULL when out of range */
 int32_t lvprobe_find(const lvprobe_t *p, const lv_obj_t *obj);              /* index or LVPROBE_NONE */
 
-/* 2 (ink) and the luminance samples of 4: stop the node from being drawn with a temporary local opa_layered = 0
- * (no flag, no layout or focus change), redraw, diff its box (coords + ext draw size), restore, redraw, and check
- * that the frame, every walked node's coords and the focus are unchanged. Two renders: the caller decides which
- * nodes need it (for example once per scene-structure class). Needs a settled display and a current walk. */
+/* 2 (ink) and the luminance samples of 4: stop the node from being drawn (its own `hidden` bit, set and cleared
+ * directly: no layout mark, no focus move, no style change, no allocation), refresh, diff its box (coords + ext draw size),
+ * restore, refresh, and check that both refreshes flushed and settled and that the frame, every walked node's coords,
+ * the focus and the tree are unchanged. A node LVGL does not draw (hidden, transparent, off-screen) has ink 0 without
+ * a refresh. Needs a settled display and a current walk. */
 lvprobe_status_t lvprobe_ink(lvprobe_t *p, uint16_t index);
 
-/* 3: press and release at (x, y) (inside the display) through the pointer indev, reset first so that every tap is
- * a first single click. Needs a current walk. Settle the frame after a tap before the next walk or frame. */
+/* 3, input injection: press and release at (x, y) (inside the display) through the pointer indev, reset first so
+ * that every tap is a first single click. Needs a current walk. Product handlers run; settle afterwards. */
 lvprobe_status_t lvprobe_hit(lvprobe_t *p, int32_t x, int32_t y, lvprobe_hit_t *out);
+
+/* 3, query: the object LVGL's pointer search (lv_indev_search_obj over sys layer, top layer, active screen, bottom
+ * layer, the order of the pointer indev) finds at (x, y). Sends no input event and changes nothing. */
+lvprobe_status_t lvprobe_hit_test(lvprobe_t *p, int32_t x, int32_t y, int32_t *node, lv_obj_t **obj);
 
 /* 4: frame CRC (FNV-1a over the B, G, R bytes of every pixel, row-major) and every node's region hash. No redraw;
  * needs a settled display and a current walk. */
@@ -202,12 +221,19 @@ uint32_t lvprobe_frame_crc(const lvprobe_t *p);
 /* 4: copy `box` (inside the display) as RGBA8888 rows into `rgba`; `*len` = bytes written. */
 lvprobe_status_t lvprobe_crop(const lvprobe_t *p, const lv_area_t *box, uint8_t *rgba, size_t cap, size_t *len);
 
-/* 5: object creations and deletions since the previous call, oldest first. At most `cap` are copied; `*lost`
- * counts the events that did not fit (in the ring or in `out`), and then the status is LVPROBE_ERR_OVERFLOW. */
+/* 5: the oldest lifecycle events since the last call, at most `cap` (the rest stays queued: call again while
+ * lvprobe_life_pending is not 0). `*lost` counts events the ring could not hold; then the status is
+ * LVPROBE_ERR_OVERFLOW. Call it every frame. */
 lvprobe_status_t lvprobe_life(lvprobe_t *p, lvprobe_life_t *out, uint16_t cap, uint16_t *n, uint32_t *lost);
+uint16_t lvprobe_life_pending(const lvprobe_t *p);
 
-/* 6: the facts of 1, 2 and 4 as text, one fact per line (docs/ui-lvprobe.md). Needs cap > the text length (a
- * NUL follows it). Truncation returns LVPROBE_ERR_TRUNC and `*len` = 0; it is never silent. */
+/* 6: the facts of 1, 2 and 4 as ui-probe/1 record lines (docs/ui-lvprobe.md): printable ASCII, TAB-separated fields,
+ * a fixed field count per line type, LF-terminated. `lvprobe_encode_head` writes the header (and frame) lines,
+ * `lvprobe_encode_node` the lines of one node (at most LVPROBE_LINE_FIXED + 4 x the bytes of its class name, text and
+ * full text), `lvprobe_encode` all of them. Each needs cap > the text length (a NUL follows); otherwise it returns
+ * LVPROBE_ERR_TRUNC, the buffer holds an empty string and `*len` is the exact length needed. */
+lvprobe_status_t lvprobe_encode_head(const lvprobe_t *p, char *buf, size_t cap, size_t *len);
+lvprobe_status_t lvprobe_encode_node(const lvprobe_t *p, uint16_t index, char *buf, size_t cap, size_t *len);
 lvprobe_status_t lvprobe_encode(const lvprobe_t *p, char *buf, size_t cap, size_t *len);
 
 #endif /* UI_LVPROBE_LVPROBE_H */

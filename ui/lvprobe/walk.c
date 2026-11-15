@@ -38,7 +38,7 @@ bool lvp_draw_chain(const lvprobe_t *p, const lvprobe_node_t *n)
         if (cur->parent == LVPROBE_NONE) {
             return true;
         }
-        cur = &p->nodes[cur->parent];
+        cur = &p->cfg.nodes[cur->parent];
         steps++;
     }
     return false;
@@ -50,11 +50,11 @@ static int16_t clip_ancestor(const lvprobe_t *p, const lvprobe_node_t *n)
     uint32_t steps = 0;
     while (at != LVPROBE_NONE && steps < LVPROBE_MAX_DEPTH) {
         lv_area_t box;
-        lvp_child_clip_box(&p->nodes[at], &box);
+        lvp_child_clip_box(&p->cfg.nodes[at], &box);
         if (!lvp_box_in(&n->coords, &box)) {
             return at;
         }
-        at = p->nodes[at].parent;
+        at = p->cfg.nodes[at].parent;
         steps++;
     }
     return (int16_t)LVPROBE_NONE;
@@ -66,7 +66,7 @@ static void scroll_ancestor(const lvprobe_t *p, lvprobe_node_t *n)
     uint32_t steps = 0;
     n->scroll = (int16_t)LVPROBE_NONE;
     while (at != LVPROBE_NONE && steps < LVPROBE_MAX_DEPTH) {
-        lv_obj_t *obj = p->nodes[at].obj;
+        lv_obj_t *obj = p->cfg.nodes[at].obj;
         if (lv_obj_is_scrollable(obj) && (lv_obj_get_scroll_top(obj) > 0 || lv_obj_get_scroll_bottom(obj) > 0 ||
                                           lv_obj_get_scroll_left(obj) > 0 || lv_obj_get_scroll_right(obj) > 0)) {
             n->scroll = at;
@@ -74,27 +74,32 @@ static void scroll_ancestor(const lvprobe_t *p, lvprobe_node_t *n)
             n->scroll_y = lv_obj_get_scroll_y(obj);
             return;
         }
-        at = p->nodes[at].parent;
+        at = p->cfg.nodes[at].parent;
         steps++;
     }
+}
+
+/* Two opacities as the renderer combines them: a factor at or above LV_OPA_MAX counts as fully opaque. */
+static lv_opa_t opa_mix(lv_opa_t a, lv_opa_t b)
+{
+    if (a >= LV_OPA_MAX) {
+        return b >= LV_OPA_MAX ? LV_OPA_COVER : b;
+    }
+    return b >= LV_OPA_MAX ? a : LV_OPA_MIX2(a, b);
 }
 
 /* bg_opa scaled the way the renderer scales it: own and inherited `opa`, own and ancestors' `opa_layered`. */
 static uint8_t drawn_opa(const lvprobe_t *p, const lvprobe_node_t *n)
 {
-    lv_opa_t opa = lv_obj_get_style_opa_recursive(n->obj, LV_PART_MAIN);
-    lv_opa_t v = opa < LV_OPA_MAX ? LV_OPA_MIX2(n->bg_opa, opa) : n->bg_opa; /* LVGL mixes below LV_OPA_MAX only */
+    lv_opa_t v = opa_mix(n->bg_opa, lv_obj_get_style_opa_recursive(n->obj, LV_PART_MAIN));
     const lvprobe_node_t *cur = n;
     uint32_t steps = 0;
     while (steps <= LVPROBE_MAX_DEPTH) {
-        lv_opa_t layered = lv_obj_get_style_opa_layered(cur->obj, LV_PART_MAIN);
-        if (layered < LV_OPA_MAX) {
-            v = LV_OPA_MIX2(v, layered);
-        }
+        v = opa_mix(v, lv_obj_get_style_opa_layered(cur->obj, LV_PART_MAIN));
         if (cur->parent == LVPROBE_NONE) {
             break;
         }
-        cur = &p->nodes[cur->parent];
+        cur = &p->cfg.nodes[cur->parent];
         steps++;
     }
     return v;
@@ -117,10 +122,10 @@ static lvprobe_status_t add_node(lvprobe_t *p, lv_obj_t *obj, int32_t depth)
     static const lvprobe_node_t zero;
     lvprobe_node_t *n;
 
-    if (p->count >= LVPROBE_MAX_NODES || depth < 0 || depth >= LVPROBE_MAX_DEPTH) {
+    if (p->count >= p->cfg.max_nodes || depth < 0 || depth >= LVPROBE_MAX_DEPTH) {
         return LVPROBE_ERR_FULL;
     }
-    n = &p->nodes[p->count];
+    n = &p->cfg.nodes[p->count];
     *n = zero;
     n->obj = obj;
     n->addr = obj;
@@ -183,7 +188,7 @@ lvprobe_status_t lvprobe_walk(lvprobe_t *p)
         st = collect(p);
     }
     for (i = 0; i < p->count && st == LVPROBE_OK; i++) {
-        st = p->nodes[i].is_label ? lvp_label_draw(p, i) : LVPROBE_OK;
+        st = p->cfg.nodes[i].is_label ? lvp_label_draw(p, i) : LVPROBE_OK;
     }
     if (st == LVPROBE_OK && p->gen != gen) {
         st = LVPROBE_ERR_STALE; /* a draw handler of the product created or deleted objects */

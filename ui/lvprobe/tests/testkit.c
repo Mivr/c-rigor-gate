@@ -2,12 +2,89 @@
 #include "ui/lvprobe/tests/testkit.h"
 
 #include "lvgl_gate.h"
+#include "src/display/lv_display_private.h"
+#include "src/draw/lv_draw_private.h"
 
 static uint64_t g_pool[LV_MEM_SIZE / 8];
 static uint8_t g_frame[LVGL_GATE_TEST_BUF_BYTES(TK_W, TK_H)];
 static lv_draw_buf_t g_draw_buf;
 lvprobe_t tk_probe;
 uint32_t tk_scratch[TK_W * TK_H];
+static lvprobe_node_t g_nodes[LVPROBE_DEFAULT_NODES];
+static char g_text[LVPROBE_DEFAULT_TEXT];
+static lvprobe_life_t g_life[LVPROBE_DEFAULT_LIFE];
+static lv_obj_t *g_screens[LVPROBE_DEFAULT_SCREENS];
+
+lvprobe_config_t tk_config(void)
+{
+    lvprobe_config_t c;
+    c.nodes = g_nodes;
+    c.max_nodes = LVPROBE_DEFAULT_NODES;
+    c.text = g_text;
+    c.text_bytes = LVPROBE_DEFAULT_TEXT;
+    c.life = g_life;
+    c.life_cap = LVPROBE_DEFAULT_LIFE;
+    c.screens = g_screens;
+    c.max_screens = LVPROBE_DEFAULT_SCREENS;
+    c.scratch = tk_scratch;
+    c.scratch_px = (size_t)TK_W * TK_H;
+    c.indev = NULL;
+    return c;
+}
+
+size_t tk_pool_used(void)
+{
+    lv_mem_monitor_t mon;
+    lv_mem_monitor(&mon);
+    return mon.total_size - mon.free_size;
+}
+
+uint32_t tk_layer_count(lv_display_t *disp)
+{
+    uint32_t n = 0;
+    const lv_layer_t *l = disp->layer_head;
+    while (l != NULL && n < 1000u) {
+        n++;
+        l = l->next;
+    }
+    return n;
+}
+
+static int hex_digit(char c)
+{
+    return c >= '0' && c <= '9' ? c - '0' : (c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1);
+}
+
+bool tk_unescape(char *s)
+{
+    size_t r = 0;
+    size_t w = 0;
+    while (s[r] != '\0') {
+        unsigned char c = (unsigned char)s[r];
+        if (c < 0x20u || c > 0x7eu) {
+            return false;
+        }
+        if (c != '\\') {
+            s[w++] = s[r++];
+            continue;
+        }
+        if (s[r + 1] == '\\' || s[r + 1] == 't' || s[r + 1] == 'n') {
+            s[w++] = s[r + 1] == '\\' ? '\\' : (s[r + 1] == 't' ? '\t' : '\n');
+            r += 2;
+        } else if (s[r + 1] == 'x' && hex_digit(s[r + 2]) >= 0 && hex_digit(s[r + 3]) >= 0) {
+            int v = hex_digit(s[r + 2]) * 16 + hex_digit(s[r + 3]);
+            if (v >= 0x20 && v <= 0x7e) {
+                return false;
+            }
+            s[w++] = (char)v;
+            r += 4;
+        } else {
+            return false;
+        }
+    }
+    s[w] = '\0';
+    return true;
+}
 
 static const uint8_t g_bitmap[] = {
     0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, /* A: 12 rows of 8 */
@@ -51,7 +128,8 @@ lv_display_t *tk_start(ctest_t *t)
         return NULL;
     }
     lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0xFFFFFFu), 0);
-    if (lvprobe_open(&tk_probe, disp, NULL, tk_scratch, (size_t)TK_W * TK_H) != LVPROBE_OK) {
+    lvprobe_config_t cfg = tk_config();
+    if (lvprobe_open(&tk_probe, disp, &cfg) != LVPROBE_OK) {
         CHECK(t, 0);
         lv_display_delete(disp);
         lv_deinit();

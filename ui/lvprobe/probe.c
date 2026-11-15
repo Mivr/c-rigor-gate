@@ -84,7 +84,7 @@ lv_obj_t *lvp_next(lv_obj_t *obj, const lv_obj_t *root, int32_t *depth)
     return NULL;
 }
 
-static bool has_cb(lv_obj_t *obj, const lvprobe_t *p)
+bool lvp_has_cb(lv_obj_t *obj, const lvprobe_t *p)
 {
     uint32_t n = lv_obj_get_event_count(obj);
     uint32_t i;
@@ -104,7 +104,7 @@ lvprobe_status_t lvp_attach_tree(lvprobe_t *p, lv_obj_t *root)
     uint32_t visits = 0;
 
     while (obj != NULL && visits < LVP_VISIT_CAP) {
-        if (!has_cb(obj, p) && lv_obj_add_event_cb(obj, lvp_event_cb, LV_EVENT_ALL, p) == NULL) {
+        if (!lvp_has_cb(obj, p) && lv_obj_add_event_cb(obj, lvp_event_cb, LV_EVENT_ALL, p) == NULL) {
             return LVPROBE_ERR_LVGL;
         }
         visits++;
@@ -159,51 +159,102 @@ static lvprobe_status_t attach_start(lvprobe_t *p, lv_indev_t *indev)
     return st == LVPROBE_OK ? lvp_scan_screens(p, false) : st;
 }
 
-lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, lv_indev_t *indev, uint32_t *scratch,
-                              size_t scratch_px)
+static bool config_ok(const lvprobe_config_t *c)
+{
+    return c->nodes != NULL && c->max_nodes > 0u && c->max_nodes <= INT16_MAX && c->text != NULL &&
+           c->text_bytes > 0u && c->life != NULL && c->life_cap > 0u && c->screens != NULL && c->max_screens > 0u &&
+           c->scratch != NULL && c->scratch_px > 0u;
+}
+
+lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, const lvprobe_config_t *cfg)
 {
     static const lvprobe_t closed;
     lvprobe_status_t st;
 
-    if (p == NULL || disp == NULL || scratch == NULL || scratch_px == 0u || p->open) {
+    if (p == NULL || disp == NULL || cfg == NULL || p->open || !config_ok(cfg) ||
+        (cfg->indev != NULL && lv_indev_get_display(cfg->indev) != disp)) {
         return LVPROBE_ERR_ARG;
+    }
+    if (lv_display_get_refr_timer(disp) == NULL) {
+        return LVPROBE_ERR_FORMAT; /* lv_refr_now could not refresh it */
     }
     *p = closed;
     p->disp = disp;
-    p->scratch = scratch;
-    p->scratch_px = scratch_px;
+    p->cfg = *cfg;
     p->hit.node = LVPROBE_NONE;
     p->hit.pressed_node = LVPROBE_NONE;
     p->glyph_node = LVPROBE_NONE;
     p->open = true;
-    st = attach_start(p, indev);
+    st = attach_start(p, cfg->indev);
     if (st != LVPROBE_OK) {
         lvprobe_close(p);
     }
     return st;
 }
 
+/* The display is still one of LVGL's (compared by address only). */
+static bool display_alive(const lv_display_t *disp)
+{
+    lv_display_t *d = lv_display_get_next(NULL);
+    uint32_t guard = 0;
+    while (d != NULL && guard < LVP_VISIT_CAP) {
+        if (d == disp) {
+            return true;
+        }
+        d = lv_display_get_next(d);
+        guard++;
+    }
+    return false;
+}
+
 void lvprobe_close(lvprobe_t *p)
 {
     lv_obj_t *roots[3];
-    uint16_t i;
+    uint32_t i;
     if (p == NULL || !p->open) {
         return;
     }
-    layers(p, roots);
-    for (i = 0; i < 3u; i++) {
-        if (roots[i] != NULL) {
-            detach_tree(p, roots[i]);
+    if (display_alive(p->disp)) {
+        layers(p, roots);
+        for (i = 0; i < 3u; i++) {
+            if (roots[i] != NULL) {
+                detach_tree(p, roots[i]);
+            }
         }
-    }
-    for (i = 0; i < p->screen_count; i++) {
-        if (lv_obj_is_valid(p->screens[i])) {
-            detach_tree(p, p->screens[i]);
+        for (i = 0; i < p->disp->screen_cnt; i++) { /* the display's own list: only live screens */
+            detach_tree(p, p->disp->screens[i]);
         }
+        (void)lv_display_remove_event_cb_with_user_data(p->disp, display_cb, p);
     }
-    (void)lv_display_remove_event_cb_with_user_data(p->disp, display_cb, p);
     lvp_indev_close(p);
     p->open = false;
+}
+
+/* Mark the nodes whose object is reached from the display's screens and layers and still carries the probe's
+ * callback. Only reached objects are dereferenced; a node that is not marked is not used. */
+void lvp_live_scan(lvprobe_t *p)
+{
+    lv_obj_t *roots[3];
+    uint32_t r;
+    uint16_t i;
+    for (i = 0; i < p->count; i++) {
+        p->cfg.nodes[i].seen = false;
+    }
+    layers(p, roots);
+    for (r = 0; r < p->disp->screen_cnt + 3u; r++) {
+        lv_obj_t *root = r < p->disp->screen_cnt ? p->disp->screens[r] : roots[r - p->disp->screen_cnt];
+        lv_obj_t *obj = root;
+        int32_t depth = 0;
+        uint32_t visits = 0;
+        while (obj != NULL && visits < LVP_VISIT_CAP) {
+            int32_t at = lvprobe_find(p, obj);
+            if (at != LVPROBE_NONE && lvp_has_cb(obj, p)) {
+                p->cfg.nodes[at].seen = true;
+            }
+            visits++;
+            obj = lvp_next(obj, root, &depth);
+        }
+    }
 }
 
 lvprobe_status_t lvprobe_map_font(lvprobe_t *p, const lv_font_t *font, uint16_t id)
@@ -279,7 +330,7 @@ uint16_t lvprobe_count(const lvprobe_t *p)
 
 const lvprobe_node_t *lvprobe_node(const lvprobe_t *p, uint16_t index)
 {
-    return (p == NULL || index >= p->count) ? NULL : &p->nodes[index];
+    return (p == NULL || index >= p->count) ? NULL : &p->cfg.nodes[index];
 }
 
 int32_t lvprobe_find(const lvprobe_t *p, const lv_obj_t *obj)
@@ -289,7 +340,7 @@ int32_t lvprobe_find(const lvprobe_t *p, const lv_obj_t *obj)
         return LVPROBE_NONE;
     }
     for (i = 0; i < p->count; i++) {
-        if (p->nodes[i].obj == obj) {
+        if (p->cfg.nodes[i].obj == obj) {
             return (int32_t)i;
         }
     }
