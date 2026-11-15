@@ -3,6 +3,8 @@
 # app's model adapter in release and san; the scripted sessions in selftest/ui_product (session.in, bad.in) must produce
 # the checked-in transcripts byte for byte, twice per mode; and the symbols gate confines the `uim_*` names: the model
 # adapter and the probe pass, product code that references or defines one is flagged.
+# U05: `rigor ui-explore` drives the toy probe (sweep, bfs, walk, replay) with the toy's event catalogue; two deliberately
+# broken adapters (probe_nondet, probe_starve) and a too coarse key give their findings, and each finding replays.
 # Needs bash, python3 (stdlib) and tools/buck2. Runs in place on //selftest/ui_product. Scratch lives under $TMPDIR.
 set -uo pipefail
 
@@ -208,5 +210,86 @@ gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_du
 # a policy table without an exports key (a legacy table) cannot hide it: the prefix is reserved by the gate itself
 cp "$f_misdef" "$out/f_misdef_legacy.json"; f_misdef_legacy="$out/f_misdef_legacy.json"
 gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy ctest
+
+# ---- U05: rigor ui-explore, the explorer driver ------------------------------------------------------------------------
+CAT="$prod/toy.events.toml"
+# explore <name> <wanted exit> <probe> <catalogue> <args...>: runs the explorer; findings in $out/x.<name>.json
+explore() {
+  local name="$1" want="$2" bin="$3" cat="$4"; shift 4
+  "${RIGOR[@]}" ui-explore --probe "$bin" --catalogue "$cat" --out "$out/x.$name.json" --summary "$out/x.$name.sum" "$@" \
+    > "$out/x.$name.txt" 2>&1
+  local rc=$?
+  [ "$rc" = "$want" ] || fail "$CUR: ui-explore $name exited $rc, wanted $want" "$out/x.$name.txt"
+}
+# expect <name> <python expression over F (the findings) and S (the summary)>: fails unless it is true
+expect() {
+  python3 -I - "$out/x.$1.json" "$out/x.$1.sum" "$2" <<'PY' || fail "$CUR: $1: wanted $2" "$out/x.$1.txt"
+import json, sys
+F = [json.loads(line) for line in open(sys.argv[1])]
+S = json.load(open(sys.argv[2]))
+ids = lambda check: [f["id"] for f in F if f["check"] == check]
+one = lambda check: [f for f in F if f["check"] == check][0]
+sys.exit(0 if eval(sys.argv[3]) else 1)
+PY
+}
+# replays <name>: every finding of run <name> but depth-unsaturated replays from its evidence paths to the same id
+replays() {
+  local name="$1" bin="$2" cat="$3" ident dir
+  for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit("/",1)[1]) for l in open(sys.argv[1]) if json.loads(l)["check"] != "depth-unsaturated"]' "$out/x.$name.json"); do
+    dir="$out/ev.$name/$ident"
+    [ -f "$dir/paths.json" ] || fail "$CUR: $name: no evidence paths for $ident" "$out/x.$name.txt"
+    "${RIGOR[@]}" ui-explore --probe "$bin" --catalogue "$cat" --strategy replay --paths "$dir/paths.json" \
+      --out "$out/rp.json" > "$out/rp.txt" 2>&1
+    [ "$?" -le 1 ] || fail "$CUR: replay of $ident failed" "$out/rp.txt"
+    grep -q "/$ident\"" "$out/rp.json" || fail "$CUR: the replay of $name's $ident does not give $ident" "$out/rp.txt"
+  done
+}
+OPENW="open 1000000000 7"
+SEED=(--origin-ms 1000000000 --seed 7)
+
+begin "ui-explore sweep on the toy: C1 = 100 % (both domain entries), no finding, byte-identical twice, release and san"
+for mode in rel san; do
+  eval "bin=\$probe_$mode"
+  explore "sweep.$mode.1" 0 "$bin" "$CAT" --strategy sweep "${SEED[@]}"
+  explore "sweep.$mode.2" 0 "$bin" "$CAT" --strategy sweep "${SEED[@]}"
+  cmp -s "$out/x.sweep.$mode.1.json" "$out/x.sweep.$mode.2.json" || fail "$CUR: two sweeps ($mode) differ"
+  expect "sweep.$mode.1" 'F == [] and S["domain_count"] == 2 and S["domain_visited"] == [0, 1] and S["criteria"] == ["C1"]'
+done
+cmp -s "$out/x.sweep.rel.1.json" "$out/x.sweep.san.1.json" || fail "$CUR: release and san sweeps differ"
+echo "  C1 2/2, findings.json byte-identical over 4 runs"
+
+begin "ui-explore bfs on the toy terminates saturated (states per depth), byte-identical twice; depth 1 is depth-unsaturated"
+explore bfs.1 0 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 1000
+explore bfs.2 0 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 1000
+cmp -s "$out/x.bfs.1.json" "$out/x.bfs.2.json" || fail "$CUR: two bfs runs differ"
+cmp -s "$out/x.bfs.1.sum" "$out/x.bfs.2.sum" || fail "$CUR: two bfs summaries differ"
+expect bfs.1 'F == [] and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 63'
+explore shallow 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 1000
+expect shallow 'len(ids("depth-unsaturated")) == 1 and one("depth-unsaturated")["observed"]["reasons"] == ["last-depth-adds-states"] and one("depth-unsaturated")["observed"]["states_per_depth"] == [1, 2] and len(ids("ui-coverage-gap")) == 18 and len(F) == 19'
+echo "  states per depth $(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["detail"]["states_per_depth"])' "$out/x.bfs.1.sum"); depth 1: depth-unsaturated + 18 C8 gaps"
+
+begin "a nondeterministic adapter (pid in the trace) is model-nondeterministic at the press, and the finding replays to its id"
+build_out probe_nondet "$REL" "$P:probe_nondet"
+explore nondet 1 "$probe_nondet" "$CAT" --strategy bfs "${SEED[@]}" --depth 2 --max-states 1000 --evidence "$out/ev.nondet"
+expect nondet 'len(ids("model-nondeterministic")) == 1 and one("model-nondeterministic")["observed"] == {"step": 1, "word": "tap-press", "part": "trace", "item": 0} and one("model-nondeterministic")["path"] == ["'"$OPENW"'", "tap-press"] and ids("run-twice-mismatch") == []'
+replays nondet "$probe_nondet" "$CAT"
+
+begin "an adapter whose deadline never moves gives timer-starvation, which replays to its id"
+build_out probe_starve "$REL" "$P:probe_starve"
+explore starve 1 "$probe_starve" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 1000 --evidence "$out/ev.starve"
+expect starve 'len(ids("timer-starvation")) == 1 and one("timer-starvation")["observed"]["firings"] == 32 and one("timer-starvation")["path"][:2] == ["'"$OPENW"'", "tap-press"] and len(one("timer-starvation")["path"]) == 34'
+replays starve "$probe_starve" "$CAT"
+
+begin "a key that omits the label and geometry is key-too-coarse (info) on the toy, and the finding replays to its id"
+explore coarse 0 "$probe_rel" "$prod/toy_coarse.events.toml" --strategy bfs "${SEED[@]}" --depth 8 --max-states 1000 --evidence "$out/ev.coarse"
+expect coarse 'len(ids("key-too-coarse")) >= 1 and all(f["severity"] == "info" for f in F) and [f["observed"]["witness_node"][2] for f in F if f["path"] == ["'"$OPENW"'", "env-offline"]] == ["Pressed"]'
+replays coarse "$probe_rel" "$prod/toy_coarse.events.toml"
+echo "  $(wc -l < "$out/x.coarse.json") key-too-coarse findings, each replayed"
+
+begin "ui-explore walks on the toy (2 seeds x 3 clock origins) give no finding and are byte-identical twice"
+explore walk.1 0 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
+explore walk.2 0 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
+cmp -s "$out/x.walk.1.sum" "$out/x.walk.2.sum" || fail "$CUR: two walk summaries differ"
+expect walk.1 'F == [] and S["runs"] == 6'
 
 echo "ui selftest passed"

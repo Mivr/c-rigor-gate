@@ -11,10 +11,12 @@ from rigor_lib.findings import GateResult, finding
 from rigor_lib.runner import EXIT_ERROR, EXIT_FAIL, EXIT_PASS
 from rigor_lib import fuzz_gate, lane_mutants, mutants_gate, product_checks, structure
 from rigor_lib import guards_gate, ledger, oracle_judge, policy_check, sim_judge, trajectory
+from rigor_lib import ui_explore
 
 # Each module has add_parser(subparsers).
 COMMANDS = [contract, suppressions, tests_gate, ratchet, verdict, approve, product_checks, mutants_gate, grade,
-            trajectory, structure, lane_mutants, policy_check, fuzz_gate, ledger, guards_gate, sim_judge, oracle_judge]
+            trajectory, structure, lane_mutants, policy_check, fuzz_gate, ledger, guards_gate, sim_judge, oracle_judge,
+            ui_explore]
 
 
 def build_parser():

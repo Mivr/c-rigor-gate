@@ -44,6 +44,10 @@ selftests = ["ui"]
 [[rule]]
 glob = "selftest/ui_product/**"
 selftests = ["ui"]
+# U05: the explorer driver (`rigor ui-explore`); only the ui selftest runs it.
+[[rule]]
+glob = "gate/rigor_lib/ui_explore*"
+selftests = ["ui"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"
