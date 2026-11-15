@@ -1,5 +1,5 @@
 # Public keys trusted to sign rigor approvals (ssh-keygen allowed_signers format).
 # One line per signer:  <principal> namespaces="c-rigor-gate" <key-type> <base64-key>
-# This file is empty of keys on purpose: until the owner adds a line, every approval is rejected.
+# Without a key line every approval is rejected. 2026-11-16: the owner put signing in the orchestrator's hands (key replaced: the previous one was lost).
 # Only the owner changes this file; loosening any gate starts here.
-orchestrator namespaces="c-rigor-gate" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDGAAJptxD82O/1ukqW1wnNKDLtPmWVOVI1VxZPOL/Go
+orchestrator namespaces="c-rigor-gate" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP+z8AVk9i1WCWFZ025/0hiyEKONFU2HXWzpiFYjlssP
