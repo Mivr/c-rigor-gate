@@ -220,15 +220,6 @@ gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_du
 cp "$f_misdef" "$out/f_misdef_legacy.json"; f_misdef_legacy="$out/f_misdef_legacy.json"
 gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy lvp ctest
 
-<<<<<<< ours
-begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
-for plat in "$REL" "$SAN"; do
-  run "$out/lvprobe.log" test --target-platforms "$plat" //ui/lvprobe/... || fail "$CUR: //ui/lvprobe/... failed in $plat" "$out/lvprobe.log"
-  grep -Eq "Pass [1-9][0-9]*\. Fail 0\." "$out/lvprobe.log" || fail "$CUR: the test summary in $plat is not a clean pass" "$out/lvprobe.log"
-done
-
-bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
-=======
 # ---- U05: rigor ui-explore, the explorer driver ------------------------------------------------------------------------
 CAT="$prod/toy.events.toml"
 FIX="$prod/fixture.events.toml"
@@ -328,6 +319,14 @@ expect walk.1 'F == [] and S["runs"] == 6 and S["evaluated"] == []'
 explore walk.req 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11 --walk-length 3 --extra-origins 0 --require C8
 expect walk.req 'ids("ui-coverage-gap") and F[0]["observed"] == {"criterion": "C8", "evaluated": False}'
 
+begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
+for plat in "$REL" "$SAN"; do
+  run "$out/lvprobe.log" test --target-platforms "$plat" //ui/lvprobe/... || fail "$CUR: //ui/lvprobe/... failed in $plat" "$out/lvprobe.log"
+  grep -Eq "Pass [1-9][0-9]*\. Fail 0\." "$out/lvprobe.log" || fail "$CUR: the test summary in $plat is not a clean pass" "$out/lvprobe.log"
+done
+
+bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
+
 begin "no probe process this selftest started is still alive"
 python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" <<'PY' || fail "$CUR: probe processes left behind"
 import os, sys, time
@@ -353,5 +352,4 @@ if live():
     print("alive:", live()); sys.exit(1)
 PY
 echo "  none"
->>>>>>> theirs
 echo "ui selftest passed"
