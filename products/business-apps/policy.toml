@@ -5242,3 +5242,42 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/guard:guard"]
+level = "L3"
+impl = ["apps/fiscal/dtsafe/guard/src/**"]
+allow = []
+exports = ["dtg_check"]
+
+[module."//apps/fiscal/dtsafe/guard:dtg_accept_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/guard:dtg_time_test"]
+allow = ["memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/guard:dtg_target_test"]
+allow = ["memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/guard:dtg_method_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/guard:dtg_header_test"]
+allow = ["memcpy", "strchr", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/guard:dtg_tail_test"]
+allow = ["memcpy", "memset", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/guard:dtg_sweep_test"]
+allow = ["memcpy", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/guard:testkit"]
+level = "L1"
+allow = []
+exports = []
