@@ -5242,3 +5242,21 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dt/retry:retry"]
+level = "L3"
+impl = ["apps/fiscal/dt/retry/src/**"]
+allow = []
+exports = []
+
+[module."//apps/fiscal/dt/retry:retry_classify_x_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/retry:retry_classify_ok_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/retry:retry_next_test"]
+allow = []
+exports = ["main"]
