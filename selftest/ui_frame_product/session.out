@@ -519,8 +519,9 @@ node	13	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
 region	13	21a938ba
 node	14	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
 region	14	21a938ba
-ok trace lines 1
+ok trace lines 2
 15	anim_done	1000
+16	anim_done	1000
 ok open
 ok frame lines 44
 lvprobe	1	15

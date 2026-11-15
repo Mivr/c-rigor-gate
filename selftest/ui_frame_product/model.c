@@ -4,7 +4,8 @@
  * notice for NOTICE_MS), 2 and 3 make the overlay clickable or not, 4 and 5 squeeze the fit label or give it room, 6 adds
  * APP_MANY labels (too large for one reply), 7 adds one label and 8 deletes it (lifecycle events), 9 animates the bar
  * for ANIM_MS (a deadline; its end retitles the screen "Done"), 10 starts a 0 ms animation and returns without running
- * it (LVGL runs it at the next refresh: the frame must run the work it posts). Broken on purpose: 11 frames a second
+ * it (LVGL runs it at the next refresh: the frame must run the work it posts); that work retitles the screen "Half" and
+ * starts a second 0 ms animation, whose work retitles it "Done" (so a frame must take its snapshot again after work). Broken on purpose: 11 frames a second
  * display, 12 frames a pointer that is no display, 13 adds a second pointer indev, 14 moves LVGL's tick from a clock, 15
  * makes this apply return a value outside the enum, 16 makes the next uim_settle return UIM_REFUSED, 17 the one after
  * it, 18 makes the uim_settle after the next move LVGL's tick itself. `open <t> 2` starts on a
@@ -23,6 +24,7 @@ struct uim {
     uint64_t seq;
     uint64_t notice_due;
     uint64_t anim_due;
+    bool chain;           /* the next animation's work starts another one (intent 10) */
     int frame_mode;       /* 0 the display, 11 a second display, 12 no display */
     int bad_result;       /* returned by apply 15 */
     unsigned refuse_in;   /* the uim_settle call (counting from 1) that returns UIM_REFUSED, 0 none */
@@ -80,6 +82,12 @@ static bool run_work(uim_t *m, bool *worked, bool *pressed)
             *pressed = true;
             app_show_notice(true);
             m->notice_due = m->now + NOTICE_MS;
+        } else if (m->chain) {
+            m->chain = false;
+            app_set_title("Half");
+            if (!app_animate(0)) {
+                return false;
+            }
         } else {
             app_set_title("Done");
             m->anim_due = UIM_NO_DEADLINE;
@@ -102,6 +110,7 @@ bool uim_open(uim_t *m, uint64_t clock_origin_ms, uint64_t seed)
     m->now = clock_origin_ms;
     m->notice_due = UIM_NO_DEADLINE;
     m->anim_due = UIM_NO_DEADLINE;
+    m->chain = false;
     m->frame_mode = 0;
     m->bad_result = 0;
     m->refuse_in = 0;
@@ -135,6 +144,7 @@ static uim_result_t animate(uim_t *m, uint32_t ms)
         return UIM_ERROR;
     }
     m->anim_due = ms > 0u ? m->now + ms : UIM_NO_DEADLINE;
+    m->chain = ms == 0u;
     return UIM_OK;
 }
 

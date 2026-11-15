@@ -107,7 +107,7 @@ def check_session(s):
     assert s.body(35, "trace")[-1] == "14\tpress\t1000"
     assert s.head(36, "apply 3 10 0 -") == "ok apply"
     need(s.frame(37), "label\t2\t-\t16\t0\t1\t0\t0\t1\t40\t16\t40\t16\t=Done\t-", "the work the animation posted, in the frame")
-    assert s.body(38, "trace") == ["15\tanim_done\t1000"], "the posted work ran at the frame's time"
+    assert s.body(38, "trace") == ["15\tanim_done\t1000", "16\tanim_done\t1000"], "the posted work ran at the frame's time"
     assert s.frame(40)[1] == "frame\t160\t120\t3f670cca"
 
 
