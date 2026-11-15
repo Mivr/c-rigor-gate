@@ -15,6 +15,12 @@ lvprobe_status_t lvp_attach_tree(lvprobe_t *p, lv_obj_t *root);
 bool lvp_has_cb(lv_obj_t *obj, const lvprobe_t *p);
 /* Mark (node.seen) the nodes whose object is reached from the display's roots and carries the probe's callback. */
 void lvp_live_scan(lvprobe_t *p);
+void lvp_sort_nodes(lvprobe_t *p);
+int32_t lvp_find_addr(const lvprobe_t *p, const void *addr, bool live); /* live: only nodes not deleted */
+/* The walk is valid for an encoder or a lookup: it succeeded, nothing changed since, the display exists. */
+bool lvp_walk_valid(const lvprobe_t *p);
+/* Every walked node is reached and as walked (parent, index among siblings, hidden, clickable): OK, GONE or STALE. */
+lvprobe_status_t lvp_tree_current(lvprobe_t *p);
 const char *lvp_class_name(const lv_obj_t *obj);
 bool lvp_box_empty(const lv_area_t *a);
 bool lvp_box_in(const lv_area_t *inner, const lv_area_t *outer);

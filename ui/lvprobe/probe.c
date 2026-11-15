@@ -139,6 +139,8 @@ static void display_cb(lv_event_t *e)
     lvprobe_t *p = lv_event_get_user_data(e);
     if (p != NULL && p->open && lv_event_get_code(e) == LV_EVENT_FLUSH_START) {
         p->flushes++;
+    } else if (p != NULL && p->open && lv_event_get_code(e) == LV_EVENT_DELETE) {
+        p->disp_gone = true; /* from now on no call touches the display */
     }
 }
 
@@ -148,7 +150,8 @@ static lvprobe_status_t attach_start(lvprobe_t *p, lv_indev_t *indev)
     uint32_t i;
     lvprobe_status_t st = LVPROBE_OK;
 
-    if (lv_display_add_event_cb(p->disp, display_cb, LV_EVENT_FLUSH_START, p) == NULL) {
+    if (lv_display_add_event_cb(p->disp, display_cb, LV_EVENT_FLUSH_START, p) == NULL ||
+        lv_display_add_event_cb(p->disp, display_cb, LV_EVENT_DELETE, p) == NULL) {
         return LVPROBE_ERR_LVGL;
     }
     st = lvp_indev_open(p, indev);
@@ -175,8 +178,8 @@ lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, const lvprobe_co
         (cfg->indev != NULL && lv_indev_get_display(cfg->indev) != disp)) {
         return LVPROBE_ERR_ARG;
     }
-    if (lv_display_get_refr_timer(disp) == NULL) {
-        return LVPROBE_ERR_FORMAT; /* lv_refr_now could not refresh it */
+    if (lv_display_get_refr_timer(disp) == NULL || lv_display_get_rotation(disp) != LV_DISPLAY_ROTATION_0) {
+        return LVPROBE_ERR_FORMAT; /* no refresh, or taps, query and coords would disagree */
     }
     *p = closed;
     p->disp = disp;
@@ -214,7 +217,7 @@ void lvprobe_close(lvprobe_t *p)
     if (p == NULL || !p->open) {
         return;
     }
-    if (display_alive(p->disp)) {
+    if (!p->disp_gone && display_alive(p->disp)) {
         layers(p, roots);
         for (i = 0; i < 3u; i++) {
             if (roots[i] != NULL) {
@@ -228,33 +231,6 @@ void lvprobe_close(lvprobe_t *p)
     }
     lvp_indev_close(p);
     p->open = false;
-}
-
-/* Mark the nodes whose object is reached from the display's screens and layers and still carries the probe's
- * callback. Only reached objects are dereferenced; a node that is not marked is not used. */
-void lvp_live_scan(lvprobe_t *p)
-{
-    lv_obj_t *roots[3];
-    uint32_t r;
-    uint16_t i;
-    for (i = 0; i < p->count; i++) {
-        p->cfg.nodes[i].seen = false;
-    }
-    layers(p, roots);
-    for (r = 0; r < p->disp->screen_cnt + 3u; r++) {
-        lv_obj_t *root = r < p->disp->screen_cnt ? p->disp->screens[r] : roots[r - p->disp->screen_cnt];
-        lv_obj_t *obj = root;
-        int32_t depth = 0;
-        uint32_t visits = 0;
-        while (obj != NULL && visits < LVP_VISIT_CAP) {
-            int32_t at = lvprobe_find(p, obj);
-            if (at != LVPROBE_NONE && lvp_has_cb(obj, p)) {
-                p->cfg.nodes[at].seen = true;
-            }
-            visits++;
-            obj = lvp_next(obj, root, &depth);
-        }
-    }
 }
 
 lvprobe_status_t lvprobe_map_font(lvprobe_t *p, const lv_font_t *font, uint16_t id)
@@ -301,6 +277,9 @@ lvprobe_status_t lvprobe_settle(lvprobe_t *p, bool *flushed)
     if (p == NULL || !p->open || flushed == NULL) {
         return LVPROBE_ERR_ARG;
     }
+    if (p->disp_gone) {
+        return LVPROBE_ERR_GONE;
+    }
     p->flushes = 0;
     lv_refr_now(p->disp);
     *flushed = p->flushes > 0u;
@@ -313,6 +292,9 @@ lvprobe_status_t lvp_current(lvprobe_t *p, bool need_settled)
     if (p == NULL || !p->open) {
         return LVPROBE_ERR_ARG;
     }
+    if (p->disp_gone) {
+        return LVPROBE_ERR_GONE;
+    }
     st = lvp_scan_screens(p, true);
     if (st != LVPROBE_OK) {
         return st;
@@ -323,6 +305,32 @@ lvprobe_status_t lvp_current(lvprobe_t *p, bool need_settled)
     return (need_settled && !lvp_settled(p)) ? LVPROBE_ERR_UNSETTLED : LVPROBE_OK;
 }
 
+bool lvp_walk_valid(const lvprobe_t *p)
+{
+    return p != NULL && p->open && !p->disp_gone && p->walked && p->gen == p->walk_gen &&
+           lv_display_get_screen_active(p->disp) == p->walk_screen;
+}
+
+lvprobe_status_t lvp_tree_current(lvprobe_t *p)
+{
+    uint16_t i;
+    lvp_live_scan(p);
+    for (i = 0; i < p->count; i++) {
+        const lvprobe_node_t *n = &p->cfg.nodes[i];
+        lv_obj_t *parent;
+        if (!n->seen) {
+            return LVPROBE_ERR_GONE;
+        }
+        parent = lv_obj_get_parent(n->obj);
+        if ((n->parent == LVPROBE_NONE ? parent != NULL : parent != p->cfg.nodes[n->parent].obj) ||
+            (n->parent != LVPROBE_NONE && lv_obj_get_index(n->obj) != n->child_index) ||
+            lv_obj_is_hidden(n->obj) != n->hidden || lv_obj_is_clickable(n->obj) != n->clickable) {
+            return LVPROBE_ERR_STALE; /* reparented, reordered, or a flag changed without an event */
+        }
+    }
+    return LVPROBE_OK;
+}
+
 uint16_t lvprobe_count(const lvprobe_t *p)
 {
     return p == NULL ? 0u : p->count;
@@ -331,20 +339,6 @@ uint16_t lvprobe_count(const lvprobe_t *p)
 const lvprobe_node_t *lvprobe_node(const lvprobe_t *p, uint16_t index)
 {
     return (p == NULL || index >= p->count) ? NULL : &p->cfg.nodes[index];
-}
-
-int32_t lvprobe_find(const lvprobe_t *p, const lv_obj_t *obj)
-{
-    uint16_t i;
-    if (p == NULL || obj == NULL) {
-        return LVPROBE_NONE;
-    }
-    for (i = 0; i < p->count; i++) {
-        if (p->cfg.nodes[i].obj == obj) {
-            return (int32_t)i;
-        }
-    }
-    return LVPROBE_NONE;
 }
 
 void lvp_event_cb(lv_event_t *e)
@@ -365,5 +359,7 @@ void lvp_event_cb(lv_event_t *e)
     } else if (code == LV_EVENT_DELETE) {
         p->gen++;
         lvp_on_deleted(p, self);
+    } else if (code == LV_EVENT_CHILD_CHANGED || code == LV_EVENT_CHILD_DELETED) {
+        p->gen++; /* a child moved, was reparented, reordered or resized: the walk's facts may be wrong */
     }
 }

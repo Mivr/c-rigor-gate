@@ -257,10 +257,25 @@ static lv_opa_t layer_opa(const lvprobe_t *p, const lvprobe_node_t *n)
     return opa;
 }
 
+/* LVGL's `rendered` mark of the label and of every walked node below it (they follow it in walk order). */
+static void save_rendered(lvprobe_t *p, uint16_t index, bool restore)
+{
+    uint16_t i = index;
+    do {
+        lvprobe_node_t *m = &p->cfg.nodes[i];
+        if (restore && !m->was_rendered) {
+            m->obj->rendered = 0;
+        } else if (!restore) {
+            m->was_rendered = m->obj->rendered != 0u;
+        }
+        i++;
+    } while (i < p->count && p->cfg.nodes[i].depth > p->cfg.nodes[index].depth);
+}
+
 static void dry_draw(lvprobe_t *p, uint16_t index, const lv_area_t *clip)
 {
     lvprobe_node_t *n = &p->cfg.nodes[index];
-    bool rendered = n->obj->rendered != 0u;
+    uint32_t gen = p->gen;
     lv_layer_init(&p->layer);
     p->layer.user_data = p;
     p->layer.display = p->disp;
@@ -269,10 +284,11 @@ static void dry_draw(lvprobe_t *p, uint16_t index, const lv_area_t *clip)
     lvp_display_area(p, &p->layer.buf_area);
     p->layer._clip_area = *clip;
     p->layer.phy_clip_area = *clip;
+    save_rendered(p, index, false);
     lv_obj_redraw(&p->layer, n->obj);
     drain(p, index);
-    if (!rendered) {
-        n->obj->rendered = 0; /* lv_obj_redraw marks it; the probe rendered nothing */
+    if (p->gen == gen) { /* a draw handler that deleted objects makes the walk stale: touch nothing then */
+        save_rendered(p, index, true); /* lv_obj_redraw marks them; the probe rendered nothing */
     }
 }
 
@@ -286,7 +302,8 @@ lvprobe_status_t lvp_label_draw(lvprobe_t *p, uint16_t index)
         return LVPROBE_OK; /* hidden or fully transparent: not drawn and not clipped */
     }
     if (needs_sub_layer(n)) {
-        return LVPROBE_ERR_UNSUPPORTED;
+        n->unsupported = true; /* not measured: drawn 0, no boxes, not clipped; the walk goes on */
+        return LVPROBE_OK;
     }
     open = chain_clip(p, n, &clip);
     if (open) {

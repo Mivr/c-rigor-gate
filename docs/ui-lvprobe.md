@@ -24,7 +24,7 @@ The probe takes its facts from LVGL's own code wherever LVGL exposes it (H6):
 | natural size | `lv_text_get_size_attributes` of the label's own text, no width limit |
 | glyph boxes, visible box, `drawn`, `align_drawn` | `lv_obj_redraw` of the label into a probe-owned layer that is never rendered or flushed (`opa` = the layer opacity `lv_obj_refr` would hand it); LVGL's `draw_main` creates the draw task; `lv_draw_label_iterate_characters` on it, clip opened, places every glyph; the task's `clip_area` is the visible box; the tasks are freed with `lv_draw_cleanup_task` and the label's `rendered` mark is restored |
 | hit (injection) | the pointer indev: `lv_indev_read` press and release, LVGL's own search and events |
-| hit (query) | `lv_indev_search_obj` |
+| hit (query) | `lv_indev_search_obj` (it sends LVGL's own `LV_EVENT_HIT_TEST` to objects with `LV_OBJ_FLAG_ADV_HITTEST`) |
 | ink | a real refresh with the node not drawn (its own `hidden` bit), a real refresh with it, the pixel diff |
 | pixels | the display's single full-size buffer the real flush wrote |
 
@@ -36,12 +36,13 @@ against real pixels or real events, so an LVGL upgrade that changes the logic fa
 | clip chain: display area cut by each ancestor's child clip box, coords or coords + ext when overflow is visible (`lv_obj_redraw`, lv_refr.c:105) | `lvprobe_diff/glyphs_match_the_render_under_parents` (scrolled, `opa_layered`, `clip_corner` parents, off-screen) and `..._in_every_long_mode`: rendered ink box = glyphs cut by the visible box |
 | draw chain: hidden, `opa_layered` <= `LV_OPA_MIN`, transform scale <= 0, a parent's layer opacity <= `LV_OPA_MIN` (`lv_obj_refr`, `lv_obj_redraw`) | `lvprobe_diff/not_drawn_means_no_pixels` |
 | layer opacity: every `opa` below `LV_OPA_MAX` mixed with `LV_OPA_MIX2` (`lv_obj_refr`) | `lvprobe_diff/not_drawn_means_no_pixels` (a label of own `opa` 1) |
-| `bg_opa_drawn`: `bg_opa`, inherited `opa`, own and ancestors' `opa_layered`, combined so that a factor at or above `LV_OPA_MAX` is opaque | `lvprobe_diff/bg_opa_drawn_matches_the_pixel`: exact under `opa`; under an `opa_layered` parent LVGL composes a sub-layer and the pixel is **2 levels** off the model (measured) |
+| `bg_opa_drawn`: `bg_opa`, inherited `opa`, own and ancestors' `opa_layered`, combined so that a factor at or above `LV_OPA_MAX` is opaque | `lvprobe_diff/bg_opa_drawn_matches_the_pixel`: equal to the rendered pixel whenever `bg_opa_exact` is 1; `bg_opa_exact` is 0 under any `opa_layered` ancestor (LVGL composes a sub-layer and rounds differently: measured 2 levels off), and a judge must not use the value then |
 | not-drawn `clipped`: no part of the content box survives the clip chain (`draw_main`, lv_label.c:908) | `lvprobe_diff/not_drawn_means_no_pixels` (padded label) |
 | `label_flags` (`get_label_flags`, lv_label.c:1516) and the DOTS laid-out size (`lv_label_refr_text`) | `lvprobe_diff/glyphs_match_the_render_in_every_long_mode` (DOTS width against the rendered `AA...`) |
 | line count = (h + line space) / (line height + line space) | the same test (wrapped rows against the rendered rows) |
 | `full_text` from `dot_begin`/`dot[]` (`lv_label_set_dots`) and `LV_LABEL_DOT_BEGIN_INV` (lv_label.c:33) | `lvprobe_label/long_modes_dots_scroll_and_clip` |
-| tap blocked: no display, disabled, `prev_scr` (`lv_indev_read`), `wait_until_release` (`indev_proc_press`) | `lvprobe_hit/a_tap_during_a_screen_load_animation_is_blocked` (LVGL's own test mouse agrees; only `scr_to_load` set is processed) |
+| tap blocked: no display, disabled, `prev_scr` (`lv_indev_read`), `wait_until_release` (`indev_proc_press`); the same check for the query | `lvprobe_hit/a_tap_during_a_screen_load_animation_is_blocked` (LVGL's own test mouse agrees; only `scr_to_load` set is processed) |
+| scrollbar areas (`lv_obj_get_scrollbar_area`) of the ancestors where they touch the diff box, with the node's bit set and cleared | `lvprobe_ink2/a_scrollbar_change_makes_ink_unstable` |
 | query order sys, top, active, bottom (`pointer_search_obj`) | `lvprobe_hit/the_hit_query_agrees_with_the_tap_and_fires_nothing` |
 | indev reset of the click streak and timestamps (private fields) | `lvprobe_hit/three_taps_are_three_single_clicks` |
 
@@ -66,11 +67,15 @@ Seam loop per frame: `lvprobe_life` until `lvprobe_life_pending` is 0; `lvprobe_
 then node by node into the reply buffer. After a tap, settle again before the next walk or frame.
 
 Errors. **Settle and retry** (the state moved under the call): `LVPROBE_ERR_UNSETTLED` (settle), `LVPROBE_ERR_STALE`
-(walk again), `LVPROBE_ERR_BLOCKED` (settle or advance time, then tap again), `LVPROBE_ERR_UNSTABLE` (settle and retry
-once; again unstable: report the node as unmeasurable), `LVPROBE_ERR_GONE` (walk again), `LVPROBE_ERR_TRUNC` (a larger
-buffer or node by node). **Fatal for the session**: `LVPROBE_ERR_FULL` (a capacity), `LVPROBE_ERR_FORMAT` (the display
-is not one full-size XRGB8888 buffer in DIRECT mode, or has no refresh timer), `LVPROBE_ERR_LVGL`,
-`LVPROBE_ERR_UNSUPPORTED` (a label LVGL draws through a sub-layer), `LVPROBE_ERR_ARG`. **Data lost**:
+(walk again; also the encoder after a failed or stale walk), `LVPROBE_ERR_BLOCKED` (settle or advance time, then tap
+again), `LVPROBE_ERR_UNSTABLE` (settle and retry once; again unstable: report the node as unmeasurable),
+`LVPROBE_ERR_GONE` for a node (walk again), `LVPROBE_ERR_TRUNC` (a larger buffer or node by node). **Per node, not
+measured** (the judge fails closed on that node, the session goes on): `LVPROBE_ERR_UNSUPPORTED` from `lvprobe_ink` (a
+transformed node, or under a transformed ancestor; `ink_unsupported`), and the walk's `unsupported` flag of a label
+LVGL draws through a sub-layer. **Fatal for the session**: `LVPROBE_ERR_FULL` (a capacity), `LVPROBE_ERR_FORMAT` (not
+one full-size XRGB8888 buffer in DIRECT mode, no refresh timer, or a rotated display), `LVPROBE_ERR_LVGL`,
+`LVPROBE_ERR_ARG` (also the ink of a screen or layer root, which is refused), and `LVPROBE_ERR_GONE` from every call
+after `lv_display_delete` (the probe hears the display's `LV_EVENT_DELETE` and touches it no more). **Data lost**:
 `LVPROBE_ERR_OVERFLOW` (lifecycle events did not fit the ring).
 
 ## Configuration and storage
@@ -83,7 +88,8 @@ node's box + ext draw size; width x height always suffices), and `indev` (below)
 most `cap` entries, oldest first, and keeps the rest; `lost` counts only what the ring could not hold.
 
 `lvprobe_close` is safe in any order: it looks the display and the indev up in LVGL's own lists (by address) and
-touches neither when they are gone.
+touches neither when they are gone; it deletes its own indev only if that indev still has the probe's read callback (a
+new indev at the same address is someone else's: `lvprobe_io/calls_after_the_display_is_gone_fail`).
 
 LVGL pool: one event descriptor per observed object, one on the display, the probe's indev when it creates one; a walk
 gives back every byte it takes (pinned by `lvprobe_diff/a_walk_leaves_lvgl_as_it_was`); ink allocates nothing and
@@ -95,10 +101,19 @@ leaves every style list as it was (`lvprobe_ink/ink_leaves_styles_and_the_pool_a
   index is its position in that order, nothing more: **judges key nodes through the scene (O2), never through the
   index**. `parent`, `clip` and `scroll` are indexes, `-1` for none; a root has depth 0.
 * **Liveness.** A stored object pointer is used only when a fresh traversal from the display's screens and layers
-  reaches it **and** it still carries the probe's event callback; nothing else is dereferenced. A deleted object the
-  probe saw is `obj` NULL. If the app removed the probe's callback and an object at the same address appeared since,
-  that object lacks the callback (under an observed parent its creation would have changed the generation instead):
-  `LVPROBE_ERR_GONE` (`lvprobe_ink/a_reused_address_is_gone`).
+  reaches it **and** it still carries the probe's event callback; nothing else is dereferenced. One traversal per call
+  (an index stack, depth 32), each object looked up by binary search in the nodes sorted by address after the walk:
+  inking all 512 nodes of a flat screen is not quadratic (`lvprobe_ink2/inking_512_nodes_is_not_quadratic`). A deleted
+  object the probe saw is `obj` NULL. If the app removed the probe's callbacks and an object at the same address
+  appeared since, that object lacks the callback (under an observed parent its creation would have changed the
+  generation instead): `LVPROBE_ERR_GONE` (`lvprobe_ink/a_reused_address_is_gone`).
+* **Staleness: what is and is not detected.** The walk's generation changes on every create and delete, on
+  `LV_EVENT_CHILD_CHANGED` and `LV_EVENT_CHILD_DELETED` of an observed parent (a child added, removed, reparented,
+  reordered with `lv_obj_move_to_index`, moved or resized), on a new screen and on a change of the active screen. What
+  sends no event is compared at use time (ink, tap, query): each node's parent, index among its siblings, `hidden` and
+  `clickable` against the walk (`lvprobe_walk/tree_changes_without_events_make_the_walk_stale`). Not detected: style
+  changes (colours, fonts, opacity), label text changes, other flags and states (`LV_STATE_DISABLED` included); their
+  facts are those of the walk until the next one.
 * **Clip ancestor, scroll context.** `clip`: the nearest ancestor whose child clip box does not contain the coords.
   `scroll`: the nearest ancestor with the scrollable flag and content beyond its box; `scroll_x`/`scroll_y` its
   offsets. An item a list scrolled out has `clip` and `scroll` = the list, which tells it from text that does not
@@ -114,13 +129,24 @@ leaves every style list as it was (`lvprobe_ink/ink_leaves_styles_and_the_pool_a
   content box cut by the clip chain. SCROLL_CIRCULAR draws the text twice; both copies are in `glyphs`.
 * **`clipped`.** Drawn: the glyph union is not inside the visible box. Not drawn although nothing hides it or makes it
   transparent: the text takes room and no part of its content box survives the clip chain. Otherwise not clipped.
-* **Ink.** On a settled display, for a node LVGL draws: save its box (coords + ext draw size, inside the display),
-  invalidate it and set its own `hidden` bit directly (`lv_obj_refr` skips it and its subtree; unlike
-  `lv_obj_set_hidden` no layout is marked and no focus moves), refresh, diff, clear the bit, invalidate, refresh.
-  `LVPROBE_ERR_UNSTABLE` (and `unstable`, no ink) when a style transition of the node is running (refused before
-  anything is touched), a refresh flushed nothing or left the display unsettled, any walked node's coords, the focus or
-  the restored pixels changed, or objects were created or deleted. Ink is subtree ink inside the node's box: a child
-  drawn outside it (overflow visible beyond the ext draw size) is not counted. A node LVGL does not draw has ink 0.
+* **`unsupported`** (labels). LVGL would draw the label through a sub-layer it really renders (a drop shadow, or a
+  descendant with a layer): not measured, `drawn` 0, no boxes, not clipped; the walk goes on and every other node is
+  measured as usual (`lvprobe_walk/a_label_with_a_drop_shadow_is_unsupported`). The dry redraw restores LVGL's
+  `rendered` mark of the label and of every walked node below it.
+* **Ink.** Refused: a screen or layer root (`LVPROBE_ERR_ARG`), a transformed node or one under a transformed ancestor
+  (`LVPROBE_ERR_UNSUPPORTED`, `ink_unsupported`), a node whose walked parent, index or flags changed
+  (`LVPROBE_ERR_STALE`: in particular a node the product hid after the walk is never un-hidden by ink), and, before
+  anything is touched, while LVGL runs any animation or a style transition of the node (`LVPROBE_ERR_UNSTABLE`).
+  Otherwise, on a settled display, for a node LVGL draws: save its box (coords + ext draw size, inside the display) and
+  every walked node's `rendered` mark; invalidate the node and set its own `hidden` bit directly (`lv_obj_refr` skips it
+  and its subtree; unlike `lv_obj_set_hidden` no layout is marked and no focus moves); refresh; if a product handler
+  deleted the node during the refresh, stop with `LVPROBE_ERR_GONE` and touch nothing more; diff; put the saved bit back
+  and invalidate; if any node moved, mark the node's parent for layout so the second refresh lays the siblings out
+  again with the node drawn; refresh; put the `rendered` marks back. `LVPROBE_ERR_UNSTABLE` (and `unstable`, no ink)
+  when an ancestor's scrollbar changed inside the box, a refresh flushed nothing or left the display unsettled, any
+  walked node's coords, the focus or the restored pixels changed, or objects were created or deleted. Ink is subtree ink
+  inside the node's box: a child drawn outside it (overflow visible beyond the ext draw size) is not counted. A node LVGL
+  does not draw has ink 0.
 * **Luminance samples, CRC, crop.** As before: `ink_lo`/`ink_hi`, `bg_lo`/`bg_hi` by `2126 R + 7152 G + 722 B`;
   FNV-1a over B, G, R of each pixel; RGBA8888 rows of a box inside the display.
 * **Lifecycle log.** Creation under an observed object and deletion of one are logged from LVGL's events; a new screen
@@ -136,7 +162,10 @@ leaves every style list as it was (`lvprobe_ink/ink_leaves_styles_and_the_pool_a
 * **Which indev.** With `cfg.indev` (the product's pointer indev, on the same display) the taps go through it: only
   its read callback is replaced for the two reads of a tap and put back (its user data, display, settings and event
   callbacks stay; the product's read callback is not called during a tap); the probe finds itself from its own event
-  callback on the indev. With NULL the probe creates a pointer indev in event mode with LVGL's defaults.
+  callback on the indev. With NULL the probe creates a pointer indev in event mode with LVGL's defaults. Two residual
+  behaviours on the product's indev: the reset before a tap also clears a genuine press in progress on it (the product's
+  own pointer is not held while the gate taps), and a product handler that calls `lv_timer_handler` or `lv_indev_read`
+  during a tap reads the probe's callback, not its own.
 * **Hit query vs injection.** `lvprobe_hit_test` asks LVGL's search which object is under the point and sends no
   input event (an object with `LV_OBJ_FLAG_ADV_HITTEST` gets LVGL's `LV_EVENT_HIT_TEST`, which is part of the search);
   `lvprobe_hit` presses and releases, so states, focus and the product's handlers change.
@@ -151,7 +180,9 @@ the product's input handlers. Nothing else: no style, flag, focus or layout chan
 ## Text format (`lvprobe_encode*`)
 
 Records of the ui-probe/1 grammar (docs/ui-model.md): one fact per line, LF-terminated, fields separated by single
-TABs in a fixed order and number, only printable ASCII. Inside a field `\\` is a backslash, `\t` a TAB, `\n` an LF and
+TABs in a fixed order and number, only printable ASCII; no field is ever empty and no line ends in a TAB. A label text
+field is the prefix `=` followed by the escaped text (an empty text is `=`), so it can never be confused with the
+marker `-` (no font id, no box, `full_text` equal to `text`). Inside a field `\\` is a backslash, `\t` a TAB, `\n` an LF and
 `\xHH` (lowercase) every other byte outside 0x20..0x7e, every UTF-8 byte included (Bulgarian text round-trips:
 `lvprobe_io/the_encoder_writes_valid_records`). Integers decimal, colours 6 lowercase hex digits, hashes 8. A box field
 is `x1,y1,x2,y2` or `-`; a node's own coords are four fields, always numbers (a zero-size node shows its position).
@@ -160,15 +191,23 @@ is `x1,y1,x2,y2` or `-`; a node's own coords are four fields, always numbers (a 
 |---|---|---|
 | `lvprobe` | 3 | `lvprobe`, `1`, nodes |
 | `frame` | 4 | `frame`, w, h, crc (after `lvprobe_frame`) |
-| `node` | 20 | `node`, i, parent, depth, class, x1, y1, x2, y2, hidden, clickable, clip, scroll, scroll_x, scroll_y, bg, bg_opa, bg_opa_drawn, bg_grad, bg_image |
-| `label` | 15 | `label`, i, font id or `-`, line_h, align, align_drawn, long, dotted, lines, natural_w, natural_h, laid_w, laid_h, text, full_text |
-| `fit` | 7 | `fit`, i, drawn, glyphs box, visible box, missing, clipped |
-| `ink` | 9 | `ink`, i, unstable, count, box, ink_lo, ink_hi, bg_lo, bg_hi (empty after unstable `1`) |
+| `node` | 21 | `node`, i, parent, depth, class, x1, y1, x2, y2, hidden, clickable, clip, scroll, scroll_x, scroll_y, bg, bg_opa, bg_opa_drawn, bg_opa_exact, bg_grad, bg_image |
+| `label` | 15 | `label`, i, font id or `-`, line_h, align, align_drawn, long, dotted, lines, natural_w, natural_h, laid_w, laid_h, text, full_text (`-` unless dotted) |
+| `fit` | 8 | `fit`, i, drawn, unsupported, glyphs box, visible box, missing, clipped |
+| `ink` | 8 | `ink`, i, count, box, ink_lo, ink_hi, bg_lo, bg_hi |
+| `noink` | 3 | `noink`, i, `unstable` or `transformed` (the last `lvprobe_ink` of the node measured nothing) |
 | `region` | 3 | `region`, i, hash (after `lvprobe_frame`) |
 
 `lvprobe_encode_head` writes `lvprobe` and `frame`, `lvprobe_encode_node` the lines of one node, `lvprobe_encode`
-everything; the seam streams head and nodes into its reply. Each call needs `cap` > the text length (a NUL follows);
-otherwise `LVPROBE_ERR_TRUNC`, an empty string, and `*len` = the exact length needed. Bound: the lines of one node take
+everything; the seam streams head and nodes into its reply. Each call writes only the facts of a walk that succeeded
+and is still current (`LVPROBE_ERR_STALE` otherwise). It needs `cap >= *len + 1` (a NUL follows the text); otherwise
+`LVPROBE_ERR_TRUNC`, an empty string, and `*len` is the exact text length needed.
+
+Byte budget against the probe protocol's 65536-byte `frame` payload (`UIM_BUF_MAX`, docs/ui-model.md): a node line is
+about 60 to 90 bytes, a label adds its `label` and `fit` lines (about 100 bytes) plus 4 bytes per UTF-8 byte of its text
+(a Cyrillic letter is 2 bytes, so 8 bytes escaped), `region` about 20 bytes. Measured: a screen of 84 objects with 25
+Bulgarian labels of 30 letters, after `lvprobe_frame`, encodes to 14,790 bytes, 23% of the payload
+(`lvprobe_io/a_bulgarian_screen_fits_the_payload`); the payload holds about four such screens, or 512 plain nodes. Bound: the lines of one node take
 at most `LVPROBE_LINE_FIXED` (1024) + 4 x (bytes of class name + text + full text) bytes (every number at most 11
 characters, every escaped byte at most 4).
 
@@ -177,8 +216,8 @@ characters, every escaped byte at most 4).
 The probe includes LVGL private headers through `gate//third_party/lvgl:lvgl_private_headers`
 (`c_third_party_private_headers`, docs/third-party.md). It reads `lv_obj_class_t.name`, `lv_obj_t` (`hidden`,
 `rendered`, layout bits, style list), `lv_label_t`, `lv_draw_task_t`, `lv_draw_glyph_dsc_t`, `lv_display_t` and
-`lv_indev_t`, and writes only `lv_obj_t.hidden` and `.rendered` (restored), the probe layer and the indev's read
-callback (restored) and reset fields.
+`lv_indev_t`, and writes only `lv_obj_t.hidden` and `.rendered` (restored), the probe layer, the indev's read
+callback (restored) and reset fields, and the layout mark of a parent after an unstable ink.
 
 ## Tests (`ui/lvprobe/tests/`)
 
@@ -190,6 +229,6 @@ item of the review was seen failing against its own broken build (the report lis
 
 * Occlusion, corner masks and transform layers are not modelled in `drawn`/`clipped` (see the top).
 * Only label draw tasks give glyph facts; images and style symbols are ink, not glyphs.
-* `bg_opa_drawn` under an `opa_layered` ancestor is 2 levels off the rendered pixel (measured).
+* `bg_opa_drawn` is only exact when `bg_opa_exact` is 1.
 * Ink misses children drawn outside the node's box.
 * The walk covers what is shown; other screens only feed the lifecycle log.

@@ -110,6 +110,15 @@ static void f_text(wr_t *w, const char *s)
     put_field(w, s);
 }
 
+/* A label text: always the prefix `=` and then the escaped bytes, so an empty text is `=` (never an empty field) and
+ * no text can be confused with a marker such as `-`. */
+static void f_label_text(wr_t *w, const char *s)
+{
+    tab(w);
+    put_c(w, '=');
+    put_field(w, s);
+}
+
 /* x1,y1,x2,y2, or `-` when empty or unknown (a node's own box is always the four numbers). */
 static void f_box(wr_t *w, bool has, const lv_area_t *a)
 {
@@ -127,7 +136,7 @@ static void f_box(wr_t *w, bool has, const lv_area_t *a)
     put_i(w, a->y2);
 }
 
-/* node: 20 fields. */
+/* node: 21 fields. */
 static void line_node(wr_t *w, const lvprobe_node_t *n, uint16_t i)
 {
     put_s(w, "node");
@@ -148,6 +157,7 @@ static void line_node(wr_t *w, const lvprobe_node_t *n, uint16_t i)
     f_hex(w, n->bg_rgb, 6);
     f_i(w, n->bg_opa);
     f_i(w, n->bg_opa_drawn);
+    f_i(w, n->bg_opa_exact ? 1 : 0);
     f_i(w, n->bg_grad ? 1 : 0);
     f_i(w, n->bg_image ? 1 : 0);
     put_c(w, '\n');
@@ -173,17 +183,22 @@ static void line_label(wr_t *w, const lvprobe_node_t *n, uint16_t i)
     f_i(w, n->natural.y);
     f_i(w, n->laid_out.x);
     f_i(w, n->laid_out.y);
-    f_text(w, n->text);
-    f_text(w, n->full_text);
+    f_label_text(w, n->text);
+    if (n->dotted) {
+        f_label_text(w, n->full_text);
+    } else {
+        f_text(w, "-"); /* the full text is the text */
+    }
     put_c(w, '\n');
 }
 
-/* fit: 7 fields. */
+/* fit: 8 fields. */
 static void line_fit(wr_t *w, const lvprobe_node_t *n, uint16_t i)
 {
     put_s(w, "fit");
     f_i(w, i);
     f_i(w, n->drawn ? 1 : 0);
+    f_i(w, n->unsupported ? 1 : 0);
     f_box(w, n->has_glyphs && !lvp_box_empty(&n->glyphs), &n->glyphs);
     f_box(w, n->drawn && !lvp_box_empty(&n->visible), &n->visible);
     f_i(w, n->missing);
@@ -191,16 +206,18 @@ static void line_fit(wr_t *w, const lvprobe_node_t *n, uint16_t i)
     put_c(w, '\n');
 }
 
-/* ink: 9 fields; an unstable node has its value fields empty. */
+/* ink: 8 fields; noink: 3 fields (the node was not measured, and why). */
 static void line_ink(wr_t *w, const lvprobe_node_t *n, uint16_t i)
 {
-    put_s(w, "ink");
-    f_i(w, i);
-    f_i(w, n->unstable ? 1 : 0);
-    if (n->unstable) {
-        put_s(w, "\t\t\t\t\t\t\n");
+    if (n->unstable || n->ink_unsupported) {
+        put_s(w, "noink");
+        f_i(w, i);
+        f_text(w, n->unstable ? "unstable" : "transformed");
+        put_c(w, '\n');
         return;
     }
+    put_s(w, "ink");
+    f_i(w, i);
     f_i(w, n->ink);
     f_box(w, n->ink > 0u, &n->ink_box);
     f_hex(w, n->ink_lo, 6);
@@ -218,7 +235,7 @@ static void lines_node(wr_t *w, const lvprobe_t *p, uint16_t i)
         line_label(w, n, i);
         line_fit(w, n, i);
     }
-    if (n->has_ink || n->unstable) {
+    if (n->has_ink || n->unstable || n->ink_unsupported) {
         line_ink(w, n, i);
     }
     if (n->has_region) { /* region: 3 fields */
@@ -254,21 +271,24 @@ static lvprobe_status_t finish(const wr_t *w, size_t *len)
     return ok ? LVPROBE_OK : LVPROBE_ERR_TRUNC;
 }
 
-static bool start(const lvprobe_t *p, char *buf, size_t *len, wr_t *w)
+/* Only the facts of a walk that succeeded and is still current are written (a failed walk is no empty tree). */
+static lvprobe_status_t start(const lvprobe_t *p, char *buf, size_t *len, wr_t *w)
 {
     if (p == NULL || !p->open || buf == NULL || len == NULL) {
-        return false;
+        return LVPROBE_ERR_ARG;
     }
     w->buf = buf;
     w->len = 0;
-    return true;
+    *len = 0;
+    return lvp_walk_valid(p) ? LVPROBE_OK : LVPROBE_ERR_STALE;
 }
 
 lvprobe_status_t lvprobe_encode_head(const lvprobe_t *p, char *buf, size_t cap, size_t *len)
 {
     wr_t w;
-    if (!start(p, buf, len, &w)) {
-        return LVPROBE_ERR_ARG;
+    lvprobe_status_t st = start(p, buf, len, &w);
+    if (st != LVPROBE_OK) {
+        return st;
     }
     w.cap = cap;
     lines_head(&w, p);
@@ -278,8 +298,9 @@ lvprobe_status_t lvprobe_encode_head(const lvprobe_t *p, char *buf, size_t cap, 
 lvprobe_status_t lvprobe_encode_node(const lvprobe_t *p, uint16_t index, char *buf, size_t cap, size_t *len)
 {
     wr_t w;
-    if (!start(p, buf, len, &w) || index >= p->count) {
-        return LVPROBE_ERR_ARG;
+    lvprobe_status_t st = start(p, buf, len, &w);
+    if (st != LVPROBE_OK || index >= p->count) {
+        return st != LVPROBE_OK ? st : LVPROBE_ERR_ARG;
     }
     w.cap = cap;
     lines_node(&w, p, index);
@@ -290,8 +311,9 @@ lvprobe_status_t lvprobe_encode(const lvprobe_t *p, char *buf, size_t cap, size_
 {
     wr_t w;
     uint16_t i;
-    if (!start(p, buf, len, &w)) {
-        return LVPROBE_ERR_ARG;
+    lvprobe_status_t st = start(p, buf, len, &w);
+    if (st != LVPROBE_OK) {
+        return st;
     }
     w.cap = cap;
     lines_head(&w, p);

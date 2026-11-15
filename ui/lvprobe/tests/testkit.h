@@ -29,7 +29,11 @@ bool tk_unescape(char *s);
 extern const lv_font_t tk_mono;
 
 lv_display_t *tk_start(ctest_t *t);           /* pool, lv_init, display, white screen, probe open, settled */
-void tk_stop(lv_display_t *disp);
+/* Close the probe, delete the display, lv_deinit; checks that no tk_ok() saw NULL. */
+void tk_stop(ctest_t *t, lv_display_t *disp);
+/* Every LVGL call that returns a pointer goes through this: it counts NULLs, checked by tk_stop. */
+void *tk_ok(void *ptr);
+uint32_t tk_null_count(void);
 bool tk_walk(ctest_t *t);                     /* settle until quiet (at most 4 refreshes), then walk: OK */
 const lvprobe_node_t *tk_node(ctest_t *t, const lv_obj_t *obj);
 uint16_t tk_index(const lv_obj_t *obj);       /* 0xFFFF when not walked */

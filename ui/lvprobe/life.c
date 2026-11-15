@@ -10,28 +10,22 @@
 
 /* The node of `addr` in the last walk: a live one, else a deleted one whose address was not reused since (a
  * child is deleted after its parent's LV_EVENT_DELETE, while the parent's memory still exists). */
+/* The node of `addr` in the last walk: a live one, else a deleted one whose address was not reused since (a
+ * child is deleted after its parent's LV_EVENT_DELETE, while the parent's memory still exists). */
 static int16_t find_addr(const lvprobe_t *p, const void *addr)
 {
-    int32_t live = lvprobe_find(p, addr);
-    uint16_t i;
-    if (live != LVPROBE_NONE || addr == NULL) {
-        return (int16_t)live;
+    int32_t at = lvp_find_addr(p, addr, false);
+    if (at == LVPROBE_NONE || p->cfg.nodes[at].reused) {
+        return (int16_t)LVPROBE_NONE;
     }
-    for (i = 0; i < p->count; i++) {
-        if (p->cfg.nodes[i].obj == NULL && p->cfg.nodes[i].addr == addr) {
-            return (int16_t)i;
-        }
-    }
-    return (int16_t)LVPROBE_NONE;
+    return (int16_t)at;
 }
 
 static void forget_addr(lvprobe_t *p, const void *addr)
 {
-    uint16_t i;
-    for (i = 0; i < p->count; i++) {
-        if (p->cfg.nodes[i].obj == NULL && p->cfg.nodes[i].addr == addr) {
-            p->cfg.nodes[i].addr = NULL;
-        }
+    int32_t at = lvp_find_addr(p, addr, false);
+    if (at != LVPROBE_NONE && p->cfg.nodes[at].obj == NULL) {
+        p->cfg.nodes[at].reused = true;
     }
 }
 
@@ -163,7 +157,7 @@ lvprobe_status_t lvprobe_life(lvprobe_t *p, lvprobe_life_t *out, uint16_t cap, u
     if (p == NULL || !p->open || n == NULL || lost == NULL || (out == NULL && cap > 0u)) {
         return LVPROBE_ERR_ARG;
     }
-    st = lvp_scan_screens(p, true);
+    st = p->disp_gone ? LVPROBE_ERR_GONE : lvp_scan_screens(p, true); /* the queued events stay readable */
     take = p->life_count < cap ? p->life_count : cap;
     for (i = 0; i < take; i++) {
         out[i] = p->cfg.life[i];

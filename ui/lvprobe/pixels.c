@@ -109,6 +109,9 @@ lvprobe_status_t lvprobe_crop(const lvprobe_t *p, const lv_area_t *box, uint8_t 
         return LVPROBE_ERR_ARG;
     }
     *len = 0;
+    if (p->disp_gone) {
+        return LVPROBE_ERR_GONE;
+    }
     b = lvp_frame_buf(p);
     if (b == NULL) {
         return LVPROBE_ERR_FORMAT;

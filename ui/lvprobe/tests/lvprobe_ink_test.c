@@ -41,7 +41,7 @@ static void t_ink_of_a_box_a_label_and_a_hidden_label(ctest_t *t)
     CHECK(t, lv_obj_is_hidden(hidden) && !lv_obj_is_hidden(shown));
     CHECK_EQ_I64(t, lvprobe_frame(&tk_probe), LVPROBE_OK);
     CHECK_EQ_U64(t, lvprobe_frame_crc(&tk_probe), crc);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* An empty banner between two boxes of a flex column: not drawing it must not let the second box move up. */
@@ -67,7 +67,7 @@ static void t_ink_in_a_flex_column_counts_only_the_node(ctest_t *t)
     CHECK(t, n != NULL && n->ink == 1000u && tk_box_is(&n->ink_box, 20, 20, 119, 29));
     n = tk_node(t, bottom);
     CHECK(t, n != NULL && tk_box_is(&n->coords, 20, 50, 119, 59));
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void on_focus(lv_event_t *e)
@@ -81,15 +81,15 @@ static void on_focus(lv_event_t *e)
 static void t_ink_keeps_the_focus(ctest_t *t)
 {
     lv_display_t *disp = tk_start(t);
-    lv_group_t *group = lv_group_create();
-    lv_obj_t *first = lv_button_create(lv_screen_active());
-    lv_obj_t *second = lv_button_create(lv_screen_active());
+    lv_group_t *group = tk_ok(lv_group_create());
+    lv_obj_t *first = tk_ok(lv_button_create(lv_screen_active()));
+    lv_obj_t *second = tk_ok(lv_button_create(lv_screen_active()));
     lv_obj_set_pos(second, 0, 100);
     lv_group_add_obj(group, first);
     lv_group_add_obj(group, second);
     lv_group_focus_obj(first);
-    lv_obj_add_event_cb(first, on_focus, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(second, on_focus, LV_EVENT_ALL, NULL);
+    (void)tk_ok(lv_obj_add_event_cb(first, on_focus, LV_EVENT_ALL, NULL));
+    (void)tk_ok(lv_obj_add_event_cb(second, on_focus, LV_EVENT_ALL, NULL));
     CHECK(t, tk_walk(t));
     g_focus_events = 0;
     CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, tk_index(first)), LVPROBE_OK);
@@ -97,7 +97,7 @@ static void t_ink_keeps_the_focus(ctest_t *t)
     CHECK_EQ_I64(t, g_focus_events, 0);
     CHECK(t, lv_obj_has_state(first, LV_STATE_FOCUSED));
     lv_group_delete(group);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static bool g_armed;
@@ -122,7 +122,7 @@ static void t_a_node_that_moves_when_restyled_is_unstable(ctest_t *t)
     size_t len = 0;
     const lvprobe_node_t *n;
     g_restless = restless;
-    lv_display_add_event_cb(disp, move_after_refresh, LV_EVENT_REFR_READY, NULL);
+    (void)tk_ok(lv_display_add_event_cb(disp, move_after_refresh, LV_EVENT_REFR_READY, NULL));
     g_armed = false;
     CHECK(t, tk_walk(t));
     g_moves = 0;
@@ -131,10 +131,10 @@ static void t_a_node_that_moves_when_restyled_is_unstable(ctest_t *t)
     CHECK(t, g_moves > 0);
     n = tk_node(t, box);
     CHECK(t, n != NULL && n->unstable && !n->has_ink && n->ink == 0u);
-    CHECK_EQ_I64(t, lvprobe_encode(&tk_probe, text, sizeof text, &len), LVPROBE_OK);
-    CHECK(t, tk_contains(text, len, "\t1\t\t\t\t\t\t\n"));
-    CHECK(t, !tk_contains(text, len, "ink\t2\t0"));
-    tk_stop(disp);
+    /* the product moved an object: the walk is stale, and the encoder refuses it */
+    CHECK_EQ_I64(t, lvprobe_encode(&tk_probe, text, sizeof text, &len), LVPROBE_ERR_STALE);
+    (void)len;
+    tk_stop(t, disp);
 }
 
 static void t_ink_needs_room_a_current_walk_and_a_settled_frame(ctest_t *t)
@@ -155,7 +155,7 @@ static void t_ink_needs_room_a_current_walk_and_a_settled_frame(ctest_t *t)
     CHECK_EQ_I64(t, lvprobe_open(&tk_probe, disp, &cfg), LVPROBE_ERR_ARG);
     CHECK(t, tk_walk(t));
     CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, tk_index(box)), LVPROBE_ERR_FULL);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_a_partial_or_double_buffered_display_is_a_format_error(ctest_t *t)
@@ -172,7 +172,7 @@ static void t_a_partial_or_double_buffered_display_is_a_format_error(ctest_t *t)
     CHECK_EQ_I64(t, lvprobe_frame(&tk_probe), LVPROBE_ERR_FORMAT);
     CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, tk_index(box)), LVPROBE_ERR_FORMAT);
     CHECK_EQ_I64(t, lvprobe_crop(&tk_probe, &corner, rgba, sizeof rgba, &len), LVPROBE_ERR_FORMAT);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* The app removes every event callback of an object (the probe's too) and deletes it: the probe sees no deletion,
@@ -190,9 +190,10 @@ static void t_an_object_deleted_unseen_is_gone(ctest_t *t)
     }
     lv_obj_delete(box);
     CHECK_EQ_I64(t, lvprobe_settle(&tk_probe, &flushed), LVPROBE_OK);
-    CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, at), LVPROBE_ERR_GONE);
-    CHECK_EQ_I64(t, lvprobe_frame(&tk_probe), LVPROBE_OK);
-    tk_stop(disp);
+    /* its parent still observes it: LV_EVENT_CHILD_DELETED makes the walk stale (no pointer is used) */
+    CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, at), LVPROBE_ERR_STALE);
+    CHECK_EQ_I64(t, lvprobe_frame(&tk_probe), LVPROBE_ERR_STALE);
+    tk_stop(t, disp);
 }
 
 static uint32_t style_counts(uint32_t *out, uint32_t cap)
@@ -212,7 +213,7 @@ static void t_ink_leaves_styles_and_the_pool_as_they_were(ctest_t *t)
     lv_display_t *disp = tk_start(t);
     static uint32_t before[64];
     static uint32_t after[64];
-    lv_obj_t *button = lv_button_create(lv_screen_active());
+    lv_obj_t *button = tk_ok(lv_button_create(lv_screen_active()));
     lv_obj_t *box = tk_box(lv_screen_active(), 100, 10, 30, 30, 0x0000FFu);
     size_t pool;
     uint32_t n;
@@ -226,7 +227,8 @@ static void t_ink_leaves_styles_and_the_pool_as_they_were(ctest_t *t)
     pool = tk_pool_used();
     for (round = 0; round < 2; round++) {
         for (i = 0; i < lvprobe_count(&tk_probe); i++) {
-            CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, i), LVPROBE_OK);
+            CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, i),
+                         lvprobe_node(&tk_probe, i)->parent == LVPROBE_NONE ? LVPROBE_ERR_ARG : LVPROBE_OK);
         }
     }
     CHECK_EQ_U64(t, style_counts(after, 64u), n);
@@ -235,7 +237,7 @@ static void t_ink_leaves_styles_and_the_pool_as_they_were(ctest_t *t)
     }
     CHECK_EQ_U64(t, tk_pool_used(), pool);
     CHECK(t, !lv_obj_is_hidden(box) && !lv_obj_is_hidden(button));
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* A running style transition: ink is refused before anything is touched. */
@@ -260,7 +262,7 @@ static void t_ink_refuses_a_node_in_transition(ctest_t *t)
     CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, tk_index(box)), LVPROBE_ERR_UNSTABLE);
     CHECK_EQ_U64(t, box->style_cnt, styles);
     CHECK(t, tk_node(t, box)->unstable);
-    tk_stop(disp);
+    tk_stop(t, disp);
     lv_style_reset(&pressed);
 }
 
@@ -278,7 +280,7 @@ static void t_ink_needs_real_refreshes(ctest_t *t)
     lvprobe_close(&tk_probe);
     lv_display_delete_refr_timer(disp);
     CHECK_EQ_I64(t, lvprobe_open(&tk_probe, disp, &cfg), LVPROBE_ERR_FORMAT);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* The app removes the probe's callbacks, deletes an object and gets a new one at the same address under a parent the
@@ -310,7 +312,7 @@ static void t_a_reused_address_is_gone(ctest_t *t)
     CHECK_EQ_I64(t, lvprobe_settle(&tk_probe, &flushed), LVPROBE_OK);
     CHECK(t, lvprobe_node(&tk_probe, at)->obj == old);
     CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, at), LVPROBE_ERR_GONE);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 CTEST_SUITE("lvprobe_ink", { "ink_of_a_box_a_label_and_a_hidden_label", t_ink_of_a_box_a_label_and_a_hidden_label },

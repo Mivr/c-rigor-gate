@@ -30,7 +30,7 @@ static void t_the_walk_needs_a_settled_frame_and_flushes_nothing(ctest_t *t)
     if (disp == NULL) {
         return;
     }
-    lv_display_add_event_cb(disp, count_flush, LV_EVENT_FLUSH_START, NULL);
+    (void)tk_ok(lv_display_add_event_cb(disp, count_flush, LV_EVENT_FLUSH_START, NULL));
     (void)tk_label(lv_screen_active(), "AA", 10, 10);
     CHECK_EQ_I64(t, lvprobe_walk(&tk_probe), LVPROBE_ERR_UNSETTLED);
     CHECK_EQ_I64(t, lvprobe_settle(&tk_probe, &flushed), LVPROBE_OK);
@@ -43,7 +43,7 @@ static void t_the_walk_needs_a_settled_frame_and_flushes_nothing(ctest_t *t)
     CHECK_EQ_I64(t, g_flushes, 0);
     CHECK_EQ_I64(t, lvprobe_settle(&tk_probe, &flushed), LVPROBE_OK);
     CHECK(t, !flushed);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_top_and_sys_layer_objects_are_walked(ctest_t *t)
@@ -66,7 +66,7 @@ static void t_top_and_sys_layer_objects_are_walked(ctest_t *t)
         CHECK(t, tk_index(lv_screen_active()) < tk_index(lv_layer_top()));
         CHECK(t, tk_index(lv_layer_top()) < tk_index(on_top) && tk_index(on_top) < tk_index(lv_layer_sys()));
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_bg_facts_are_what_is_drawn(ctest_t *t)
@@ -96,7 +96,7 @@ static void t_bg_facts_are_what_is_drawn(ctest_t *t)
     CHECK(t, n != NULL && n->bg_grad && n->bg_image);
     n = tk_node(t, layered);
     CHECK(t, n != NULL && !n->bg_grad && !n->bg_image);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_an_item_scrolled_out_has_its_scroll_context(ctest_t *t)
@@ -122,13 +122,13 @@ static void t_an_item_scrolled_out_has_its_scroll_context(ctest_t *t)
     CHECK(t, n != NULL && tk_box_is(&n->coords, 0, 70, 99, 89));
     n = tk_node(t, plain);
     CHECK(t, n != NULL && n->scroll == LVPROBE_NONE && n->scroll_y == 0);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_a_label_subclass_is_a_label(ctest_t *t)
 {
     lv_display_t *disp = tk_start(t);
-    lv_obj_t *mine = lv_obj_class_create_obj(&g_my_label_class, lv_screen_active());
+    lv_obj_t *mine = tk_ok(lv_obj_class_create_obj(&g_my_label_class, lv_screen_active()));
     const lvprobe_node_t *n;
     lv_obj_class_init_obj(mine);
     lv_label_set_text(mine, "AA");
@@ -140,7 +140,7 @@ static void t_a_label_subclass_is_a_label(ctest_t *t)
         CHECK_EQ_STR(t, n->class_name, "my_label");
         CHECK_EQ_STR(t, n->text, "AA");
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_every_capacity_limit_is_an_error(ctest_t *t)
@@ -181,47 +181,113 @@ static void t_every_capacity_limit_is_an_error(ctest_t *t)
     CHECK_EQ_U64(t, lvprobe_count(&tk_probe), 0);
     lv_obj_clean(lv_screen_active());
     for (i = 0; i <= LVPROBE_DEFAULT_SCREENS; i++) {
-        (void)lv_obj_create(NULL);
+        (void)tk_ok(lv_obj_create(NULL));
     }
     CHECK_EQ_I64(t, lvprobe_life(&tk_probe, life, LVPROBE_DEFAULT_LIFE, &n, &lost), LVPROBE_ERR_FULL);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
-/* A label LVGL draws through a sub-layer (drop shadow) is refused, and refusing changes nothing in LVGL. */
+/* A label LVGL draws through a sub-layer (drop shadow) is unsupported on its own: the walk goes on, a sibling label is
+ * still exact, and nothing in LVGL changes. */
 static void t_a_label_with_a_drop_shadow_is_unsupported(ctest_t *t)
 {
     lv_display_t *disp = tk_start(t);
     lv_obj_t *label = tk_label(lv_screen_active(), "AA", 10, 10);
+    lv_obj_t *sibling = tk_label(lv_screen_active(), "AA", 10, 40);
+    const lvprobe_node_t *n;
     size_t pool;
     uint32_t layers;
     bool flushed = false;
     lv_obj_set_style_drop_shadow_opa(label, LV_OPA_COVER, 0);
     lv_obj_set_style_drop_shadow_radius(label, 4, 0);
-    CHECK(t, !tk_walk(t));
+    CHECK(t, tk_walk(t));
     pool = tk_pool_used();
     layers = tk_layer_count(disp);
-    CHECK_EQ_I64(t, lvprobe_walk(&tk_probe), LVPROBE_ERR_UNSUPPORTED);
+    CHECK_EQ_I64(t, lvprobe_walk(&tk_probe), LVPROBE_OK);
+    n = tk_node(t, label);
+    CHECK(t, n != NULL && n->unsupported && !n->drawn && !n->has_glyphs && !n->clipped);
+    n = tk_node(t, sibling);
+    CHECK(t, n != NULL && !n->unsupported && n->drawn && tk_box_is(&n->glyphs, 11, 42, 28, 53));
     CHECK_EQ_U64(t, tk_pool_used(), pool);
     CHECK_EQ_U64(t, tk_layer_count(disp), layers);
     CHECK_EQ_I64(t, lvprobe_settle(&tk_probe, &flushed), LVPROBE_OK);
     CHECK(t, !flushed);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
-/* The dry redraw leaves LVGL's `rendered` mark as it was (a label laid out but never drawn stays unrendered). */
+/* The dry redraw leaves LVGL's `rendered` marks as they were, on the label and on its children (a label laid out but
+ * never drawn stays unrendered). */
 static void t_the_walk_does_not_mark_labels_rendered(ctest_t *t)
 {
     lv_display_t *disp = tk_start(t);
     lv_obj_t *label;
+    lv_obj_t *child;
     const lvprobe_node_t *n;
     lv_display_enable_invalidation(disp, false);
     label = tk_label(lv_screen_active(), "AA", 10, 10);
+    child = tk_box(label, 0, 0, 4, 4, 0x00FF00u);
     CHECK(t, tk_walk(t));
     CHECK_EQ_U64(t, label->rendered, 0);
+    CHECK_EQ_U64(t, child->rendered, 0);
     n = tk_node(t, label);
     CHECK(t, n != NULL && n->drawn && n->has_glyphs);
     lv_display_enable_invalidation(disp, true);
-    tk_stop(disp);
+    tk_stop(t, disp);
+}
+
+/* A rotated display: taps, the query and coords would disagree. */
+static void t_a_rotated_display_is_a_format_error(ctest_t *t)
+{
+    lv_display_t *disp = tk_start(t);
+    lvprobe_config_t cfg = tk_config();
+    lvprobe_close(&tk_probe);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+    CHECK_EQ_I64(t, lvprobe_open(&tk_probe, disp, &cfg), LVPROBE_ERR_FORMAT);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_0);
+    CHECK_EQ_I64(t, lvprobe_open(&tk_probe, disp, &cfg), LVPROBE_OK);
+    tk_stop(t, disp);
+}
+
+/* Reparenting, reordering and flag changes since the walk make it stale for ink, taps and the query. */
+static void t_tree_changes_without_events_make_the_walk_stale(ctest_t *t)
+{
+    lv_display_t *disp = tk_start(t);
+    lv_obj_t *a = tk_box(lv_screen_active(), 10, 10, 20, 20, 0xFF0000u);
+    lv_obj_t *b = tk_box(lv_screen_active(), 40, 10, 20, 20, 0x00FF00u);
+    lvprobe_hit_t hit;
+    int32_t node = 0;
+    lv_obj_t *obj = NULL;
+    CHECK(t, tk_walk(t));
+    lv_obj_set_parent(a, b);
+    CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, tk_index(b)), LVPROBE_ERR_STALE);
+    lv_obj_set_parent(a, lv_screen_active());
+    CHECK(t, tk_walk(t));
+    lv_obj_move_to_index(a, 0);
+    CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, 15, 15, &hit), LVPROBE_ERR_STALE);
+    CHECK(t, tk_walk(t));
+    lv_obj_set_clickable(b, false); /* no LVGL event: found by comparing the walked flags at use time */
+    CHECK_EQ_I64(t, lvprobe_hit_test(&tk_probe, 45, 15, &node, &obj), LVPROBE_ERR_STALE);
+    CHECK_EQ_I64(t, lvprobe_ink(&tk_probe, tk_index(b)), LVPROBE_ERR_STALE);
+    CHECK(t, tk_walk(t));
+    CHECK_EQ_I64(t, lvprobe_hit_test(&tk_probe, 45, 15, &node, &obj), LVPROBE_OK);
+    tk_stop(t, disp);
+}
+
+/* After a failed or stale walk the encoder refuses: a failed walk is no empty tree. */
+static void t_the_encoder_refuses_a_failed_or_stale_walk(ctest_t *t)
+{
+    lv_display_t *disp = tk_start(t);
+    static char text[4096];
+    size_t len = 7;
+    CHECK(t, tk_walk(t));
+    CHECK_EQ_I64(t, lvprobe_encode(&tk_probe, text, sizeof text, &len), LVPROBE_OK);
+    (void)tk_box(lv_screen_active(), 10, 10, 20, 20, 0xFF0000u);
+    CHECK_EQ_I64(t, lvprobe_encode(&tk_probe, text, sizeof text, &len), LVPROBE_ERR_STALE);
+    CHECK_EQ_I64(t, lvprobe_walk(&tk_probe), LVPROBE_ERR_UNSETTLED);
+    CHECK_EQ_I64(t, lvprobe_encode(&tk_probe, text, sizeof text, &len), LVPROBE_ERR_STALE);
+    CHECK_EQ_I64(t, lvprobe_encode_head(&tk_probe, text, sizeof text, &len), LVPROBE_ERR_STALE);
+    CHECK_EQ_U64(t, len, 0);
+    tk_stop(t, disp);
 }
 
 CTEST_SUITE("lvprobe_walk",
@@ -232,4 +298,7 @@ CTEST_SUITE("lvprobe_walk",
             { "a_label_subclass_is_a_label", t_a_label_subclass_is_a_label },
             { "every_capacity_limit_is_an_error", t_every_capacity_limit_is_an_error },
             { "a_label_with_a_drop_shadow_is_unsupported", t_a_label_with_a_drop_shadow_is_unsupported },
-            { "the_walk_does_not_mark_labels_rendered", t_the_walk_does_not_mark_labels_rendered })
+            { "the_walk_does_not_mark_labels_rendered", t_the_walk_does_not_mark_labels_rendered },
+            { "a_rotated_display_is_a_format_error", t_a_rotated_display_is_a_format_error },
+            { "tree_changes_without_events_make_the_walk_stale", t_tree_changes_without_events_make_the_walk_stale },
+            { "the_encoder_refuses_a_failed_or_stale_walk", t_the_encoder_refuses_a_failed_or_stale_walk })

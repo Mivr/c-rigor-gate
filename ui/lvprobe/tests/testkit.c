@@ -139,8 +139,22 @@ lv_display_t *tk_start(ctest_t *t)
     return disp;
 }
 
-void tk_stop(lv_display_t *disp)
+static uint32_t g_nulls;
+
+void *tk_ok(void *ptr)
 {
+    g_nulls += ptr == NULL ? 1u : 0u;
+    return ptr;
+}
+
+uint32_t tk_null_count(void)
+{
+    return g_nulls;
+}
+
+void tk_stop(ctest_t *t, lv_display_t *disp)
+{
+    CHECK_EQ_U64(t, g_nulls, 0);
     lvprobe_close(&tk_probe);
     lv_display_delete(disp);
     lv_deinit();
@@ -172,7 +186,7 @@ uint16_t tk_index(const lv_obj_t *obj)
 
 lv_obj_t *tk_label(lv_obj_t *parent, const char *text, int32_t x, int32_t y)
 {
-    lv_obj_t *label = lv_label_create(parent);
+    lv_obj_t *label = tk_ok(lv_label_create(parent));
     lv_label_set_text(label, text);
     lv_obj_set_pos(label, x, y);
     lv_obj_set_style_text_font(label, &tk_mono, 0);
@@ -182,7 +196,7 @@ lv_obj_t *tk_label(lv_obj_t *parent, const char *text, int32_t x, int32_t y)
 
 lv_obj_t *tk_box(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t h, uint32_t rgb)
 {
-    lv_obj_t *obj = lv_obj_create(parent);
+    lv_obj_t *obj = tk_ok(lv_obj_create(parent));
     lv_obj_remove_style_all(obj);
     lv_obj_set_pos(obj, x, y);
     lv_obj_set_size(obj, w, h);

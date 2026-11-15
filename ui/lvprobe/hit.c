@@ -99,7 +99,9 @@ void lvp_indev_close(lvprobe_t *p)
 {
     if (p->cfg.indev != NULL && indev_alive(p->cfg.indev)) {
         if (p->own_indev) {
-            lv_indev_delete(p->cfg.indev);
+            if (lv_indev_get_read_cb(p->cfg.indev) == read_cb) { /* still the probe's, not a new one at its address */
+                lv_indev_delete(p->cfg.indev);
+            }
         } else {
             (void)lv_indev_remove_event_cb_with_user_data(p->cfg.indev, clicked_cb, p);
         }
@@ -184,13 +186,19 @@ static bool point_ok(const lvprobe_t *p, int32_t x, int32_t y)
 lvprobe_status_t lvprobe_hit(lvprobe_t *p, int32_t x, int32_t y, lvprobe_hit_t *out)
 {
     lvprobe_status_t st;
-    if (p == NULL || !p->open || out == NULL || p->cfg.indev == NULL || !point_ok(p, x, y)) {
-        return LVPROBE_ERR_ARG;
+    if (p == NULL || !p->open || out == NULL || p->cfg.indev == NULL || p->disp_gone || !point_ok(p, x, y)) {
+        return p != NULL && p->disp_gone ? LVPROBE_ERR_GONE : LVPROBE_ERR_ARG;
+    }
+    if (p->disp_gone) {
+        return LVPROBE_ERR_GONE;
     }
     if (blocked(p->cfg.indev)) {
         return LVPROBE_ERR_BLOCKED; /* before the walk check: a screen load also changes the tree */
     }
     st = lvp_current(p, false);
+    if (st == LVPROBE_OK) {
+        st = lvp_tree_current(p); /* reparented, reordered or a flag changed since the walk: STALE */
+    }
     if (st != LVPROBE_OK) {
         return st;
     }
@@ -216,10 +224,16 @@ lvprobe_status_t lvprobe_hit_test(lvprobe_t *p, int32_t x, int32_t y, int32_t *n
     lv_point_t at;
     uint32_t r;
     lvprobe_status_t st;
-    if (p == NULL || !p->open || node == NULL || obj == NULL || !point_ok(p, x, y)) {
-        return LVPROBE_ERR_ARG;
+    if (p == NULL || !p->open || node == NULL || obj == NULL || p->disp_gone || !point_ok(p, x, y)) {
+        return p != NULL && p->disp_gone ? LVPROBE_ERR_GONE : LVPROBE_ERR_ARG;
+    }
+    if (p->cfg.indev == NULL || blocked(p->cfg.indev)) {
+        return LVPROBE_ERR_BLOCKED; /* a tap would not be processed now: the answer would be no tap's */
     }
     st = lvp_current(p, false);
+    if (st == LVPROBE_OK) {
+        st = lvp_tree_current(p);
+    }
     if (st != LVPROBE_OK) {
         return st;
     }

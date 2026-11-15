@@ -36,7 +36,7 @@ static void t_a_label_in_a_box_too_small_is_clipped(ctest_t *t)
         CHECK_EQ_STR(t, b->class_name, "lv_label");
         CHECK_EQ_U64(t, b->missing, 0);
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_a_label_cut_by_its_parent_is_clipped(ctest_t *t)
@@ -59,7 +59,7 @@ static void t_a_label_cut_by_its_parent_is_clipped(ctest_t *t)
         CHECK(t, tk_box_is(&n->glyphs, 31, 12, 68, 23));
         CHECK(t, n->clipped);
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* Й in a row (a clipping parent) lower than the line is cut by the row; in a row of the line height it fits. Ё rises
@@ -94,7 +94,7 @@ static void t_a_cyrillic_glyph_in_a_tight_row_is_clipped(ctest_t *t)
         CHECK(t, tk_box_is(&nc->visible, 10, 80, 23, 95));
         CHECK(t, nc->clipped);
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
     (void)disp;
 }
 
@@ -138,7 +138,7 @@ static void t_long_modes_dots_scroll_and_clip(ctest_t *t)
         CHECK(t, tk_box_is(&c->visible, 10, 70, 59, 85));
         CHECK(t, c->clipped);
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_a_wrapped_label_has_two_lines(ctest_t *t)
@@ -159,7 +159,7 @@ static void t_a_wrapped_label_has_two_lines(ctest_t *t)
         CHECK(t, tk_box_is(&n->glyphs, 11, 12, 48, 39));
         CHECK(t, !n->clipped);
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_recolor_empty_spaces_missing_and_align(ctest_t *t)
@@ -194,7 +194,7 @@ static void t_recolor_empty_spaces_missing_and_align(ctest_t *t)
         CHECK_EQ_I64(t, n->align_drawn, LV_TEXT_ALIGN_CENTER);
         CHECK(t, tk_box_is(&n->glyphs, 31, 132, 48, 143));
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* drawn = 0: content box cut while the padding shows (clipped), wholly outside (clipped), text opacity 0 and hidden
@@ -220,7 +220,7 @@ static void t_labels_lvgl_does_not_draw(ctest_t *t)
     CHECK(t, n != NULL && !n->drawn && !n->clipped);
     n = tk_node(t, hidden);
     CHECK(t, n != NULL && !n->drawn && !n->clipped && n->hidden);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 CTEST_SUITE("lvprobe_label", { "a_label_in_a_box_too_small_is_clipped", t_a_label_in_a_box_too_small_is_clipped },

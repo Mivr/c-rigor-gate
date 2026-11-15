@@ -105,6 +105,25 @@ static uint8_t drawn_opa(const lvprobe_t *p, const lvprobe_node_t *n)
     return v;
 }
 
+/* The object or an ancestor is drawn on a sub-layer LVGL composes (opa_layered below LV_OPA_MAX): the renderer's
+ * rounding then differs from the two-factor model of drawn_opa. */
+static bool layered_chain(const lvprobe_t *p, const lvprobe_node_t *n)
+{
+    const lvprobe_node_t *cur = n;
+    uint32_t steps = 0;
+    while (steps <= LVPROBE_MAX_DEPTH) {
+        if (lv_obj_get_style_opa_layered(cur->obj, LV_PART_MAIN) < LV_OPA_MAX) {
+            return true;
+        }
+        if (cur->parent == LVPROBE_NONE) {
+            return false;
+        }
+        cur = &p->cfg.nodes[cur->parent];
+        steps++;
+    }
+    return true;
+}
+
 static void style_facts(const lvprobe_t *p, lvprobe_node_t *n)
 {
     lv_obj_t *obj = n->obj;
@@ -112,6 +131,7 @@ static void style_facts(const lvprobe_t *p, lvprobe_node_t *n)
     n->bg_rgb = ((uint32_t)bg.red << 16) | ((uint32_t)bg.green << 8) | (uint32_t)bg.blue;
     n->bg_opa = lv_obj_get_style_bg_opa(obj, LV_PART_MAIN);
     n->bg_opa_drawn = drawn_opa(p, n);
+    n->bg_opa_exact = !layered_chain(p, n);
     n->bg_grad = lv_obj_get_style_bg_grad_dir(obj, LV_PART_MAIN) != LV_GRAD_DIR_NONE ||
                  lv_obj_get_style_bg_grad(obj, LV_PART_MAIN) != NULL;
     n->bg_image = lv_obj_get_style_bg_image_src(obj, LV_PART_MAIN) != NULL;
@@ -134,6 +154,7 @@ static lvprobe_status_t add_node(lvprobe_t *p, lv_obj_t *obj, int32_t depth)
     n->parent = depth == 0 ? (int16_t)LVPROBE_NONE : (int16_t)lvprobe_find(p, lv_obj_get_parent(obj));
     n->hidden = lv_obj_is_hidden(obj);
     n->clickable = lv_obj_is_clickable(obj);
+    n->child_index = depth == 0 ? 0 : lv_obj_get_index(obj);
     n->font_id = LVPROBE_FONT_UNMAPPED;
     n->glyphs.x2 = -1;
     n->visible.x2 = -1;
@@ -175,7 +196,11 @@ lvprobe_status_t lvprobe_walk(lvprobe_t *p)
     if (p == NULL || !p->open) {
         return LVPROBE_ERR_ARG;
     }
+    if (p->disp_gone) {
+        return LVPROBE_ERR_GONE;
+    }
     p->walked = false;
+    p->sorted = false;
     p->count = 0;
     p->text_used = 0;
     p->has_frame = false;
@@ -186,6 +211,9 @@ lvprobe_status_t lvprobe_walk(lvprobe_t *p)
     gen = p->gen;
     if (st == LVPROBE_OK) {
         st = collect(p);
+    }
+    if (st == LVPROBE_OK) {
+        lvp_sort_nodes(p);
     }
     for (i = 0; i < p->count && st == LVPROBE_OK; i++) {
         st = p->cfg.nodes[i].is_label ? lvp_label_draw(p, i) : LVPROBE_OK;

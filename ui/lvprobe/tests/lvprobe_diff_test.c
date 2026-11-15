@@ -57,6 +57,7 @@ static void t_glyphs_match_the_render_in_every_long_mode(ctest_t *t)
         return;
     }
     CHECK(t, tk_walk(t));
+    lv_anim_delete_all(); /* freeze the scrolling labels: ink is refused while an animation runs */
     expect_ink_is_glyphs(t, wrap, __LINE__);
     expect_ink_is_glyphs(t, dots, __LINE__);
     expect_ink_is_glyphs(t, scroll, __LINE__);
@@ -66,7 +67,7 @@ static void t_glyphs_match_the_render_in_every_long_mode(ctest_t *t)
     CHECK(t, n != NULL && n->lines == 2 && n->glyphs.y2 - n->glyphs.y1 + 1 == (n->lines - 1) * TK_LINE_H + 12);
     n = tk_node(t, dots); /* DOTS laid-out width against the rendered "AA...": last dot ends 8 px before it */
     CHECK(t, n != NULL && n->dotted && n->ink_box.x2 - n->coords.x1 + 8 == n->laid_out.x);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_glyphs_match_the_render_under_parents(ctest_t *t)
@@ -92,7 +93,7 @@ static void t_glyphs_match_the_render_under_parents(ctest_t *t)
     expect_ink_is_glyphs(t, in_layered, __LINE__);
     expect_ink_is_glyphs(t, in_round, __LINE__);
     expect_ink_is_glyphs(t, off, __LINE__);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* The mirrored draw chain and content rule, against pixels: where the probe says LVGL draws nothing, nothing shows. */
@@ -123,7 +124,7 @@ static void t_not_drawn_means_no_pixels(ctest_t *t)
     CHECK(t, n != NULL && !n->drawn && !n->clipped && tk_count_not(&n->coords, 0xFFFFFFu) == 0u);
     n = tk_node(t, padded);
     CHECK(t, n != NULL && !n->drawn && n->clipped && tk_count_not(&n->coords, 0xFFFFFFu) == 0u);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* bg_opa_drawn against the rendered pixel: black at that opacity over white. */
@@ -145,15 +146,12 @@ static void t_bg_opa_drawn_matches_the_pixel(ctest_t *t)
     n = tk_node(t, faded);
     if (n != NULL) {
         want = 0xFFu - n->bg_opa_drawn;
+        CHECK(t, n->bg_opa_exact);
         CHECK_EQ_U64(t, tk_pixel(15, 15) & 0xFFu, want);
     }
-    n = tk_node(t, inner); /* under an opa_layered parent LVGL composes a sub-layer: measured 2 off (docs) */
-    if (n != NULL) {
-        int32_t got = (int32_t)(tk_pixel(45, 15) & 0xFFu);
-        int32_t model = 0xFF - (int32_t)n->bg_opa_drawn;
-        CHECK(t, got - model <= 2 && model - got <= 2);
-    }
-    tk_stop(disp);
+    n = tk_node(t, inner); /* under an opa_layered parent LVGL composes a sub-layer: not exact, and says so */
+    CHECK(t, n != NULL && !n->bg_opa_exact);
+    tk_stop(t, disp);
 }
 
 /* A walk changes nothing: pool bytes, the display's layer list and the frame are as before. */
@@ -180,14 +178,14 @@ static void t_a_walk_leaves_lvgl_as_it_was(ctest_t *t)
     CHECK_EQ_U64(t, tk_layer_count(disp), layers);
     CHECK_EQ_I64(t, lvprobe_frame(&tk_probe), LVPROBE_OK);
     CHECK_EQ_U64(t, lvprobe_frame_crc(&tk_probe), crc);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* A real anti-aliased built-in font: ink never leaves the glyph boxes LVGL placed, and it is not empty. */
 static void t_an_antialiased_font_inks_inside_its_glyphs(ctest_t *t)
 {
     lv_display_t *disp = tk_start(t);
-    lv_obj_t *label = lv_label_create(lv_screen_active());
+    lv_obj_t *label = tk_ok(lv_label_create(lv_screen_active()));
     const lvprobe_node_t *n;
     lv_label_set_text(label, "Hello 42");
     lv_obj_set_pos(label, 20, 20);
@@ -204,7 +202,7 @@ static void t_an_antialiased_font_inks_inside_its_glyphs(ctest_t *t)
         CHECK(t, n->ink_box.x2 <= n->glyphs.x2 && n->ink_box.y2 <= n->glyphs.y2);
         CHECK_EQ_U64(t, n->ink, tk_count_not(&n->coords, 0xFFFFFFu));
     }
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 CTEST_SUITE("lvprobe_diff",

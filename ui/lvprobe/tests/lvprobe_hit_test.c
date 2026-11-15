@@ -28,10 +28,10 @@ static void count_clicks(lv_event_t *e)
 
 static lv_obj_t *button_at_centre(void)
 {
-    lv_obj_t *button = lv_button_create(lv_screen_active());
+    lv_obj_t *button = tk_ok(lv_button_create(lv_screen_active()));
     lv_obj_set_size(button, 100, 50);
     lv_obj_center(button);
-    lv_obj_add_event_cb(button, count_clicks, LV_EVENT_ALL, NULL);
+    (void)tk_ok(lv_obj_add_event_cb(button, count_clicks, LV_EVENT_ALL, NULL));
     return button;
 }
 
@@ -39,7 +39,7 @@ static void t_a_transparent_clickable_overlay_steals_the_tap(ctest_t *t)
 {
     lv_display_t *disp = tk_start(t);
     lv_obj_t *button = button_at_centre();
-    lv_obj_t *overlay = lv_obj_create(lv_screen_active());
+    lv_obj_t *overlay = tk_ok(lv_obj_create(lv_screen_active()));
     const lvprobe_node_t *o;
     lvprobe_hit_t hit;
     lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
@@ -54,12 +54,14 @@ static void t_a_transparent_clickable_overlay_steals_the_tap(ctest_t *t)
     CHECK_EQ_I64(t, hit.node, tk_index(overlay));
     CHECK_EQ_I64(t, g_clicks, 0);
     lv_obj_set_clickable(overlay, false);
+    CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, TK_W / 2, TK_H / 2, &hit), LVPROBE_ERR_STALE); /* a flag changed */
+    CHECK(t, tk_walk(t));
     CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, TK_W / 2, TK_H / 2, &hit), LVPROBE_OK);
     CHECK(t, hit.pressed && hit.pressed_obj == button);
     CHECK(t, hit.clicked && hit.obj == button);
     CHECK_EQ_I64(t, hit.node, tk_index(button));
     CHECK_EQ_I64(t, g_clicks, 1);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_a_disabled_target_is_pressed_but_not_clicked(ctest_t *t)
@@ -73,7 +75,7 @@ static void t_a_disabled_target_is_pressed_but_not_clicked(ctest_t *t)
     CHECK(t, hit.pressed && hit.pressed_obj == button && hit.pressed_node == tk_index(button));
     CHECK(t, !hit.clicked && hit.obj == NULL && hit.node == LVPROBE_NONE);
     CHECK_EQ_I64(t, g_clicks, 0);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_three_taps_are_three_single_clicks(ctest_t *t)
@@ -92,7 +94,7 @@ static void t_three_taps_are_three_single_clicks(ctest_t *t)
     CHECK_EQ_I64(t, g_singles, 3);
     CHECK_EQ_I64(t, g_doubles, 0);
     CHECK_EQ_I64(t, g_triples, 0);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_a_point_outside_the_display_is_refused(ctest_t *t)
@@ -105,7 +107,7 @@ static void t_a_point_outside_the_display_is_refused(ctest_t *t)
     CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, 10, TK_H, &hit), LVPROBE_ERR_ARG);
     CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, TK_W - 1, TK_H - 1, &hit), LVPROBE_OK);
     CHECK(t, hit.clicked && hit.obj == lv_screen_active());
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void t_a_tap_during_a_screen_load_animation_is_blocked(ctest_t *t)
@@ -113,9 +115,11 @@ static void t_a_tap_during_a_screen_load_animation_is_blocked(ctest_t *t)
     lv_display_t *disp = tk_start(t);
     lv_obj_t *next;
     lvprobe_hit_t hit;
+    int32_t node = 0;
+    lv_obj_t *found = NULL;
     (void)button_at_centre();
     lv_test_indev_create_all();
-    next = lv_obj_create(NULL);
+    next = tk_ok(lv_obj_create(NULL));
     CHECK(t, tk_walk(t));
     lv_screen_load_anim(next, LV_SCREEN_LOAD_ANIM_FADE_IN, 300, 0, false);
     /* Only scr_to_load is set (the animation has not started): LVGL still processes taps, and so does the probe. */
@@ -124,11 +128,12 @@ static void t_a_tap_during_a_screen_load_animation_is_blocked(ctest_t *t)
     CHECK_EQ_I64(t, g_clicks, 1);
     lv_anim_refr_now(); /* the animation starts: prev_scr is set, lv_indev_read returns at once */
     CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, TK_W / 2, TK_H / 2, &hit), LVPROBE_ERR_BLOCKED);
+    CHECK_EQ_I64(t, lvprobe_hit_test(&tk_probe, TK_W / 2, TK_H / 2, &node, &found), LVPROBE_ERR_BLOCKED);
     CHECK_EQ_I64(t, g_clicks, 1);
     lv_test_mouse_click_at(TK_W / 2, TK_H / 2); /* LVGL's own test mouse agrees: nothing is clicked either */
     CHECK_EQ_I64(t, g_clicks, 1);
     lv_test_indev_delete_all();
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 static void product_read(lv_indev_t *indev, lv_indev_data_t *data)
@@ -143,7 +148,7 @@ static void product_read(lv_indev_t *indev, lv_indev_data_t *data)
 static void t_taps_go_through_the_products_indev(ctest_t *t)
 {
     lv_display_t *disp = tk_start(t);
-    lv_indev_t *indev = lv_indev_create();
+    lv_indev_t *indev = tk_ok(lv_indev_create());
     lvprobe_config_t cfg = tk_config();
     lv_obj_t *button;
     lvprobe_hit_t hit;
@@ -156,7 +161,7 @@ static void t_taps_go_through_the_products_indev(ctest_t *t)
     cfg.indev = indev;
     CHECK_EQ_I64(t, lvprobe_open(&tk_probe, disp, &cfg), LVPROBE_OK);
     button = button_at_centre();
-    lv_obj_add_event_cb(button, check_user_data, LV_EVENT_PRESSED, NULL);
+    (void)tk_ok(lv_obj_add_event_cb(button, check_user_data, LV_EVENT_PRESSED, NULL));
     g_user_data_ok = false;
     CHECK(t, tk_walk(t));
     g_product_reads = 0;
@@ -179,10 +184,17 @@ static int g_events;
 static lv_obj_t *g_next;
 static int g_mode;
 
+static int g_hit_tests;
+
 static void count_all(lv_event_t *e)
 {
     (void)e;
     g_events++;
+}
+
+static void count_hit_test(lv_event_t *e)
+{
+    g_hit_tests += lv_event_get_code(e) == LV_EVENT_HIT_TEST ? 1 : 0;
 }
 
 /* The query agrees with the injected tap (F3b overlay, a disabled target) and sends no event. */
@@ -190,19 +202,25 @@ static void t_the_hit_query_agrees_with_the_tap_and_fires_nothing(ctest_t *t)
 {
     lv_display_t *disp = tk_start(t);
     lv_obj_t *button = button_at_centre();
-    lv_obj_t *overlay = lv_obj_create(lv_screen_active());
+    lv_obj_t *overlay = tk_ok(lv_obj_create(lv_screen_active()));
     lvprobe_hit_t hit;
     int32_t node = 0;
     lv_obj_t *obj = NULL;
+    lv_obj_t *fancy = tk_box(lv_screen_active(), TK_W / 2 - 5, TK_H / 2 - 5, 10, 10, 0x00FF00u);
     lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(overlay, LV_OPA_TRANSP, 0);
-    lv_obj_add_event_cb(overlay, count_all, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(button, count_all, LV_EVENT_ALL, NULL);
-    lv_obj_add_event_cb(lv_screen_active(), count_all, LV_EVENT_ALL, NULL);
+    lv_obj_move_to_index(fancy, 0); /* under the overlay: the search asks it nothing */
+    lv_obj_set_adv_hittest(overlay, true);
+    (void)tk_ok(lv_obj_add_event_cb(overlay, count_hit_test, LV_EVENT_HIT_TEST, NULL));
+    (void)tk_ok(lv_obj_add_event_cb(overlay, count_all, LV_EVENT_ALL, NULL));
+    (void)tk_ok(lv_obj_add_event_cb(button, count_all, LV_EVENT_ALL, NULL));
+    (void)tk_ok(lv_obj_add_event_cb(lv_screen_active(), count_all, LV_EVENT_ALL, NULL));
     CHECK(t, tk_walk(t));
     g_events = 0;
+    g_hit_tests = 0;
     CHECK_EQ_I64(t, lvprobe_hit_test(&tk_probe, TK_W / 2, TK_H / 2, &node, &obj), LVPROBE_OK);
-    CHECK_EQ_I64(t, g_events, 0);
+    CHECK_EQ_I64(t, g_events, g_hit_tests); /* only LVGL's own LV_EVENT_HIT_TEST to the ADV_HITTEST overlay */
+    CHECK(t, g_hit_tests > 0);
     CHECK(t, obj == overlay && node == tk_index(overlay));
     CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, TK_W / 2, TK_H / 2, &hit), LVPROBE_OK);
     CHECK(t, hit.pressed_obj == obj && hit.obj == obj);
@@ -216,7 +234,7 @@ static void t_the_hit_query_agrees_with_the_tap_and_fires_nothing(ctest_t *t)
     CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, TK_W / 2, TK_H / 2, &hit), LVPROBE_OK);
     CHECK(t, hit.pressed_obj == obj && !hit.clicked);
     CHECK_EQ_I64(t, lvprobe_hit_test(&tk_probe, -1, 0, &node, &obj), LVPROBE_ERR_ARG);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 /* A product PRESSED handler that starts a screen-load animation (mode 1) or asks to wait for the release (mode 2). */
@@ -239,10 +257,10 @@ static void t_a_release_lvgl_did_not_process_is_blocked(ctest_t *t)
     lv_obj_t *button = button_at_centre();
     lvprobe_hit_t hit;
     int mode;
-    lv_obj_add_event_cb(button, hold_on_press, LV_EVENT_PRESSED, NULL);
+    (void)tk_ok(lv_obj_add_event_cb(button, hold_on_press, LV_EVENT_PRESSED, NULL));
     for (mode = 1; mode <= 2; mode++) {
         g_mode = mode;
-        g_next = lv_obj_create(NULL);
+        g_next = tk_ok(lv_obj_create(NULL));
         CHECK(t, tk_walk(t));
         g_clicks = 0;
         /* mode 1: the release is never processed (prev_scr); mode 2: LVGL processes it and drops the click */
@@ -260,7 +278,7 @@ static void t_a_release_lvgl_did_not_process_is_blocked(ctest_t *t)
     CHECK(t, tk_walk(t));
     CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, TK_W / 2, TK_H / 2, &hit), LVPROBE_OK);
     CHECK(t, hit.clicked && hit.obj == button);
-    tk_stop(disp);
+    tk_stop(t, disp);
 }
 
 CTEST_SUITE("lvprobe_hit",
