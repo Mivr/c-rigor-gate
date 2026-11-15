@@ -1,45 +1,44 @@
 """`c_catalog_pseudo`: the pseudo-locale `.po` files of a catalogue (U17a, docs/ui-pseudo.md).
 
-One Buck2 action runs the gate-owned, stdlib-only `gate/rigor_lib/ui_pseudo.py` (`python3 -I -B`, with `po2c.py`
-next to it: the generator refuses what `po2c` refuses). The output is one `.po` per `.pot`, a pure function of the
-inputs, in buck-out only. Sub-targets: `[<stem of the pot>]` is that pot's pseudo `.po` (a source of `c_catalog_gen`).
+NOT BUILT BY ANY SELFTEST YET: it was built once by hand (U17a) and nothing automated covers it. Building a catalogue
+that includes the pseudo language through `c_catalog`, and a check that the pseudo language never reaches a shipped
+binary, belong to U17b.
 
-The pseudo language is for the probe only. It is kept out of the shipped binary by construction: the shipped
-`c_catalog` lists `langs = [source, ...real]` and never names this target; the probe's catalogue is a second
-`c_catalog_gen` over the same pots whose `langs` also hold `xx`, and only the probe links it.
+One Buck2 action runs the gate-owned, stdlib-only `gate/rigor_lib/ui_pseudo.py` (`python3 -I -B`, with the package
+`rigor_lib` beside it: it imports `po2c` and the UI contract loader). `contract` is the product's UI contract file;
+the overall expansion floor is read from it (`thresholds.pseudo_expansion_overall_pct`), a pending or missing value
+fails the action. The output is one `.po` per `.pot`, a pure function of the inputs, in buck-out only. Sub-targets:
+`[<stem of the pot>]` is that pot's pseudo `.po`.
 """
 
 def _basename(path: str) -> str:
     return path.rsplit("/", 1)[-1]
 
+_RUN = "import sys; sys.path.insert(0, sys.argv[1]); from rigor_lib import ui_pseudo; sys.exit(ui_pseudo.main(sys.argv[2:]))"
+
 def _pseudo_impl(ctx: AnalysisContext) -> list[Provider]:
-    tools = ctx.actions.symlinked_dir("tools", {
-        "po2c.py": ctx.attrs._po2c,
-        "ui_pseudo.py": ctx.attrs._ui_pseudo,
-    })
+    lib = ctx.actions.symlinked_dir("lib", {"rigor_lib": ctx.attrs._rigor_lib})
     cmd = cmd_args(
         "/usr/bin/env",
         "python3",
         "-I",
         "-B",
-        cmd_args(tools, format = "{}/ui_pseudo.py"),
+        "-c",
+        _RUN,
+        lib,
         "--source-lang",
         ctx.attrs.source_lang,
         "--lang",
         ctx.attrs.lang,
-        hidden = [tools],
+        "--contract",
+        ctx.attrs.contract,
     )
-    if ctx.attrs.overall_pct >= 0:
-        cmd.add("--overall-pct", str(ctx.attrs.overall_pct))
-    if ctx.attrs.extended:
-        cmd.add("--extended")
     outputs = {}
     for pot in ctx.attrs.pots:
         stem = _basename(pot.short_path).removesuffix(".pot")
         if stem in outputs:
             fail("c_catalog_pseudo: two pots are named {}.pot".format(stem))
-        out = ctx.actions.declare_output(stem + "." + ctx.attrs.lang + ".po")
-        outputs[stem] = out
+        outputs[stem] = ctx.actions.declare_output(stem + "." + ctx.attrs.lang + ".po")
         cmd.add("--pot", pot)
     for lang in sorted(ctx.attrs.po.keys()):
         for po in ctx.attrs.po[lang]:
@@ -55,13 +54,11 @@ def _pseudo_impl(ctx: AnalysisContext) -> list[Provider]:
 c_catalog_pseudo = rule(
     impl = _pseudo_impl,
     attrs = {
-        "extended": attrs.bool(default = False),
+        "contract": attrs.source(),
         "lang": attrs.string(default = "xx"),
-        "overall_pct": attrs.int(default = -1),
         "po": attrs.dict(attrs.string(), attrs.list(attrs.source())),
         "pots": attrs.list(attrs.source()),
         "source_lang": attrs.string(),
-        "_po2c": attrs.source(default = "gate//gate/rigor_lib:po2c.py"),
-        "_ui_pseudo": attrs.source(default = "gate//gate/rigor_lib:ui_pseudo.py"),
+        "_rigor_lib": attrs.source(default = "gate//gate/rigor_lib:pkg"),
     },
 )

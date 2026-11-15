@@ -22,9 +22,11 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
-# The pseudo-locale generator of `c_catalog_pseudo` (U17a, rules/ui_pseudo.bzl); it runs next to po2c.py.
-export_file(
-    name = "ui_pseudo.py",
+# The pseudo-locale generator of `c_catalog_pseudo` (U17a, rules/ui_pseudo.bzl) imports po2c and the UI contract
+# loader, so its action gets the whole package.
+filegroup(
+    name = "pkg",
+    srcs = glob(["*.py"]),
     visibility = ["PUBLIC"],
 )
 
