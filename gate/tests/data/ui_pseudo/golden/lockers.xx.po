@@ -1,0 +1,305 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: xx\n"
+"X-Generator: rigor ui-pseudo\n"
+
+msgid "A relay is still on"
+msgstr "[ЙщрЩуцЩйр ЙщрЩуцЩйр ЙщрЩуцЩйр ЙщрЩуцЩй]"
+
+msgid "App starts: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩуц {0}Йщ]"
+
+msgid "Audit log"
+msgstr "[ЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩй]"
+
+msgid "Audit log or reservation book: a write failed during this shift."
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщр]"
+
+msgid "Audit log: an event could not be written."
+msgstr "[ЙщрЩуцЩйр ЙщрЩуцЩйр ЙщрЩуцЩйр ЙщрЩуцЩйр ЙщрЩуцЩй рЙщрЩуцЩ йрЙщрЩуц]"
+
+msgid "BG"
+msgstr "[ЙщрЩуц]"
+
+msgid "Blocked"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщр]"
+
+msgid "Book rejected: the opening was not recorded."
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩуц ЩйрЙщрЩуцЩй рЙщрЩуцЩйрЙ щрЩуцЩйрЙщр]"
+
+msgid "Cancel"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "Choose a size"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Clock looks wrong"
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩу]"
+
+msgid "Code not accepted"
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩу]"
+
+msgid "Codes"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц]"
+
+msgid "Codes offline"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Codes offline: using the list saved at {0}"
+msgstr "[ЙщрЩуцЩй рЙщрЩуцЩ йрЙщрЩуц ЩйрЙщрЩу цЩйрЙщрЩ уцЩйрЙщр ЩуцЩйрЙщ {0}Йщ]"
+
+msgid "Codes unavailable"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩй рЙщрЩуцЩйрЙщрЩуц]"
+
+msgid "Codes unavailable: the allowed-code list could not be read."
+msgstr "[ЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩй рЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩуц]"
+
+msgid "Codes: the allowed-code list could not be refreshed."
+msgstr "[ЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩй рЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщр]"
+
+msgid "Data directory is not writable"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙщ рЩуцЩйрЙщр ЩуцЩйрЙщрЩ уцЩйрЙщрЩу]"
+
+msgid "Disk almost full"
+msgstr "[ЙщрЩуцЩй рЙщрЩуц ЩйрЙщрЩ уцЩйрЙщ]"
+
+msgid "Done"
+msgstr "[ЙщрЩуцЩйрЙщр]"
+
+msgid "Doors opened: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩйр {0}Йщ]"
+
+msgid "EN"
+msgstr "[ЙщрЩуц]"
+
+msgid "End of shift"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Ended {0}:{1} UTC"
+msgstr "[ЙщрЩуцЩйрЙщрЩу {0}Йщр{1} ЙщрЩуцЩйр]"
+
+msgid "Every locker is in use. Please ask the staff."
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩ йрЙщрЩуцЩйр ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ]"
+
+msgid "Extra large"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщ]"
+
+msgid "Extra large · Full"
+msgstr "[ЙщрЩуцЩйр ЙщрЩуцЩй рЙщрЩуцЩ йрЙщрЩуц]"
+
+msgid "Free space could not be read"
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщр]"
+
+msgid "Full"
+msgstr "[ЙщрЩуцЩйрЙщр]"
+
+msgid "Inspected"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "Kiosk busy: another kiosk process holds the relay lock; only one kiosk may drive a board."
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙщ рЩуцЩйрЙщр ЩуцЩйрЙщрЩ уцЩйрЙщрЩу цЩйрЙщрЩуц ЩйрЙщрЩуц ЩйрЙщрЩуц ЩйрЙщрЩуц ЩйрЙщрЩуц ЩйрЙщрЩуц ЩйрЙщрЩуц]"
+
+msgid "Large"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц]"
+
+msgid "Large · Full"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Locker missing: that locker is not in the inventory."
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩуц ЩйрЙщрЩуцЩй рЙщрЩуцЩйр ЙщрЩуцЩйрЙ щрЩуцЩйрЙщ]"
+
+msgid "Locker {0} is open"
+msgstr "[ЙщрЩуцЩйрЙщрЩу {0} ЙщрЩуцЩй рЙщрЩуцЩ]"
+
+msgid "Locker {0}. {1}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩ {0}Йщр {1}Йщр]"
+
+msgid "Lockers"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщр]"
+
+msgid "Lockers {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩу {0}Йщр]"
+
+msgid "Lockouts: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩу {0}Йщр]"
+
+msgid "Medium"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "Medium · Full"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "No active codes"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "No locker free"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "None"
+msgstr "[ЙщрЩуцЩйрЙщр]"
+
+msgid "Not saved"
+msgstr "[ЙщрЩуцЩйр ЙщрЩуцЩй рЙщрЩуцЩ]"
+
+msgid "Not saved: the door opened, and the reservation was not saved."
+msgstr "[ЙщрЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙ]"
+
+msgid "Open source licenses are packaged with this app."
+msgstr "[ЙщрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩйрЙ]"
+
+msgid "Please ask staff for help. A door may have opened."
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩуц ЩйрЙщрЩуцЩй рЙщрЩуцЩйр ЙщрЩуцЩйрЙ щрЩуцЩйрЙщ]"
+
+msgid "Please ask staff for help. A door was opened."
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩ йрЙщрЩуцЩйр ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ]"
+
+msgid "Please ask staff for help. Nothing was opened."
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩуц]"
+
+msgid "Please wait"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщ]"
+
+msgid "Rejected codes: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙщрЩ {0}Йщ]"
+
+msgid "Relay board not reachable"
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩу цЩйрЙщрЩуц]"
+
+msgid "Relay busy: a relay was already on, so nothing was pulsed."
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙщ рЩуцЩйрЙщр ЩуцЩйрЙщр ЩуцЩйрЙщр ЩуцЩйрЙщр ЩуцЩйрЙщр ЩуцЩйрЙщр]"
+
+msgid "Relay down: {0}"
+msgstr "[ЙщрЩуцЩй рЙщрЩуц ЩйрЙщрЩ {0}Йщ]"
+
+msgid "Relay error: the locker opener failed."
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩй рЙщрЩуцЩйрЙ щрЩуцЩйрЙщр]"
+
+msgid "Relay lock unavailable: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩу {0}Йщ]"
+
+msgid "Relay offline: the relay board did not answer."
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙщ рЩуцЩйрЙщр ЩуцЩйрЙщрЩ уцЩйрЙщрЩу цЩйрЙщрЩу цЩйрЙщрЩу]"
+
+msgid "Relay safety stop: a relay stayed on and was forced off."
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙщрЩ]"
+
+msgid "Released: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩу {0}Йщр]"
+
+msgid "Reservation book could not be loaded"
+msgstr "[ЙщрЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙ]"
+
+msgid "Reservation saved."
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщрЩуцЩй]"
+
+msgid "Scan a code, or enter it on the pad."
+msgstr "[ЙщрЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙ]"
+
+msgid "Self-test"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "Self-test OK"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщ]"
+
+msgid "Small"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц]"
+
+msgid "Small · Full"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Something went wrong"
+msgstr "[ЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩй рЙщрЩуцЩйрЙщ]"
+
+msgid "Storage error: the reservation book could not be saved or loaded."
+msgstr "[ЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩ]"
+
+msgid "Sync"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц]"
+
+msgid "Sync rejected: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩуцЩйрЙщр {0}Йщ]"
+
+msgid "Sync: events not uploaded since {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙщрЩу цЩйрЙщрЩуцЩйрЙщр {0}Йщ]"
+
+msgid "Sync: {0} events still waiting"
+msgstr "[ЙщрЩуцЩйрЙ {0} ЙщрЩуцЩйрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩуцЩйрЙщ]"
+
+msgid "Sync: {0} events still waiting, last upload {1}"
+msgstr "[ЙщрЩуцЩй {0} ЙщрЩуцЩйрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩуцЩйрЙ щрЩуцЩйрЙщрЩуцЩйрЙ {1}Йщ]"
+
+msgid "That code is not recognised."
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщр]"
+
+msgid "That code is not valid."
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙщ рЩуцЩйрЙщр ЩуцЩйрЙщр]"
+
+msgid "The code list is unavailable. Try again shortly."
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр]"
+
+msgid "Too many attempts, please wait."
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙщ рЩуцЩйрЙщр ЩуцЩйрЙщрЩ уцЩйрЙщрЩу]"
+
+msgid "Welcome"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщр]"
+
+msgid "Your locker is {0}. Remember the number."
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ {0}ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩй]"
+
+msgid "book rejected"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщ]"
+
+msgid "codes unavailable"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩй рЙщрЩуцЩйрЙщрЩуц]"
+
+msgid "kiosk busy"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "locker missing"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщ]"
+
+msgid "relay busy"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "relay error"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "relay lock unavailable"
+msgstr "[ЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩй рЙщрЩуцЩйрЙщ]"
+
+msgid "relay offline"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "relay safety stop"
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩу]"
+
+msgid "storage error"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "{0} failed: {1}"
+msgstr "[Йщр{0} ЙщрЩуцЩйрЙщрЩуцЩй {1}Йщ]"
+
+msgid "{0} failed: {1}, was uncertain"
+msgstr "[Йщ{0} ЙщрЩуцЩйрЙщрЩу {1}ЙщрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщ]"
+
+msgid "{0} failed: {1}: {2}"
+msgstr "[Йщр{0} ЙщрЩуцЩйрЙщрЩуцЩйрЙ {1}Йщр {2}Йщр]"
+
+msgid "{0} failed: {1}: {2}, was uncertain"
+msgstr "[Йщ{0} ЙщрЩуцЩйрЙщрЩ {1}Йщ {2}ЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩй]"
+
+msgid "{0} opened"
+msgstr "[ЙщрЩ{0} ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩ]"
+
+msgid "{0} opened, was uncertain"
+msgstr "[Йщ{0} ЙщрЩуцЩйрЙщрЩ уцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙ]"
+
+msgid "{0} s"
+msgstr "[ЙщрЩуц{0} ЙщрЩу]"
+
+msgid "{0} uncertain"
+msgstr "[Йщр{0} ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩу]"
+
+msgid "{0} uncertain entries are blocking lockers"
+msgstr "[Йщ{0} ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ]"

@@ -1,0 +1,8 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: xx\n"
+"X-Generator: rigor ui-pseudo\n"
+
+msgid "Digits entered: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩ йрЙщрЩуцЩйрЙщрЩ {0}Йщ]"

@@ -1,0 +1,102 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "0"
+msgstr ""
+
+msgid "1"
+msgstr ""
+
+msgid "2"
+msgstr ""
+
+msgid "3"
+msgstr ""
+
+msgid "4"
+msgstr ""
+
+msgid "5"
+msgstr ""
+
+msgid "6"
+msgstr ""
+
+msgid "7"
+msgstr ""
+
+msgid "8"
+msgstr ""
+
+msgid "8 s"
+msgstr ""
+
+msgid "9"
+msgstr ""
+
+msgid "Backspace"
+msgstr ""
+
+msgid "Club kit demo"
+msgstr ""
+
+msgid "Code"
+msgstr ""
+
+msgid "Code field"
+msgstr ""
+
+msgid "Code not accepted"
+msgstr ""
+
+msgid "Del"
+msgstr ""
+
+msgid "Dismiss"
+msgstr ""
+
+msgid "Dismiss label"
+msgstr ""
+
+msgid "Door 12 is open"
+msgstr ""
+
+msgid "Info"
+msgstr ""
+
+msgid "Locker"
+msgstr ""
+
+msgid "Notice"
+msgstr ""
+
+msgid "Numpad"
+msgstr ""
+
+msgid "OK"
+msgstr ""
+
+msgid "Ready"
+msgstr ""
+
+msgid "Scan or type a code"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Status panel"
+msgstr ""
+
+msgid "Submitted: {0}"
+msgstr ""
+
+msgid "That code is not recognised."
+msgstr ""
+
+msgid "Warning"
+msgstr ""
+
+msgid "Welcome"
+msgstr ""
