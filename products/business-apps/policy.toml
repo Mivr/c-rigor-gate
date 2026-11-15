@@ -5242,3 +5242,42 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/req:req"]
+level = "L3"
+impl = ["apps/fiscal/dtsafe/req/src/**"]
+allow = []
+exports = ["dtreq_write"]
+
+[module."//apps/fiscal/dtsafe/req:dtreq_exact_test"]
+allow = ["core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "core_str_from_cstr", "dtreq_write", "memcpy", "snprintf", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/req:dtreq_number_test"]
+allow = ["core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "dtreq_write", "memcpy", "snprintf", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/req:dtreq_window_test"]
+allow = ["core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "dtreq_write", "memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/req:dtreq_args_test"]
+allow = ["core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "dtreq_write"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/req:dtreq_overflow_test"]
+allow = ["core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "dtreq_write", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/req:dtreq_forbid_test"]
+allow = ["bcmp", "core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "core_str_from_cstr", "dtreq_write", "memcpy", "snprintf", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/req:dtreq_prop_test"]
+allow = ["bcmp", "core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "core_str_from_cstr", "dtreq_write", "memcpy", "snprintf", "strcmp", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtsafe/req:testkit"]
+level = "L1"
+allow = []
+exports = []
