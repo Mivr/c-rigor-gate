@@ -1,0 +1,12 @@
+ferror
+fflush
+fgetc
+fputc
+fputs
+fwrite
+memset
+snprintf
+stdin
+stdout
+strcmp
+strlen

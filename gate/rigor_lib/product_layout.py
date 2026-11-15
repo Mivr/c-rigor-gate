@@ -29,6 +29,7 @@ ALWAYS_EXCLUDED = (
     "**/*.bzl",
     "tools/**",
     "third_party/**",   # vendored libraries come from gate//third_party, never from the product
+    "ui/model/**",      # the UI model interface and the probe are gate//ui/model (U03), never the product's
     "toolchains/**",
     "prelude/**",
     "gate/**",

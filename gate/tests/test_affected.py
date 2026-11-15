@@ -119,8 +119,17 @@ class RealRulesTests(unittest.TestCase):
 
     def test_each_selftest_script_selects_itself(self):
         for name in ("grade", "mutate", "structure", "product_checks", "toolchain", "ctest", "fuzz", "third_party",
-                     "canaries", "profiles", "require", "sanmodes", "sim"):
+                     "canaries", "profiles", "require", "sanmodes", "sim", "ui"):
             self.assertIn(name, self.pick("selftest/%s.sh" % name))
+
+    def test_the_ui_paths_select_the_ui_selftest_and_what_they_used_to(self):
+        """U03: rules/ui.bzl used to fall under rules/** (everything); it keeps product_checks and adds ui."""
+        self.assertEqual(self.pick("rules/ui.bzl"), {"gate", "ui", "product_checks"})
+        self.assertEqual(self.pick("ui/model/model.h"), {"gate", "ui", "third_party"})
+        for path in ("selftest/ui.sh", "selftest/ui_product/toy.c"):
+            self.assertIn("ui", self.pick(path))
+        for path in ("gate/rigor_lib/facts_symbols.py", "gate/rigor_lib/buckfiles.py"):
+            self.assertTrue({"ui", "product_checks", "grade", "canaries", "require"} <= self.pick(path), path)
 
     def test_every_tracked_file_has_a_specific_rule(self):
         out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, check=True).stdout

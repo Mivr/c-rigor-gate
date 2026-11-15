@@ -6,7 +6,7 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim android
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim android ui
 # "all" is shorthand for every one of them.
 
 # ---- 0. The Android shared object rule (first match wins, so these come before `rules/**` and `examples/**`) -------
@@ -31,6 +31,19 @@ selftests = ["android", "toolchain"]
 [[rule]]
 glob = "toolchains/jdk.manifest"
 selftests = ["android", "toolchain"]
+# U03: the UI model interface, the probe main, `c_ui_probe` and their selftest (selftest/ui.sh).
+[[rule]]
+glob = "rules/ui.bzl"
+selftests = ["ui", "product_checks"]
+[[rule]]
+glob = "ui/**"
+selftests = ["ui", "third_party"]
+[[rule]]
+glob = "selftest/ui.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_product/**"
+selftests = ["ui"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"
@@ -77,11 +90,14 @@ selftests = ["trajectory_real"]
 
 # ---- 3. The kernel library, by family ---------------------------------------------------------------------------------
 [[rule]]
+glob = "gate/rigor_lib/facts_symbols*"
+selftests = ["product_checks", "grade", "canaries", "require", "ui"]
+[[rule]]
 glob = "gate/rigor_lib/facts*"
 selftests = ["product_checks", "grade", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/buckfiles.py"
-selftests = ["product_checks", "grade", "canaries", "require"]
+selftests = ["product_checks", "grade", "canaries", "require", "ui"]
 # The byte-array generator of `c_embed` (T112): its selftest is selftest/embed.sh, run with the ctest group.
 [[rule]]
 glob = "gate/rigor_lib/bin2c.py"

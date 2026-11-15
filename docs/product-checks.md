@@ -108,6 +108,8 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 | `mutable-global-export` | defines an external object in a writable data/bss section, listed or not (T033; error at L3 and above, info at L2) |
 | `system-lib-not-allowed` | a `c_library` declares `system_libs = [..]` and its policy entry does not list the library (T095; field `lib`) |
 | `system-lib-not-declared` | the policy entry lists a `system_libs` entry the module's `c_library` does not declare (T095; field `lib`) |
+| `ui-model-symbol` | a product module defines or references any symbol starting with `uim_` (U03; the prefix is reserved by the gate itself, whatever the policy says, a `trusted` entry included), except the `model` of a `c_ui_probe` (exactly one target) and the gate's probe library `gate//ui/model:probe` (labels compared exactly); fields `symbol`, `unit`, `use` (`defined` or `referenced`). docs/ui-model.md, "Confinement" |
+| `ui-probe-shape` | a target that depends on `gate//ui/model:probe` has other than exactly one dependency besides the gate's two UI libraries (field `models`); nothing is exempt for it |
 | `mutable-data` | a module without `allow_mutable_data` defines any writable static data, `static` locals included (T089; below) |
 | `ram-over-budget` / `ram-unbudgeted` | a binary links more writable bytes than its `ram-budget.toml` entry, or has no entry (T089; below) |
 

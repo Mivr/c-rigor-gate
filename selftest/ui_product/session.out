@@ -1,0 +1,73 @@
+ui-probe/1 ready
+ok domain-count 2
+ok open
+ok env-inputs 1 1:1:0:-
+ok frame lines 0
+ok semantic lines 3
+title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
+button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
+notice	label		8	90	0	16	1	-	hidden	body	normal	none	none
+ok patches lines 4
+create	screen	-	-	-
+create	title	text	-	Toy
+create	button	text	-	Press
+create	notice	hidden	-	1
+ok trace lines 1
+0	boot	1000
+ok trace lines 0
+ok next-due none
+ok apply
+ok next-due 4000
+ok apply refused
+ok semantic lines 3
+title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
+button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
+notice	label	Pressed	8	90	58	16	1	-	-	body	normal	none	none
+ok advance 1005
+ok next-due 4000
+ok advance 3990
+ok advance 4013
+ok next-due none
+ok trace lines 2
+1	press	1000
+2	notice_timeout	4000
+ok patches lines 2
+set	notice	hidden	1	0
+set	notice	hidden	0	1
+ok apply
+ok apply
+ok apply refused
+ok apply
+ok trace lines 3
+3	line	4013
+4	line	4013
+5	env_offline	4013
+ok domain-at
+ok patches lines 2
+set	notice	hidden	1	0
+set	notice	hidden	1	0
+ok domain-at
+ok patches lines 1
+set	notice	hidden	0	1
+ok semantic lines 3
+title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
+button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
+notice	label	Pressed	8	90	58	16	1	-	hidden	body	normal	none	none
+ok open
+ok apply
+ok advance 2050
+ok apply
+ok trace lines 4
+0	boot	2005
+1	step	2021
+2	step	2037
+3	step	2050
+ok apply
+ok apply
+ok advance 5100
+ok trace lines 3
+4	press	2050
+5	notice_timeout	5050
+6	second_timer	5070
+ok next-due none
+ok quit

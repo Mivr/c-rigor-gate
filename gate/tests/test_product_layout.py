@@ -102,6 +102,12 @@ class Coverage(TempDirTestCase):
     def test_third_party_is_always_excluded(self):
         self.assertIn("third_party/**", pl.ALWAYS_EXCLUDED)
 
+    def test_ui_model_is_always_excluded(self):
+        """U03: `ui/model` is gate//ui/model; a product package of that name could impersonate the probe library."""
+        self.assertIn("ui/model/**", pl.ALWAYS_EXCLUDED)
+        self.assertTrue(pl.is_gate_excluded("ui/model/BUCK"))
+        self.assertFalse(pl.is_gate_excluded("ui/modelx/BUCK"))
+
     def test_bad_globs_still_internal_errors(self):
         with self.assertRaises(InternalError):
             self.config(["a/**b"])

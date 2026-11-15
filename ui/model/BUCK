@@ -1,0 +1,24 @@
+load("@gate//rules:c.bzl", "c_library", "c_test")
+
+# The model interface of the UI gate (docs/ui-model.md): headers only. A product's model adapter implements it.
+c_library(
+    name = "model",
+    headers = ["model.h"],
+    visibility = ["PUBLIC"],
+)
+
+# The gate-owned `main` of a probe binary (ui-probe/1). Linked by `c_ui_probe` (rules/ui.bzl) and by nothing else.
+c_library(
+    name = "probe",
+    srcs = ["probe_main.c", "probe_frame.c", "probe_parse.c", "probe_records.c", "probe_time.c"],
+    headers = ["probe.h"],
+    exported_deps = [":model"],
+    visibility = ["PUBLIC"],
+)
+
+# The probe's parsing and record checks, through their internal header (gate-owned code).
+c_test(
+    name = "probe_test",
+    srcs = ["tests/probe_test.c"],
+    deps = [":probe"],
+)

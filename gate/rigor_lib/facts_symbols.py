@@ -19,6 +19,46 @@ from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, findin
 
 GATE_ID = "symbols"
 
+# The UI model interface (U03, docs/ui-model.md). The prefix is reserved for the whole gate: a product module may neither
+# define nor reference a `uim_` symbol, whatever its policy file says (even a trusted one), except the ONE model adapter
+# that a `c_ui_probe` links and the gate's own probe library. Only the gate's own targets can match: the labels are
+# compared exactly, in the spelling a product build prints for the gate cell (`gate//...`); a product's own
+# `//ui/model:probe` (which buckfiles and the product layout refuse anyway), `root//...` and `@gate//...` never match.
+# A `c_ui_probe` is recognised by its dependency on the gate's probe library, which only the macro adds; its other
+# dependency (the macro adds exactly two) is the adapter.
+UI_PREFIX = "uim_"
+UI_PROBE = "gate//ui/model:probe"
+UI_MODEL = "gate//ui/model:model"
+
+
+def ui_exempt(products):
+    """(the labels that may use `uim_` symbols, findings about probe binaries of the wrong shape): the gate's probe library,
+    and the one dependency of a probe binary that is neither of the gate's own two UI libraries."""
+    exempt, found = set(), []
+    if UI_PROBE in products:
+        exempt.add(UI_PROBE)
+    for label, facts in sorted(products.items()):
+        if UI_PROBE not in facts.deps:
+            continue
+        models = [dep for dep in facts.deps if dep not in (UI_PROBE, UI_MODEL)]
+        if len(models) == 1:
+            exempt.add(models[0])
+        else:
+            found.append(finding("ui-probe-shape", target=label, models=sorted(models)))
+    return exempt, found
+
+
+def ui_findings(facts, exempt):
+    """`ui-model-symbol`: a `uim_` name defined or referenced by a module that is not exempt (`use`: how)."""
+    found = []
+    if facts.label in exempt:
+        return found
+    for unit in facts.units:
+        for use, names in (("defined", unit.defined), ("referenced", unit.undefined)):
+            for symbol in sorted(n for n in names if n.startswith(UI_PREFIX)):
+                found.append(finding("ui-model-symbol", target=facts.label, unit=unit.name, symbol=symbol, use=use))
+    return found
+
 
 def policy_coverage_findings(facts_by_label, policy):
     found = []
@@ -168,13 +208,18 @@ def run(facts_by_label, policy, libc, third=None, libc_android=None):
     reserved_android = reserved | set(libc if libc_android is None else libc_android)
     reserved |= set(libc)
     prefixes = tuple(third.prefixes)
+    exempt, shape = ui_exempt(products)
+    found.extend(shape)
     units = 0
     for label in sorted(products):
+        found.extend(ui_findings(products[label], exempt))   # before the trusted skip: a policy cannot bypass it
         if label in policy.trusted:
             continue
         facts = products[label]
         module = policy.modules.get(label, Module())
         allowed = dep_exports(facts, products, libs, module, found)
+        if label in exempt:   # the probe calls what the adapter defines, and the adapter is no dep of the probe library
+            allowed = {**allowed, **{n: UI_PROBE for u in facts.units for n in u.undefined if n.startswith(UI_PREFIX)}}
         own = exports_of(facts)
         for unit in facts.units:
             units += 1
