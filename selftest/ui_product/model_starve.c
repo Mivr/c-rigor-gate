@@ -19,7 +19,7 @@ uim_t *uim_instance(void)
 bool uim_open(uim_t *m, uint64_t clock_origin_ms, uint64_t seed)
 {
     (void)seed;
-    return fix_open(&m->f, clock_origin_ms, true);
+    return fix_open(&m->f, clock_origin_ms, true, 0u);
 }
 
 bool uim_env_inputs(uim_t *m, uim_input_t *out, uint16_t cap, uint16_t *count)

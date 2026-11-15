@@ -163,7 +163,7 @@ selftests = ["require"]
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
-selftests = ["grade", "product_checks", "structure", "mutate", "canaries"]
+selftests = ["grade", "product_checks", "structure", "mutate", "canaries", "ui"]
 [[rule]]
 glob = "gate/order.txt"
 selftests = ["grade", "canaries"]

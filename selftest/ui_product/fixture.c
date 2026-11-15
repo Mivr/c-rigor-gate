@@ -27,10 +27,12 @@ static bool event(fix_t *f, const char *type)
     return n > 0 && (size_t)n < sizeof line && add_line(f, line);
 }
 
-bool fix_open(fix_t *f, uint64_t origin_ms, bool spin)
+bool fix_open(fix_t *f, uint64_t origin_ms, bool spin, uint64_t tick_ms)
 {
     f->open = false;
     f->spin = spin;
+    f->tick_ms = tick_ms;
+    f->tick_due = tick_ms > 0u ? origin_ms + tick_ms : FIX_NO_DEADLINE;
     f->seq = 0;
     f->trace_len = 0;
     f->spin_due = FIX_NO_DEADLINE;
@@ -59,10 +61,11 @@ fix_result_t fix_apply(fix_t *f, uint16_t kind, uint32_t id, const char *press_t
 uint64_t fix_next_due(const fix_t *f)
 {
     uint64_t notice = toy_notice_due();
+    uint64_t due = notice < f->spin_due ? notice : f->spin_due;
     if (!f->open) {
         return FIX_NO_DEADLINE;
     }
-    return notice < f->spin_due ? notice : f->spin_due;
+    return due < f->tick_due ? due : f->tick_due;
 }
 
 bool fix_step(fix_t *f, uint32_t ms)
@@ -74,6 +77,9 @@ bool fix_step(fix_t *f, uint32_t ms)
     f->now += ms;
     if (f->spin_due != FIX_NO_DEADLINE && f->now >= f->spin_due) {
         f->spin_due = f->now + 1u;   /* the defect: the work reschedules itself 1 ms later, forever */
+    }
+    if (f->tick_due != FIX_NO_DEADLINE && f->now >= f->tick_due) {
+        f->tick_due += f->tick_ms;   /* a perpetual tick: legitimate, and never quiet */
     }
     if (toy_notice_due() != FIX_NO_DEADLINE && f->now >= toy_notice_due()) {
         toy_hide_notice();

@@ -4,17 +4,20 @@ schema = "ui-events/1"
 product = "selftest"
 app = "toy-coarse"
 version = 1
+# The longest virtual wait of one path word (a deadline further away is timer-unreachable).
+max_wait_ms = 600000
 
 # The key leaves out the label and the geometry.
 [key]
 fields = ["role", "enabled", "intent", "flags", "style", "importance", "input_policy", "wrap_policy"]
 facts = ["deadline", "env-inputs"]
+derived = []
 ignore = []
 
 # U1 intent taps (until lvprobe gives the rendered tree, the intent of the one interactive node).
 [u1]
 events = [
-  { id = "tap-press", intent = 1, arg = 0 },
+  { id = "tap-press", intent = 1, arg = 0, expect = "accept" },
 ]
 
 # U2 probe taps and U3 complement taps need a tap command, which ui-probe/1 does not have yet.
@@ -24,12 +27,12 @@ events = []
 [u3]
 events = []
 
-# U4 code macros through the wedge, by boundary class.
+# U4 code macros through the wedge, by boundary class; the toy refuses an empty line in every state.
 [u4]
 events = [
-  { id = "code-empty", boundary = "empty", via = "wedge", hex = "" },
-  { id = "code-one-digit", boundary = "one-digit", via = "wedge", hex = "37" },
-  { id = "code-non-digit", boundary = "non-digit", via = "wedge", hex = "41ff" },
+  { id = "code-empty", boundary = "empty", via = "wedge", hex = "", expect = "refuse" },
+  { id = "code-one-digit", boundary = "one-digit", via = "wedge", hex = "37", expect = "accept" },
+  { id = "code-non-digit", boundary = "non-digit", via = "wedge", hex = "41ff", expect = "accept" },
 ]
 
 # U5 language: the toy has none.
@@ -39,7 +42,7 @@ events = []
 # E1 environment replies: the toy's one env input.
 [e1]
 events = [
-  { id = "env-offline", env = 1, arg = 0, hex = "" },
+  { id = "env-offline", env = 1, arg = 0, hex = "", expect = "accept" },
 ]
 
 # T1 virtual-time events.
@@ -49,4 +52,6 @@ events = [
   { id = "before-due", kind = "before-due" },
   { id = "one-frame", kind = "advance", ms = 16 },
   { id = "idle-5min", kind = "advance", ms = 300000 },
+  { id = "until-change", kind = "until-change" },
+  { id = "at-10s", kind = "at", offset_ms = 10000 },
 ]

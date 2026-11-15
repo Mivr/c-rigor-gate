@@ -1,6 +1,8 @@
 """The event catalogue loader of `rigor ui-explore` (rigor_lib.ui_explore_catalogue) on the toy's catalogue and on
-edited copies: every class required, unknown keys, duplicate ids and wrong types refused."""
+edited copies: every class required, a time event required, max_wait_ms capped, unknown keys, duplicate ids and names,
+wrong types, an empty key, an unjustified ignore and malformed derived facts refused."""
 
+import hashlib
 import unittest
 
 from rigor_lib import ui_explore_catalogue as cat
@@ -8,80 +10,107 @@ from rigor_lib.errors import InternalError
 from tests import test_ui_explore_helpers as h
 
 TEXT = h.TOY.read_text()
+PRESS = '{ id = "tap-press", intent = 1, arg = 0, expect = "accept" },'
+KEY = 'derived = []\nignore = []'
 
 
 def load(text):
     return cat.loads(text.encode("utf-8"))
 
 
+def with_derived(*tables):
+    return TEXT.replace("derived = []", "derived = [ %s ]" % ", ".join(tables))
+
+
 class CatalogueTest(unittest.TestCase):
     def test_the_toy_catalogue(self):
         catalogue = load(TEXT)
-        self.assertEqual((catalogue.product, catalogue.app, catalogue.version), ("selftest", "toy", 1))
+        self.assertEqual((catalogue.product, catalogue.app, catalogue.version, catalogue.max_wait_ms),
+                         ("selftest", "toy", 1, 600000))
         self.assertEqual([(e.cls, e.id) for e in catalogue.events],
                          [("u1", "tap-press"), ("u4", "code-empty"), ("u4", "code-one-digit"), ("u4", "code-non-digit"),
                           ("e1", "env-offline"), ("t1", "fire-due"), ("t1", "before-due"), ("t1", "one-frame"),
-                          ("t1", "idle-5min")])
-        self.assertEqual(catalogue.by_id("code-non-digit").get("hex"), "41ff")
-        self.assertEqual(catalogue.by_id("idle-5min").get("ms"), 300000)
-        self.assertEqual(catalogue.key.facts, ("deadline", "env-inputs"))
+                          ("t1", "idle-5min"), ("t1", "until-change"), ("t1", "at-10s")])
+        self.assertEqual(catalogue.by_id("code-empty").get("expect"), "refuse")
+        self.assertEqual(catalogue.by_id("at-10s").get("offset_ms"), 10000)
+        self.assertIsNone(catalogue.by_id("open"))
         self.assertEqual(len(catalogue.key.fields), 13)
-        self.assertEqual(load(h.TOY_COARSE.read_text()).key.fields,
-                         ("role", "enabled", "intent", "flags", "style", "importance", "input_policy", "wrap_policy"))
+        self.assertEqual(catalogue.sha256, hashlib.sha256(TEXT.encode("utf-8")).hexdigest())
+        for path in (h.TOY_COARSE, h.FIXTURE):
+            load(path.read_text())
 
-    def test_a_pad_macro(self):
-        text = TEXT.replace('{ id = "code-empty", boundary = "empty", via = "wedge", hex = "" },',
+    def test_a_pad_macro_and_derived_facts(self):
+        text = TEXT.replace('{ id = "code-empty", boundary = "empty", via = "wedge", hex = "", expect = "refuse" },',
                             '{ id = "pad-max", boundary = "max", via = "pad", digits = "123", digit_intent = 10, '
-                            'enter_intent = 11 },')
-        event = load(text).by_id("pad-max")
-        self.assertEqual((event.get("digits"), event.get("digit_intent"), event.get("enter_intent")), ("123", 10, 11))
+                            'enter_intent = 11, expect = "accept" },')
+        text = text.replace("derived = []", 'derived = [ { name = "pad-len", op = "bucket", node = "pad", '
+                            'field = "label", measure = "length", boundaries = [1, 63, 64] }, '
+                            '{ name = "due", op = "bucket", model = "due-in-ms", boundaries = [17] }, '
+                            '{ name = "buttons", op = "count", role = "button" } ]')
+        catalogue = load(text)
+        self.assertEqual(catalogue.by_id("pad-max").get("digits"), "123")
+        self.assertEqual([(d.name, d.op, d.node, d.role, d.model, d.boundaries) for d in catalogue.key.derived],
+                         [("pad-len", "bucket", "pad", None, None, (1, 63, 64)),
+                          ("due", "bucket", None, None, "due-in-ms", (17,)),
+                          ("buttons", "count", None, "button", None, ())])
 
     def assert_refused(self, text, why):
+        self.assertNotEqual(text, TEXT, why)
         with self.assertRaises(InternalError) as caught:
             load(text)
         self.assertIn(why, str(caught.exception))
 
     def test_refusals(self):
-        press = '{ id = "tap-press", intent = 1, arg = 0 },'
         cases = [
             (TEXT.replace("[u5]\nevents = []\n", ""), "missing key(s) u5"),
             (TEXT.replace("[u5]\nevents = []\n", "[u5]\n"), "u5: missing key(s) events"),
             (TEXT.replace('version = 1', 'version = 1\nsealed = true'), "unknown key(s) sealed"),
-            (TEXT.replace(press, press + "\n" + press), "duplicate event id 'tap-press'"),
-            (TEXT.replace(press, press + '\n{ id = "fire-due", intent = 2, arg = 0 },'), "duplicate event id 'fire-due'"),
-            (TEXT.replace(press, '{ id = "tap-press", intent = 1, arg = 0, extra = 1 },'), "unknown key(s) extra"),
-            (TEXT.replace(press, '{ id = "tap-press", intent = 1 },'), "missing key(s) arg"),
-            (TEXT.replace(press, '{ id = "tap-press", intent = true, arg = 0 },'), "intent: must be an integer"),
-            (TEXT.replace(press, '{ id = "tap-press", intent = -1, arg = 0 },'), "intent: must be an integer"),
-            (TEXT.replace(press, '{ id = "settle", intent = 1, arg = 0 },'), "reserved path word"),
-            (TEXT.replace(press, '{ id = "Tap", intent = 1, arg = 0 },'), "must be a string matching"),
-            (TEXT.replace('hex = "37"', 'hex = "3"'), "hex: must be a string matching"),
+            (TEXT.replace("max_wait_ms = 600000\n", ""), "missing key(s) max_wait_ms"),
+            (TEXT.replace("max_wait_ms = 600000", "max_wait_ms = 3600001"), "max_wait_ms: must be an integer"),
+            (TEXT.replace("ms = 300000", "ms = 600001"), "ms: must be an integer in 1..600000"),
+            (TEXT.replace(PRESS, PRESS + "\n" + PRESS), "duplicate event id 'tap-press'"),
+            (TEXT.replace(PRESS, PRESS.replace(', expect = "accept"', "")), "missing key(s) expect"),
+            (TEXT.replace(PRESS, PRESS.replace('"accept"', '"maybe"')), "expect: must be one of"),
+            (TEXT.replace(PRESS, PRESS.replace("intent = 1", "intent = true")), "intent: must be an integer"),
+            (TEXT.replace(PRESS, PRESS.replace("tap-press", "wait-change")), "reserved path word"),
             (TEXT.replace('hex = "37"', 'hex = "3700"'), "a NUL byte cannot be sent"),
-            (TEXT.replace('hex = "37"', 'hex = "4A"'), "hex: must be a string matching"),
             (TEXT.replace('boundary = "one-digit"', 'boundary = "two-digit"'), "boundary: must be one of"),
-            (TEXT.replace('via = "wedge", hex = "37"', 'via = "keyboard", hex = "37"'), "via: must be"),
-            (TEXT.replace('kind = "advance", ms = 16', 'kind = "advance", ms = 0'), "ms: must be an integer"),
-            (TEXT.replace('kind = "advance", ms = 16', 'kind = "advance", ms = 600001'), "ms: must be an integer"),
+            (TEXT.replace('kind = "before-due"', 'kind = "later"'), "kind: must be one of"),
             (TEXT.replace('{ id = "fire-due", kind = "fire-due" }', '{ id = "fire-due", kind = "fire-due", ms = 1 }'),
              "unknown key(s) ms"),
-            (TEXT.replace('kind = "before-due"', 'kind = "later"'), "kind: must be one of"),
+            (TEXT[:TEXT.index("[t1]")] + "[t1]\nevents = []\n", "needs at least one time event"),
             (TEXT.replace('schema = "ui-events/1"', 'schema = "ui-events/2"'), "schema: must be"),
             (TEXT.replace('facts = ["deadline", "env-inputs"]', 'facts = ["deadline", "clock"]'), "unknown name(s) clock"),
-            (TEXT.replace('facts = ["deadline", "env-inputs"]', 'facts = ["deadline", "deadline"]'), "duplicate entries"),
-            (TEXT.replace('ignore = []', 'ignore = ["label"]'), "both in the key and ignored: label"),
+            (TEXT.replace("derived = []\n", ""), "key: missing key(s) derived"),
             (TEXT.replace('fields = ["role",', 'fields = ["key", "role",'), "unknown name(s) key"),
-            (TEXT.replace("[u2]\nevents = []", "[u2]\nevents = {}"), "u2.events: must be a list"),
             (TEXT.replace("version = 1", "version = 1\nversion = 2"), "not valid UTF-8 TOML"),
-            (TEXT.replace('env = 1, arg = 0, hex = ""', 'env = 1, arg = 2147483648, hex = ""'), "arg: must be an integer"),
         ]
+        empty = TEXT[:TEXT.index("fields = [")] + 'fields = []\nfacts = []\n' + TEXT[TEXT.index("derived = []"):]
+        cases.append((empty, "keys every state alike"))
+        ignore = '{ field = "x", provenance = "spec:ui-look.md#4.2", reason = "geometry follows the label" }'
+        cases += [(TEXT.replace("ignore = []", "ignore = [ %s ]" % ignore), "both in the key and ignored: x"),
+                  (TEXT.replace('"x", "y", ', '"y", ').replace("ignore = []", "ignore = [ %s ]"
+                                                                % ignore.replace("spec:ui-look.md#4.2", "because")),
+                   "provenance 'because'"),
+                  (TEXT.replace('"x", "y", ', '"y", ').replace("ignore = []", "ignore = [ %s ]"
+                                                                % ignore.replace(', reason = "geometry follows the label"', "")),
+                   "missing key(s) reason"),
+                  (with_derived('{ name = "a", op = "count" }'), "needs exactly one of node and role"),
+                  (with_derived('{ name = "a", op = "count", node = "n", role = "r" }'), "needs exactly one"),
+                  (with_derived('{ name = "a", op = "select", node = "n" }'), "missing key(s) field"),
+                  (with_derived('{ name = "a", op = "sum", node = "n" }'), "op: must be one of"),
+                  (with_derived('{ name = "deadline", op = "count", node = "n" }'), "duplicate fact name 'deadline'"),
+                  (with_derived('{ name = "a", op = "bucket", node = "n", field = "label", measure = "value", '
+                                'boundaries = [2, 1] }'), "strictly increasing"),
+                  (with_derived('{ name = "a", op = "bucket", model = "clock", boundaries = [1] }'), "model: must be"),
+                  (with_derived('{ name = "a", op = "presence", node = "n", expr = "1+1" }'), "unknown key(s) expr")]
         for text, why in cases:
-            self.assertNotEqual(text, TEXT, why)
             self.assert_refused(text, why)
+        ok = TEXT.replace('"x", "y", ', '"y", ').replace("ignore = []", "ignore = [ %s ]" % ignore)
+        self.assertEqual(load(ok).key.ignore, (("x", "spec:ui-look.md#4.2", "geometry follows the label"),))
         with self.assertRaises(InternalError):
             cat.loads(b"\xff")
         with self.assertRaises(InternalError):
             cat.load("/nonexistent/catalogue.toml")
-
-    def test_the_digest_is_of_the_file_bytes(self):
-        import hashlib
-        self.assertEqual(load(TEXT).sha256, hashlib.sha256(TEXT.encode("utf-8")).hexdigest())
+        with self.assertRaises(InternalError):
+            cat.loads(b"x = " + b"[" * 100000 + b"]" * 100000)

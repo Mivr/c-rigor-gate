@@ -1,40 +1,28 @@
-"""Findings, the abstraction key and the built-in judges of `rigor ui-explore` (U05, P004 3.7, 4.3, 4.5).
+"""Findings and the judges of `rigor ui-explore` (U05, P004 3.7, 4.5).
 
 A finding is one JSON object of the schema of P004 4.5 (docs/ui-explore.md). Its `id` is
-`ui-explore.<check>/<12 hex>`, the sha256 of the check and an identity that names states by their abstraction key and
-events by their path word, never by exploration order, so the same defect has the same id in every strategy and in
-`replay`.
+`ui-explore.<check>/<12 hex>`, the sha256 of the check and an identity that names states by abstraction key, events by
+path word and run-level facts by the catalogue's sha256, never by exploration order.
 
-The judge interface: a step judge is a callable `judge(step, path, contract) -> iterable of findings`, called once per
-observed step of every first run, in path order; `step` is a `StepView`, `path` the StepViews before it (the path so
-far), `contract` the UI contract (`ui_contract.Contract`) or None. The built-in step judge is `timer-starvation`. The
-run-pair checks (probe errors, run-twice) and the run-level checks (coverage, depth, key-too-coarse) are here too.
+Three kinds of judge (docs/ui-explore.md, "The judge interface"):
+  step judge         judge(step, path, contract) -> findings; once per completed step of every first run, in order
+  run judge          judge(first, second, contract) -> findings; once per path, with both runs
+  exploration judge  judge(exploration, contract) -> (evaluated, findings); once at the end (ui_explore_coverage)
+A judge attaches evidence by putting `{file name: JSON data}` under the key PRIVATE of a finding; the explorer writes
+those files next to the finding's `paths.json` and removes the key before the finding is written.
 """
 
-from dataclasses import dataclass
-
 from rigor_lib import jsonio
-from rigor_lib.ui_explore_probe import FRAME_MS, SEMANTIC_FIELDS
-from rigor_lib.ui_explore_run import first_difference, starving
+from rigor_lib.ui_explore_key import normalised, readable
+from rigor_lib.ui_explore_run import first_difference
 
 GATE = "ui-explore"
 LAYERS = {"model-nondeterministic": "L0", "run-twice-mismatch": "L0", "timer-starvation": "L0"}
-CHECKS = ("ui-coverage-gap", "model-nondeterministic", "run-twice-mismatch", "timer-starvation", "depth-unsaturated",
-          "key-too-coarse", "probe-internal-error", "ui-explore-timeout")
-SEVERITY = {"key-too-coarse": "info"}
-PRIVATE = "_evidence"     # evidence files of a finding ({name: JSON data}); removed before the finding is written     # P004 3.7: I -> E after report-first; every other check is an error
-
-
-@dataclass(frozen=True)
-class StepView:
-    """What a judge sees of one step: its index and word, the step (`ui_explore_run.Step`), its abstraction key
-    (hex, None when the step failed) and the key of the state before it (None before `open`)."""
-    index: int
-    word: str
-    step: object
-    key: object
-    key_before: object
-    origin_ms: int
+CHECKS = ("ui-coverage-gap", "model-nondeterministic", "run-twice-mismatch", "timer-starvation", "timer-unreachable",
+          "depth-unsaturated", "key-too-coarse", "event-never-accepted", "event-accepted", "probe-internal-error",
+          "ui-explore-timeout")
+SEVERITY = {"key-too-coarse": "info"}     # P004 3.7: I -> E after report-first; every other check is an error
+PRIVATE = "_evidence"
 
 
 def finding_id(check, identity):
@@ -42,184 +30,172 @@ def finding_id(check, identity):
     return "%s.%s/%s" % (GATE, check, digest[:12])
 
 
-def make(check, identity, state_key, origin_ms, path, observed):
-    """One finding of the P004 4.5 schema; `blame` and `evidence` are filled later or stay empty."""
+def state_of(key, proj, catalogue_key, origin_ms):
+    """A finding's `state`: the key hash, the readable projection and the clock origin; None without a state."""
+    if key is None:
+        return None
+    return {"key": key, "origin_ms": origin_ms, "projection": readable(proj, catalogue_key)}
+
+
+def make(check, identity, state, path, observed, evidence=None):
     if check not in CHECKS:
         raise ValueError("unknown check %r" % check)
-    state = None if state_key is None else {"key": state_key, "origin_ms": origin_ms}
-    return {"id": finding_id(check, identity), "gate": GATE, "check": check, "layer": LAYERS.get(check, "meta"),
+    item = {"id": finding_id(check, identity), "gate": GATE, "check": check, "layer": LAYERS.get(check, "meta"),
             "severity": SEVERITY.get(check, "error"), "state": state, "path": list(path), "observed": observed,
             "blame": [], "evidence": [], "explanation": None}
+    if evidence:
+        item[PRIVATE] = evidence
+    return item
 
 
-# ---- the abstraction key ---------------------------------------------------------------------------------------
-def deadline_bucket(step):
-    due = step.obs["due"]
-    if due is None:
-        return "none"
-    return "within-frame" if due - step.now <= FRAME_MS else "pending"
+def origin_of(words):
+    return int(words[0].split(" ")[1])
 
 
-def projection(step, key):
-    """The owner-declared projection of a completed step: per node its `key` and the declared fields, plus the facts."""
-    index = [SEMANTIC_FIELDS.index(name) for name in key.fields]
-    nodes = [[record.fields[0]] + [record.fields[i] for i in index] for record in step.obs["semantic"]]
-    facts = {}
-    if "deadline" in key.facts:
-        facts["deadline"] = deadline_bucket(step)
-    if "env-inputs" in key.facts:
-        facts["env-inputs"] = [list(item) for item in step.obs["env"]]
-    return {"nodes": nodes, "facts": facts}
+# ---- step judges ----------------------------------------------------------------------------------------------
+def starvation_judge(bound, catalogue_key):
+    """`timer-starvation`: `bound` consecutive firings each left the next deadline at most one frame away. Reported at
+    the step that completes the streak; the state is where it began. O(1) per step (the run counts the streak)."""
+    def judge(step, path, contract):
+        del contract
+        if step.streak != bound:
+            return []
+        words = [view.word for view in path] + [step.word]
+        if step.starved:            # one until-change word fired them all
+            start, dues = step, step.firings
+        else:
+            steps = list(path[len(path) + 1 - bound:]) + [step]
+            start, dues = steps[0], [[s.now, s.obs["due"]] for s in steps]
+        observed = {"firings": bound, "frame_ms": 16, "now_and_next_due": dues}
+        return [make("timer-starvation", ["streak", start.key_before],
+                     state_of(start.key_before, start.proj_before, catalogue_key, step.origin), words, observed)]
+    return judge
 
 
-def key_of(step, key):
-    return jsonio.sha256_hex(jsonio.canonical_dumps(projection(step, key)))
+def unreachable_judge(catalogue_key):
+    """`timer-unreachable`: a time word whose wait passes `max_wait_ms` or the protocol's clock limit."""
+    def judge(step, path, contract):
+        del contract
+        if step.unreachable is None:
+            return []
+        words = [view.word for view in path] + [step.word]
+        return [make("timer-unreachable", [step.key_before, step.word, step.unreachable["reason"]],
+                     state_of(step.key_before, step.proj_before, catalogue_key, step.origin), words,
+                     dict(step.unreachable, word=step.word))]
+    return judge
 
 
-def normalised_tree(step, key):
-    """The semantic records without the fields the key declares as ignored (what key-too-coarse compares)."""
-    keep = [i for i, name in enumerate(SEMANTIC_FIELDS) if name not in key.ignore]
-    return [[record.fields[i] for i in keep] for record in step.obs["semantic"]]
+class PathSoFar:
+    """The steps before one step, without copying them (a judge called per step stays O(1) unless it walks it)."""
+
+    def __init__(self, steps, end):
+        self._steps, self._end = steps, end
+
+    def __len__(self):
+        return self._end
+
+    def __iter__(self):
+        return iter(self._steps[:self._end])
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return self._steps[:self._end][index]
+        if not -self._end <= index < self._end:
+            raise IndexError(index)
+        return self._steps[index % self._end]
 
 
-def views(run, key):
-    """StepViews of the completed steps of a run (a failed step has no key)."""
-    out, before = [], None
-    origin = int(run.words[0].split(" ")[1])
-    for step in run.steps:
-        current = key_of(step, key) if step.error is None else None
-        out.append(StepView(step.index, step.word, step, current, before, origin))
-        before = current
+def run_step_judges(judges, run, contract):
+    out = []
+    for index, step in enumerate(run.steps):
+        if step.key is None:
+            break
+        for judge in judges:
+            out.extend(judge(step, PathSoFar(run.steps, index), contract))
     return out
 
 
-# ---- run-pair checks: probe errors and run-twice -----------------------------------------------------------------
-def error_finding(run, steps):
-    """The finding of a run that ended with a ProbeError, or None."""
+# ---- run judges -----------------------------------------------------------------------------------------------
+def _error_finding(run, catalogue_key):
     if run.error is None:
         return None
     index, error = run.error
-    check = "ui-explore-timeout" if error.kind == "timeout" else "probe-internal-error"
-    before = steps[index].key_before
+    step = run.steps[index]
+    if error.kind == "timeout":
+        check = "ui-explore-timeout"
+    elif error.kind == "zero-delay":
+        check = "timer-starvation"
+    else:
+        check = "probe-internal-error"
     observed = {"kind": error.kind, "command": error.command, "detail": error.detail, "step": index}
-    word = run.steps[index].word
-    path = run.words[:index + 1] if word != "quit" else run.words
-    return make(check, [error.kind, error.command, before, word], before, steps[0].origin_ms, path, observed)
+    path = run.words[:index + 1] if step.word != "quit" else run.words
+    evidence = {"error.json": {"raw": error.raw}} if error.raw is not None else None
+    return make(check, [error.kind, error.command, step.key_before, step.word],
+                state_of(step.key_before, step.proj_before, catalogue_key, origin_of(run.words)), path, observed,
+                evidence)
 
 
-def pair_findings(first, second, key):
-    """Probe errors of either run, and the run-twice comparison (P004 3.7): a trace that differs is
-    `model-nondeterministic`, any other reply that differs is `run-twice-mismatch`; each names the first differing step."""
-    steps = views(first, key)
-    out = [item for item in (error_finding(first, steps), error_finding(second, views(second, key))) if item]
-    trace_at, other = first_difference(first, second)
-    for check, at, part in (("model-nondeterministic", trace_at, "trace"),
-                            ("run-twice-mismatch",) + (other if other else (None, None))):
-        if at is None:
-            continue
-        before = steps[at].key_before if at < len(steps) else steps[-1].key
-        word = first.steps[at].word if at < len(first.steps) else second.steps[at].word
-        values = [_part(first, at, part), _part(second, at, part)]
-        observed = {"step": at, "word": word, "part": part, "item": _first_item(*values)}
-        path = (first.words if len(first.words) >= len(second.words) else second.words)[:at + 1]
-        item = make(check, [before, word, part], before, steps[0].origin_ms, path, observed)
-        item[PRIVATE] = {"runs.json": {"first": values[0], "second": values[1]}}
-        out.append(item)
-    return out
+def probe_error_judge(catalogue_key):
+    """Every run that ended with a ProbeError: `ui-explore-timeout`, `timer-starvation` (zero-delay) or
+    `probe-internal-error`, with the probe's own bytes as evidence."""
+    def judge(first, second, contract):
+        del contract
+        return [item for item in (_error_finding(first, catalogue_key), _error_finding(second, catalogue_key)) if item]
+    return judge
 
 
 def _part(run, index, part):
-    if index >= len(run.steps):
-        return None
-    return run.steps[index].parts().get(part)
+    return run.steps[index].parts().get(part) if index < len(run.steps) else None
 
 
 def _first_item(a, b):
-    """The index of the first differing item when both parts are lists, else None. The differing values themselves
-    can vary from run to run (that is the defect), so they go to the evidence, never into the finding."""
     if type(a) is not list or type(b) is not list:
         return None
     return next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
 
 
-# ---- step judges ----------------------------------------------------------------------------------------------
-def starvation_judge(bound):
-    """`timer-starvation` (P004 3.7): `bound` consecutive firings of a deadline each left the next deadline at most
-    one frame away. Reported once, at the step that completes the streak; the state is where the streak began."""
-    def judge(step, path, contract):
+def run_twice_judge(catalogue_key):
+    """L0: a `trace` that differs is `model-nondeterministic`; any other part that differs (in read order) is
+    `run-twice-mismatch`. The differing values go to the evidence (`runs.json`), never into the finding."""
+    def judge(first, second, contract):
         del contract
-        streak = 0
-        for view in list(path) + [step]:
-            streak = streak + 1 if starving(view.step) else 0
-        if streak != bound:
-            return []
-        start = (list(path) + [step])[-bound]
-        dues = [[view.step.now, view.step.obs["due"]] for view in (list(path) + [step])[-bound:]]
-        words = [view.word for view in list(path) + [step]]
-        return [make("timer-starvation", [start.key_before], start.key_before, step.origin_ms, words,
-                     {"firings": bound, "now_and_next_due": dues, "frame_ms": FRAME_MS})]
+        out = []
+        trace_at, other = first_difference(first, second)
+        for check, at, part in (("model-nondeterministic", trace_at, "trace"),
+                                ("run-twice-mismatch",) + (other if other else (None, None))):
+            if at is None:
+                continue
+            longer = first if len(first.steps) >= len(second.steps) else second
+            step = longer.steps[at]
+            values = [_part(first, at, part), _part(second, at, part)]
+            observed = {"step": at, "word": step.word, "part": part, "item": _first_item(*values)}
+            out.append(make(check, [step.key_before, step.word, part],
+                            state_of(step.key_before, step.proj_before, catalogue_key, origin_of(longer.words)),
+                            longer.words[:at + 1], observed, {"runs.json": {"first": values[0], "second": values[1]}}))
+        return out
     return judge
 
 
-def run_step_judges(judges, first, key, contract):
-    steps = views(first, key)
-    out = []
-    for index, view in enumerate(steps):
-        if view.key is None:
-            break
-        for judge in judges:
-            out.extend(judge(view, steps[:index], contract))
-    return out
-
-
-# ---- run-level checks ----------------------------------------------------------------------------------------
-def coverage_c1(count, visited, open_word):
-    """C1: every domain entry visited. The path is the bare `open`: replaying it visits no entry."""
-    origin = int(open_word.split(" ")[1])
-    return [make("ui-coverage-gap", ["C1", index], None, origin, [open_word],
-                 {"criterion": "C1", "domain_entry": index, "domain_count": count})
-            for index in range(count) if index not in visited]
-
-
-def coverage_c8(reachable, exercised, events, origin_ms):
-    """C8: every reachable (abstract state, catalogue event) pair exercised. `reachable` maps key -> path."""
-    out = []
-    for state in sorted(reachable):
-        for event in events:
-            if (state, event) not in exercised:
-                out.append(make("ui-coverage-gap", ["C8", state, event], state, origin_ms, reachable[state],
-                                {"criterion": "C8", "event": event}))
-    return out
-
-
-def undeclared_env(reachable_env, declared, origin_ms):
-    """C8 also needs every enabled env input to be a catalogue event: one gap per undeclared input and state."""
-    out = []
-    for (state, item), path in sorted(reachable_env.items()):
-        if item not in declared:
-            out.append(make("ui-coverage-gap", ["C8-env", state, list(item)], state, origin_ms, path,
-                            {"criterion": "C8", "undeclared_env_input": list(item)}))
-    return out
-
-
 class CoarseTable:
-    """key-too-coarse: two completed steps with equal keys whose normalised semantic trees differ."""
+    """key-too-coarse: two completed steps with equal keys whose normalised records differ."""
 
-    def __init__(self, key):
-        self.key = key
-        self.first = {}          # abstraction key -> (tree, path)
+    def __init__(self, catalogue_key):
+        self.key = catalogue_key
+        self.first = {}
         self.found = []
 
-    def add(self, view, path):
-        tree = normalised_tree(view.step, self.key)
-        seen = self.first.get(view.key)
+    def add(self, step, words):
+        """`words` are the run's words; the path of `step` is their first index + 1."""
+        record = normalised(step.obs, step.now, self.key)
+        seen = self.first.get(step.key)
         if seen is None:
-            self.first[view.key] = (tree, list(path))
+            self.first[step.key] = (record, list(words[:step.index + 1]))
             return
-        if seen[0] == tree:
+        if seen[0] == record:
             return
-        at = next((i for i, (a, b) in enumerate(zip(seen[0], tree)) if a != b), min(len(seen[0]), len(tree)))
-        observed = {"witness_path": seen[1], "first_differing_node": at,
-                    "witness_node": seen[0][at] if at < len(seen[0]) else None,
-                    "node": tree[at] if at < len(tree) else None}
-        self.found.append(make("key-too-coarse", [view.key], view.key, view.origin_ms, path, observed))
+        path = list(words[:step.index + 1])
+        parts = [name for name in ("nodes", "facts") if seen[0][name] != record[name]]
+        observed = {"witness_path": seen[1], "differs_in": parts}
+        self.found.append(make("key-too-coarse", [step.key],
+                               state_of(step.key, step.proj, self.key, step.origin), path, observed,
+                               {"records.json": {"witness": seen[0], "this": record}}))

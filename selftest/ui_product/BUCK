@@ -60,3 +60,12 @@ c_library(
 )
 
 c_ui_probe(name = "probe_starve", model = ":model_starve")
+
+# A correct adapter with a perpetual 250 ms tick: settle ends, until-change is one event, no finding.
+c_library(
+    name = "model_tick",
+    srcs = ["model_tick.c"],
+    deps = [":fixture", ":toy", "gate//ui/model:model"],
+)
+
+c_ui_probe(name = "probe_tick", model = ":model_tick")
