@@ -5242,3 +5242,25 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dt/zday:zday"]
+level = "L3"
+impl = ["apps/fiscal/dt/zday/src/**"]
+allow = ["memset"]
+exports = ["zd_build", "zd_split"]
+
+[module."//apps/fiscal/dt/zday:zday_split_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/zday:zday_build_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/zday:zday_flags_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/zday:zday_errors_test"]
+allow = ["memset"]
+exports = ["main"]
