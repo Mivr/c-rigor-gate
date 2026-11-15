@@ -5242,3 +5242,33 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dt/config:config"]
+level = "L3"
+impl = ["apps/fiscal/dt/config/src/**"]
+allow = []
+exports = ["cf_parse", "cf_secret_parse"]
+
+[module."//apps/fiscal/dt/config:dtconfig_ok_test"]
+allow = ["memcpy", "memset", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/config:dtconfig_kv_test"]
+allow = ["memcpy", "memset", "strcmp", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/config:dtconfig_device_test"]
+allow = ["memcpy", "memset", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/config:dtconfig_push_test"]
+allow = ["memcpy", "memset", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/config:dtconfig_value_test"]
+allow = ["memcpy", "memset", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/config:dtconfig_secret_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
