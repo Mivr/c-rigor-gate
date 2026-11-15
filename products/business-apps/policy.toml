@@ -5247,34 +5247,34 @@ exports = ["main"]
 level = "L3"
 impl = ["apps/fiscal/dtsafe/guard/src/**"]
 allow = []
-exports = []
+exports = ["dtg_check"]
 
 [module."//apps/fiscal/dtsafe/guard:dtg_accept_test"]
-allow = []
+allow = ["memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//apps/fiscal/dtsafe/guard:dtg_time_test"]
-allow = []
+allow = ["memcpy", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//apps/fiscal/dtsafe/guard:dtg_target_test"]
-allow = []
+allow = ["memcpy", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//apps/fiscal/dtsafe/guard:dtg_method_test"]
-allow = []
+allow = ["memcpy", "strlen"]
 exports = ["main"]
 
 [module."//apps/fiscal/dtsafe/guard:dtg_header_test"]
-allow = []
+allow = ["memcpy", "strchr", "strlen"]
 exports = ["main"]
 
 [module."//apps/fiscal/dtsafe/guard:dtg_tail_test"]
-allow = []
+allow = ["memcpy", "memset", "strlen", "strstr"]
 exports = ["main"]
 
 [module."//apps/fiscal/dtsafe/guard:dtg_sweep_test"]
-allow = []
+allow = ["memcpy", "strlen", "strstr"]
 exports = ["main"]
 
 [module."//apps/fiscal/dtsafe/guard:testkit"]
