@@ -21,7 +21,8 @@ table `{ value = ..., provenance = "..." }` or `{ pending = "<n>", provenance = 
 | `[reading]` | `rate_wpm` |
 | `[clock]` | `tick_ms` (the reactor tick, runtime.h C2) |
 | `[policy]` | `error_dialog` (`fixed` or `until-acknowledged`), `target_population` (`younger-adult` or `inclusive`) |
-| `[thresholds]` | the 26 quantities of P004 3.10 (touch targets, spacing, probe region, feedback, busy, dwell, flicker, legibility, contrast, pseudo-locale, tolerances, hierarchy ratio) |
+| `[thresholds]` | the 26 quantities of P004 3.10 (touch targets, spacing, probe region, feedback, busy, dwell, flicker, legibility, contrast, pseudo-locale, tolerances, hierarchy ratio); each has a range, and the orderings P004 implies are checked (touch <= button floor <= recommended <= keypad, hard <= recommended spacing, ...) |
+| `[pending_tables]` | whole tables the owner has not decided: `importance = { pending = "7", provenance = ... }` |
 
 **Tables** are arrays of rows; each row has the listed keys, an id that must be unique in its table, and a
 `provenance`. All are required except `[[exception]]`, which may be absent (no exceptions).
@@ -37,50 +38,83 @@ table `{ value = ..., provenance = "..." }` or `{ pending = "<n>", provenance = 
 | `[[toggle_group]]` | `id` | `members`, `exactly_one`, `shown_on` (state class ids) |
 | `[[input_layer]]` | `layer` | `blocks_input_below`, `tap_outside_dismisses`, `accepts_input` |
 | `[[wrap]]` | `scope` | `wrap` (`word`/`char`/`none`), `max_lines` (0 means no cap), `ellipsis`, `clip` |
-| `[[exception]]` | `id` | `rule`, `target`, `reason` |
+| `[[exception]]` | `id` | `rule` (a finding id of P004 3.1 to 3.9, closed list in the loader), `target` (a concrete node id, no wildcard), `reason`, `expires` (a date); the provenance must be `owner:` |
 
 References are checked: a style's `scale`, a role's `style`, `role_min.role`, `importance.roles` and
 `toggle_group.shown_on` must name existing entries.
 
 ## Provenance rule
 
-Every entry and every row carries `provenance`, one of
+Every entry and every row carries `provenance`, matched whole (a trailing newline is an error), one of
 
-- `spec:<doc>#<anchor>`: a spec document and the section it comes from (`spec:ui-look.md#4.2`);
-- `oracle:<what>`: a value derived from the Rust oracle (free text);
-- `literature:<key>`: a cited study or standard. A threshold must cite its own P004 3.10 key, written
-  `literature:3.10/<threshold key>`; any other provenance on a threshold is an error;
-- `owner:<decision id>`: an owner decision.
+- `spec:<doc>#<anchor>`: a spec document of the closed list `ui-rules.md`, `ui-look.md`, `hardware-safety.md`,
+  `P004`, and the section it comes from (`spec:ui-look.md#4.2`);
+- `oracle:<what>`: a value read from the Rust oracle (free text);
+- `literature:<key>`: a cited study or standard. A threshold P004 3.10 cites a source for is
+  `literature:3.10/<threshold key>`;
+- `design:P004#<section>`: a value P004 marks [I] or [P] (its own design or draft value, no source). The
+  thresholds that are design values are `design:P004#3.10-<key>`, and the loader fixes which keys they are;
+- `owner:<decision id>`: an owner decision (`owner:D17`, `owner:Q9`).
 
-An entry without a provenance, or with one of another shape, is an error. A pending entry also has one (the
-question, e.g. `spec:P004#11-q9`).
+An entry without a provenance, or with one of another shape, is an error. A pending entry has one too (the question,
+e.g. `spec:P004#11-q9`).
 
 ## Pending rule
 
-An entry the owner has not decided is `pending = "<n>"`, `n` a P004 section 11 question number ("1" to "17"),
-instead of `value`. It never has a default. `Contract.get(section, key)` raises `ContractPending` (not an
-`InternalError`) for it; a judge turns that into the finding `contract-pending` with `pending_finding(error)`, whose
-severity is the judge's choice (P004 3.10 reports mm checks as info until the panel is sealed). `ppi()` and
-`mm_to_px()` are pending while `panel.diagonal_in` is. Pending in the lockers contract today: panel diagonal and
-viewing distance (Q9), the target-size population and the mm button thresholds (Q10), the reading rate and the
-error-dialog policy (Q11), the flicker floor and the hierarchy ratio (Q5).
+An entry the owner has not decided is `pending = "<n>"`, `n` a P004 section 11 question number, instead of `value`.
+It never has a default, and **what may be pending is a closed list in the loader** (`PENDING_ENTRIES`,
+`PENDING_TABLES`), each with its question number: any other entry, or the wrong number, is an error. A whole table
+is pending through `[pending_tables]`; its rows are then absent and `Contract.rows()` raises.
+
+`Contract.get(section, key)` raises `ContractPending` (not an `InternalError`) for a pending entry. A judge turns it
+into the finding `contract-pending` with `pending_finding(error)`; **its severity is fixed to `error`** in the
+loader and a judge cannot choose it (reporting first, before enforcing, is a later task's business). `ppi()` and
+`mm_to_px()` are pending while `panel.diagonal_in` is.
+
+Pending in the lockers contract today: panel diagonal and viewing distance (Q9); the target-size population and the
+mm button thresholds (Q10); the reading rate and the error-dialog policy (Q11); the flicker floor and the hierarchy
+ratio (Q5); contrast ratios (Q15); the whole importance table (Q7).
+
+`policy.error_dialog` means "the owner may change the dialog policy". It does not replace the dialog timer: the
+`dialog` timer keeps the value of ui-rules.md (8000 ms, `spec:` provenance) until the owner decides otherwise.
+
+## Consistency the loader enforces
+
+Types and ranges of every value; unique ids; references (style to type scale, role to style, role_min and importance
+to roles, toggle groups to state classes, state class elements to roles or the closed element list); unique style
+tokens 1 to 21; a role in at most one importance level; `role_min.font_px_min` not above the role's style size and
+buttons with a touch minimum of at least `touch_min_dp`; left alignment only for notice roles, `align_banner` only
+there, buttons centred; `wrap = none` means one line and an ellipsis needs a line cap; a countdown needs a lifetime
+above 0; every message timer has a dismiss control (UI rule 1). What the loader returns is immutable (tuples and
+read-only mappings).
 
 ## Checks
 
 - `incomplete(contract, timer_kinds, state_classes, roles)` returns one `contract-incomplete` finding for every
-  timer kind, state class or role a product declares that the contract has no row for.
-- `dwell_table(contract, messages)` takes `(msgid, lang, kind, text)` and gives, per message and language, the word
-  count, the reading time `ceil(words * 60000 / rate_wpm)`, the minimum dwell `max(dwell_floor_ms, dwell_base_ms +
-  reading)` and the contract timer of its kind. `dwell_findings(rows)` reports `dwell-below-reading-time` for a timed
-  message (`lifetime_ms` above 0) shorter than its minimum, and `contract-incomplete` for a kind without a timer.
-  P004 3.10 writes the reading time from characters (chars / 5.6 per word); the table counts real words, as the U10
-  contract says. The table raises `ContractPending` while `reading.rate_wpm` is pending.
+  timer kind, state class or role a product declares that the contract has no row for, and for every role of the
+  contract with no `role_min` row or (unless the table is pending) no importance level.
+- `dwell_table(contract, messages)` takes dicts `{msgid, lang, kind, text[, max_expansion]}` and gives, per message
+  and language, the characters as displayed, the reading time `ceil(chars * 60000 / (rate_wpm * chars_per_word))` in
+  ms (exact arithmetic; P004 3.10: `chars / (r * 5.6 / 60)` seconds), the minimum dwell `max(dwell_floor_ms,
+  dwell_base_ms + reading)` and the contract timer of its kind. Characters are Unicode code points (NFC), so
+  Bulgarian is not under-counted. A `{placeholder}` needs its longest expansion in `max_expansion` (a plain text per
+  placeholder); an unexpanded placeholder, an expansion the text does not use, a duplicate (msgid, lang) or a missing
+  text is an error. `dwell_findings(rows)` reports `dwell-below-reading-time` for a timed message (`lifetime_ms`
+  above 0) shorter than its minimum, and one `contract-incomplete` per timer kind the contract lacks. The table
+  raises `ContractPending` while `reading.rate_wpm` is pending.
 
 ## The derivation script
 
 `python3 -I gate/tools/ui_contract_derive.py --ui-rules docs/lockers/ui-rules.md --contract
-products/business-apps/ui/lockers.toml [--print]` re-derives the timer kinds, limits and countdown flags from the
-"Screen timers" and "Message catalogue" tables of ui-rules.md and compares them with the `[[timer]]` rows. Exit 0:
-equal. Exit 1: they differ (each difference on stderr). Exit 2: an unreadable file, an unknown row (the row names are
-fixed in the script) or a ui-rules.md that contradicts itself between its two tables. The unit tests run it on a copy
-of ui-rules.md under `gate/tests/data/ui_contract/`.
+products/business-apps/ui/lockers.toml [--print]` re-derives, for every timer kind, `class`, `lifetime_ms`,
+`countdown_shown` and `dismiss` from the "Screen timers" and "Message catalogue" tables of ui-rules.md and compares
+them with the `[[timer]]` rows. Exit 0: equal. Exit 1: they differ (each difference on stderr). Exit 2: an
+unreadable file, a table whose header differs, a row with the wrong number of cells, an escaped pipe, an unknown row
+name or catalogue kind (only the named "not a notice" row is skipped), a duplicate Screen timers row, a catalogue row
+without a dismiss intent, or a ui-rules.md that contradicts itself between its two tables.
+
+The gate cannot read business-apps at test time, so the unit tests run the script on a copy,
+`gate/tests/data/ui_contract/ui-rules.md`, whose sha256 is recorded in `ui-rules.md.sha256` next to it (a test
+checks it). To refresh it: copy `docs/lockers/ui-rules.md` from business-apps over the copy, write its digest with
+`sha256sum ui-rules.md | cut -d' ' -f1 > ui-rules.md.sha256`, run the script against the real file and the contract,
+and update the contract and the tests if the derivation changed.

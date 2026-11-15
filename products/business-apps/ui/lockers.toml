@@ -29,13 +29,17 @@ caption  = { value = 16, provenance = "spec:ui-look.md#1" }
 rate_wpm = { pending = "11", provenance = "spec:P004#11-q11" }
 
 [clock]
-tick_ms = { value = 250, provenance = "spec:P004#3.10-dwell" }   # runtime.h C2, quoted by P004 3.10
+tick_ms = { value = 250, provenance = "spec:P004#3.5" }   # runtime.h C2, quoted by P004 3.5
 
 [policy]
 error_dialog      = { pending = "11", provenance = "spec:P004#11-q11" }   # ui-rules.md says fixed 8 s; owner undecided
 target_population = { pending = "10", provenance = "spec:P004#11-q10" }
 
-# ---- thresholds (P004 3.10); each cites its own key as literature:3.10/<key> -------------------------------------
+# A whole table the owner has not decided: the rows are absent and a judge asking for them gets contract-pending.
+[pending_tables]
+importance = { pending = "7", provenance = "spec:P004#11-q7" }
+
+# ---- thresholds (P004 3.10); literature:3.10/<key>, or design:P004#3.10-<key> where P004 marks the value [I] or [P] -------------------------------------
 [thresholds]
 keypad_key_min_mm             = { pending = "10", provenance = "literature:3.10/keypad_key_min_mm" }
 button_recommended_mm         = { pending = "10", provenance = "literature:3.10/button_recommended_mm" }
@@ -45,24 +49,24 @@ touch_min_dp                  = { value = 48, provenance = "literature:3.10/touc
 hit_overlap_allowed           = { value = false, provenance = "literature:3.10/hit_overlap_allowed" }
 spacing_hard_mm               = { value = 1, provenance = "literature:3.10/spacing_hard_mm" }
 spacing_recommended_mm        = { value = 3, provenance = "literature:3.10/spacing_recommended_mm" }
-probe_grid_pct                = { value = [20, 50, 80], provenance = "literature:3.10/probe_grid_pct" }
+probe_grid_pct                = { value = [20, 50, 80], provenance = "design:P004#3.10-probe_grid_pct" }
 probe_disc_radius_mm          = { value = 7.5, provenance = "literature:3.10/probe_disc_radius_mm" }
 feedback_rendered_frames_max  = { value = 5, provenance = "literature:3.10/feedback_rendered_frames_max" }
-feedback_target_frames        = { value = 2, provenance = "literature:3.10/feedback_target_frames" }
-frame_hz                      = { value = 60, provenance = "literature:3.10/frame_hz" }
+feedback_target_frames        = { value = 2, provenance = "design:P004#3.10-feedback_target_frames" }
+frame_hz                      = { value = 60, provenance = "design:P004#3.10-frame_hz" }
 busy_indicator_ms             = { value = 1000, provenance = "literature:3.10/busy_indicator_ms" }
 busy_progress_cancel_ms       = { value = 10000, provenance = "literature:3.10/busy_progress_cancel_ms" }
-dwell_base_ms                 = { value = 1000, provenance = "literature:3.10/dwell_base_ms" }
-dwell_floor_ms                = { value = 3500, provenance = "literature:3.10/dwell_floor_ms" }
-dwell_chars_per_word          = { value = 5.6, provenance = "literature:3.10/dwell_chars_per_word" }
-flicker_floor_ms              = { pending = "5", provenance = "literature:3.10/flicker_floor_ms" }
+dwell_base_ms                 = { value = 1000, provenance = "design:P004#3.10-dwell_base_ms" }
+dwell_floor_ms                = { value = 3500, provenance = "design:P004#3.10-dwell_floor_ms" }
+dwell_chars_per_word          = { value = 5.6, provenance = "design:P004#3.10-dwell_chars_per_word" }
+flicker_floor_ms              = { pending = "5", provenance = "design:P004#3.10-flicker_floor_ms" }
 legibility_xheight_deg        = { value = 0.2, provenance = "literature:3.10/legibility_xheight_deg" }
-contrast_text                 = { value = 4.5, provenance = "literature:3.10/contrast_text" }
-contrast_large                = { value = 3.0, provenance = "literature:3.10/contrast_large" }
+contrast_text                 = { pending = "15", provenance = "literature:3.10/contrast_text" }
+contrast_large                = { pending = "15", provenance = "literature:3.10/contrast_large" }
 pseudo_expansion_overall_pct  = { value = 40, provenance = "literature:3.10/pseudo_expansion_overall_pct" }
-relational_geometry_tol_px    = { value = 1, provenance = "literature:3.10/relational_geometry_tol_px" }
+relational_geometry_tol_px    = { value = 1, provenance = "design:P004#3.10-relational_geometry_tol_px" }
 pixel_tolerance               = { value = 0, provenance = "literature:3.10/pixel_tolerance" }
-hierarchy_ratio_k             = { pending = "5", provenance = "literature:3.10/hierarchy_ratio_k" }
+hierarchy_ratio_k             = { pending = "5", provenance = "design:P004#3.10-hierarchy_ratio_k" }
 
 # ---- style to font (ui-look.md 4.2): token, type_scale entry, weight ---------------------------------------------
 [[style]]
@@ -298,7 +302,77 @@ style = "btn_action_small"
 align = "centre"
 provenance = "spec:ui-look.md#4.1"
 
-# ---- role minimums: smallest font px of the role and smallest touch size in dp (0 = not applicable) ----------------
+# ---- role minimums: smallest font px of the role (its style size) and smallest touch size in dp (0 = not applicable)
+[[role_min]]
+role = "hero_number"
+font_px_min = 200
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "screen_headline"
+font_px_min = 48
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "report_title"
+font_px_min = 40
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "body"
+font_px_min = 32
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "subtitle"
+font_px_min = 32
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "large_countdown"
+font_px_min = 40
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "staff_detail"
+font_px_min = 24
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "staff_strong"
+font_px_min = 24
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "caption"
+font_px_min = 16
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "muted_caption"
+font_px_min = 16
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "error_caption"
+font_px_min = 16
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "notice_title"
+font_px_min = 40
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "notice_body"
+font_px_min = 32
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "notice_caption"
+font_px_min = 16
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
 [[role_min]]
 role = "key_label"
 font_px_min = 32
@@ -309,46 +383,6 @@ role = "small_button_label"
 font_px_min = 24
 touch_dp_min = 48
 provenance = "spec:ui-look.md#1"
-[[role_min]]
-role = "body"
-font_px_min = 32
-touch_dp_min = 0
-provenance = "spec:ui-look.md#4.1"
-[[role_min]]
-role = "notice_body"
-font_px_min = 32
-touch_dp_min = 0
-provenance = "spec:ui-look.md#4.1"
-[[role_min]]
-role = "staff_detail"
-font_px_min = 24
-touch_dp_min = 0
-provenance = "spec:ui-look.md#4.1"
-[[role_min]]
-role = "caption"
-font_px_min = 16
-touch_dp_min = 0
-provenance = "spec:ui-look.md#4.1"
-[[role_min]]
-role = "notice_caption"
-font_px_min = 16
-touch_dp_min = 0
-provenance = "spec:ui-look.md#4.1"
-
-# ---- importance levels: derived from the type scale rank of the oracle (P004 11 Q7 is not answered) --------------
-[[importance]]
-level = 1
-roles = ["hero_number", "screen_headline"]
-provenance = "oracle:type scale rank of ui-look.md 4.1 (48 dp and above)"
-[[importance]]
-level = 2
-roles = ["report_title", "body", "subtitle", "large_countdown", "notice_title", "notice_body", "key_label"]
-provenance = "oracle:type scale rank of ui-look.md 4.1 (32 to 40 dp)"
-[[importance]]
-level = 3
-roles = ["staff_detail", "staff_strong", "caption", "muted_caption", "error_caption", "notice_caption",
-         "small_button_label"]
-provenance = "oracle:type scale rank of ui-look.md 4.1 (24 dp and below)"
 
 # ---- timers (ui-rules.md: Screen timers and Message catalogue); lifetime_ms 0 = no limit ---------------------------
 # Re-derived by gate/tools/ui_contract_derive.py: kind, lifetime_ms and countdown_shown must agree with ui-rules.md.
@@ -405,15 +439,15 @@ provenance = "spec:ui-rules.md#message-catalogue"
 # ---- required elements per state class (ui-look.md 3.2, 4.1, 6.1; ui-rules.md) -------------------------------------
 [[state_class]]
 id = "splash"
-required = ["headline"]
+required = ["screen_headline"]
 provenance = "spec:ui-rules.md#allowed-full-screen-states"
 [[state_class]]
 id = "welcome"
-required = ["headline", "subtitle", "numpad", "language_switch"]
+required = ["screen_headline", "subtitle", "numpad", "language_switch"]
 provenance = "spec:ui-look.md#6.1"
 [[state_class]]
 id = "choose_size"
-required = ["headline", "countdown", "language_switch", "size_buttons", "cancel"]
+required = ["screen_headline", "countdown", "language_switch", "size_buttons", "cancel"]
 provenance = "spec:ui-look.md#3.2"
 [[state_class]]
 id = "opened"
@@ -425,23 +459,27 @@ required = ["report_title", "countdown", "done"]
 provenance = "spec:ui-look.md#3.2"
 [[state_class]]
 id = "lockout"
-required = ["headline", "body", "countdown"]
+required = ["screen_headline", "body", "countdown"]
 provenance = "spec:ui-look.md#3.2"
 [[state_class]]
+id = "inspection"
+required = ["staff_strong", "done"]
+provenance = "spec:ui-look.md#4.2"
+[[state_class]]
 id = "startup_fault"
-required = ["headline", "body", "staff_detail"]
+required = ["screen_headline", "body", "staff_detail"]
 provenance = "spec:ui-rules.md#allowed-full-screen-states"
 [[state_class]]
 id = "dialog"
-required = ["body", "countdown", "dismiss"]
+required = ["notice_body", "countdown", "dismiss"]
 provenance = "spec:ui-rules.md#presentation"
 [[state_class]]
 id = "snackbar"
-required = ["body", "countdown", "dismiss"]
+required = ["notice_body", "countdown", "dismiss"]
 provenance = "spec:ui-rules.md#presentation"
 [[state_class]]
 id = "banner"
-required = ["body", "dismiss"]
+required = ["notice_body", "dismiss"]
 provenance = "spec:ui-rules.md#presentation"
 
 # ---- toggle groups ------------------------------------------------------------------------------------------------
