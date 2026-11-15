@@ -1,0 +1,11 @@
+msgid ""
+msgstr ""
+"Language: bg\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# C-only phrases (not in the Rust catalogs; docs/lockers/ui-look.md 4.3, X6).
+
+#. The accessible label of the code-entry echo: the number of digits typed, never the digits (privacy, D1).
+msgid "Digits entered: {0}"
+msgstr "Въведени цифри: {0}"

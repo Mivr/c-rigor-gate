@@ -22,6 +22,12 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
+# The pseudo-locale generator of `c_catalog_pseudo` (U17a, rules/ui_pseudo.bzl); it runs next to po2c.py.
+export_file(
+    name = "ui_pseudo.py",
+    visibility = ["PUBLIC"],
+)
+
 # The byte-array generator of `c_embed` (T112, rules/embed.bzl): a binary file -> a const C array and its length.
 export_file(
     name = "bin2c.py",

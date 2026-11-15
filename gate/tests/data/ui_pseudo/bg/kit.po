@@ -1,0 +1,104 @@
+msgid ""
+msgstr ""
+"Language: bg\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "0"
+msgstr "0"
+
+msgid "1"
+msgstr "1"
+
+msgid "2"
+msgstr "2"
+
+msgid "3"
+msgstr "3"
+
+msgid "4"
+msgstr "4"
+
+msgid "5"
+msgstr "5"
+
+msgid "6"
+msgstr "6"
+
+msgid "7"
+msgstr "7"
+
+msgid "8"
+msgstr "8"
+
+msgid "8 s"
+msgstr "8 сек"
+
+msgid "9"
+msgstr "9"
+
+msgid "Backspace"
+msgstr "Връщане"
+
+msgid "Club kit demo"
+msgstr "Демо на комплекта"
+
+msgid "Code"
+msgstr "Код"
+
+msgid "Code field"
+msgstr "Поле за код"
+
+msgid "Code not accepted"
+msgstr "Кодът не е приет"
+
+msgid "Del"
+msgstr "Изтрий"
+
+msgid "Dismiss"
+msgstr "Затвори"
+
+msgid "Dismiss label"
+msgstr "Надпис Затвори"
+
+msgid "Door 12 is open"
+msgstr "Шкафче 12 е отворено"
+
+msgid "Info"
+msgstr "Информация"
+
+msgid "Locker"
+msgstr "Шкафче"
+
+msgid "Notice"
+msgstr "Съобщение"
+
+msgid "Numpad"
+msgstr "Клавиатура"
+
+msgid "OK"
+msgstr "ОК"
+
+msgid "Ready"
+msgstr "Готово"
+
+msgid "Scan or type a code"
+msgstr "Сканирайте или въведете код"
+
+msgid "Status"
+msgstr "Състояние"
+
+msgid "Status panel"
+msgstr "Панел за състояние"
+
+msgid "Submitted: {0}"
+msgstr "Изпратено: {0}"
+
+msgid "That code is not recognised."
+msgstr "Този код не е разпознат."
+
+msgid "Warning"
+msgstr "Внимание"
+
+msgid "Welcome"
+msgstr "Добре дошли"

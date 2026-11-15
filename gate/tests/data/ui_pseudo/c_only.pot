@@ -1,0 +1,10 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+# C-only phrases (not in the Rust catalogs; docs/lockers/ui-look.md 4.3, X6). Listed last in BUCK, so every
+# Rust msgid keeps its number.
+
+#. The accessible label of the code-entry echo: the number of digits typed, never the digits (privacy, D1).
+msgid "Digits entered: {0}"
+msgstr ""

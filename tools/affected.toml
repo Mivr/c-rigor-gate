@@ -140,6 +140,10 @@ selftests = ["grade", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/guards_gate.py"
 selftests = ["require"]
+# U17a: the pseudo-locale generator runs in the unit tests and in `c_catalog_pseudo` actions only (no existing selftest).
+[[rule]]
+glob = "gate/rigor_lib/ui_pseudo.py"
+selftests = []
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
