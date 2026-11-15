@@ -227,3 +227,51 @@ def c_third_party(
         target_compatible_with = [] if symbols_in_every_mode else ["toolchains//:release"],
         visibility = ["PUBLIC"],
     )
+
+def _header_facts_impl(ctx: AnalysisContext) -> list[Provider]:
+    # Header-only: the facts file of `c_third_party` (kind `c_third_party`) with no compiled unit, so it exports
+    # nothing and a dependent's `symbols` check finds facts for the label (no `missing-dep-facts`).
+    facts = ctx.actions.declare_output("symbols.json")
+    text = '{{"deps":[],"kind":"c_third_party","label":"{}","schema":1,"units":[]}}\n'.format(
+        _label_text(ctx.label, ctx.attrs.lib_name),
+    )
+    ctx.actions.write(facts, text)
+    return [DefaultInfo(default_output = facts)]
+
+third_party_header_facts = rule(
+    impl = _header_facts_impl,
+    attrs = {
+        "lib_name": attrs.string(),
+    },
+)
+
+def c_third_party_private_headers(name, lib, files, visibility):
+    """Every header of the manifest of the `c_third_party` library `lib` (same package), at its own path, for
+    gate-owned code only (U02: `gate//ui/lvprobe` reads LVGL structures that have no public getter).
+
+    Header-only: no sources, no flags, nothing to link; the library's forced configuration comes through
+    `:<lib>_headers`. `visibility` must name gate-cell package patterns (`//dir/...`), never `PUBLIC`; the label
+    is not on third_party/ALLOWED_LABELS, so no product can name it. `<name>_symbols` is its facts file (kind
+    `c_third_party`, no units), the same shape as `<lib>_symbols`.
+    """
+    if type(visibility) != "list" or not visibility:
+        fail("{}: `visibility` must be a non-empty list of gate package patterns".format(name))
+    for pattern in visibility:
+        if type(pattern) != "string" or not pattern.startswith("//") or not pattern.endswith("/...") or ":" in pattern:
+            fail("{}: `visibility` entries must look like //dir/..., got {!r}".format(name, pattern))
+    headers = {f: ":{}_src[{}]".format(lib, f) for f in files if f.endswith(".h")}
+    if not headers:
+        fail("{}: the manifest has no headers".format(name))
+    native.cxx_library(
+        name = name,
+        exported_headers = headers,
+        header_namespace = "",
+        exported_header_style = "system",
+        exported_deps = [":" + lib + "_headers"],
+        visibility = visibility,
+    )
+    third_party_header_facts(
+        name = name + "_symbols",
+        lib_name = name,
+        visibility = visibility,
+    )

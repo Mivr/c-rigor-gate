@@ -1,4 +1,4 @@
-/* gate//ui/lvprobe: open and close, the node table, the event callback and the lifecycle log (5). */
+/* gate//ui/lvprobe: open and close, settling, the node table, the event callbacks, area helpers. */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -7,6 +7,7 @@
 #include "ui/lvprobe/lvprobe_int.h"
 
 #include "src/core/lv_obj_class_private.h"
+#include "src/core/lv_obj_private.h"
 #include "src/display/lv_display_private.h"
 
 bool lvp_box_empty(const lv_area_t *a)
@@ -33,6 +34,23 @@ void lvp_box_add(lv_area_t *acc, bool *has, const lv_area_t *a)
     acc->y1 = a->y1 < acc->y1 ? a->y1 : acc->y1;
     acc->x2 = a->x2 > acc->x2 ? a->x2 : acc->x2;
     acc->y2 = a->y2 > acc->y2 ? a->y2 : acc->y2;
+}
+
+bool lvp_box_cut(lv_area_t *acc, const lv_area_t *with)
+{
+    acc->x1 = with->x1 > acc->x1 ? with->x1 : acc->x1;
+    acc->y1 = with->y1 > acc->y1 ? with->y1 : acc->y1;
+    acc->x2 = with->x2 < acc->x2 ? with->x2 : acc->x2;
+    acc->y2 = with->y2 < acc->y2 ? with->y2 : acc->y2;
+    return !lvp_box_empty(acc);
+}
+
+void lvp_display_area(const lvprobe_t *p, lv_area_t *a)
+{
+    a->x1 = 0;
+    a->y1 = 0;
+    a->x2 = lv_display_get_horizontal_resolution(p->disp) - 1;
+    a->y2 = lv_display_get_vertical_resolution(p->disp) - 1;
 }
 
 const char *lvp_class_name(const lv_obj_t *obj)
@@ -108,39 +126,46 @@ static void detach_tree(lvprobe_t *p, lv_obj_t *root)
     }
 }
 
-/* Every screen of the display and its three layers (the layers are screens of LVGL too; attaching is idempotent). */
-static lvprobe_status_t for_each_root(lvprobe_t *p, bool attach)
+/* The three layers of the display (bottom, top, sys), which LVGL keeps outside the screen list. */
+static void layers(const lvprobe_t *p, lv_obj_t *out[3])
 {
-    lv_display_t *d = p->disp;
-    lv_obj_t *layers[3] = {d->bottom_layer, d->top_layer, d->sys_layer};
+    out[0] = p->disp->bottom_layer;
+    out[1] = p->disp->top_layer;
+    out[2] = p->disp->sys_layer;
+}
+
+static void display_cb(lv_event_t *e)
+{
+    lvprobe_t *p = lv_event_get_user_data(e);
+    if (p != NULL && p->open && lv_event_get_code(e) == LV_EVENT_FLUSH_START) {
+        p->flushes++;
+    }
+}
+
+static lvprobe_status_t attach_start(lvprobe_t *p, lv_indev_t *indev)
+{
+    lv_obj_t *roots[3];
     uint32_t i;
     lvprobe_status_t st = LVPROBE_OK;
 
-    for (i = 0; i < d->screen_cnt + 3u && st == LVPROBE_OK; i++) {
-        lv_obj_t *root = i < d->screen_cnt ? d->screens[i] : layers[i - d->screen_cnt];
-        if (root == NULL) {
-            continue;
-        }
-        if (attach) {
-            st = lvp_attach_tree(p, root);
-        } else {
-            detach_tree(p, root);
-        }
+    if (lv_display_add_event_cb(p->disp, display_cb, LV_EVENT_FLUSH_START, p) == NULL) {
+        return LVPROBE_ERR_LVGL;
     }
-    return st;
+    st = lvp_indev_open(p, indev);
+    layers(p, roots);
+    for (i = 0; i < 3u && st == LVPROBE_OK; i++) {
+        st = roots[i] != NULL ? lvp_attach_tree(p, roots[i]) : LVPROBE_OK;
+    }
+    return st == LVPROBE_OK ? lvp_scan_screens(p, false) : st;
 }
 
-lvprobe_status_t lvp_attach_all(lvprobe_t *p)
-{
-    return for_each_root(p, true);
-}
-
-lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, uint32_t *scratch, size_t scratch_px)
+lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, lv_indev_t *indev, uint32_t *scratch,
+                              size_t scratch_px)
 {
     static const lvprobe_t closed;
     lvprobe_status_t st;
 
-    if (p == NULL || disp == NULL || scratch == NULL || scratch_px == 0u) {
+    if (p == NULL || disp == NULL || scratch == NULL || scratch_px == 0u || p->open) {
         return LVPROBE_ERR_ARG;
     }
     *p = closed;
@@ -148,11 +173,10 @@ lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, uint32_t *scratc
     p->scratch = scratch;
     p->scratch_px = scratch_px;
     p->hit.node = LVPROBE_NONE;
+    p->hit.pressed_node = LVPROBE_NONE;
+    p->glyph_node = LVPROBE_NONE;
     p->open = true;
-    st = lvp_indev_open(p);
-    if (st == LVPROBE_OK) {
-        st = lvp_attach_all(p);
-    }
+    st = attach_start(p, indev);
     if (st != LVPROBE_OK) {
         lvprobe_close(p);
     }
@@ -161,14 +185,24 @@ lvprobe_status_t lvprobe_open(lvprobe_t *p, lv_display_t *disp, uint32_t *scratc
 
 void lvprobe_close(lvprobe_t *p)
 {
+    lv_obj_t *roots[3];
+    uint16_t i;
     if (p == NULL || !p->open) {
         return;
     }
-    (void)for_each_root(p, false);
-    if (p->indev != NULL) {
-        lv_indev_delete(p->indev);
-        p->indev = NULL;
+    layers(p, roots);
+    for (i = 0; i < 3u; i++) {
+        if (roots[i] != NULL) {
+            detach_tree(p, roots[i]);
+        }
     }
+    for (i = 0; i < p->screen_count; i++) {
+        if (lv_obj_is_valid(p->screens[i])) {
+            detach_tree(p, p->screens[i]);
+        }
+    }
+    (void)lv_display_remove_event_cb_with_user_data(p->disp, display_cb, p);
+    lvp_indev_close(p);
     p->open = false;
 }
 
@@ -191,6 +225,51 @@ lvprobe_status_t lvprobe_map_font(lvprobe_t *p, const lv_font_t *font, uint16_t 
     p->font_ids[p->font_count] = id;
     p->font_count++;
     return LVPROBE_OK;
+}
+
+/* No dirty area and no pending layout on any drawn root: the buffer holds what LVGL shows. */
+bool lvp_settled(const lvprobe_t *p)
+{
+    lv_obj_t *roots[4];
+    uint32_t i;
+    layers(p, roots);
+    roots[3] = p->disp->act_scr;
+    if (p->disp->inv_p != 0u) {
+        return false;
+    }
+    for (i = 0; i < 4u; i++) {
+        if (roots[i] != NULL && (roots[i]->scr_layout_inv || roots[i]->layout_inv)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+lvprobe_status_t lvprobe_settle(lvprobe_t *p, bool *flushed)
+{
+    if (p == NULL || !p->open || flushed == NULL) {
+        return LVPROBE_ERR_ARG;
+    }
+    p->flushes = 0;
+    lv_refr_now(p->disp);
+    *flushed = p->flushes > 0u;
+    return LVPROBE_OK;
+}
+
+lvprobe_status_t lvp_current(lvprobe_t *p, bool need_settled)
+{
+    lvprobe_status_t st;
+    if (p == NULL || !p->open) {
+        return LVPROBE_ERR_ARG;
+    }
+    st = lvp_scan_screens(p, true);
+    if (st != LVPROBE_OK) {
+        return st;
+    }
+    if (!p->walked || p->gen != p->walk_gen || lv_display_get_screen_active(p->disp) != p->walk_screen) {
+        return LVPROBE_ERR_STALE;
+    }
+    return (need_settled && !lvp_settled(p)) ? LVPROBE_ERR_UNSETTLED : LVPROBE_OK;
 }
 
 uint16_t lvprobe_count(const lvprobe_t *p)
@@ -217,49 +296,6 @@ int32_t lvprobe_find(const lvprobe_t *p, const lv_obj_t *obj)
     return LVPROBE_NONE;
 }
 
-static void life_push(lvprobe_t *p, bool created, const lv_obj_t *obj)
-{
-    lvprobe_life_t *e;
-    p->life_seq++;
-    if (p->life_count >= LVPROBE_LIFE_CAP) {
-        p->life_lost++;
-        return;
-    }
-    e = &p->life[p->life_count];
-    p->life_count++;
-    e->seq = p->life_seq;
-    e->created = created ? 1u : 0u;
-    e->node = created ? (int16_t)LVPROBE_NONE : (int16_t)lvprobe_find(p, obj);
-    e->parent = (int16_t)lvprobe_find(p, lv_obj_get_parent(obj));
-    e->class_name = lvp_class_name(obj);
-}
-
-/* A new child of an observed object: log it and everything below it, and observe them. */
-static void on_created(lvprobe_t *p, lv_obj_t *child)
-{
-    lv_obj_t *obj = child;
-    int32_t depth = 0;
-    uint32_t visits = 0;
-
-    while (obj != NULL && visits < LVP_VISIT_CAP) {
-        life_push(p, true, obj);
-        visits++;
-        obj = lvp_next(obj, child, &depth);
-    }
-    if (lvp_attach_tree(p, child) != LVPROBE_OK) {
-        p->fault = LVPROBE_ERR_LVGL;
-    }
-}
-
-static void on_deleted(lvprobe_t *p, lv_obj_t *obj)
-{
-    int32_t at = lvprobe_find(p, obj);
-    life_push(p, false, obj);
-    if (at != LVPROBE_NONE) {
-        p->nodes[at].obj = NULL;
-    }
-}
-
 void lvp_event_cb(lv_event_t *e)
 {
     lvprobe_t *p = lv_event_get_user_data(e);
@@ -272,34 +308,11 @@ void lvp_event_cb(lv_event_t *e)
     if (code == LV_EVENT_CHILD_CREATED) {
         lv_obj_t *child = lv_event_get_param(e);
         if (child != NULL) {
-            on_created(p, child);
+            p->gen++;
+            lvp_on_created(p, child);
         }
     } else if (code == LV_EVENT_DELETE) {
-        on_deleted(p, self);
-    } else if (code == LV_EVENT_DRAW_TASK_ADDED && p->capturing) {
-        lvp_capture_task(p, e);
+        p->gen++;
+        lvp_on_deleted(p, self);
     }
-}
-
-lvprobe_status_t lvprobe_life(lvprobe_t *p, lvprobe_life_t *out, uint16_t cap, uint16_t *n, uint32_t *lost)
-{
-    uint16_t i;
-    uint16_t take;
-    if (p == NULL || !p->open || n == NULL || lost == NULL || (out == NULL && cap > 0u)) {
-        return LVPROBE_ERR_ARG;
-    }
-    take = p->life_count < cap ? p->life_count : cap;
-    for (i = 0; i < take; i++) {
-        out[i] = p->life[i];
-    }
-    *n = take;
-    *lost = p->life_lost + (uint32_t)(p->life_count - take);
-    p->life_count = 0;
-    p->life_lost = 0;
-    if (p->fault != LVPROBE_OK) {
-        lvprobe_status_t f = p->fault;
-        p->fault = LVPROBE_OK;
-        return f;
-    }
-    return *lost > 0u ? LVPROBE_ERR_OVERFLOW : LVPROBE_OK;
 }
