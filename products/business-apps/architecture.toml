@@ -86,7 +86,8 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/lkui/input:testkit",
            "//apps/lockers/lkui/screens:testkit",
            "//apps/lockers/relay/driver:testkit",
-           "//apps/lockers/relay/opener_sm:testkit"]
+           "//apps/lockers/relay/opener_sm:testkit",
+           "//apps/fiscal/dtc/ports:fake"]
 
 [layer."lib-io"]
 modules = ["//lib/io/**"]
@@ -144,7 +145,7 @@ modules = ["//apps/lockers/lkapp/**"]
 #   * fiscal-domain has no edge to fiscal-adapters or fiscal-safety; fiscal-sim has none to fiscal-domain or
 #     fiscal-safety (the simulator shares no code with the collector).
 [layer."fiscal-contract"]
-modules = []
+modules = ["//apps/fiscal/dtc/ports:ports", "//apps/fiscal/dtc/types:types"]
 
 [layer."fiscal-domain"]
 modules = []
@@ -958,6 +959,11 @@ kind = "data"
 
 [[edge]]
 from = "fiscal-contract"
+to = "fiscal-contract"
+kind = "data"
+
+[[edge]]
+from = "//apps/fiscal/dtc/ports:fake"
 to = "fiscal-contract"
 kind = "data"
 
