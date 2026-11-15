@@ -1,0 +1,567 @@
+# The UI contract of the lockers kiosk (docs/ui-contract.md). OWNER-SEALED: changing this file needs the owner's
+# signature (P004 section 8.5). Every entry carries a provenance; `pending = "<n>"` is P004 section 11 question n,
+# not yet answered by the owner: a judge that needs it gets `contract-pending`, never a default.
+schema = "ui-contract/1"
+product = "business-apps/lockers"
+
+# ---- window and panel -------------------------------------------------------------------------------------------
+[window]
+width_px  = { value = 1280, provenance = "spec:ui-look.md#1" }
+height_px = { value = 800, provenance = "spec:ui-look.md#1" }
+unit_px   = { value = 8, provenance = "spec:ui-look.md#1" }
+pad_px    = { value = 24, provenance = "spec:ui-look.md#1" }
+gap_px    = { value = 16, provenance = "spec:ui-look.md#1" }
+
+[panel]
+diagonal_in         = { pending = "9", provenance = "spec:P004#11-q9" }
+viewing_distance_mm = { pending = "9", provenance = "spec:P004#11-q9" }
+
+# KioskMetrics type scale (ui-look.md 1): px = dp at 1280x800.
+[type_scale]
+display  = { value = 200, provenance = "spec:ui-look.md#1" }
+headline = { value = 48, provenance = "spec:ui-look.md#1" }
+title    = { value = 40, provenance = "spec:ui-look.md#1" }
+body     = { value = 32, provenance = "spec:ui-look.md#1" }
+staff    = { value = 24, provenance = "spec:ui-look.md#1" }
+caption  = { value = 16, provenance = "spec:ui-look.md#1" }
+
+[reading]
+rate_wpm = { pending = "11", provenance = "spec:P004#11-q11" }
+
+[clock]
+tick_ms = { value = 250, provenance = "spec:P004#3.5" }   # runtime.h C2, quoted by P004 3.5
+
+[policy]
+error_dialog      = { pending = "11", provenance = "spec:P004#11-q11" }   # ui-rules.md says fixed 8 s; owner undecided
+target_population = { pending = "10", provenance = "spec:P004#11-q10" }
+
+# A whole table the owner has not decided: the rows are absent and a judge asking for them gets contract-pending.
+[pending_tables]
+importance = { pending = "7", provenance = "spec:P004#11-q7" }
+
+# ---- thresholds (P004 3.10); literature:3.10/<key>, or design:P004#3.10-<key> where P004 marks the value [I] or [P] -------------------------------------
+[thresholds]
+keypad_key_min_mm             = { pending = "10", provenance = "literature:3.10/keypad_key_min_mm" }
+button_recommended_mm         = { pending = "10", provenance = "literature:3.10/button_recommended_mm" }
+button_floor_mm               = { pending = "10", provenance = "literature:3.10/button_floor_mm" }
+touch_min_mm                  = { value = 14, provenance = "literature:3.10/touch_min_mm" }
+touch_min_dp                  = { value = 48, provenance = "literature:3.10/touch_min_dp" }
+hit_overlap_allowed           = { value = false, provenance = "literature:3.10/hit_overlap_allowed" }
+spacing_hard_mm               = { value = 1, provenance = "literature:3.10/spacing_hard_mm" }
+spacing_recommended_mm        = { value = 3, provenance = "literature:3.10/spacing_recommended_mm" }
+probe_grid_pct                = { value = [20, 50, 80], provenance = "design:P004#3.10-probe_grid_pct" }
+probe_disc_radius_mm          = { value = 7.5, provenance = "literature:3.10/probe_disc_radius_mm" }
+feedback_rendered_frames_max  = { value = 5, provenance = "literature:3.10/feedback_rendered_frames_max" }
+feedback_target_frames        = { value = 2, provenance = "design:P004#3.10-feedback_target_frames" }
+frame_hz                      = { value = 60, provenance = "design:P004#3.10-frame_hz" }
+busy_indicator_ms             = { value = 1000, provenance = "literature:3.10/busy_indicator_ms" }
+busy_progress_cancel_ms       = { value = 10000, provenance = "literature:3.10/busy_progress_cancel_ms" }
+dwell_base_ms                 = { value = 1000, provenance = "design:P004#3.10-dwell_base_ms" }
+dwell_floor_ms                = { value = 3500, provenance = "design:P004#3.10-dwell_floor_ms" }
+dwell_chars_per_word          = { value = 5.6, provenance = "design:P004#3.10-dwell_chars_per_word" }
+flicker_floor_ms              = { pending = "5", provenance = "design:P004#3.10-flicker_floor_ms" }
+legibility_xheight_deg        = { value = 0.2, provenance = "literature:3.10/legibility_xheight_deg" }
+contrast_text                 = { pending = "15", provenance = "literature:3.10/contrast_text" }
+contrast_large                = { pending = "15", provenance = "literature:3.10/contrast_large" }
+pseudo_expansion_overall_pct  = { value = 40, provenance = "literature:3.10/pseudo_expansion_overall_pct" }
+relational_geometry_tol_px    = { value = 1, provenance = "design:P004#3.10-relational_geometry_tol_px" }
+pixel_tolerance               = { value = 0, provenance = "literature:3.10/pixel_tolerance" }
+hierarchy_ratio_k             = { pending = "5", provenance = "design:P004#3.10-hierarchy_ratio_k" }
+
+# ---- style to font (ui-look.md 4.2): token, type_scale entry, weight ---------------------------------------------
+[[style]]
+id = "display"
+token = 1
+scale = "display"
+weight = 600
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "headline"
+token = 2
+scale = "headline"
+weight = 600
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "title"
+token = 3
+scale = "title"
+weight = 600
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "body"
+token = 4
+scale = "body"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "body_muted"
+token = 5
+scale = "body"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "count_large"
+token = 6
+scale = "title"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "staff"
+token = 7
+scale = "staff"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "staff_strong"
+token = 8
+scale = "staff"
+weight = 600
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "caption"
+token = 9
+scale = "caption"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "caption_muted"
+token = 10
+scale = "caption"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "caption_error"
+token = 11
+scale = "caption"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "notice_title"
+token = 12
+scale = "title"
+weight = 600
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "notice_body"
+token = 13
+scale = "body"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "notice_caption"
+token = 14
+scale = "caption"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "btn_key"
+token = 15
+scale = "body"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "btn_action"
+token = 16
+scale = "body"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "btn_action_small"
+token = 17
+scale = "staff"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "btn_cancel"
+token = 18
+scale = "body"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "btn_cancel_small"
+token = 19
+scale = "staff"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "btn_lang_on"
+token = 20
+scale = "staff"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "btn_lang_off"
+token = 21
+scale = "staff"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+
+# ---- roles: style and alignment (ui-look.md 4.1; the code echo is dots in C, K2, so it has no text role) ---------
+[[role]]
+id = "hero_number"
+style = "display"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "screen_headline"
+style = "headline"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "report_title"
+style = "title"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "body"
+style = "body"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "subtitle"
+style = "body_muted"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "large_countdown"
+style = "count_large"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "staff_detail"
+style = "staff"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "staff_strong"
+style = "staff_strong"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "caption"
+style = "caption"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "muted_caption"
+style = "caption_muted"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "error_caption"
+style = "caption_error"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "notice_title"
+style = "notice_title"
+align = "centre"
+align_banner = "left"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "notice_body"
+style = "notice_body"
+align = "centre"
+align_banner = "left"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "notice_caption"
+style = "notice_caption"
+align = "centre"
+align_banner = "left"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "key_label"
+style = "btn_key"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "small_button_label"
+style = "btn_action_small"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+
+# ---- role minimums: smallest font px of the role (its style size) and smallest touch size in dp (0 = not applicable)
+[[role_min]]
+role = "hero_number"
+font_px_min = 200
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "screen_headline"
+font_px_min = 48
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "report_title"
+font_px_min = 40
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "body"
+font_px_min = 32
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "subtitle"
+font_px_min = 32
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "large_countdown"
+font_px_min = 40
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "staff_detail"
+font_px_min = 24
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "staff_strong"
+font_px_min = 24
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "caption"
+font_px_min = 16
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "muted_caption"
+font_px_min = 16
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "error_caption"
+font_px_min = 16
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "notice_title"
+font_px_min = 40
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "notice_body"
+font_px_min = 32
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "notice_caption"
+font_px_min = 16
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "key_label"
+font_px_min = 32
+touch_dp_min = 48
+provenance = "spec:ui-look.md#1"
+[[role_min]]
+role = "small_button_label"
+font_px_min = 24
+touch_dp_min = 48
+provenance = "spec:ui-look.md#1"
+
+# ---- timers (ui-rules.md: Screen timers and Message catalogue); lifetime_ms 0 = no limit ---------------------------
+# Re-derived by gate/tools/ui_contract_derive.py: kind, lifetime_ms and countdown_shown must agree with ui-rules.md.
+[[timer]]
+kind = "choose_size"
+class = "screen"
+lifetime_ms = 30000
+countdown_shown = true
+dismiss = ["cancel", "countdown"]
+provenance = "spec:ui-rules.md#screen-timers"
+[[timer]]
+kind = "opened"
+class = "screen"
+lifetime_ms = 8000
+countdown_shown = true
+dismiss = ["done", "countdown"]
+provenance = "spec:ui-rules.md#screen-timers"
+[[timer]]
+kind = "report"
+class = "screen"
+lifetime_ms = 300000
+countdown_shown = true
+dismiss = ["done", "countdown"]
+provenance = "spec:ui-rules.md#screen-timers"
+[[timer]]
+kind = "lockout"
+class = "screen"
+lifetime_ms = 60000
+countdown_shown = true
+dismiss = []
+provenance = "spec:ui-rules.md#screen-timers"
+[[timer]]
+kind = "dialog"
+class = "message"
+lifetime_ms = 8000
+countdown_shown = true
+dismiss = ["dismiss", "countdown"]
+provenance = "spec:ui-rules.md#message-catalogue"
+[[timer]]
+kind = "snackbar"
+class = "message"
+lifetime_ms = 4000
+countdown_shown = true
+dismiss = ["dismiss", "tap-outside", "countdown"]
+provenance = "spec:ui-rules.md#message-catalogue"
+[[timer]]
+kind = "banner"
+class = "message"
+lifetime_ms = 0
+countdown_shown = false
+dismiss = ["dismiss"]
+provenance = "spec:ui-rules.md#message-catalogue"
+
+# ---- required elements per state class (ui-look.md 3.2, 4.1, 6.1; ui-rules.md) -------------------------------------
+[[state_class]]
+id = "splash"
+required = ["screen_headline"]
+provenance = "spec:ui-rules.md#allowed-full-screen-states"
+[[state_class]]
+id = "welcome"
+required = ["screen_headline", "subtitle", "numpad", "language_switch"]
+provenance = "spec:ui-look.md#6.1"
+[[state_class]]
+id = "choose_size"
+required = ["screen_headline", "countdown", "language_switch", "size_buttons", "cancel"]
+provenance = "spec:ui-look.md#3.2"
+[[state_class]]
+id = "opened"
+required = ["hero_number", "body", "countdown", "language_switch", "done"]
+provenance = "spec:ui-look.md#3.2"
+[[state_class]]
+id = "report"
+required = ["report_title", "countdown", "done"]
+provenance = "spec:ui-look.md#3.2"
+[[state_class]]
+id = "lockout"
+required = ["screen_headline", "body", "countdown"]
+provenance = "spec:ui-look.md#3.2"
+[[state_class]]
+id = "inspection"
+required = ["staff_strong", "done"]
+provenance = "spec:ui-look.md#4.2"
+[[state_class]]
+id = "startup_fault"
+required = ["screen_headline", "body", "staff_detail"]
+provenance = "spec:ui-rules.md#allowed-full-screen-states"
+[[state_class]]
+id = "dialog"
+required = ["notice_body", "countdown", "dismiss"]
+provenance = "spec:ui-rules.md#presentation"
+[[state_class]]
+id = "snackbar"
+required = ["notice_body", "countdown", "dismiss"]
+provenance = "spec:ui-rules.md#presentation"
+[[state_class]]
+id = "banner"
+required = ["notice_body", "dismiss"]
+provenance = "spec:ui-rules.md#presentation"
+
+# ---- toggle groups ------------------------------------------------------------------------------------------------
+[[toggle_group]]
+id = "language"
+members = ["lang_bg", "lang_en"]
+exactly_one = true
+shown_on = ["welcome", "choose_size", "opened"]
+provenance = "spec:ui-look.md#6.1"
+
+# ---- input policy per layer (ui-rules.md: Presentation and the Rust-derived clarification) -------------------------
+[[input_layer]]
+layer = "screen"
+blocks_input_below = false
+tap_outside_dismisses = false
+accepts_input = true
+provenance = "spec:ui-rules.md#presentation"
+[[input_layer]]
+layer = "splash"
+blocks_input_below = false
+tap_outside_dismisses = false
+accepts_input = false
+provenance = "spec:ui-rules.md#allowed-full-screen-states"
+[[input_layer]]
+layer = "lockout"
+blocks_input_below = false
+tap_outside_dismisses = false
+accepts_input = false
+provenance = "spec:ui-rules.md#presentation"
+[[input_layer]]
+layer = "dialog"
+blocks_input_below = true
+tap_outside_dismisses = false
+accepts_input = true
+provenance = "spec:ui-rules.md#presentation"
+[[input_layer]]
+layer = "snackbar"
+blocks_input_below = false
+tap_outside_dismisses = true
+accepts_input = true
+provenance = "spec:ui-rules.md#presentation"
+[[input_layer]]
+layer = "banner_notice"
+blocks_input_below = false
+tap_outside_dismisses = true
+accepts_input = true
+provenance = "spec:ui-rules.md#presentation"
+[[input_layer]]
+layer = "banner_persistent"
+blocks_input_below = false
+tap_outside_dismisses = false
+accepts_input = true
+provenance = "spec:ui-rules.md#rust-derived-clarification"
+
+# ---- wrap, ellipsis and clip (ui-look.md 5): no line cap and no elision anywhere ------------------------------------
+[[wrap]]
+scope = "default"
+wrap = "word"
+max_lines = 0
+ellipsis = false
+clip = false
+provenance = "spec:ui-look.md#5"
+[[wrap]]
+scope = "code_echo"
+wrap = "char"
+max_lines = 0
+ellipsis = false
+clip = false
+provenance = "spec:ui-look.md#5"
+[[wrap]]
+scope = "size_button_label"
+wrap = "char"
+max_lines = 0
+ellipsis = false
+clip = false
+provenance = "spec:ui-look.md#5"
+[[wrap]]
+scope = "single_line"
+wrap = "none"
+max_lines = 1
+ellipsis = false
+clip = false
+provenance = "spec:ui-look.md#5"
+
+# No exceptions are sealed yet: an exception is a [[exception]] row (id, rule, target, reason, provenance).
