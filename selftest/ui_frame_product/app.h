@@ -14,7 +14,11 @@
 #define APP_H 120
 #define APP_MANY 400u   /* labels of app_many(): more lines than a frame reply holds */
 
-typedef enum { APP_BUTTON_PRESSED, APP_BUTTON_CLICKED, APP_OVERLAY_PRESSED, APP_OVERLAY_CLICKED } app_event_t;
+/* The handlers' events; APP_POINTER_CLICKED is the app's pointer indev's own click event (it shows which indev a tap
+ * went through). */
+typedef enum {
+    APP_BUTTON_PRESSED, APP_BUTTON_CLICKED, APP_OVERLAY_PRESSED, APP_OVERLAY_CLICKED, APP_POINTER_CLICKED
+} app_event_t;
 
 /* Cold start: a fresh LVGL, the screen, the pointer, one frame drawn. False if LVGL cannot start. */
 bool app_start(void);

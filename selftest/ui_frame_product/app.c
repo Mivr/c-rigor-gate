@@ -57,6 +57,13 @@ static void on_overlay(lv_event_t *e)
     }
 }
 
+static void on_pointer(lv_event_t *e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        record(APP_POINTER_CLICKED);
+    }
+}
+
 static lv_obj_t *label_at(lv_obj_t *parent, const char *text, int32_t x, int32_t y)
 {
     lv_obj_t *l = lv_label_create(parent);
@@ -110,7 +117,7 @@ static bool create_pointer(void)
     lv_indev_set_read_cb(g_indev, read_touch);
     lv_indev_set_display(g_indev, g_disp);
     lv_indev_set_mode(g_indev, LV_INDEV_MODE_EVENT);
-    return true;
+    return lv_indev_add_event_cb(g_indev, on_pointer, LV_EVENT_CLICKED, NULL) != NULL;
 }
 
 bool app_start(void)

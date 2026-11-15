@@ -64,8 +64,14 @@ def reply(i, cmd):
     assert replies[i][0] == cmd, (i, replies[i][0], cmd)
     return replies[i][1], replies[i][2]
 def frame(i):
+    """The lines of a frame reply: the head, then each node of the walk in index order, then the life lines."""
     head, body = reply(i, "frame")
     assert head.startswith("ok frame lines "), head
+    count = int(body[0].split("\t")[2])
+    nodes = [l.split("\t")[1] for l in body if l.startswith("node\t")]
+    assert body[0].startswith("lvprobe\t1\t") and body[1].startswith("frame\t") and nodes == [str(k) for k in range(count)]
+    kinds = [l.split("\t")[0] for l in body]
+    assert kinds == sorted(kinds, key=lambda k: k == "life") and set(kinds) <= {"lvprobe", "frame", "node", "label", "fit", "region", "life"}
     return body
 def need(body, line, what):
     assert line in body, "%s: %r missing" % (what, line)
@@ -83,7 +89,8 @@ ink = reply(7, "ink")[1]
 need(ink, "ink\t7\t0\t-\t000000\t000000\t000000\t000000", "ink 0 of the hidden label")
 need(ink, "ink\t8\t8\t140,100,143,101\tff0000\tff0000\tffffff\tffffff", "ink of the red swatch")
 assert reply(8, "apply 3 1 0 -")[0] == "ok apply"
-assert reply(9, "trace")[1] == ["1\tbutton_pressed\t1000", "2\tbutton_clicked\t1000", "3\tpress\t1000"]
+assert reply(9, "trace")[1] == ["1\tbutton_pressed\t1000", "2\tpointer_clicked\t1000", "3\tbutton_clicked\t1000",
+                               "4\tpress\t1000"]
 shown = frame(10)
 need(shown, "label\t5\t-\t16\t0\t1\t0\t0\t1\t60\t16\t60\t16\t=\\xd0\\x93\\xd0\\xbe\\xd1\\x82\\xd0\\xbe\\xd0\\xb2\\xd0\\xbe\t-", "notice in Bulgarian")
 assert fit(shown, 5)[2] == "1" and fit(shown, 5)[6] == "6", "the notice is drawn, its 6 Cyrillic glyphs are placeholders"
@@ -96,13 +103,14 @@ assert reply(21, "trace")[0] == "ok trace lines 0"
 assert reply(22, "hit-test 53 45")[0] == "ok hit-test 10", "the hit query names the overlay"
 assert reply(23, "trace")[0] == "ok trace lines 0", "the hit query fired a handler"
 assert reply(24, "tap 53 45")[0] == "ok tap 10 10", "the tap goes to the overlay"
-assert reply(25, "trace")[1] == ["4\toverlay_pressed\t1000", "5\toverlay_clicked\t1000"]
+# pointer_clicked: the probe's tap went through the product's own pointer indev
+assert reply(25, "trace")[1] == ["5\toverlay_pressed\t1000", "6\tpointer_clicked\t1000", "7\toverlay_clicked\t1000"]
 assert reply(26, "apply 3 1 0 -")[0] == "ok apply missed"
-assert reply(27, "trace")[1] == ["6\toverlay_pressed\t1000", "7\toverlay_clicked\t1000"], "missed: no press"
+assert reply(27, "trace")[1] == ["8\toverlay_pressed\t1000", "9\tpointer_clicked\t1000", "10\toverlay_clicked\t1000"], "missed"
 assert reply(28, "apply 3 3 0 -")[0] == "ok apply"
 frame(29)
 assert reply(30, "hit-test 53 45")[0] == "ok hit-test 3" and reply(31, "tap 53 45")[0] == "ok tap 3 3"
-assert reply(32, "trace")[1] == ["8\tbutton_pressed\t1000", "9\tbutton_clicked\t1000"]
+assert reply(32, "trace")[1] == ["11\tbutton_pressed\t1000", "12\tpointer_clicked\t1000", "13\tbutton_clicked\t1000"]
 assert reply(33, "apply 3 1 0 -")[0] == "ok apply"
 assert all(len(r[1]) + sum(len(l) + 1 for l in r[2]) < 65536 for r in replies)
 print("ok")

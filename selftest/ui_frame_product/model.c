@@ -42,7 +42,8 @@ static bool event(uim_t *m, const char *type)
 /* The handlers' events, in the order they fired. */
 static bool handler_events(uim_t *m)
 {
-    static const char *const names[] = {"button_pressed", "button_clicked", "overlay_pressed", "overlay_clicked"};
+    static const char *const names[] = {"button_pressed", "button_clicked", "overlay_pressed", "overlay_clicked",
+                                        "pointer_clicked"};
     app_event_t e;
     while (app_take_event(&e)) {
         if (!event(m, names[e])) {

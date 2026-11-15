@@ -62,10 +62,11 @@ ink	8	8	140,100,143,101	ff0000	ff0000	ffffff	ffffff
 ink	9	8	144,100,147,101	0000ff	0000ff	ffffff	ffffff
 ink	10	0	-	000000	000000	000000	000000
 ok apply
-ok trace lines 3
+ok trace lines 4
 1	button_pressed	1000
-2	button_clicked	1000
-3	press	1000
+2	pointer_clicked	1000
+3	button_clicked	1000
+4	press	1000
 ok frame lines 38
 lvprobe	1	13
 frame	160	120	3940a60a
@@ -315,13 +316,15 @@ ok trace lines 0
 ok hit-test 10
 ok trace lines 0
 ok tap 10 10
-ok trace lines 2
-4	overlay_pressed	1000
-5	overlay_clicked	1000
-ok apply missed
-ok trace lines 2
-6	overlay_pressed	1000
+ok trace lines 3
+5	overlay_pressed	1000
+6	pointer_clicked	1000
 7	overlay_clicked	1000
+ok apply missed
+ok trace lines 3
+8	overlay_pressed	1000
+9	pointer_clicked	1000
+10	overlay_clicked	1000
 ok apply
 ok frame lines 38
 lvprobe	1	13
@@ -364,14 +367,16 @@ node	12	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
 region	12	3940a60a
 ok hit-test 3
 ok tap 3 3
-ok trace lines 2
-8	button_pressed	1000
-9	button_clicked	1000
-ok apply
 ok trace lines 3
-10	button_pressed	1000
-11	button_clicked	1000
-12	press	1000
+11	button_pressed	1000
+12	pointer_clicked	1000
+13	button_clicked	1000
+ok apply
+ok trace lines 4
+14	button_pressed	1000
+15	pointer_clicked	1000
+16	button_clicked	1000
+17	press	1000
 ok open
 ok frame lines 38
 lvprobe	1	13
