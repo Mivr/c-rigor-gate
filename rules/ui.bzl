@@ -16,20 +16,13 @@ def _label(macro, attr, value):
     if type(value) != "string" or ":" not in value or value.startswith("@"):
         fail("{}: `{}` must be a target label string, got {!r}".format(macro, attr, value))
 
-def c_ui_probe(name, model, deps = []):
+def c_ui_probe(name, model):
     """A probe binary `name` from `model`, a `c_library` that implements `gate//ui/model:model` (`ui/model/model.h`).
 
-    `deps`: further libraries the binary links (rarely any; the model adapter lists its own). Built in the release
-    and the san mode like every `c_binary`; the grade drives the san one, the release one proves the interface is the
-    same in both (docs/ui-model.md).
+    There is no `deps`: the adapter library carries its own dependencies, and the gates judge them as they judge any
+    library. The symbols gate exempts exactly one target from the `uim_` reservation, the `model` of a `c_ui_probe`.
+    Built in the release and the san mode like every `c_binary`; the grade drives the san one, the release one proves
+    the interface is the same in both (docs/ui-model.md).
     """
     _label("c_ui_probe", "model", model)
-    if type(deps) != "list":
-        fail("c_ui_probe: `deps` must be a list of labels, got {}".format(type(deps)))
-    for dep in deps:
-        _label("c_ui_probe", "deps", dep)
-    if model in deps:
-        fail("c_ui_probe: {!r} is `model` and also in `deps`; list it once".format(model))
-    if _PROBE in deps:
-        fail("c_ui_probe: `deps` may not name the gate's probe main; the macro links it")
-    c_binary(name = name, srcs = [], deps = [model] + deps + [_PROBE])
+    c_binary(name = name, srcs = [], deps = [model, _PROBE])

@@ -17,9 +17,15 @@ class UiBuckFiles(test_buckfiles.BuckFilesCase):
         self.setUp()
         self.assertEqual(self.check({"BUCK": UI_LOAD + C_LOAD + MODEL + PROBE}, 0), [])
 
-    def test_the_probe_may_name_a_model_of_another_package_and_extra_deps(self):
-        source = C_LOAD + UI_LOAD + 'c_ui_probe(name = "p", model = "//m:model", deps = [":x"], visibility = ["PUBLIC"])\n'
-        self.assertEqual(self.check({"BUCK": source}, 0), [])
+    def test_the_probe_may_name_a_model_of_another_package(self):
+        self.assertEqual(self.check({"BUCK": C_LOAD + UI_LOAD + 'c_ui_probe(name = "p", model = "//m:model")\n'}, 0), [])
+
+    def test_the_probe_has_no_deps_and_no_visibility(self):
+        """Only the adapter is exempt from the `uim_` reservation: other code cannot ride along through `deps`."""
+        for extra in ('deps = [":x"]', 'deps = []', 'visibility = ["PUBLIC"]'):
+            with self.subTest(extra=extra):
+                self.setUp()
+                self.bad(UI_LOAD + 'c_ui_probe(name = "p", model = ":m", %s)\n' % extra, "bad-argument")
 
     def test_a_second_load_of_the_same_file_is_still_extra(self):
         self.bad(C_LOAD + C_LOAD + MODEL, "extra-load")
@@ -52,15 +58,15 @@ class UiBuckFiles(test_buckfiles.BuckFilesCase):
     def test_the_probe_model_and_deps_are_checked_like_any_dep(self):
         self.bad(UI_LOAD + 'c_ui_probe(name = "p", model = "prelude//cxx:cxx")\n', "bad-argument")
         self.setUp()
-        self.bad(UI_LOAD + 'c_ui_probe(name = "p", model = ":m", deps = ["gate//ctest:ctest"])\n', "bad-argument")
+        self.bad(UI_LOAD + 'c_ui_probe(name = "p", model = "root//m:model")\n', "bad-argument")
 
     def test_the_gates_probe_library_cannot_be_named_by_a_product(self):
         self.bad(C_LOAD + 'c_library(name = "a", deps = ["gate//ui/model:probe"])\n', "bad-argument")
         self.setUp()
-        self.bad(UI_LOAD + 'c_ui_probe(name = "p", model = ":m", deps = ["gate//ui/model:probe"])\n', "bad-argument")
+        self.bad(UI_LOAD + 'c_ui_probe(name = "p", model = "gate//ui/model:probe")\n', "bad-argument")
 
     def test_the_model_header_library_is_for_libraries_binaries_and_tests_only(self):
-        self.bad(UI_LOAD + 'c_ui_probe(name = "p", model = ":m", deps = ["gate//ui/model:model"])\n', "bad-argument")
+        self.bad(UI_LOAD + 'c_ui_probe(name = "p", model = "gate//ui/model:model")\n', "bad-argument")
         self.setUp()
         self.assertEqual(self.check({"BUCK": 'load("@gate//rules:c.bzl", "c_test")\nc_test(name = "t", deps = ["gate//ui/model:model"])\n'}, 0), [])
 
@@ -68,3 +74,19 @@ class UiBuckFiles(test_buckfiles.BuckFilesCase):
         self.bad(C_LOAD + UI_LOAD + PROBE + 'c_library(name = "x", deps = [":probe"])\n', "bad-argument")
         self.setUp()
         self.bad(C_LOAD + UI_LOAD + PROBE + 'c_library(name = "x", deps = [":probe_facts"])\n', "bad-argument")
+
+    def test_no_spelling_of_the_gates_probe_library_is_a_dep(self):
+        for label in ("//ui/model:probe", "root//ui/model:probe", "@gate//ui/model:probe", "gate//ui/model:probe",
+                      "//ui/model:model", "//ui/model/x:y"):
+            with self.subTest(label=label):
+                self.setUp()
+                self.bad(C_LOAD + 'c_library(name = "a", deps = ["%s"])\n' % label, "bad-argument")
+
+    def test_a_product_has_no_ui_model_package(self):
+        """`:probe` inside a product `ui/model` package would print as `//ui/model:probe`: the package is refused."""
+        for name in ("BUCK", "probe.c", "sub/x.h"):
+            with self.subTest(name=name):
+                self.setUp()
+                self.assertEqual(self.check({"ui/model/" + name: C_LOAD + 'c_library(name = "probe")\n'}, 1), ["reserved-package"])
+        self.setUp()
+        self.assertEqual(self.check({"ui/modelx/BUCK": C_LOAD + 'c_library(name = "probe")\n', "ui/BUCK": C_LOAD}, 0), [])

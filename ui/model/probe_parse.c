@@ -39,7 +39,7 @@ bool probe_parse_i32(const char *s, int32_t *out)
     return true;
 }
 
-static int hex_digit(char c)
+int probe_hex_digit(char c)
 {
     if (c >= '0' && c <= '9') {
         return c - '0';
@@ -71,8 +71,8 @@ bool probe_parse_text(const char *s, char *out)
         return false;
     }
     for (i = 0; i < n / 2u; i++) {
-        int hi = hex_digit(s[2u * i]);
-        int lo = hex_digit(s[2u * i + 1u]);
+        int hi = probe_hex_digit(s[2u * i]);
+        int lo = probe_hex_digit(s[2u * i + 1u]);
         if (hi < 0 || lo < 0 || (hi == 0 && lo == 0)) {
             return false;
         }

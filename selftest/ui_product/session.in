@@ -28,7 +28,14 @@ patches
 domain-at 0
 patches
 semantic
-open 2000 8
-advance 2010
+open 2005 8
+apply 3 670 0 -
+advance 2050
+apply 3 670 0 -
 trace
+apply 3 669 0 -
+apply 3 1 0 -
+advance 5100
+trace
+next-due
 quit

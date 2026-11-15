@@ -9,9 +9,9 @@ static uint32_t step_len(const probe_t *p, uint64_t to, bool *contract)
     if (to - p->now < len) {
         len = to - p->now;
     }
-    if (due != UIM_NO_DEADLINE && due < p->now) {
+    if (due != UIM_NO_DEADLINE && due <= p->now) {   /* a deadline on a stable scene is in the future */
         *contract = true;
-    } else if (due != UIM_NO_DEADLINE && due > p->now && due - p->now < len) {
+    } else if (due != UIM_NO_DEADLINE && due - p->now < len) {
         len = due - p->now;
     }
     return (uint32_t)len;

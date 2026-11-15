@@ -23,11 +23,15 @@ GATE_ID = "buckfiles"
 LOAD_PATH = "@gate//rules:c.bzl"
 UI_LOAD_PATH = "@gate//rules:ui.bzl"
 UI_MACRO = "c_ui_probe"
-# U03: `c_ui_probe(name, model, deps, visibility)` builds the probe binary of a UI model adapter (`model`, a `:name` of the
+# U03: `c_ui_probe(name, model)` builds the probe binary of a UI model adapter (`model`, a `:name` of the
 # package or a `//pkg:name` label: checked as a dep). An adapter (and anything else that includes ui/model/model.h) may
 # name the gate's header library `gate//ui/model:model`; the gate's probe library is never nameable (the macro adds it).
-UI_KEYWORDS = ("name", "model", "deps", "visibility")
+UI_KEYWORDS = ("name", "model")
 UI_MODEL_LABEL = "gate//ui/model:model"
+# The package `ui/model` is the gate's: a product has no such package (the product layout refuses it too), and no dep
+# label may name it in the product's own cell spelling (`//ui/model:...`).
+UI_RESERVED_DIR = "ui/model"
+UI_RESERVED_LABEL = re.compile(r"//ui/model[/:]")
 UI_MODEL_MACROS = ("c_library", "c_binary", "c_test")
 MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk", UI_MACRO)
 # What each permitted load statement may import: one statement per file, in any order.
@@ -175,7 +179,7 @@ def _dep_problem(node, allowed, test_allowed, macro):
             continue
         if label in test_allowed:
             problem = "test-only-dep"
-        elif not DEP_LABEL.fullmatch(label) or GATE_THIRD_PARTY.match(label):
+        elif not DEP_LABEL.fullmatch(label) or GATE_THIRD_PARTY.match(label) or UI_RESERVED_LABEL.match(label):
             return "dep"
     return problem
 
@@ -377,7 +381,9 @@ def walk_findings(root, allowed=None, test_allowed=None):
         for name in sorted(files):
             full = os.path.join(directory, name)
             shown = os.path.relpath(full, root).replace(os.sep, "/")
-            if os.path.islink(full):
+            if shown == UI_RESERVED_DIR or shown.startswith(UI_RESERVED_DIR + "/"):
+                found.append(finding("reserved-package", path=shown))   # `ui/model` is the gate's package, not a product's
+            elif os.path.islink(full):
                 found.append(finding("symlink", path=shown))
             elif forbidden_name(name):
                 found.append(finding("forbidden-file", path=shown))

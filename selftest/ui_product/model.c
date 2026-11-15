@@ -1,19 +1,27 @@
 /* The model adapter of the toy app: implements ui/model/model.h on top of toy.h.
  * The fixture has two deliberately broken inputs so the selftest can see the probe's rules: INTENT_BROKEN makes uim_apply
- * fail (the session is poisoned), INTENT_BAD_RECORD writes a trace record that breaks the record grammar (model-contract). */
+ * fail (the session is poisoned), INTENT_BAD_RECORD writes a trace record that breaks the record grammar (model-contract).
+ * Three more inputs exist to show the gate's time loop: INTENT_DUE_NOW arms a deadline at the current time (a contract
+ * violation), INTENT_CHAIN makes the next notice timeout arm a second timer 20 ms later (a deadline created during an
+ * advance), INTENT_SHRINK_BUF makes uim_semantic change the capacity of the caller's buffer, INTENT_MANY_TABS writes a trace record with 40 TABs, INTENT_LOG_STEPS toggles one trace event per uim_step (so the frame grid is visible). */
 #include <stdio.h>
 #include <string.h>
 
 #include "selftest/ui_product/toy.h"
 #include "ui/model/model.h"
 
-enum { LOG_MAX = 2048, INTENT_PRESS = 1, INTENT_BROKEN = 666, INTENT_BAD_RECORD = 667, ENV_OFFLINE = 1, LINE_MAX_BYTES = 160 };
+enum { LOG_MAX = 2048, INTENT_PRESS = 1, INTENT_BROKEN = 666, INTENT_BAD_RECORD = 667,
+       INTENT_DUE_NOW = 668, INTENT_CHAIN = 669, INTENT_LOG_STEPS = 670, INTENT_MANY_TABS = 671, INTENT_SHRINK_BUF = 672, ENV_OFFLINE = 1, LINE_MAX_BYTES = 160 };
 
 struct uim {
     bool open;
     uint64_t now;
     uint64_t seed;
     uint64_t seq;
+    uint64_t second_due;
+    bool chain;
+    bool log_steps;
+    bool shrink;
     char patches[LOG_MAX];
     size_t patches_len;
     char trace[LOG_MAX];
@@ -103,6 +111,10 @@ bool uim_open(uim_t *m, uint64_t clock_origin_ms, uint64_t seed)
     m->patches_len = 0;
     m->trace_len = 0;
     m->seq = 0;
+    m->second_due = UIM_NO_DEADLINE;
+    m->chain = false;
+    m->log_steps = false;
+    m->shrink = false;
     if (!toy_start()) {
         return false;
     }
@@ -141,6 +153,22 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     if (!m->open || (in->kind == UIM_IN_INTENT && in->id == INTENT_BROKEN)) {
         return UIM_ERROR;
     }
+    if (in->kind == UIM_IN_INTENT && in->id >= INTENT_DUE_NOW && in->id <= INTENT_LOG_STEPS) {
+        m->second_due = in->id == INTENT_DUE_NOW ? m->now : m->second_due;
+        m->chain = in->id == INTENT_CHAIN ? true : m->chain;
+        m->log_steps = in->id == INTENT_LOG_STEPS ? !m->log_steps : m->log_steps;
+        return UIM_OK;
+    }
+    if (in->kind == UIM_IN_INTENT && in->id == INTENT_SHRINK_BUF) {
+        m->shrink = true;
+        return UIM_OK;
+    }
+    if (in->kind == UIM_IN_INTENT && in->id == INTENT_MANY_TABS) {
+        char line[48];
+        memset(line, '\t', 40);
+        line[40] = '\0';
+        return log_add(m->trace, &m->trace_len, line) ? UIM_OK : UIM_ERROR;
+    }
     if (in->kind == UIM_IN_INTENT && in->id == INTENT_BAD_RECORD) {
         return log_add(m->trace, &m->trace_len, "a record without tabs") ? UIM_OK : UIM_ERROR;
     }
@@ -159,7 +187,34 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
 
 uint64_t uim_next_due(const uim_t *m)
 {
-    return m->open ? toy_notice_due() : UIM_NO_DEADLINE;
+    uint64_t notice = toy_notice_due();
+    if (!m->open) {
+        return UIM_NO_DEADLINE;
+    }
+    return notice < m->second_due ? notice : m->second_due;
+}
+
+/* The notice timer: hide at the deadline; an armed chain starts the second timer, 20 ms later. */
+static bool notice_timer(uim_t *m)
+{
+    if (toy_notice_due() == UIM_NO_DEADLINE || m->now < toy_notice_due()) {
+        return true;
+    }
+    toy_hide_notice();
+    if (m->chain) {
+        m->second_due = m->now + 20u;
+        m->chain = false;
+    }
+    return patch(m, "set", "notice", "hidden", "0", "1") && event(m, "notice_timeout");
+}
+
+static bool second_timer(uim_t *m)
+{
+    if (m->second_due == UIM_NO_DEADLINE || m->now < m->second_due) {
+        return true;
+    }
+    m->second_due = UIM_NO_DEADLINE;
+    return event(m, "second_timer");
 }
 
 bool uim_step(uim_t *m, uint32_t ms)
@@ -169,11 +224,7 @@ bool uim_step(uim_t *m, uint32_t ms)
     }
     toy_step(ms);
     m->now += ms;
-    if (toy_notice_due() != UIM_NO_DEADLINE && m->now >= toy_notice_due()) {
-        toy_hide_notice();
-        return patch(m, "set", "notice", "hidden", "0", "1") && event(m, "notice_timeout");
-    }
-    return true;
+    return (!m->log_steps || event(m, "step")) && notice_timer(m) && second_timer(m);
 }
 
 bool uim_frame(uim_t *m, struct _lv_display_t **disp)
@@ -209,6 +260,7 @@ bool uim_semantic(uim_t *m, uim_buf_t *out)
     if (!m->open) {
         return false;
     }
+    out->cap -= m->shrink ? 1u : 0u;
     for (i = 0; i < TOY_NODES; i++) {
         size_t n = 0;
         if (!node_line(i, line, sizeof line) || out->len + (n = strlen(line)) > out->cap) {

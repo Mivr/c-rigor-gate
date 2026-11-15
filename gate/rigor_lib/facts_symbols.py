@@ -20,28 +20,32 @@ from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, findin
 GATE_ID = "symbols"
 
 # The UI model interface (U03, docs/ui-model.md). The prefix is reserved for the whole gate: a product module may neither
-# define nor reference a `uim_` symbol, whatever its policy file says, except the model adapter that a `c_ui_probe` links
-# and the gate's own probe library. A `c_ui_probe` is recognised by its dependency on the gate's probe library, which
-# only the macro adds (buckfiles refuses the label in a product BUCK file); its other dependencies are the adapters.
+# define nor reference a `uim_` symbol, whatever its policy file says (even a trusted one), except the ONE model adapter
+# that a `c_ui_probe` links and the gate's own probe library. Only the gate's own targets can match: the labels are
+# compared exactly, in the spelling a product build prints for the gate cell (`gate//...`); a product's own
+# `//ui/model:probe` (which buckfiles and the product layout refuse anyway), `root//...` and `@gate//...` never match.
+# A `c_ui_probe` is recognised by its dependency on the gate's probe library, which only the macro adds; its other
+# dependency (the macro adds exactly two) is the adapter.
 UI_PREFIX = "uim_"
 UI_PROBE = "gate//ui/model:probe"
 UI_MODEL = "gate//ui/model:model"
 
 
-def gate_spelling(label):
-    """The `gate//` spelling of a label (the gate prints its own targets as `//x:y` when it is the root cell)."""
-    return "gate" + label if label.startswith("//") else label
-
-
 def ui_exempt(products):
-    """The labels that may use `uim_` symbols: the gate's probe library, and every dependency of a probe binary that is
-    not one of the gate's own two UI libraries (that is the model adapter)."""
-    exempt = {label for label in products if gate_spelling(label) == UI_PROBE}
-    for facts in products.values():
-        deps = {gate_spelling(dep) for dep in facts.deps}
-        if UI_PROBE in deps:
-            exempt |= {label for label in products if gate_spelling(label) in deps and gate_spelling(label) != UI_MODEL}
-    return exempt
+    """(the labels that may use `uim_` symbols, findings about probe binaries of the wrong shape): the gate's probe library,
+    and the one dependency of a probe binary that is neither of the gate's own two UI libraries."""
+    exempt, found = set(), []
+    if UI_PROBE in products:
+        exempt.add(UI_PROBE)
+    for label, facts in sorted(products.items()):
+        if UI_PROBE not in facts.deps:
+            continue
+        models = [dep for dep in facts.deps if dep not in (UI_PROBE, UI_MODEL)]
+        if len(models) == 1:
+            exempt.add(models[0])
+        else:
+            found.append(finding("ui-probe-shape", target=label, models=sorted(models)))
+    return exempt, found
 
 
 def ui_findings(facts, exempt):
@@ -204,13 +208,14 @@ def run(facts_by_label, policy, libc, third=None, libc_android=None):
     reserved_android = reserved | set(libc if libc_android is None else libc_android)
     reserved |= set(libc)
     prefixes = tuple(third.prefixes)
-    exempt = ui_exempt(products)
+    exempt, shape = ui_exempt(products)
+    found.extend(shape)
     units = 0
     for label in sorted(products):
+        found.extend(ui_findings(products[label], exempt))   # before the trusted skip: a policy cannot bypass it
         if label in policy.trusted:
             continue
         facts = products[label]
-        found.extend(ui_findings(facts, exempt))
         module = policy.modules.get(label, Module())
         allowed = dep_exports(facts, products, libs, module, found)
         if label in exempt:   # the probe calls what the adapter defines, and the adapter is no dep of the probe library

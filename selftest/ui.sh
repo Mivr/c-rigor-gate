@@ -79,8 +79,17 @@ for mode in rel san; do
   "$bin" < "$out/long.in" > "$out/t.long.$mode" 2>&1; rc=$?
   [ "$rc" = 1 ] && [ "$(sed -n 2p "$out/t.long.$mode")" = "err ? line-too-long" ] && [ "$(tail -1 "$out/t.long.$mode")" = "ok quit" ] || fail "$CUR: long line ($mode): rc=$rc" "$out/t.long.$mode"
   printf 'quit\n\n\n' | "$bin" > "$out/t.quietend.$mode" 2>&1 || fail "$CUR: empty lines after quit must be accepted ($mode)" "$out/t.quietend.$mode"
+  # a read error on stdin (a directory) is exit 2, not an end of input
+  "$bin" < "$out" > "$out/t.rderr.$mode" 2>&1; rc=$?
+  [ "$rc" = 2 ] || fail "$CUR: a read error on stdin must exit 2, got $rc ($mode)" "$out/t.rderr.$mode"
 done
 echo "  err replies counted; unterminated last line, embedded NUL, input after quit, a 641-byte line: refused, in release and san"
+
+begin "the probe's own unit tests (record grammar, surplus TABs, escapes, flags, frame-seam bytes, strict numbers) pass in release and san"
+for plat in "$REL" "$SAN"; do
+  run "$out/unit.log" test --target-platforms "$plat" //ui/model:probe_test || fail "$CUR: //ui/model:probe_test failed in $plat" "$out/unit.log"
+  grep -Eq "Pass 1\." "$out/unit.log" || fail "$CUR: the test summary in $plat is not a clean pass" "$out/unit.log"
+done
 
 begin "a failing model call poisons the session (every later command is not-open until open), a refusal does not"
 printf 'open 0 1\napply 3 666 0 -\nsemantic\nopen 0 1\napply 3 99 0 -\nsemantic\nquit\n' | "$probe_san" > "$out/poison.txt" 2>&1
@@ -96,6 +105,29 @@ build_out f_main "$REL" //ui/model:probe_facts
 build_out f_lvgl "$REL" //third_party/lvgl:lvgl_symbols
 build_out f_ctest "$REL" //ctest:ctest_facts
 build_out libc "$REL" toolchains//:libc_symbols
+# relabel <src> <dest>: the facts of a product build print the gate's own targets as `gate//...`; this root cell is the gate,
+# so `//ui/model:...` is rewritten to that spelling (label and deps), the way a product repo's facts read.
+relabel() {
+  python3 -I - "$1" "$2" <<'PY' || fail "$CUR: relabel $1"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+fix = lambda x: "gate" + x if x.startswith("//ui/model:") else x
+doc["label"] = fix(doc["label"])
+doc["deps"] = sorted(fix(d) for d in doc["deps"])
+json.dump(doc, open(sys.argv[2], "w"))
+PY
+}
+# The libc (and other non-gate) symbols the probe library really references: from its facts, checked against the
+# checked-in list so that a change of the probe's imports is visible in review, and the policy's `allow` is built from it.
+relabel "$f_main" "$out/probe_lib.json"
+python3 -I - "$out/probe_lib.json" > "$out/probe_libc.actual" <<'PY' || fail "$CUR: cannot read the probe library facts"
+import json, sys
+doc = json.load(open(sys.argv[1]))
+defined = {s for u in doc["units"] for s in u["defined"]}
+undefined = {s for u in doc["units"] for s in u["undefined"]} - defined
+print("\n".join(sorted(s for s in undefined if not s.startswith("uim_"))))
+PY
+cmp -s "$out/probe_libc.actual" "$prod/probe_libc.expected" || { diff "$prod/probe_libc.expected" "$out/probe_libc.actual" > "$out/d.txt"; fail "$CUR: the probe library's imports differ from $prod/probe_libc.expected" "$out/d.txt"; }
 python3 -I - "$out" <<'PY' || fail "$CUR: could not write the policy"
 import sys
 out = sys.argv[1]
@@ -107,16 +139,18 @@ head = text.split("[module.")[0]
 assert head.count("[global]") == 1 and "uim_" not in head
 toy = ["toy_start", "toy_display", "toy_press", "toy_take_press", "toy_show_notice", "toy_hide_notice", "toy_notice_due",
        "toy_step", "toy_node", "toy_notice_shown", "toy_draw"]
-probe = ["main", "probe_parse_u64", "probe_parse_i32", "probe_parse_text", "probe_to_hex", "probe_check_records",
-         "probe_advance_to", "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
+probe = ["main", "probe_parse_u64", "probe_parse_i32", "probe_parse_text", "probe_to_hex", "probe_hex_digit",
+         "probe_check_records", "probe_advance_to", "probe_reply_err", "probe_reply_plain", "probe_reply_lines",
+         "probe_payload", "probe_cmd_frame", "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
+libc = open(out + "/probe_libc.actual").read().split()
 q = lambda names: "[" + ", ".join('"%s"' % n for n in names) + "]"
 mods = """
-[module."//ui/model:model"]
+[module."gate//ui/model:model"]
 allow = []
 exports = []
 
-[module."//ui/model:probe"]
-allow = ["fgetc", "fputs", "fputc", "fwrite", "fflush", "snprintf", "strlen", "strcmp", "memchr", "memset", "stdin", "stdout"]
+[module."gate//ui/model:probe"]
+allow = %s
 allow_mutable_data = true
 exports = %s
 
@@ -134,7 +168,7 @@ exports = %s
 [module."//selftest/ui_product:probe"]
 allow = []
 exports = []
-""" % (q(probe), q(toy), q(UIM))
+""" % (q(libc), q(probe), q(toy), q(UIM))
 case = """
 [module."//selftest/ui_product:%s"]
 allow = []
@@ -154,7 +188,7 @@ gate_case() {
   sets=("$@")
   local fd="$out/fd.$name"; rm -rf "$fd"; mkdir -p "$fd"
   local s src
-  for s in "${sets[@]}"; do eval "src=\$f_$s"; cp "$src" "$fd/$s.json" || fail "$CUR: no facts for $s"; done
+  for s in "${sets[@]}"; do eval "src=\$f_$s"; relabel "$src" "$fd/$s.json"; done
   "${RIGOR[@]}" facts --gate symbols --facts "$fd" --policy "$out/policy.$name.toml" --libc "$libc" --out "$out/r.$name.json" > "$out/r.$name.txt" 2>&1
   local rc=$?
   [ "$rc" = "$want" ] || fail "$CUR: $name exited $rc, wanted $want" "$out/r.$name.txt"

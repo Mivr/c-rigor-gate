@@ -54,7 +54,20 @@ title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
 button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
 notice	label	Pressed	8	90	58	16	1	-	hidden	body	normal	none	none
 ok open
-ok advance 2010
-ok trace lines 1
-0	boot	2000
+ok apply
+ok advance 2050
+ok apply
+ok trace lines 4
+0	boot	2005
+1	step	2021
+2	step	2037
+3	step	2050
+ok apply
+ok apply
+ok advance 5100
+ok trace lines 3
+4	press	2050
+5	notice_timeout	5050
+6	second_timer	5070
+ok next-due none
 ok quit

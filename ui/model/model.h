@@ -15,7 +15,8 @@
  *  - FAILURE POISONS. A call that returns false (or UIM_ERROR) may have changed the model halfway (LVGL cannot be
  *    rolled back): the session is poisoned. The gate calls nothing but `uim_open` afterwards, and `uim_open` restarts
  *    from cold. The exceptions are the two read-only calls `uim_env_inputs` and `uim_semantic`, which never change the
- *    model: a failure of those does not poison. A buffer that is too small is a failure, never a truncation.
+ *    model: a failure of those does not poison. A buffer that is too small is a failure, never a truncation. A breach of
+ *    this interface that the gate detects (`model-contract`) poisons the session as well, after those two calls excepted.
  *  - REFUSAL IS NOT FAILURE. `uim_apply` returns UIM_REFUSED when the input is not enabled in the current state (a
  *    normal outcome of exploration); the model is then unchanged and the session continues.
  *  - TIME. All times are virtual milliseconds on one monotonic axis that starts at `clock_origin_ms` (at most
@@ -77,12 +78,13 @@ typedef struct {
  * and TAB separators, ended by LF; a non-empty buffer ends in LF. Every record of a call has the same number of
  * fields, in the fixed order below, separated by single TABs; a field may be empty. Escaping, so that any byte can be
  * carried: inside a field `\\` is a backslash, `\t` a TAB, `\n` an LF, `\xHH` (two lowercase hex digits) any other byte
- * outside 0x20..0x7e; a backslash followed by anything else, and any byte outside the set above, is a violation.
+ * outside 0x20..0x7e (so never for a printable byte, TAB or LF, which have their own spelling); a backslash followed by
+ * anything else, and any byte outside the set above, is a violation. A line with more fields than the call has is one too.
  * The probe checks the field count and the escapes of every line and reports a violation as `model-contract`.
  *
  *   semantic, 14 fields, one line per scene node in tree order (P004 4.2 "a11y+"):
  *     key, role, label, x, y, w, h, enabled, intent:arg, flags, style, importance, input_policy, wrap_policy
- *     (x y w h: decimal integers, may be negative; enabled: 0 or 1; the rest are product strings, `intent:arg` is `-`
+ *     (x y w h: decimal integers, may be negative; enabled: exactly 0 or 1; the rest are product strings, `intent:arg` is `-`
  *      for a node without intent)
  *   patches, 5 fields, one line per scene patch since the last call:   op, key, field, old, new
  *   trace, 3 fields, one line per event emitted since the last call:   seq, type name, mono_ms
@@ -104,7 +106,8 @@ bool uim_open(uim_t *m, uint64_t clock_origin_ms, uint64_t seed);
 
 /* The environment and fault inputs enabled now, in a fixed order (the same state gives the same list), at most
  * `cap` (and never more than UIM_ENV_MAX); `*count` receives how many were written. Every entry has kind UIM_IN_ENV and
- * must be replayable BYTE FOR BYTE through `uim_apply` (the gate sends exactly these fields back). Read-only. */
+ * must be replayable BYTE FOR BYTE through `uim_apply` (the gate sends exactly these fields back; the reply is one unframed
+ * line that can reach about 35 KB with 64 inputs of 256 bytes). Read-only. */
 bool uim_env_inputs(uim_t *m, uim_input_t *out, uint16_t cap, uint16_t *count);
 
 /* Deliver one input (an item of `uim_env_inputs`, a wedge line, or an intent) at the current virtual time and run the
@@ -112,7 +115,9 @@ bool uim_env_inputs(uim_t *m, uim_input_t *out, uint16_t cap, uint16_t *count);
 uim_result_t uim_apply(uim_t *m, const uim_input_t *in);
 
 /* The virtual time of the next pending deadline (a notice timeout, a countdown, a debounce), or UIM_NO_DEADLINE (also
- * before a successful `uim_open`). Never earlier than the current virtual time. Does not change the model. */
+ * before a successful `uim_open`). On a stable scene it is strictly later than the current virtual time: a deadline at or
+ * before now would be skipped by the gate's loop, so the gate reports it as a contract violation. Does not change the
+ * model. */
 uint64_t uim_next_due(const uim_t *m);
 
 /* THE time primitive. Move the virtual clock by `ms` (1 <= ms <= UIM_FRAME_MS), advance LVGL's tick by `ms` and run the

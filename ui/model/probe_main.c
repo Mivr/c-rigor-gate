@@ -42,7 +42,7 @@ static bool fits(int n)
     return n > 0 && (size_t)n < sizeof g_reply;
 }
 
-static bool reply_err(const char *name, const char *why)
+bool probe_reply_err(const char *name, const char *why)
 {
     int n = snprintf(g_reply, sizeof g_reply, "err %s %s", name, why);
     g_tail_len = 0;
@@ -52,9 +52,15 @@ static bool reply_err(const char *name, const char *why)
     return false;
 }
 
-static bool reply_plain(const char *name, bool good)
+bool probe_reply_plain(const char *name, bool good)
 {
-    return fits(snprintf(g_reply, sizeof g_reply, "%s %s", good ? "ok" : "fail", name)) || reply_err(name, "internal");
+    return fits(snprintf(g_reply, sizeof g_reply, "%s %s", good ? "ok" : "fail", name)) || probe_reply_err(name, "internal");
+}
+
+char *probe_payload(size_t *cap)
+{
+    *cap = sizeof g_payload;
+    return g_payload;
 }
 
 static bool reply_number(const char *name, uint64_t value)
@@ -62,7 +68,7 @@ static bool reply_number(const char *name, uint64_t value)
     return fits(snprintf(g_reply, sizeof g_reply, "ok %s %llu", name, (unsigned long long)value));
 }
 
-static bool reply_lines(const char *name, size_t lines, size_t bytes)
+bool probe_reply_lines(const char *name, size_t lines, size_t bytes)
 {
     g_tail_len = bytes;
     return fits(snprintf(g_reply, sizeof g_reply, "ok %s lines %zu", name, lines));
@@ -77,12 +83,12 @@ static bool cmd_open(probe_t *p, char **arg)
     uint64_t origin = 0;
     uint64_t seed = 0;
     if (!probe_parse_u64(arg[0], &origin) || !probe_parse_u64(arg[1], &seed) || origin > UIM_ORIGIN_MAX_MS) {
-        return reply_err("open", "bad-arguments");
+        return probe_reply_err("open", "bad-arguments");
     }
     p->opened = uim_open(p->model, origin, seed);
     p->origin = origin;
     p->now = origin;
-    return reply_plain("open", p->opened);
+    return probe_reply_plain("open", p->opened);
 }
 
 /* The length of an input's text, or UIM_TEXT_MAX + 1 if it is not terminated within its array. */
@@ -102,10 +108,10 @@ static bool cmd_env_inputs(probe_t *p, char **arg)
     size_t i = 0;
     (void)arg;
     if (!uim_env_inputs(p->model, g_inputs, (uint16_t)UIM_ENV_MAX, &n)) {
-        return reply_plain("env-inputs", false);
+        return probe_reply_plain("env-inputs", false);
     }
     if (n > UIM_ENV_MAX) {
-        return reply_err("env-inputs", "model-contract");
+        return probe_reply_err("env-inputs", "model-contract");
     }
     at = (size_t)snprintf(g_reply, sizeof g_reply, "ok env-inputs %u", (unsigned)n);
     for (i = 0; i < n; i++) {
@@ -113,7 +119,7 @@ static bool cmd_env_inputs(probe_t *p, char **arg)
         size_t len = text_len(in->text);
         int w = 0;
         if (in->kind != UIM_IN_ENV || len > UIM_TEXT_MAX) {
-            return reply_err("env-inputs", "model-contract");
+            return probe_reply_err("env-inputs", "model-contract");
         }
         w = snprintf(g_reply + at, sizeof g_reply - at, " %u:%lu:%ld:", (unsigned)in->kind, (unsigned long)in->id,
                      (long)in->arg);
@@ -141,7 +147,7 @@ static bool cmd_apply(probe_t *p, char **arg)
     memset(&in, 0, sizeof in);
     if (!probe_parse_u64(arg[0], &kind) || kind < UIM_IN_ENV || kind > UIM_IN_INTENT || !probe_parse_u64(arg[1], &id) ||
         id > UINT32_MAX || !probe_parse_i32(arg[2], &in.arg) || !probe_parse_text(arg[3], in.text)) {
-        return reply_err("apply", "bad-arguments");
+        return probe_reply_err("apply", "bad-arguments");
     }
     in.kind = (uint16_t)kind;
     in.id = (uint32_t)id;
@@ -150,15 +156,16 @@ static bool cmd_apply(probe_t *p, char **arg)
         return fits(snprintf(g_reply, sizeof g_reply, r == UIM_OK ? "ok apply" : "ok apply refused"));
     }
     p->opened = false;
-    return reply_plain("apply", false);
+    return probe_reply_plain("apply", false);
 }
 
 static bool cmd_next_due(probe_t *p, char **arg)
 {
     uint64_t due = uim_next_due(p->model);
     (void)arg;
-    if (due != UIM_NO_DEADLINE && due < p->now) {
-        return reply_err("next-due", "model-contract");
+    if (due != UIM_NO_DEADLINE && due <= p->now) {   /* a deadline on a stable scene is in the future */
+        p->opened = false;
+        return probe_reply_err("next-due", "model-contract");
     }
     if (due == UIM_NO_DEADLINE) {
         return fits(snprintf(g_reply, sizeof g_reply, "ok next-due none"));
@@ -171,45 +178,18 @@ static bool cmd_advance(probe_t *p, char **arg)
     uint64_t to = 0;
     probe_advance_t r = PROBE_ADV_OK;
     if (!probe_parse_u64(arg[0], &to) || to < p->now || to > UIM_TIME_MAX_MS || to - p->now > UIM_ADVANCE_MAX_MS) {
-        return reply_err("advance", "bad-arguments");
+        return probe_reply_err("advance", "bad-arguments");
     }
     r = probe_advance_to(p, to);
     if (r == PROBE_ADV_CONTRACT) {
-        return reply_err("advance", "model-contract");
+        p->opened = false;
+        return probe_reply_err("advance", "model-contract");
     }
     if (r == PROBE_ADV_FAILED) {
         p->opened = false;
-        return reply_plain("advance", false);
+        return probe_reply_plain("advance", false);
     }
     return reply_number("advance", p->now);
-}
-
-/* SEAM(U05): the one place where `lvprobe` joins the probe. After `uim_frame` produced `disp`, U05 writes the facts of
- * the frame (tree, ink, hit table, CRC) here as printable lines ending in LF. Today it writes none. */
-static bool seam_frame_lines(struct _lv_display_t *disp, char *out, size_t cap, size_t *len)
-{
-    (void)disp;
-    (void)out;
-    (void)cap;
-    *len = 0;
-    return true;
-}
-
-static bool cmd_frame(probe_t *p, char **arg)
-{
-    struct _lv_display_t *disp = NULL;
-    size_t len = 0;
-    long lines = 0;
-    (void)arg;
-    if (!uim_frame(p->model, &disp)) {
-        p->opened = false;
-        return reply_plain("frame", false);
-    }
-    if (disp == NULL || !seam_frame_lines(disp, g_payload, sizeof g_payload, &len) || len > sizeof g_payload) {
-        return reply_err("frame", "model-contract");
-    }
-    lines = probe_check_records(NULL, g_payload, len);
-    return lines < 0 ? reply_err("frame", "model-contract") : reply_lines("frame", (size_t)lines, len);
 }
 
 /* `semantic`, `patches` and `trace`: `ok <name> lines <n>` and the n records verbatim. */
@@ -222,13 +202,15 @@ static bool buffer_reply(probe_t *p, const char *name, buffer_fn_t fn, const pro
     buf.len = 0;
     if (!fn(p->model, &buf)) {
         p->opened = p->opened && !poisons;
-        return reply_plain(name, false);
+        return probe_reply_plain(name, false);
     }
-    if (buf.len > buf.cap) {
-        return reply_err(name, "model-contract");
+    lines = (buf.data == g_payload && buf.cap == sizeof g_payload && buf.len <= buf.cap)
+                ? probe_check_records(spec, g_payload, buf.len) : -1;
+    if (lines < 0) {
+        p->opened = p->opened && !poisons;   /* the read-only call leaves the model as it was */
+        return probe_reply_err(name, "model-contract");
     }
-    lines = probe_check_records(spec, g_payload, buf.len);
-    return lines < 0 ? reply_err(name, "model-contract") : reply_lines(name, (size_t)lines, buf.len);
+    return probe_reply_lines(name, (size_t)lines, buf.len);
 }
 
 static bool cmd_semantic(probe_t *p, char **arg)
@@ -260,13 +242,13 @@ static bool cmd_domain_at(probe_t *p, char **arg)
 {
     uint64_t i = 0;
     if (!probe_parse_u64(arg[0], &i) || i >= uim_domain_count()) {
-        return reply_err("domain-at", "bad-arguments");
+        return probe_reply_err("domain-at", "bad-arguments");
     }
     if (!uim_domain_at(p->model, (uint16_t)i)) {
         p->opened = false;
-        return reply_plain("domain-at", false);
+        return probe_reply_plain("domain-at", false);
     }
-    return reply_plain("domain-at", true);
+    return probe_reply_plain("domain-at", true);
 }
 
 static bool cmd_quit(probe_t *p, char **arg)
@@ -282,7 +264,7 @@ static const command_t g_commands[] = {
     {"apply", 4, true, cmd_apply},
     {"next-due", 0, true, cmd_next_due},
     {"advance", 1, true, cmd_advance},
-    {"frame", 0, true, cmd_frame},
+    {"frame", 0, true, probe_cmd_frame},
     {"semantic", 0, true, cmd_semantic},
     {"patches", 0, true, cmd_patches},
     {"domain-count", 0, false, cmd_domain_count},
@@ -335,7 +317,7 @@ static bool dispatch(probe_t *p)
     int n = split(tok, PROBE_TOKENS);
     g_tail_len = 0;
     if (n < 0) {
-        return reply_err("?", "malformed");
+        return probe_reply_err("?", "malformed");
     }
     for (i = 0; i < sizeof g_commands / sizeof g_commands[0]; i++) {
         const command_t *c = &g_commands[i];
@@ -344,18 +326,18 @@ static bool dispatch(probe_t *p)
             continue;
         }
         if ((size_t)n - 1u != c->argc) {
-            return reply_err(c->name, "bad-arguments");
+            return probe_reply_err(c->name, "bad-arguments");
         }
         if (c->needs_open && !p->opened) {
-            return reply_err(c->name, "not-open");
+            return probe_reply_err(c->name, "not-open");
         }
         good = c->run(p, tok + 1);
         if (!good && strncmp(g_reply, "err ", 4) != 0) {
-            return reply_err(c->name, "internal");
+            return probe_reply_err(c->name, "internal");
         }
         return good;
     }
-    return reply_err("?", "unknown-command");
+    return probe_reply_err("?", "unknown-command");
 }
 
 static bool emit(void)
@@ -369,7 +351,7 @@ static bool emit(void)
     return fflush(stdout) == 0;
 }
 
-typedef enum { RL_LINE, RL_EOF, RL_PARTIAL, RL_LONG } read_t;
+typedef enum { RL_LINE, RL_EOF, RL_PARTIAL, RL_LONG, RL_ERROR } read_t;
 
 /* Reads one line into g_line / g_line_len (without its LF; any byte, NUL included). RL_PARTIAL: data and then EOF with
  * no LF. RL_LONG: more than PROBE_LINE_MAX bytes (the rest of the line is dropped). */
@@ -390,6 +372,9 @@ static read_t read_line(void)
         }
     }
     g_line_len = n;
+    if (c == EOF && ferror(stdin) != 0) {
+        return RL_ERROR;
+    }
     if (too_long) {
         return RL_LONG;
     }
@@ -402,8 +387,8 @@ static read_t read_line(void)
 /* One reply for a line the loop itself refuses. */
 static bool refuse(probe_t *p, const char *why)
 {
-    p->errors++;
-    (void)reply_err("?", why);
+    p->failed = true;
+    (void)probe_reply_err("?", why);
     return emit();
 }
 
@@ -413,6 +398,9 @@ static bool drain(probe_t *p)
     bool told = false;
     read_t got = RL_LINE;
     while ((got = read_line()) != RL_EOF) {
+        if (got == RL_ERROR) {
+            return false;
+        }
         if (g_line_len == 0 && got == RL_LINE) {
             continue;
         }
@@ -422,7 +410,7 @@ static bool drain(probe_t *p)
                 return false;
             }
         } else {
-            p->errors++;
+            p->failed = true;
         }
     }
     return true;
@@ -432,6 +420,9 @@ static bool serve(probe_t *p)
 {
     while (!p->quit) {
         read_t got = read_line();
+        if (got == RL_ERROR) {
+            return false;
+        }
         if (got == RL_EOF || got == RL_PARTIAL) {
             if (got == RL_PARTIAL && !refuse(p, "malformed")) {
                 return false;
@@ -445,7 +436,7 @@ static bool serve(probe_t *p)
             continue;
         }
         if (!dispatch(p)) {
-            p->errors++;
+            p->failed = true;
         }
         if (!emit()) {
             return false;
@@ -460,7 +451,7 @@ int main(void)
     p.model = uim_instance();
     p.opened = false;
     p.quit = false;
-    p.errors = 0;
+    p.failed = false;
     p.origin = 0;
     p.now = 0;
     g_tail_len = 0;
@@ -470,5 +461,5 @@ int main(void)
     if (!serve(&p)) {
         return 2;
     }
-    return p.errors == 0 ? 0 : 1;
+    return p.failed ? 1 : 0;
 }

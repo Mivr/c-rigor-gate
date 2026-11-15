@@ -31,7 +31,7 @@ virtual clock and the seed of `uim_open` influence output), and:
 | `uim_open(m, origin_ms, seed)` | cold boot to the first stable scene; callable again to restart |
 | `uim_env_inputs(m, out, cap, &count)` | the enabled env and fault inputs, fixed order, at most `UIM_ENV_MAX` (64), kind `UIM_IN_ENV` |
 | `uim_apply(m, in)` | deliver an env input, a wedge line or an intent; `UIM_OK`, `UIM_REFUSED` or `UIM_ERROR` |
-| `uim_next_due(m)` | the next deadline or `UIM_NO_DEADLINE` (also before `open`), never earlier than now |
+| `uim_next_due(m)` | the next deadline or `UIM_NO_DEADLINE` (also before `open`), strictly later than now on a stable scene |
 | `uim_step(m, ms)` | the time primitive above |
 | `uim_frame(m, &disp)` | adopt and render the scene; `disp` must not be NULL |
 | `uim_semantic`, `uim_patches`, `uim_trace` | text records (below); patches and trace clear their log |
@@ -46,11 +46,12 @@ product type in a gate header), `uim_frame` takes `struct _lv_display_t **` so t
 Gate-owned, line oriented. A buffer is zero or more records, one line each, LF terminated, printable ASCII and TAB
 separators only; the fields of a record are separated by single TABs, in a fixed order and number, and may be empty.
 Escaping: inside a field `\\` is a backslash, `\t` a TAB, `\n` an LF, `\xHH` (lowercase hex) any other byte outside
-`0x20..0x7e`; any other backslash sequence or byte is a violation. The probe checks every line.
+`0x20..0x7e` (never a printable byte, TAB or LF, which have their own spelling); any other backslash sequence or byte, and
+more fields than the call has (refused at the first surplus TAB), is a violation. The probe checks every line.
 
 | Call | Fields |
 |---|---|
-| `uim_semantic` (14, one line per node, tree order, P004 4.2 "a11y+") | `key`, `role`, `label`, `x`, `y`, `w`, `h` (signed decimal), `enabled` (0 or 1), `intent:arg` (`-` if none), `flags`, `style`, `importance`, `input_policy`, `wrap_policy` |
+| `uim_semantic` (14, one line per node, tree order, P004 4.2 "a11y+") | `key`, `role`, `label`, `x`, `y`, `w`, `h` (signed decimal), `enabled` (exactly `0` or `1`), `intent:arg` (`-` if none), `flags`, `style`, `importance`, `input_policy`, `wrap_policy` |
 | `uim_patches` (5, one line per scene patch since the last call) | `op`, `key`, `field`, `old`, `new` |
 | `uim_trace` (3, one line per emitted event since the last call) | `seq` (from 0 at `open`), `type`, `mono_ms` (unsigned decimal) |
 
@@ -66,11 +67,11 @@ leading zeros, no overflow; `arg` may carry a `-` (never `-0`) and must fit `int
 | Command | Reply |
 |---|---|
 | `open <origin_ms> <seed>` | `ok open` or `fail open` (clears "open") |
-| `env-inputs` | `ok env-inputs <n> <kind>:<id>:<arg>:<hex\|->...` (one line) |
+| `env-inputs` | `ok env-inputs <n> <kind>:<id>:<arg>:<hex\|->...`: ONE unframed line, up to about 35 KB (64 inputs of 256 bytes, hex); a driver must read lines of that length |
 | `apply <kind 1..3> <id> <arg> <hex\|->` | `ok apply`, `ok apply refused` or `fail apply` (poisons) |
 | `next-due` | `ok next-due <ms>` or `ok next-due none` |
 | `advance <to_ms>` | `ok advance <now_ms>` or `fail advance` (poisons); `to_ms` before now, more than 600000 ms ahead or past 2^52 is `err advance bad-arguments` |
-| `frame` | `ok frame lines <n>` and n lines (the lvprobe seam; none today) or `fail frame` (poisons) |
+| `frame` | `ok frame lines <n>` and n lines (the lvprobe seam in `probe_frame.c`: printable ASCII and TAB only, checked; none today) or `fail frame` (poisons) |
 | `semantic`, `patches`, `trace` | `ok <name> lines <n>` followed by exactly n record lines, verbatim; `fail <name>` (patches and trace poison) |
 | `domain-count` | `ok domain-count <n>` (allowed before `open`) |
 | `domain-at <i>` | `ok domain-at` or `fail domain-at` (poisons); `i >= count` is `err domain-at bad-arguments` |
@@ -80,8 +81,9 @@ Replies: `ok ...` success; `fail <command>` the model returned false (an ordinar
 later command but `open`, `domain-count` and `quit` is `err <command> not-open` until a successful `open`); `err
 <command|?> <why>` a protocol error, counted. Whys: `malformed`, `unknown-command`, `bad-arguments` (also a wrong
 argument count), `not-open`, `line-too-long`, `eof-without-quit`, `model-contract` (the model broke the interface:
-`n > UIM_ENV_MAX`, `len > cap`, a record that breaks the grammar, a NULL display from `uim_frame`, an env input that is
-not kind env, a `uim_next_due` in the past), `internal` (a handler failed without an `err` line: never a partial `ok`).
+`n > UIM_ENV_MAX`, `len > cap` or a changed buffer pointer or capacity, a record that breaks the grammar, a NULL display from
+`uim_frame`, an env input that is not kind env, a `uim_next_due` at or before now on a stable scene; it poisons the session
+except after `env-inputs` and `semantic`), `internal` (a handler failed without an `err` line: never a partial `ok`).
 A last line without LF is `err ? malformed` followed by `err ? eof-without-quit`. Exit status 0 when no protocol error
 occurred and `quit` ended the session, 1 otherwise, 2 if stdout cannot be written. Static memory only.
 
@@ -90,28 +92,40 @@ occurred and `quit` ended the session, 1 otherwise, 2 if stdout cannot be writte
 
 ## `c_ui_probe` (`rules/ui.bzl`)
 
-`c_ui_probe(name, model, deps = [])`: `model` is the `c_library` of the adapter. It is a `c_binary` (sealed C17 flags, the
-facts targets of every mode) of the adapter plus `gate//ui/model:probe`, built in the modes of any `c_binary`; the grade
-uses release and san. No flag argument. A product BUCK file loads it with `load("@gate//rules:ui.bzl", "c_ui_probe")`
-(next to the `c.bzl` load; `rigor buckfiles` accepts exactly these two loads) and may name `gate//ui/model:model` (the
-header) in the `deps` of a library, binary or test; it can never name the probe library.
+`c_ui_probe(name, model)`: `model` is the `c_library` of the adapter. There is no `deps`: the adapter carries its own
+dependencies, which every gate judges as for any library (`rigor buckfiles` refuses `deps` and `visibility`). It is a
+`c_binary` (sealed C17 flags, the facts targets of every mode) of the adapter plus `gate//ui/model:probe`, built in the
+modes of any `c_binary`; the grade uses release and san. A product BUCK file loads it with
+`load("@gate//rules:ui.bzl", "c_ui_probe")` (next to the `c.bzl` load; `rigor buckfiles` accepts exactly these two loads)
+and may name `gate//ui/model:model` (the header) in the `deps` of a library, binary or test; it can never name the probe
+library, in any spelling.
 
 ## Confinement of the `uim_` symbols (P004 6.3)
 
 The `symbols` gate reserves the prefix itself (`ui-model-symbol`, `gate/rigor_lib/facts_symbols.py`), whatever the
-product's policy file says and with no policy entry of any kind: a product module that **defines or references** any
-symbol starting with `uim_` is a finding (`use` = `defined` or `referenced`), except (a) the model adapters, that is
-the dependencies of a probe binary (a target that depends on `gate//ui/model:probe`, which only `c_ui_probe` adds)
-other than the gate's own two UI libraries, and (b) the gate's probe library. The set is derived from the prefix, not from
+product's policy file says (a `trusted` entry included) and with no policy entry of any kind: a product module that
+**defines or references** any symbol starting with `uim_` is a finding (`use` = `defined` or `referenced`), except (a) the
+`model` of a `c_ui_probe`, exactly one target, and (b) the gate's probe library. The set is derived from the prefix, not from
 a list of names, and from the build graph, not from hand-written labels. A library that depends on the adapter and calls
 it is flagged; so is a module that defines and calls its own `uim_` name, and the header library if it ever defined one.
 The probe library's undeclared references to the adapter's symbols are accepted; its other symbols are judged as before.
 
-A product policy still needs ordinary entries for the gate libraries in the product's facts: in a product cell the keys
-are `gate//ui/model:model` and `gate//ui/model:probe` (`//ui/model:...` when the gate is the root cell, as in the
-selftest), the probe library with `allow` = the stdio and string functions it calls, `allow_mutable_data = true` and its
-`exports` (`main` and the `probe_*` helpers; see `selftest/ui.sh` for the working text).
+Only the gate's own targets can be exempt: labels are compared exactly, in the spelling a product build prints for the gate
+cell, `gate//ui/model:probe` (and `gate//ui/model:model`). A product's own `//ui/model:probe`, `root//ui/model:probe` and
+every other spelling never match. A product cannot have the package either: `rigor buckfiles` refuses any file under
+`ui/model/` (`reserved-package`) and any dep label `//ui/model:...`, and the product layout excludes `ui/model/**` like
+`third_party/**`. A probe binary that does not have exactly one dependency besides the gate's two libraries is
+`ui-probe-shape`, and then nothing is exempt for it.
+
+A product policy still needs ordinary entries for the gate libraries in the product's facts, keyed `gate//ui/model:model`
+and `gate//ui/model:probe` (`selftest/ui.sh` relabels the root-cell facts to that spelling): the probe library with `allow`
+= the non-gate symbols it imports, `allow_mutable_data = true` and its `exports` (`main` and the `probe_*` helpers).
+`selftest/ui_product/probe_libc.expected` is the checked-in list of those imports; `ui.sh` derives it from the facts and
+fails on any difference, and builds the policy's `allow` from it. Making the gate's UI libraries exempt from a product's
+policy, layering and RAM budget, as `gate//rt:require` is, is a separate task.
 
 ## Known gaps
 
 * `tools/validate.sh` learned the `ui` name (one case and the lane order) so that a selected `ui` runs.
+* The `model-contract` cases for a NULL display, an env input of the wrong kind, `n > UIM_ENV_MAX` and a changed buffer
+  are implemented in the probe but not driven by the toy (the record grammar, the two-TAB overflow and `due <= now` are).

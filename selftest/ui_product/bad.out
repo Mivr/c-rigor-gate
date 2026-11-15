@@ -40,8 +40,8 @@ err ? malformed
 ok apply
 err trace model-contract
 err open bad-arguments
-err advance bad-arguments
-fail apply
+err advance not-open
+err apply not-open
 err semantic not-open
 err frame not-open
 ok open
@@ -49,5 +49,18 @@ ok semantic lines 3
 title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
 button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
 notice	label		8	90	0	16	1	-	hidden	body	normal	none	none
+ok apply
+err next-due model-contract
+err semantic not-open
+ok open
+ok apply
+err advance model-contract
+ok open
+ok apply
+err trace model-contract
+ok open
+ok apply
+err semantic model-contract
+ok next-due none
 ok quit
 err ? after-quit
