@@ -1,0 +1,30 @@
+# The deviation entries the owner has acknowledged, per header (docs/ui-deviations.md). OWNER-SEALED: it must be reviewed
+# by the owner. First version: today's survey of business-apps. Every header whose deviation section the heading rule
+# finds is listed with its entry count; three headers (checkconfig.h D1/D2/D4 "(DEVIATION)", e2e.h Notes N1-N4,
+# e2eclock.h Notes N1-N2) record deviations under no heading the rule can find: their counts were made by hand and the
+# gate reports them as `deviation-section-missing` until they are tagged or the owner changes this file. The file
+# records the expected count; it does not excuse it: entries without tags are still `deviation-untagged`.
+schema = "ui-deviation-sections/1"
+product = "business-apps"
+
+[headers]
+"apps/lockers/lk/codesfile/codesfile.h" = 5
+"apps/lockers/lk/selftest/selftest.h" = 3
+"apps/lockers/lk/syncbody/syncbody.h" = 4
+"apps/lockers/lkadp/e2eclock/e2eclock.h" = 2
+"apps/lockers/lkapp/checkconfig/checkconfig.h" = 3
+"apps/lockers/lkapp/e2e/e2e.h" = 4
+"apps/lockers/lkapp/wire/wire.h" = 9
+"apps/lockers/lkrx/boot/boot.h" = 5
+"apps/lockers/lkrx/codes/codes.h" = 6
+"apps/lockers/lkrx/fold_status/fold_status.h" = 5
+"apps/lockers/lkrx/notice/notice.h" = 5
+"apps/lockers/lkrx/pad/pad.h" = 5
+"apps/lockers/lkrx/shift/shift.h" = 6
+"apps/lockers/lkrx/sync/sync.h" = 11
+"apps/lockers/lkrx/view/view.h" = 6
+"apps/lockers/lkrx/visit/visit.h" = 8
+"apps/lockers/lkrx/vstate/vstate.h" = 7
+"apps/lockers/lkui/input/input.h" = 2
+"apps/lockers/lkui/notices/notices.h" = 9
+"apps/lockers/lkui/screens/screens.h" = 12

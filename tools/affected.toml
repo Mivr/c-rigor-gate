@@ -168,6 +168,9 @@ selftests = []
 [[rule]]
 glob = "gate/rigor_lib/ui_deviations.py"
 selftests = []
+[[rule]]
+glob = "gate/rigor_lib/ui_deviations_*.py"
+selftests = []
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
