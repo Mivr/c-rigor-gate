@@ -1,0 +1,12 @@
+load("@gate//rules:c.bzl", "c_library")
+
+# The rendered-stage observer of the UI gate (P004 §2.1 O3/O4, U02). docs/ui-lvprobe.md.
+# `lvprobe_int.h` is shared by the library's own files only; callers include "ui/lvprobe/lvprobe.h".
+c_library(
+    name = "lvprobe",
+    srcs = ["encode.c", "hit.c", "pixels.c", "probe.c", "walk.c"],
+    headers = ["lvprobe.h", "lvprobe_int.h"],
+    deps = ["gate//third_party/lvgl:lvgl_private_headers"],
+    exported_deps = ["gate//third_party/lvgl:lvgl"],
+    visibility = ["PUBLIC"],
+)

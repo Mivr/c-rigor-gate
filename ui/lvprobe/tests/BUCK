@@ -1,0 +1,14 @@
+load("@gate//rules:c.bzl", "c_test")
+
+# Tests of gate//ui/lvprobe through its public header, on gate LVGL with a memory display (U02).
+c_test(
+    name = "lvprobe_tree_test",
+    srcs = ["lvprobe_tree_test.c"],
+    deps = ["//ui/lvprobe:lvprobe", "gate//third_party/lvgl:lvgl"],
+)
+
+c_test(
+    name = "lvprobe_io_test",
+    srcs = ["lvprobe_io_test.c"],
+    deps = ["//ui/lvprobe:lvprobe", "gate//third_party/lvgl:lvgl"],
+)

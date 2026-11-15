@@ -180,6 +180,11 @@ selftests = []
 [[rule]]
 glob = "rt/**"
 selftests = ["require", "product_checks", "structure", "mutate", "grade", "canaries"]
+# U02: the UI gate's renderer observer (`gate//ui/lvprobe`). No selftest reads it yet; its own tests run with
+# `tools/buck2 test //ui/lvprobe/...` (release and san). The `ui` selftest (selftest/ui.sh, a later U task) adds itself here.
+[[rule]]
+glob = "ui/lvprobe/**"
+selftests = []
 [[rule]]
 glob = "examples/**"
 selftests = ["toolchain", "ctest", "product_checks"]

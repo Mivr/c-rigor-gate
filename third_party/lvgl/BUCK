@@ -159,3 +159,21 @@ export_file(name = "gate_lv_conf.h", visibility = ["//third_party/..."])
 export_file(name = "lvgl_gate.h", visibility = ["//third_party/..."])
 
 export_file(name = "lvgl_gate.c", visibility = ["//third_party/..."])
+
+# U02: LVGL's private headers, for the gate's renderer observer gate//ui/lvprobe only (docs/ui-lvprobe.md).
+# Header-only (no sources, no flags, nothing to link). It exports every header of the manifest at its own path
+# (src/**, include/** and the three top-level headers), because the private headers include each other and the
+# public tree by relative path (src/core/lv_obj_private.h -> ../lvgl_public.h -> ../include/lvgl/lvgl.h).
+# The probe needs four private structures that have no public getter: lv_obj_class_t.name (class name),
+# lv_label_t.text_size and .recolor (the size LVGL laid the text out to), lv_draw_task_t.clip_area (the clip a
+# label is drawn with) and lv_draw_glyph_dsc_t.letter_coords (each glyph box placed by
+# lv_draw_label_iterate_characters), plus lv_display_t.screens (to observe every screen). Not on
+# third_party/ALLOWED_LABELS, so no product can name it; visible to //ui/... only.
+cxx_library(
+    name = "lvgl_private_headers",
+    exported_headers = {f: ":lvgl_src[{}]".format(f) for f in LVGL_FILES if f.endswith(".h")},
+    header_namespace = "",
+    exported_header_style = "system",
+    exported_deps = [":lvgl_headers"],
+    visibility = ["//ui/..."],
+)
