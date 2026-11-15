@@ -5242,3 +5242,21 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dt/month:month"]
+level = "L3"
+impl = ["apps/fiscal/dt/month/src/**"]
+allow = []
+exports = ["mo_fold"]
+
+[module."//apps/fiscal/dt/month:month_fold_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/month:month_refuse_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/month:month_limits_test"]
+allow = ["memset"]
+exports = ["main"]
