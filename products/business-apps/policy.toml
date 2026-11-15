@@ -5205,3 +5205,40 @@ exports = ["main"]
 [module."//lib/io/pfscript:pfscript_test"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
+
+[module."//apps/fiscal/dtc/types:types"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/dtc/types:dttypes_layout_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/ports:ports"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/dtc/ports:fake"]
+level = "L2"
+impl = ["apps/fiscal/dtc/ports/src/**"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["dtf_dev", "dtf_dev_add", "dtf_dev_ok", "dtf_log", "dtf_log_add", "dtf_log_ok", "dtf_push", "dtf_push_add",
+    "dtf_push_ok", "dtf_store", "dtf_store_add", "dtf_store_ok", "dtf_wait", "dtf_wait_add", "dtf_wait_ok"]
+
+[module."//apps/fiscal/dtc/ports:dtports_compile_test"]
+allow = ["core_str_from_cstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/ports:dtfake_dev_test"]
+allow = ["core_str_from_cstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/ports:dtfake_store_test"]
+allow = ["core_str_from_cstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/ports:dtfake_small_test"]
+allow = ["core_str_from_cstr"]
+exports = ["main"]
