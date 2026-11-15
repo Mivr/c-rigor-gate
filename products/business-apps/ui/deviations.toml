@@ -1,0 +1,9 @@
+# The deviation baseline of the business-apps UI (docs/ui-deviations.md). OWNER-SEALED: a new accepted id or a higher
+# cap needs the owner's signature (P004 section 8.5; sealing itself is a later task). The ratchet only goes down:
+# delete an id when its tag is gone (`deviation-removed` says so).
+schema = "ui-deviations/1"
+product = "business-apps"
+cap = 0
+accepted = []
+# A `reference-bug` tag must link an issue of the oracle's repository (the whole link must match).
+reference_bug_link_pattern = 'https://github\.com/Mivr/club-apps/issues/[0-9]+'
