@@ -1,0 +1,72 @@
+ink
+ink 0
+hit-test 1 1
+tap 1 1
+crop 0 0 1 1
+open 0 1
+ink
+ink 0
+ink x
+hit-test 1 1
+hit-test x 1
+tap 1 1
+tap 1 x
+crop 0 0 1 1
+crop 0 0 1 x
+frame x
+frame
+ink 1 2
+ink x
+ink 01
+ink -1
+ink 0
+ink 1
+ink 11
+ink 13
+ink 99999999999999999999999
+hit-test 1
+hit-test 1 2 3
+hit-test -1 0
+hit-test 0 -1
+hit-test 01 0
+hit-test 160 0
+hit-test 0 120
+hit-test 18446744073709551616 0
+hit-test 159 119
+tap 1
+tap 1 2 3
+tap 160 0
+tap 0 120
+tap 00 0
+crop 0 0 1
+crop 0 0 1 1 1
+crop 0 0 0 1
+crop 0 0 1 0
+crop 160 0 1 1
+crop 0 120 1 1
+crop 159 0 2 1
+crop 0 119 1 2
+crop 0 0 160 52
+crop 0 0 18446744073709551615 1
+crop 0 0 1 18446744073709551615
+crop -1 0 1 1
+crop 0 0 1 1
+tap 53 45
+tap 53 45
+hit-test 53 45
+crop 0 0 1 1
+ink
+frame
+apply 3 1 0 -
+hit-test 53 45
+crop 0 0 1 1
+ink 2
+frame
+advance 16
+ink 2
+frame
+open 0 1
+apply 3 6 0 -
+frame
+semantic
+quit

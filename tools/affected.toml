@@ -44,6 +44,13 @@ selftests = ["ui"]
 [[rule]]
 glob = "selftest/ui_product/**"
 selftests = ["ui"]
+# U05a: the probe's frame facts, run by selftest/ui.sh.
+[[rule]]
+glob = "selftest/ui_frame.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_frame_product/**"
+selftests = ["ui"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"

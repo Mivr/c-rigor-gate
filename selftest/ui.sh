@@ -209,4 +209,11 @@ gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_du
 cp "$f_misdef" "$out/f_misdef_legacy.json"; f_misdef_legacy="$out/f_misdef_legacy.json"
 gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy ctest
 
+begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
+for plat in "$REL" "$SAN"; do
+  run "$out/lvprobe.log" test --target-platforms "$plat" //ui/lvprobe/... || fail "$CUR: //ui/lvprobe/... failed in $plat" "$out/lvprobe.log"
+  grep -Eq "Pass [1-9][0-9]*\. Fail 0\." "$out/lvprobe.log" || fail "$CUR: the test summary in $plat is not a clean pass" "$out/lvprobe.log"
+done
+
+bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
 echo "ui selftest passed"

@@ -1,14 +1,16 @@
-# The UI model interface and the probe (U03, P004 4.2, 6.2, 6.3)
+# The UI model interface and the probe (U03, U05a, P004 4.2, 6.2, 6.3)
 
 The UI gate drives a product through one small, gate-owned interface, `ui/model/model.h`. A product implements it in a
 model adapter (a `c_library`); `c_ui_probe` links the adapter with the gate's `main` (`ui/model/probe_main.c` and its
-helpers) into a probe binary that speaks a line protocol on stdin and stdout. Later tasks add `lvprobe` (U02, joined at
-the seam below) and the Python driver (U05). Selftest: `selftest/ui.sh` on the toy app in `selftest/ui_product/`.
+helpers) into a probe binary that speaks a line protocol on stdin and stdout. The probe reads the rendered frame through
+`gate//ui/lvprobe` (U02, docs/ui-lvprobe.md; "Frame facts" below, U05a); the Python driver is U05. Selftest:
+`selftest/ui.sh` on the toy app in `selftest/ui_product/`, and `selftest/ui_frame.sh` (called by it) on the frame toy in
+`selftest/ui_frame_product/`.
 
 ## The interface (`ui/model/model.h`)
 
 Gate-owned types only (`uim_t` is opaque and defined by the product; `uim_buf_t {data, cap, len}`;
-`uim_input_t {kind, id, arg, text}`; `uim_result_t` = `UIM_ERROR | UIM_OK | UIM_REFUSED`). Rules for every call, written in
+`uim_input_t {kind, id, arg, text}`; `uim_result_t` = `UIM_ERROR | UIM_OK | UIM_REFUSED | UIM_MISSED`). Rules for every call, written in
 the header: static storage (no allocation; the one model object comes from `uim_instance()`), determinism (only the
 virtual clock and the seed of `uim_open` influence output), and:
 
@@ -17,6 +19,11 @@ virtual clock and the seed of `uim_open` influence output), and:
   `uim_semantic` are the exceptions. `fail open` leaves the model closed.
 * **A refusal is not a failure.** `uim_apply` returns `UIM_REFUSED` for an input that is not enabled in this state; the
   model is unchanged and the session goes on.
+* **Neither is a miss.** `uim_apply` returns `UIM_MISSED` when the input was delivered through the production path (an
+  input handler, a tap through the product's own pointer indev) but the product did not produce the intent it was aimed
+  at, for example because an overlay took the tap (the F3b class). The model may have changed; the scene is stable, the
+  session goes on. Reply `ok apply missed`. The toy produces it: a press while its notice shows is taken by the notice's
+  transparent clickable scrim.
 * **Time is the gate's.** The model exposes one time primitive, `uim_step(m, ms)`, `1 <= ms <= 16`: move the clock by
   `ms`, advance LVGL's tick by `ms`, run the LVGL timer handler once, run the product's due timers. The probe's
   `advance` owns the loop: frames are the grid `origin + k * 16 ms`; every step ends at the next grid boundary, at the
@@ -30,7 +37,7 @@ virtual clock and the seed of `uim_open` influence output), and:
 |---|---|
 | `uim_open(m, origin_ms, seed)` | cold boot to the first stable scene; callable again to restart |
 | `uim_env_inputs(m, out, cap, &count)` | the enabled env and fault inputs, fixed order, at most `UIM_ENV_MAX` (64), kind `UIM_IN_ENV` |
-| `uim_apply(m, in)` | deliver an env input, a wedge line or an intent; `UIM_OK`, `UIM_REFUSED` or `UIM_ERROR` |
+| `uim_apply(m, in)` | deliver an env input, a wedge line or an intent; `UIM_OK`, `UIM_REFUSED`, `UIM_MISSED` or `UIM_ERROR` |
 | `uim_next_due(m)` | the next deadline or `UIM_NO_DEADLINE` (also before `open`), strictly later than now on a stable scene |
 | `uim_step(m, ms)` | the time primitive above |
 | `uim_frame(m, &disp)` | adopt and render the scene; `disp` must not be NULL |
@@ -61,34 +68,99 @@ One command per line on stdin; one reply per command on stdout, flushed after ea
 (`0x20..0x7e`), single-space separated tokens, no leading, trailing or doubled space, at most 640 bytes, at most 8 tokens
 and ended by LF; any other byte (TAB, CR, NUL, anything above `0x7e`) makes it malformed. Numbers are decimal, no
 leading zeros, no overflow; `arg` may carry a `-` (never `-0`) and must fit `int32`; `id` must fit `uint32`. Text is `-`
-(empty) or lowercase hex of 1 to 256 bytes, none of them `00`. The first line the probe writes is the greeting
-`ui-probe/1 ready`.
+(empty) or lowercase hex of 1 to 256 bytes, none of them `00`. The first line the probe writes is the greeting.
+
+**The greeting.** `ui-probe/1 ready` followed by the capabilities, each a single space and a token of lowercase letters,
+digits and `-`, each at most once; today exactly `ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop`. The
+protocol name stays `ui-probe/1`: a capability only adds commands or replies, it never changes an existing one. A driver
+reads the tokens after `ready` as a set and refuses a catalogue that needs one the probe does not announce.
+`frame-facts`: `frame` carries the lvprobe records below; `ink`, `hit-test`, `tap`, `crop`: those commands;
+`apply-missed`: `apply` can reply `ok apply missed`.
 
 | Command | Reply |
 |---|---|
 | `open <origin_ms> <seed>` | `ok open` or `fail open` (clears "open") |
 | `env-inputs` | `ok env-inputs <n> <kind>:<id>:<arg>:<hex\|->...`: ONE unframed line, up to about 35 KB (64 inputs of 256 bytes, hex); a driver must read lines of that length |
-| `apply <kind 1..3> <id> <arg> <hex\|->` | `ok apply`, `ok apply refused` or `fail apply` (poisons) |
+| `apply <kind 1..3> <id> <arg> <hex\|->` | `ok apply`, `ok apply refused`, `ok apply missed` or `fail apply` (poisons); a result outside the enum is `err apply model-contract` |
 | `next-due` | `ok next-due <ms>` or `ok next-due none` |
 | `advance <to_ms>` | `ok advance <now_ms>` or `fail advance` (poisons); `to_ms` before now, more than 600000 ms ahead or past 2^52 is `err advance bad-arguments` |
-| `frame` | `ok frame lines <n>` and n lines (the lvprobe seam in `probe_frame.c`: printable ASCII and TAB only, checked; none today) or `fail frame` (poisons) |
+| `frame` | `ok frame lines <n>` and the n frame-fact lines ("Frame facts"), `fail frame` (poisons), or an `err frame` (poisons) |
+| `ink` / `ink <i>` | `ok ink lines <n>`: one `ink` or `noink` record per node of the current frame's walk that is not a root (or of node i). Never run implicitly; costs two refreshes per drawn node. `i` out of range or a root: `bad-arguments` |
+| `hit-test <x> <y>` | `ok hit-test <i>`, `ok hit-test none` or `ok hit-test blocked`: what LVGL's own pointer search finds at the point; no handler runs. Read-only: an `err` does not poison |
+| `tap <x> <y>` | `ok tap <pressed> <clicked>` (node indexes or `none`) or `ok tap blocked`: a press and release through the production pointer path, then a settle to a quiet frame. An input: an `err` poisons, `blocked` does not |
+| `crop <x> <y> <w> <h>` | `ok crop lines <h>`: one line per row, 8 lowercase hex digits (`rrggbbaa`) per pixel. The region must lie inside the display and `h x (8 w + 1) <= 65535` (160x51 fits, 160x52 does not); otherwise `bad-arguments`. Read-only |
 | `semantic`, `patches`, `trace` | `ok <name> lines <n>` followed by exactly n record lines, verbatim; `fail <name>` (patches and trace poison) |
 | `domain-count` | `ok domain-count <n>` (allowed before `open`) |
 | `domain-at <i>` | `ok domain-at` or `fail domain-at` (poisons); `i >= count` is `err domain-at bad-arguments` |
 | `quit` | `ok quit`; the probe then reads to EOF and any further non-empty line is `err ? after-quit` (once) and counted |
 
+`ink`, `hit-test`, `tap` and `crop` need a current frame: a `frame` that succeeded with no `open`, `apply`, `advance`,
+`domain-at` or `tap` after it (a tap changes the model; take a frame before the next one). Without one they are `err
+<command> no-frame` (after a syntax check of the arguments: a malformed number is `bad-arguments` first). Points and
+regions are in display pixels, decimal without sign; `x y` must lie inside the display.
+
 Replies: `ok ...` success; `fail <command>` the model returned false (an ordinary reply that poisons the session: every
 later command but `open`, `domain-count` and `quit` is `err <command> not-open` until a successful `open`); `err
-<command|?> <why>` a protocol error, counted. Whys: `malformed`, `unknown-command`, `bad-arguments` (also a wrong
+<command|?> <why>` a protocol error, counted. Whys: `malformed`, `unknown-command`, `no-frame`, `too-large` (a frame
+whose facts exceed a cap or the payload: never a truncation; poisons), `bad-arguments` (also a wrong
 argument count), `not-open`, `line-too-long`, `eof-without-quit`, `model-contract` (the model broke the interface:
 `n > UIM_ENV_MAX`, `len > cap` or a changed buffer pointer or capacity, a record that breaks the grammar, a NULL display from
-`uim_frame`, an env input that is not kind env, a `uim_next_due` at or before now on a stable scene; it poisons the session
-except after `env-inputs` and `semantic`), `internal` (a handler failed without an `err` line: never a partial `ok`).
+`uim_frame`, an env input that is not kind env, a `uim_next_due` at or before now on a stable scene, an `apply` result
+outside the enum, a display lvprobe cannot read, a changed display, a scene that never settles or keeps changing under
+the probe; it poisons the session except after `env-inputs`, `semantic` and `hit-test`), `internal` (a handler failed without an `err` line: never a partial `ok`).
 A last line without LF is `err ? malformed` followed by `err ? eof-without-quit`. Exit status 0 when no protocol error
 occurred and `quit` ended the session, 1 otherwise, 2 if stdout cannot be written. Static memory only.
 
-**Seam for U05.** `seam_frame_lines` in `probe_main.c` is called with the display after `uim_frame`; U05 writes the
-`lvprobe` facts of the frame there, as printable lines, and they become the lines of the `frame` reply.
+## Frame facts (U05a, `probe_frame.c`)
+
+`frame` calls `uim_frame`, then reads the returned display with lvprobe, in the order docs/ui-lvprobe.md ("Calls and the
+seam") prescribes: the lifecycle events queued since the previous frame (`lvprobe_life`, every frame), refreshes until
+one flushes nothing (`lvprobe_settle`, at most `PROBE_SETTLE_MAX` = 8), `lvprobe_walk`, `lvprobe_frame` (checksum and
+region hashes). "Settle and retry" statuses (`STALE`, `UNSETTLED`, or an event that arrived during the snapshot) repeat
+the whole snapshot, at most `PROBE_FRAME_TRIES` = 4 times; still moving is `err frame model-contract`. The reply is then
+streamed into the payload: `lvprobe_encode_head`, one `lvprobe_encode_node` call per node at its offset (never one
+buffer for the whole tree), then one `life` line per lifecycle event. The probe checks every byte (printable ASCII and
+TAB, LF-terminated) before the header goes out, so a reply is whole or it is one `err` line.
+
+The record types, their fields and their meaning are lvprobe's (docs/ui-lvprobe.md, "Text format" and "Definitions"):
+`lvprobe` (version, node count) and `frame` (w, h, checksum: FNV-1a of the frame) first, then per node in walk order
+`node`, for a label `label` and `fit` (glyph and visible boxes, `missing`, `clipped`; `unsupported` is per-node data,
+not an error), `region` (the node's region hash). `ink` and `noink` records come from the `ink` command only. A judge keys
+nodes through the scene, never through the index (lvprobe, "Walk order and index"). The probe adds one record type:
+
+| Line | Fields | Order |
+|---|---|---|
+| `life` | 7 | `life`, seq (lvprobe's running number), `created` or `deleted`, late (1: found on a screen observed late), node (the walk index of the deleted object in the previous walk, -1 for a creation), parent (walk index or -1), class |
+
+The first frame after an `open` has no `life` lines: lvprobe starts observing at that frame (on the display `uim_frame`
+returned) and logs what changes after it. A different display later in the same session is `err frame model-contract`.
+
+**Statuses.** A per-node `unsupported` (walk) or an unmeasurable ink (`noink unstable`, `noink transformed`) is data.
+`FULL` (a cap), `OVERFLOW` (lifecycle events lost) and a payload that cannot hold the lines are `err frame too-large`;
+`FORMAT` (not one full-size XRGB8888 buffer in DIRECT mode, no refresh timer, a rotated display), `GONE` (the display was
+deleted) and a display that never settles are `err frame model-contract`; anything else is `err frame internal`. Each
+poisons the session. In `ink`, an unstable or unsettled node is settled and retried once (lvprobe's rule); still
+unstable is `noink unstable`.
+
+**Caps and the per-frame byte budget** (`ui/model/probe.h`): `PROBE_LV_NODES` 512 objects, `PROBE_LV_TEXT` 16384 bytes
+of label text, `PROBE_LV_LIFE` 1024 lifecycle events between two frames, 16 screens, `PROBE_LV_SCRATCH_PX` = 1280 x 800
+ink pixels (the largest node box). The lines of one reply hold at most `UIM_BUF_MAX` - 1 = 65535 bytes. A node takes at
+most `LVPROBE_LINE_FIXED` (1024) + 4 x (class name + text + full text) bytes and a `life` line at most 96; typical: 60 to
+90 bytes for a plain node with its region, a label about 100 more plus 4 per UTF-8 byte of its text. lvprobe measured a
+Bulgarian screen of 84 objects at 14,790 bytes; the toy's frame (9 objects) is about 1 KB. A frame over the budget (the frame toy's
+400 labels, `selftest/ui_frame_product/bad.in`) is `err frame too-large`, never a truncated reply.
+
+**Storage and order.** The probe owns the lvprobe object (`probe_main.c`) and all its storage (`probe_frame.c`), static.
+lvprobe is closed before every `uim_open` (the model may delete the display) and before exit; `lvprobe_close` finds
+neither display nor indev when they are already gone. **Which indev:** the first pointer indev of the display in LVGL's
+list (the product's own) carries the taps; with none, lvprobe creates its own (docs/ui-lvprobe.md, "Which indev").
+
+**Hit query and tap.** `hit-test` is `lvprobe_hit_test` (LVGL's `lv_indev_search_obj` over sys, top, active and bottom
+roots): no input event is sent, so no product handler runs and the trace stays as it was. `tap` is `lvprobe_hit`: a press
+and release through the pointer indev, the product's handlers run; then the probe refreshes to a quiet frame. The reply
+names the walk index of the pressed and of the clicked object; an object outside the walk is `err tap internal`. A tap
+moves no clock and calls no model function: a product whose handlers queue work for its next step shows it after the next
+`advance` (the interface has no "run queued work now" call).
 
 ## `c_ui_probe` (`rules/ui.bzl`)
 
@@ -125,6 +197,14 @@ fails on any difference, and builds the policy's `allow` from it. Making the gat
 policy, layering and RAM budget, as `gate//rt:require` is, is a separate task.
 
 ## Known gaps
+
+* lvprobe's font ids are not mapped (`lvprobe_map_font`): every label's font field is `-`. The gate does not know the
+  product's fonts; mapping them needs a model call or a sealed table (a later task).
+* The probe library's exports are a fixed list in `selftest/ui.sh`'s product policy, so `frame`, `ink`, `hit-test`, `tap`
+  and `crop` share the one entry point `probe_cmd_frame` (by `p->cmd`), and `probe_frame.c` holds all of the seam.
+* The probe library's dependency on `gate//ui/lvprobe` needs no facts in the `symbols` gate (`UI_LVPROBE` in
+  `gate/rigor_lib/facts_symbols.py`): without them it grants nothing, so the lvprobe and LVGL names the probe library
+  calls are in its `allow`, from `selftest/ui_product/probe_libc.expected`.
 
 * `tools/validate.sh` learned the `ui` name (one case and the lane order) so that a selected `ui` runs.
 * The `model-contract` cases for a NULL display, an env input of the wrong kind, `n > UIM_ENV_MAX` and a changed buffer
