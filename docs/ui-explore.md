@@ -7,61 +7,74 @@ owner-declared abstraction key, applies the judges and writes one JSON line per 
 
 | Module | Concern |
 |---|---|
-| `ui_explore.py` | the CLI, paths files, evidence, summary, signals |
+| `ui_explore.py` | the CLI: paths files, output safety, evidence, summary, signals, the capability launch |
 | `ui_explore_probe.py` | the probe client: one process, deadlines, the run budget, typed errors, process groups |
 | `ui_explore_grammar.py` | the reply and record grammar and the protocol's limits |
 | `ui_explore_catalogue.py` | the catalogue and key loader (`ui-events/1`) |
 | `ui_explore_key.py` | projection, key hash, derived facts, normalised record, readable state |
-| `ui_explore_run.py` | path words, time, run-twice comparison |
+| `ui_explore_words.py` | what one path word does: inputs, the refusal check, time, drains, starvation counting |
+| `ui_explore_run.py` | steps, runs, run-twice comparison |
 | `ui_explore_judges.py` | findings, step judges and run judges, key-too-coarse |
-| `ui_explore_coverage.py` | the exploration (visited graph) and the exploration judges (C1, C8) |
-| `ui_explore_strategies.py` | sweep, bfs, walk, replay |
+| `ui_explore_coverage.py` | the exploration (visited graph) and the exploration judges (C1, C8, key facts) |
+| `ui_explore_strategies.py` | sweep, bfs, walk, replay, and the cost check |
 | `ui_explore_png.py` | the PNG writer |
 
-Selftest: `selftest/ui.sh` steps 8 to 14 on the toy probe and three fixture adapters. Unit tests:
+Selftest: `selftest/ui.sh` steps 8 to 15. The fixtures are the toy probe and three adapters: a nondeterministic one, a
+starving one and one with a perpetual tick. The last step checks that no probe process is left. Unit tests:
 `gate/tests/test_ui_explore*.py`, with a stub probe (`gate/tests/data/ui_explore/stub_probe.py`, one mode per
-misbehaviour).
+misbehaviour). Each test module's `tearDownModule` fails if a stub it started is still alive. A stub that would sleep
+exits as soon as its parent is gone.
 
 ## The CLI
 
 ```
 rigor ui-explore --probe BIN --catalogue FILE.events.toml --strategy sweep|bfs|walk|replay --out FINDINGS
-                 [--contract FILE] [--deadline-ms N] [--budget-s N] [--starvation-steps N] [--require C1,C8]
-                 [--evidence DIR] [--summary FILE]
+                 [--contract FILE] [--deadline-ms N] [--budget-s N] [--require C1,C8] [--evidence DIR] [--summary FILE]
   sweep:  --origin-ms N --seed N
   bfs:    --origin-ms N --seed N --depth D (1..64) --max-states M (1..1000000)
   walk:   --origin-ms N --seed N --walk-seeds S1,S2,... --walk-length L (1..10000) --extra-origins K (0..16)
   replay: --paths FILE (ui-explore-paths/1)
 ```
 
-Exit 0: no finding of severity error. 1: at least one. 2: the gate could not decide. That covers an argument that is
-missing, refused for the strategy, out of range, or written with a leading zero; an unreadable or malformed catalogue,
-paths file or contract (nesting too deep included); a probe that is not an executable file or cannot be executed (an exec
-format error included); an `--evidence` directory that exists and is not empty; catalogue taps for a probe without the
-tap capability; `sweep` on a model without a view domain; `bfs` or `walk` with no sendable event.
+Exit 0: no finding of severity error. 1: at least one. 2: the gate could not decide. That covers:
+- an argument that is missing, refused for the strategy, out of range, or written with a leading zero;
+- an unreadable or malformed catalogue, paths file or contract (nesting too deep included);
+- a probe that is not an executable file or cannot be executed (an exec format error included);
+- an output (`--out`, `--summary`) that is the same file as an input or as the other output; this is checked before
+  anything is deleted, and nothing is deleted;
+- an `--evidence` directory that exists and is not empty;
+- catalogue taps for a probe without the tap capability;
+- `sweep` on a model without a view domain; `bfs` or `walk` with no sendable event;
+- a run whose time words could exceed the budget (see "Cost");
+- a judge's evidence file name that is not `[a-z0-9][a-z0-9_-]*.json`, or is `paths.json`.
 
-`--out` and `--summary` are removed when the run starts and written atomically when it ends, so a stale result never
-survives an exit 2 or a signal. On SIGTERM or SIGINT the explorer kills every live probe's process group and exits with
-128 + the signal.
+Nothing the product does gives exit 2. A probe that cannot greet, one whose capabilities change between launches, and a
+budget spent during the first launch are all findings.
+
+`--out` and `--summary` are removed when the run starts and written atomically at the end, so a stale result never
+survives an exit 2 or a signal. On SIGTERM, SIGINT or SIGHUP the explorer kills every live probe's process group and
+exits with 128 + the signal.
 
 | Option | Meaning |
 |---|---|
 | `--deadline-ms` (10000) | bounds every reply of the probe, the greeting, and the exit after `quit` |
-| `--budget-s` (1800) | the wall-clock budget of the whole run. When it is spent, the run stops with one `ui-explore-timeout` (`observed.kind` = `budget`), no criterion counts as evaluated, and the exit is 1, never a hang and never 2. Where it stops depends on the host's speed, so such a findings file is not reproducible |
-| `--starvation-steps` (32, at least 2) | the bound of `timer-starvation`; a replay must use the value of the run it reproduces |
+| `--budget-s` (1800) | the wall-clock budget of the whole run. When it is spent, the run stops with one `ui-explore-timeout` (`observed.kind` = `budget`), no criterion counts as evaluated, and the exit is 1, never a hang and never 2. Where it stops depends on the host, so such a findings file is not reproducible |
 | `--require` | criteria that must be evaluated; each one not evaluated becomes a `ui-coverage-gap` with `observed.evaluated` = false |
-| `--contract` | the UI contract (ui-contract/1, docs/ui-contract.md) handed to the judges; the built-in judges do not read it |
+| `--contract` | the UI contract (docs/ui-contract.md) handed to the judges; the built-in judges do not read it |
 
 Clock origins and seeds are arguments. Deriving them from the verdict's input hash (P004 6.3) belongs to the grade
 wiring (U14).
 
-Stdout: a summary line (which criteria were evaluated, `none` when none were), the strategy detail, then one line per
-finding. `--summary` writes `ui-explore-summary/1` with these keys:
-- `strategy`, `criteria` (required by the strategy), `evaluated` (judged), `budget_spent`
-- the catalogue and probe sha256
-- `runs`, `abstract_states`, `pairs_exercised`, `domain_count`, `domain_visited`
-- `events`: per sent event, `accepted_states` and `refused_states`
-- findings per check, and the strategy detail
+`--summary` (`ui-explore-summary/1`) holds:
+- `strategy`, `criteria` (required by the strategy), `evaluated` (judged), `budget_spent`;
+- the catalogue and probe sha256;
+- `runs`, `abstract_states`, `pairs_exercised`, `domain_count`, `domain_visited`;
+- `events`: per input event, `accepted_states`, `refused_states` and `missed_states`;
+- `outcomes`: per path word, its outcome types (`fired`, `now`, `past`, `no-deadline`, `deadline-within-a-frame`,
+  `no-change`, `changed`, `starving`, `unreachable`, `apply ok|refused|missed`, ...) with counts. No time outcome is
+  silent;
+- `cost`: `probe_commands` and `virtual_ms` over both runs of every path;
+- the finding counts and the strategy detail.
 
 ## Paths and time
 
@@ -72,187 +85,225 @@ A path is a list of words:
 | `open <origin_ms> <seed>` | the first word, and only there |
 | `domain-at <i>` | move to view-domain entry `i` |
 | `settle` | fire the next deadline |
-| `wait-change` | fire deadlines until the abstraction key changes |
+| `wait-change` | fire deadlines until the key changes |
 | `at <offset_ms>` | advance to origin + offset |
 | a catalogue event id | send that event |
 
 After every word the explorer reads, in this order: `frame`, `semantic`, `patches`, `trace`, `next-due`, `env-inputs`.
-The `open` step reads `domain-count` first. One observation per step. Frame-seam lines are parsed by the record grammar
-(TAB-split fields, unescaped) and kept verbatim alongside. A failing command ends the run at that step and becomes a
-finding. Nothing is retried, and no run is shortened silently.
+The `open` step reads `domain-count` first. Patches and trace fetched during the word (drains and snapshots) come first
+in the step's `patches` and `trace`, so nothing is lost and run-twice compares all of it. Frame-seam lines are parsed by
+the record grammar (fields split and unescaped), and the verbatim text is kept alongside. A failing command ends the
+run at that step and becomes a finding. Nothing is retried, and no run is shortened silently.
 
-**Virtual time.** Every time word is bounded by the catalogue's `max_wait_ms`, which has a hard ceiling of 1 h in code.
-A wait that is longer, or that passes the protocol's clock limit (2^52), is not taken: the step records it and it is
-the finding `timer-unreachable`, with the target, now, the limit and the reason (`max-wait` or `protocol-limit`). Time
-words:
-- `fire-due` and `settle` advance to `next-due`.
-- `before-due` advances to `next-due` minus one frame.
-- `advance` (`ms`, at most `max_wait_ms`, checked at load) and `at` advance by or to a fixed time.
-- `until-change` and `wait-change` fire deadlines until the key differs from the step before. They end in one of four
-  ways:
+**Virtual time.** Every time word is bounded by the catalogue's `max_wait_ms`, which has a hard ceiling of 1 h. A wait
+that is longer, or that passes the protocol's clock (2^52), is not taken. The step records it as `timer-unreachable`,
+with the target, now, the limit and the reason (`max-wait` or `protocol-limit`). This holds for `fire-due`, `settle`,
+`before-due`, `at`, and for the first deadline of `until-change` and `wait-change`. A `next-due` reply takes the full
+uint64 range the probe can print; a huge value is simply unreachable.
+
+The time words:
+- `before-due` within a frame of now is the outcome `deadline-within-a-frame`; `at` an offset already past is `past`.
+- `until-change` and `wait-change` end in one of these outcomes:
   - `changed`;
   - `no-deadline`;
-  - `no-change`: the next deadline is past `max_wait_ms`. This is a quiet state of a product with a perpetual tick, not
-    a finding;
-  - `starving`: `--starvation-steps` consecutive firings each left the next deadline within a frame. This is a
-    `timer-starvation`.
+  - `no-change`: a later deadline lies past `max_wait_ms`. This is a quiet state of a perpetual tick, not a finding;
+  - `starving`.
 
-On a product with a perpetual tick, one notice expiry is then one event, not 32 tick firings.
+  On a ticking product, one notice expiry is then one event.
 
-**Advances are split on the frame grid.** Each `advance` command spans at most 64 frames (1024 ms) and ends on the grid
-`origin + k * 16` or at the target. The probe's loop already ends every `uim_step` at each grid boundary and each
-deadline, so the split calls the model with exactly the same step lengths as one long advance. What the split buys is
-that the per-command deadline holds on a slow product: 64 steps per command, where a 5-minute idle is about 19 000 steps.
+**Advances** go in spans of at most min(64, `drain_ms` / 16) frames, each ending on the grid `origin + k * 16` or at the
+target. Patches and trace are fetched after every span that does not end the advance. `drain_ms` is required: a whole
+number of frames, at most 60 000, since the real adapter's logs hold about a minute. The probe's own loop ends every
+`uim_step` at each grid boundary and each deadline, so the split calls the model with exactly the same step lengths as
+one long advance. It only bounds the work per command, keeping the per-command deadline valid on a slow product, and the
+log volume between drains.
 
-**Run-twice (L0).** Every path runs in a fresh probe, then its words run again in another fresh probe. `sweep`, `bfs`
-and `walk` append `settle` words to the first run while a deadline is pending. The suffix stops when no deadline is
-left, when a firing leaves the next deadline more than a frame away (so on a perpetual 250 ms tick it ends after one
-firing), when a wait is unreachable, or after `--starvation-steps` consecutive firings within a frame. The second run
-executes exactly the words of the first. `replay` appends nothing.
+**Starvation (L0).** Every deadline firing (`fire-due`, `settle`, and each firing inside `until-change`) is counted
+with its virtual time. More than `firings` firings within `window_frames` frames of virtual time is `timer-starvation`:
+- the defaults are 32 firings within 64 frames (1024 ms);
+- a catalogue may set both: `starvation = { firings, window_frames, provenance }`, where the provenance takes the UI
+  contract's forms;
+- it is reported once per run, at the firing that crossed the limit, for the state before the first firing of that
+  window.
 
-**What the gate checks itself.** The client is strict about stray output. Bytes left in the buffer before a command is
-sent, and anything after `ok quit`, are protocol errors. After `ok quit` the probe must close its output and exit 0
-within the deadline. A reply that only says `ok apply refused` must change nothing: empty patches and trace, and the
-same semantic records, next deadline and env inputs as the step before. Otherwise it is `probe-internal-error` with
-kind `contract`.
+Alternating short and long delays (1 ms, 17 ms) are caught as well as a 0-delay loop. A deadline at or before now (the
+probe's `err next-due|advance model-contract`, or a `next-due` that is not after now) is `timer-starvation` with kind
+`zero-delay`.
+
+A legitimate perpetual timer with a period of at most 1024 / 33 ms (about 31 ms, so a one-frame animation included)
+would be flagged too. Whether the owner allows such timers is an open decision. A stable scene must not have one
+(model.h).
+
+**The settle check.** `sweep`, `bfs` and `walk` follow every first run with `settle` words for one starvation window
+of virtual time. It ends when no deadline is left inside the window, a wait is unreachable, or the run starves, so
+there are at most `firings` + 1 of them. A perpetual 250 ms tick gives 4. The second run executes exactly the words of
+the first; `replay` appends nothing.
+
+**Inputs and the refusal check.** Every `apply` and `tap` of a word is checked on its own. Before it the explorer holds
+a snapshot: semantic records, next deadline, env inputs and frame lines. For the first input of a word that is the step
+before's observation; otherwise a fresh one. After a refused input it takes another snapshot and fetches patches and
+trace. Anything new, or any difference (frame lines included), is `probe-internal-error` with kind `contract`, at that
+input; a refused pad digit that changes the model is caught at that digit.
+
+A word's outcome is the outcome of its last input, so a pad macro is accepted only when its enter is. `ok apply missed`
+(only from a probe that announces `apply-missed`) means the input was delivered but the product did not produce the
+intent it was aimed at. It is not a refusal and is not checked; the session continues; it is the finding
+`intent-missed`, and it never satisfies `expect = "accept"`.
+
+**The strict client.** Output nobody asked for is a protocol error. Before every command the client looks once, without
+blocking, at what is buffered or readable. Every reply line is capped at 65 536 bytes, and so is a framed reply's
+payload; env ids must fit uint32, args int32, and `domain-count` must be at most 65 535. After `ok quit` nothing may
+follow, the output must end, and the probe must exit 0 within the deadline. The probe is waited for without being
+reaped (pidfd and WNOWAIT), then its whole process group is killed and the probe reaped. A grandchild holding stdout
+dies with it, and a reaped pid is never signalled.
 
 **Paths file** (`ui-explore-paths/1`, strict JSON, exactly these keys, no duplicate key, nesting bounded):
 `{"schema": "ui-explore-paths/1", "criteria": [<"C1"|"C8">...], "paths": [[<word>...], ...]}`. With `--evidence DIR`,
-every finding gets `DIR/<12 hex of its id>/paths.json`. That file replays the finding with the criteria of its strategy;
-for `key-too-coarse` it holds the witness path, then the path.
+every finding gets `DIR/<12 hex of its id>/paths.json`, which replays it with the criteria of its strategy. For
+`key-too-coarse` it holds the witness path, then the path. A `not-evaluated` finding replays only with the same
+`--require`.
+
+## Cost
+
+BFS replays every path from `open`, so a long time word in a prefix is paid by every descendant; this task adds no
+prefix caching. The summary reports `cost` (`probe_commands`, `virtual_ms`).
+
+Before running, the explorer refuses (exit 2) a run whose worst virtual time exceeds `--budget-s` x 16 000. The rate
+comes from the cost model: about 16 000 ms of virtual time per wall second, the lockers adapter's ~1 ms per 16 ms step.
+Worst virtual time, by strategy:
+- bfs: 2 x max_states x the sum, over sendable events, of (the event's longest span + one starvation window);
+- walk: 2 x seeds x origins x (length x the longest span + one window);
+- replay: 2 x the spans of its words.
+
+The longest span of `fire-due`, `before-due`, `until-change`, `settle` and `wait-change` is `max_wait_ms`; of `advance`,
+its `ms`; of `at`, min(offset, `max_wait_ms`).
 
 ## The event catalogue (`ui-events/1`)
 
 One sealed, versioned TOML file per app (P004 4.3 item 2, 8.5): `products/<product>/ui/<app>.events.toml`. The selftest
 has three:
-- `selftest/ui_product/toy.events.toml`, the toy's;
+- `selftest/ui_product/toy.events.toml`;
 - `toy_coarse.events.toml`, a deliberately coarse key;
 - `fixture.events.toml`, for the fixture adapters, which accept only the press.
 
-Top level, all required, nothing else:
+Top level, all required unless marked otherwise, nothing else:
 - `schema = "ui-events/1"`;
-- `product` and `app` (lowercase names), `version` (an integer, at least 1);
+- `product`, `app`, `version`;
 - `max_wait_ms` (1 to 3 600 000);
+- `drain_ms` (16 to 60 000, a multiple of 16);
+- optional `starvation`;
 - `[key]`;
 - one table per class, each with exactly one key `events`, a list of inline tables. The list may be empty; the table may
   not be absent.
 
-At least one T1 event is required: states reached only through time must be BFS nodes. Every event has an `id`
-(`[a-z][a-z0-9-]*`, at most 64 characters, unique over the file, never a reserved path word). An event has exactly the
-keys of its class, and every event sent through `apply` declares `expect`: `accept` means it must be accepted in at
-least one reachable state; `refuse` means it must be refused in every one (for example an empty code line).
+The loader refuses vacuous catalogues. It needs at least one T1 event (states reached only through time must be BFS
+nodes) and at least one input event with `expect = "accept"`, so a T1-only or all-`refuse` catalogue is refused. Ids
+are `[a-z][a-z0-9-]*`, at most 64 characters, unique, never a reserved path word. Every `apply` event declares
+`expect`: `accept` (accepted in at least one reachable state) or `refuse` (refused in every one).
 
 | Class | Meaning (P004 4.3) | Keys | Sent as |
 |---|---|---|---|
 | `u1` | intent taps | `intent` (uint32), `arg` (int32), `expect` | `apply 3 <intent> <arg> -` |
-| `u2` | probe taps through the hit-test | `x`, `y` (0..65535) | `tap x y`, only to a probe whose greeting announces `tap` |
+| `u2` | probe taps through the hit-test | `x`, `y` (0..65535) | `tap x y`, only to a probe that announces `tap` |
 | `u3` | complement taps | `x`, `y` | as `u2` |
-| `u4` | code macros with a boundary class | `boundary` (`empty`, `one-digit`, `max-minus-1`, `max`, `max-plus-1`, `valid-visitor`, `valid-staff`, `unknown`, `expired`, `non-digit`), `expect`, and either `via = "wedge"` with `hex`, or `via = "pad"` with `digits`, `digit_intent`, `enter_intent` | wedge: `apply 2 0 0 <hex>`; pad: `apply 3 <digit_intent> <d>` per digit, then `apply 3 <enter_intent> 0`, all one step |
+| `u4` | code macros with a boundary class | `boundary`, `expect`, and either `via = "wedge"` with `hex`, or `via = "pad"` with `digits`, `digit_intent`, `enter_intent` | wedge: `apply 2 0 0 <hex>`; pad: one `apply 3 <digit_intent> <d>` per digit, then `apply 3 <enter_intent> 0`; one step |
 | `u5` | language | `intent`, `arg`, `expect` | as `u1` |
 | `e1` | environment replies | `env` (uint32), `arg`, `hex`, `expect` | `apply 1 <env> <arg> <hex>` |
-| `t1` | virtual-time events | `kind`: `fire-due`, `before-due`, `until-change`, `advance` with `ms`, or `at` with `offset_ms` | see "Paths and time" |
+| `t1` | virtual-time events | `kind`: `fire-due`, `before-due`, `until-change`, `advance` with `ms` (at most `max_wait_ms`), or `at` with `offset_ms` | see "Paths and time" |
 
-`hex` is lowercase hex of 0 to 256 bytes, none of them `00`.
+The `u4` boundary classes are `empty`, `one-digit`, `max-minus-1`, `max`, `max-plus-1`, `valid-visitor`, `valid-staff`,
+`unknown`, `expired` and `non-digit`.
 
-**Taps.** A probe announces capabilities in its greeting: `ui-probe/1 ready[ <cap>...]`. The only known capability is
-`tap`. An unknown, repeated or unordered capability is a protocol error. A catalogue with `u2` or `u3` events is exit 2
-until the probe announces `tap`; the C probe does not announce it yet. The explorer reads the greeting in one
-capability session before the run. Taps declare no `expect`; their expected outcome comes with the hit-test task.
+**Capabilities.** A probe's greeting is `ui-probe/1 ready[ <cap>...]`. The known capabilities, in this order:
+`frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`. An unknown, repeated or unordered capability is a protocol
+error. The first launch fixes the capabilities, and a later launch that announces others is a protocol finding.
+Catalogue taps need `tap`. A probe that cannot greet is reported as such, not as missing capabilities.
 
 **The abstraction key** (P004 4.3 item 3):
 
 ```toml
 [key]
 fields  = [...]   # semantic fields: any of role label x y w h enabled intent flags style importance input_policy wrap_policy
-facts   = [...]   # model facts: "deadline" (none | within-frame | pending), "env-inputs" (the enabled env inputs)
+facts   = [...]   # model facts: "deadline" (none | within-frame | pending), "env-inputs"
 derived = [...]   # named derived facts (below)
 ignore  = [...]   # { field, provenance, reason }: fields left out of the record key-too-coarse compares
 ```
 
 All four are required. A key with no fields, no facts and no derived facts is refused. An `ignore` entry needs a
-provenance of the UI contract's forms (`spec:`, `oracle:`, `literature:`, `design:`, `owner:`; docs/ui-contract.md) and
-a reason. An ignored field may not also be a key field, and no field may be ignored twice.
+provenance in the UI contract's forms and a reason; it may not also be a key field, and no field may be ignored twice.
+The key is the sha256 of the canonical JSON of `{"nodes": [[<node key>, <declared fields>] per record, in tree order],
+"facts": {<declared and derived facts>}}`, fields in their escaped spelling. It is exact.
 
-The key is the sha256 of the canonical JSON of `{"nodes": [[<node key>, <declared fields in the order above>] per
-semantic record, in tree order], "facts": {<declared facts and every derived fact by name>}}`. The fields are taken in
-their escaped record spelling. It is exact, never a similarity measure.
-
-**Derived facts** come from a closed set of operators, so that a field can be bucketed without dropping it everywhere.
-Free-form expressions do not exist. Each fact has a `name` (unique; not `deadline` or `env-inputs`), and every key is
-checked:
+**Derived facts** come from a closed set of operators. Each has a `name`, unique and not `deadline` or `env-inputs`, and
+its keys are checked strictly:
 
 | `op` | Keys | Value |
 |---|---|---|
 | `presence` | `node` or `role` | whether a record with that node key or role exists |
 | `count` | `node` or `role` | how many |
-| `select` | `node` or `role`, `field` | the list of that field's values |
-| `bucket` | `node` or `role`, `field`, `measure` (`value`: the field as a decimal number; `length`: its unescaped byte length; `digits`: the first run of digits in it), `boundaries` | per record, the bucket index (`bisect_right`), or `none` |
-| `bucket` | `model` (`due-in-ms` or `env-count`), `boundaries` | the bucket index, or `none` |
+| `select` | `node` or `role`, `field` | the field's values |
+| `bucket` | `node` or `role`, `field`, `measure`, `boundaries` | per record, the `bisect_right` index of the measure, or `none` |
+| `bucket` | `model` (`due-in-ms` or `env-count`), `boundaries` | the index, or `none` |
 
-`boundaries` are 1 to 32 strictly increasing integers.
+The measures are `value` (the field as a decimal), `length` (its characters: NFC code points of the UTF-8, so Bulgarian
+counts right; `none` if it is not UTF-8) and `digits` (the first run of digits). `boundaries` are 1 to 32 strictly
+increasing integers.
+
+`node` and `role` are given in the record grammar's escaped spelling, so any key or role the grammar can carry can be
+selected, escaped bytes included. They are compared exactly.
+
+A derived fact whose selector matched no record in any visited state is `key-fact-unmatched`: it would be a constant,
+not a fact. `ignore` cannot hide a derived fact from `key-too-coarse`: the normalised record holds every derived and
+model fact whatever is ignored.
 
 ## Strategies
 
-Iteration order is fixed: catalogue order for events (class order `u1 u2 u3 u4 u5 e1 t1`, then file order), discovery
-order for states, argument order for seeds and paths. Required criteria:
+Iteration order is fixed: catalogue order for events, discovery order for states, argument order for seeds and paths.
+Required criteria:
 - `sweep`: C1;
 - `bfs`: C8;
-- `walk`: none (it is a supplement);
-- `replay`: the criteria of its paths file.
+- `walk`: none;
+- `replay`: those of its paths file.
 
 What each strategy does:
-- **sweep**: `open`, then `[open, domain-at i]` for every `i < domain-count`.
-- **bfs**: from `open`, over (abstract state x sendable catalogue event). Every path is replayed from `open`. A new key
-  is admitted while fewer than `--max-states` are; later ones are dropped, though they still count as reachable for C8.
-  `states_per_depth` reports new states per depth (depth 0 is `open`). The search stops at the first depth that adds
-  none.
-- **walk**: per seed, `--walk-length` sendable events. The event of step `j` is `sha256("ui-explore walk <seed> <j>")[:8]`
-  modulo the event count. Each walk runs at `--origin-ms` and at `--extra-origins` more origins; origin `k` is
-  `sha256("ui-explore origin <seed> <k>")[:8]` modulo 2^40.
-- **replay**: the paths of a paths file, with nothing appended.
+- **sweep**: `open`, then `[open, domain-at i]` for every `i`.
+- **bfs**: from `open`, over (abstract state x sendable event). States beyond `--max-states` are dropped, though they
+  are still reachable for C8. It reports `states_per_depth` and stops at the first depth that adds none.
+- **walk**: per seed, events chosen by `sha256("ui-explore walk <seed> <j>")[:8]` modulo the event count. It runs at
+  `--origin-ms` and at `--extra-origins` more origins, `sha256("ui-explore origin <seed> <k>")[:8]` modulo 2^40.
+- **replay**: the paths of a paths file.
 
 ## Findings (P004 4.5, 3.7)
 
-`--out` holds one canonical JSON object per line, one per id, sorted by id. When several instances share an id, the
-one with the shortest path is kept, then the one with the smallest canonical bytes. The same inputs give the same bytes,
-also for a nondeterministic product. The values that vary go to the evidence, never into `observed`, and product text
-appears in no `observed`. The selftest compares two non-empty findings files of the nondeterministic fixture with
-`cmp`.
-
-| Key | Value |
-|---|---|
-| `id` | `ui-explore.<check>/<first 12 hex of sha256(canonical JSON of [check, identity])>` |
-| `gate`, `check` | `ui-explore`, the check |
-| `layer` | `L0` for model-nondeterministic, run-twice-mismatch and timer-starvation; `meta` otherwise |
-| `severity` | `info` for key-too-coarse (P004 3.7: reported first, promoted later); `error` for every other check |
-| `state` | `{"key", "origin_ms", "projection": {"nodes": [{"key": ..., <declared field>: ...}], "facts": {...}}}`, or null |
-| `path` | the words that reproduce it |
-| `observed` | check-specific, below |
-| `blame` | `[]` |
-| `evidence` | with `--evidence`, the files written for it, relative to that directory |
-| `explanation` | null |
+`--out` holds one canonical JSON object per line, one per id, sorted by id. The same inputs give the same bytes, also
+for a nondeterministic product, because values that vary go to the evidence and no product text appears in `observed`.
+Keys: `id` (`ui-explore.<check>/<12 hex of sha256([check, identity])>`), `gate`, `check`, `layer` (`L0` for
+nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` for key-too-coarse, otherwise
+`error`), `state` (`{"key", "origin_ms", "projection": {"nodes": [...], "facts": {...}}}` or null), `path`, `observed`,
+`blame` (`[]`), `evidence`, `explanation` (null).
 
 | Check | When | Identity | `observed` |
 |---|---|---|---|
-| `probe-internal-error` | `kind` `protocol` (wrong shape or a line that is not the reply to the command: also output nobody asked for, which timing may catch before the next command or as its reply; an `err` reply; a `fail` reply to `next-due`, `domain-count` or `quit`, a protocol bound exceeded: more than 65536 payload bytes, an env id beyond uint32 or an arg beyond int32, a domain count above 65535, an unknown capability); `fail` (a model call failed); `contract` (a refused input changed the model); `crash` (output ended, or exit status not 0 after `quit`) | kind, command, key before, word | `kind`, `command`, `detail` (gate text), `step`; the probe's bytes go to `error.json` |
-| `ui-explore-timeout` | no reply within `--deadline-ms` (the group is killed); or the run budget spent (`kind` `budget`, identity `["budget", catalogue sha, strategy]`) | as above | as above |
-| `timer-starvation` | `--starvation-steps` consecutive firings each left the next deadline at most 16 ms after now; or a deadline at or before now (`kind` `zero-delay`: the probe's `err next-due/advance model-contract`, or a `next-due` not after now) | `["streak", key]`, or the probe-error identity | `firings`, `frame_ms`, `now_and_next_due`; or the error fields |
-| `timer-unreachable` | a time word's wait passes `max_wait_ms` or 2^52 | key before, word, reason | `word`, `target_ms`, `now_ms`, `max_wait_ms`, `reason` |
-| `model-nondeterministic` | the two runs' `trace` replies differ | key before, word, `trace` | `step`, `word`, `part`, `item`; both values in `runs.json` |
-| `run-twice-mismatch` | the first other part that differs, in read order (domain, outcome, frame, semantic, patches, trace, next-due, env, now, error) | key before, word, part | as above |
-| `ui-coverage-gap` | C1: an entry not visited; C8: a reachable (key, event) pair not exercised, or an enabled env input that is no `e1` event; a `--require`d criterion not evaluated | `["C1", sha, i]`, `["C8", key, event]`, `["C8-env", key, input]`, `["not-evaluated", criterion, sha]` | `criterion` and the entry or event, or `undeclared_env_input` [id, arg] (the text goes to `env-input.json`), or `evaluated` false |
-| `event-never-accepted` | an `expect = "accept"` event that was refused in every state it was sent in (C8) | catalogue sha, event | `event`, `expect`, `accepted_states`, `refused_states` |
-| `event-accepted` | an `expect = "refuse"` event that was accepted somewhere (C8) | catalogue sha, event | as above |
-| `depth-unsaturated` | bfs: the last depth still added states, or the state bound dropped some | `["depth", sha, depth, max_states]` | bounds, `states_per_depth`, `dropped_states`, `reasons` |
-| `key-too-coarse` | two steps with equal keys whose normalised records differ. The normalised record is every semantic field except the justified `ignore` fields, plus every model fact and every derived fact | key | `witness_path`, `differs_in` (`nodes`, `facts`); both records in `records.json` |
+| `probe-internal-error` | `kind` `protocol`, `fail`, `contract` or `crash` (see "The strict client" and "Inputs") | kind, command, key before, word | `kind`, `command`, `detail` (gate text), `step`; the probe's bytes go to `error.json` |
+| `ui-explore-timeout` | no reply within `--deadline-ms`; or the budget spent (`kind` `budget`, identity `["budget", sha, strategy]`) | as above | as above |
+| `timer-starvation` | more than `firings` firings within the window; or `zero-delay` | `["window", key]`, or the probe-error identity | `firings`, `limit`, `window_ms`, `first_ms`, `last_ms` |
+| `timer-unreachable` | a wait past `max_wait_ms` or 2^52 | key before, word, reason | `word`, `target_ms`, `now_ms`, `max_wait_ms`, `reason` |
+| `model-nondeterministic` | the two runs' traces differ | key before, word, `trace` | `step`, `word`, `part`, `item`; both values in `runs.json` |
+| `run-twice-mismatch` | the first other differing part, in read order | key before, word, part | as above |
+| `intent-missed` | an input's outcome was `missed` | key before, word | `word`, `applies` |
+| `ui-coverage-gap` | C1 entry not visited; C8 pair not exercised; an env input that is no `e1` event; a `--require`d criterion not evaluated | `["C1", sha, i]`, `["C8", key, event]`, `["C8-env", key, input]`, `["not-evaluated", criterion, sha]` | criterion-specific |
+| `event-never-accepted` | an `accept` event whose outcome was never `ok` | sha, event | `event`, `expect`, per-outcome state counts; `path` is the first refusing send |
+| `event-accepted` | a `refuse` event accepted somewhere | sha, event | as above; `path` is the first accepting send |
+| `key-fact-unmatched` | a derived fact's selector never matched | sha, fact | `fact`, `node`, `role` |
+| `depth-unsaturated` | the last bfs depth added states, or the bound dropped some | `["depth", sha, depth, max_states]` | bounds, `states_per_depth`, `dropped_states`, `reasons` |
+| `key-too-coarse` | equal keys, different normalised records (every semantic field but justified ignores, plus every model and derived fact) | key | `witness_path`, `differs_in`; both records in `records.json` |
 
-**About the starvation criterion.** A legitimate periodic timer with a period of 16 ms or less would be flagged too:
-every firing leaves the next deadline within a frame. Such a timer is an animation, which a stable scene must not have
-(model.h).
+**Output nobody asked for.** Timing decides whether a stray line is caught before a command or read as that command's
+reply. Such a "line that is not the reply" therefore leaves the command out of the identity and of `observed` (it goes
+to `error.json`), and run-twice does not compare which command caught it.
 
-**Replay.** Every finding's `paths.json` replays to the same id. The unit test `test_every_finding_replays_to_the_same_id`
-checks this on more than 20 findings, and `selftest/ui.sh` checks it on the fixture probes. The exceptions are
-`depth-unsaturated` and the budget timeout, which describe a run, not a path.
+**Replay.** Every finding's `paths.json` replays to the same id. The exceptions are `depth-unsaturated` and the budget
+timeout, which describe a run; a `not-evaluated` finding replays only with the same `--require`.
 
 ## The judge interface
 
@@ -261,44 +312,47 @@ observed, evidence=None)`:
 
 | Kind | Signature | Called |
 |---|---|---|
-| step judge | `judge(step, path, contract)` | once per completed step of every first run, in order |
-| run judge | `judge(first, second, contract)` | once per path, with both runs (`ui_explore_run.Run`: `words`, `steps`, `error`) |
-| exploration judge | `judge(exploration, contract) -> (evaluated, findings)` | once at the end; registered by criterion in `ui_explore_coverage.CRITERIA` (C1, C8) |
+| step judge | `judge(step, path, contract)` | once per completed step of every first run |
+| run judge | `judge(first, second, contract)` | once per path, with both runs |
+| exploration judge | `judge(exploration, contract) -> (evaluated, findings)` | once at the end; registered by criterion in `ui_explore_coverage.CRITERIA` |
 
 What a step judge receives:
-- `step` is a `ui_explore_run.Step`: `index`, `word`, `outcome`, `applies`, `obs` (the replies; `frame` holds parsed
-  `Record`s with `raw`, `fields` and `values`), `now`, `origin`, `key`, `proj`, `key_before`, `proj_before`, `streak`,
-  `unreachable`, `error`.
-- `path` is a non-copying view of the earlier steps (`PathSoFar`). A judge that does not walk it costs O(1) per step,
-  and the starvation judge does not walk it.
+- `step` is a `ui_explore_run.Step`: `index`, `word`, `outcome`, `applies`, `result` (the last input's outcome), `obs`
+  (the replies; `frame` holds parsed `Record`s with `raw`, `fields` and `values`), `now`, `origin`, `key`, `proj`,
+  `key_before`, `proj_before`, `unreachable`, `starved`, `error`.
+- `path` is a non-copying view of the earlier steps, so a judge that does not walk it costs O(1) per step.
 
-The exploration (`Exploration`) holds the visited graph: `reachable` (key to path, projection and origin), `edges`
-(key before, word, key after), `env`, per-event acceptance (`events`) and the domain. An exploration judge returns
-`evaluated` = false when it could not judge (for example C1 without a view domain); the criterion then does not appear
-in `evaluated`.
+`contract` is the loaded UI contract or None; a judge that needs it must refuse to run without one.
 
-`contract` is the loaded UI contract or None. A judge that needs it must refuse to run without one.
-
-To attach evidence, a judge passes `evidence={"<file>.json": <JSON data>}`. The explorer writes those files next to
-`paths.json` and lists them in `evidence`.
+To attach evidence, a judge passes `evidence={"<name>.json": data}`, where the name matches `[a-z0-9][a-z0-9_-]*.json`
+and is not `paths.json`.
 
 Built-in judges:
-- step judges: `timer-starvation`, `timer-unreachable`;
+- step judges: `timer-starvation`, `timer-unreachable`, `intent-missed`;
 - run judges: the probe errors and run-twice;
 - exploration judges: C1, and C8 with env completeness and event acceptance;
-- `key-too-coarse`, kept by the explorer over every completed step.
+- `key-fact-unmatched` and `key-too-coarse`, run by the explorer.
 
 ## Evidence images
 
 `ui_explore_png.write_png(width, height, rgba)` writes an 8-bit RGBA PNG with `zlib` and `struct` only. It uses filter
-0, level 9 and no ancillary chunk, so the same pixels give the same bytes. `crop(width, height, rgba, (x, y, w, h))`
-cuts a box out of a frame. No judge draws images yet: the probe's frame seam carries no pixels.
+0, level 9 and no ancillary chunk, so the same pixels give the same bytes. `crop(...)` cuts a box out of a frame. No
+judge draws images yet.
 
 ## Deviations and limits
 
-- **Finding names follow P004 3.7.** The contract's `probe-protocol` and `probe-crash` are `probe-internal-error` with
-  `observed.kind`, and `probe-timeout` is `ui-explore-timeout`. A differing trace is `model-nondeterministic`; any other
-  difference is `run-twice-mismatch`.
-- **Checks this task adds**: `timer-unreachable`, `event-never-accepted` and `event-accepted`.
-- **U1 taps** are catalogue intents until the rendered tree exists.
-- **No tap command yet.** The C probe announces no capability and has no `tap` command.
+- **P004 3.7's finding names are used where the task contract named others:**
+  - `probe-internal-error`, with `observed.kind` `protocol`, `fail`, `contract` or `crash`, for the contract's
+    `probe-protocol` and `probe-crash`;
+  - `ui-explore-timeout` for `probe-timeout`;
+  - `model-nondeterministic` (a differing trace) and `run-twice-mismatch` (any other differing part) where the contract
+    named only the first.
+- **Checks added beyond P004 3.7:**
+  - `timer-unreachable`, `event-never-accepted`, `event-accepted` and `key-fact-unmatched`;
+  - `intent-missed`. P004 3.4's `tap-misrouted` belongs to the `ui-input` gate and judges hit-test facts (both nodes
+    named, per probe point), which this gate does not have. A `missed` apply only says the aimed intent did not happen.
+- **The starvation rule (32 firings within 1024 ms) also flags a legitimate perpetual timer of about 31 ms or less;**
+  the owner decision is open.
+- **U1 taps** are catalogue intents until the rendered tree exists, and the C probe announces no capability yet.
+- **Residual timing dependence.** A stray line that arrives across a step boundary would still change the step it is
+  attributed to.

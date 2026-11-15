@@ -19,8 +19,12 @@ from tests.helpers import TempDirTestCase
 CATALOGUE = cat.load(h.TOY)
 
 
+def tearDownModule():
+    h.assert_no_stubs()
+
+
 def config(probe, catalogue=CATALOGUE):
-    return Config(str(probe), 2.0, catalogue, Budget(60), 32)
+    return Config(str(probe), 10.0, catalogue, Budget(60))
 
 
 class JudgeInterfaceTest(TempDirTestCase):
@@ -39,7 +43,7 @@ class JudgeInterfaceTest(TempDirTestCase):
             self.assertEqual(first.words, second.words)
             return []
 
-        explorer = st.Explorer(config(h.stub(self.tmp, "framelines")), "the contract", 32, h.OPEN,
+        explorer = st.Explorer(config(h.stub(self.tmp, "framelines")), "the contract", h.OPEN,
                                step_judges=[step_judge], run_judges=[run_judge])
         st.replay(explorer, [[h.OPEN, "tap-press"]])
         self.assertEqual(seen["runs"], 1)
@@ -83,6 +87,27 @@ class KeyTest(unittest.TestCase):
         self.assertNotEqual(uk.key_hash(a), uk.key_hash(uk.projection(self.obs("in 9 s"), 1000, coarse)))
 
 
+class CharactersAndSelectorsTest(unittest.TestCase):
+    def test_length_counts_characters_and_selectors_match_escaped_keys(self):
+        text = h.TOY.read_text().replace("derived = []", (
+            'derived = [ { name = "len", op = "bucket", node = "p\\\\x01", field = "label", measure = "length", '
+            'boundaries = [3, 4] } ]'))
+        key = cat.loads(text.encode()).key
+        line = "p\\x01\tfield\t\\xd0\\xa7\\xd0\\xb0\\xd0\\xbe\t0\t0\t0\t0\t1\t-\t-\tb\tn\tn\tn"
+        obs = {"semantic": (parse_record("semantic", line),), "due": None, "env": ()}
+        self.assertEqual(uk.projection(obs, 0, key)["facts"]["len"], [1])     # 3 characters (6 bytes)
+
+
+class EvidenceNameTest(TempDirTestCase):
+    def test_judge_evidence_names_are_checked(self):
+        from rigor_lib import ui_explore
+        from rigor_lib.errors import InternalError
+        for bad in ("../x.json", "paths.json", "X.json", "a/b.json", "runs.txt"):
+            item = make("ui-coverage-gap", ["x"], None, [h.OPEN], {"criterion": "x"}, {bad: {}})
+            with self.assertRaises(InternalError, msg=bad):
+                ui_explore._evidence([item], str(self.tmp / ("ev-" + bad.replace("/", "_"))), [])
+
+
 class TimeWordTest(TempDirTestCase):
     def test_until_change_is_one_event_on_a_perpetual_tick(self):
         run = execute(config(h.stub(self.tmp, "tick")), [h.OPEN, "tap-press", "until-change", "settle"])
@@ -90,15 +115,17 @@ class TimeWordTest(TempDirTestCase):
         self.assertEqual(run.steps[2].outcome, ["changed 4000"])
         self.assertEqual(run.steps[3].outcome, ["fired 4250"])
 
-    def test_the_settle_suffix_ends_after_one_tick(self):
+    def test_the_settle_check_ends_on_a_perpetual_tick(self):
+        # one starvation window (1024 ms) after the path: the ticks at 1250, 1500, 1750 and 2000; the next is outside
         run = execute(config(h.stub(self.tmp, "tick")), [h.OPEN], settle=True)
-        self.assertEqual(run.words, [h.OPEN, "settle"])
+        self.assertEqual(run.words, [h.OPEN] + ["settle"] * 4)
+        self.assertFalse(run.starved)
 
 
 class CostTest(unittest.TestCase):
     def test_the_starvation_judge_is_linear(self):
-        judge = starvation_judge(32, CATALOGUE.key)
-        steps = [SimpleNamespace(streak=i % 31, word="settle", starved=False) for i in range(20000)]
+        judge = starvation_judge(CATALOGUE.key)
+        steps = [SimpleNamespace(word="settle", starved=None) for i in range(20000)]
         start = time.monotonic()
         for index, step in enumerate(steps):
             self.assertEqual(judge(step, steps[:0] if index == 0 else _Prefix(steps, index), None), [])

@@ -15,8 +15,9 @@ from rigor_lib import ui_explore_catalogue as catalogue_mod
 from rigor_lib import ui_explore_strategies as strategies
 from rigor_lib.ui_explore_coverage import CRITERIA, not_evaluated
 from rigor_lib.ui_explore_judges import CHECKS, PRIVATE, make
-from rigor_lib.ui_explore_probe import Budget, BudgetSpent, ProbeError, Session, kill_all
-from rigor_lib.ui_explore_run import Config, check_words
+from rigor_lib.ui_explore_probe import CAPABILITIES, Budget, BudgetSpent, ProbeError, Session, kill_all
+from rigor_lib.ui_explore_judges import probe_error_judge
+from rigor_lib.ui_explore_run import Config, Run, Step, check_words
 
 PATHS_SCHEMA = "ui-explore-paths/1"
 SUMMARY_SCHEMA = "ui-explore-summary/1"
@@ -26,7 +27,8 @@ _STRATEGY_ARGS = {"sweep": ("origin_ms", "seed"), "bfs": ("origin_ms", "seed", "
 _ALL_STRATEGY_ARGS = ("origin_ms", "seed", "depth", "max_states", "walk_seeds", "walk_length", "extra_origins", "paths")
 _RANGES = {"origin_ms": (0, 1 << 48), "seed": (0, 2**64 - 1), "depth": (1, 64), "max_states": (1, 1000000),
            "walk_length": (1, 10000), "extra_origins": (0, 16), "deadline_ms": (1, 600000),
-           "starvation_steps": (2, 10000), "budget_s": (1, 86400)}
+           "budget_s": (1, 86400)}
+_EVIDENCE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\.json")
 
 
 def _uint(text):
@@ -62,8 +64,6 @@ def add_parser(subparsers):
     parser.add_argument("--paths", help="replay: a paths file (ui-explore-paths/1)")
     parser.add_argument("--deadline-ms", type=_uint, default=10000, help="deadline of every probe reply (10000)")
     parser.add_argument("--budget-s", type=_uint, default=1800, help="wall-clock budget of the whole run (1800)")
-    parser.add_argument("--starvation-steps", type=_uint, default=32,
-                        help="consecutive firings within a frame that make timer-starvation (32)")
     parser.add_argument("--require", type=_list(r"C[0-9]{1,2}"), help="criteria that must be evaluated, e.g. C1,C8")
     parser.add_argument("--evidence", help="a new or empty directory for the evidence files")
     parser.add_argument("--summary", help="write the run summary (ui-explore-summary/1) here")
@@ -134,22 +134,26 @@ def _evidence(found, directory, criteria):
         name = item["id"].rsplit("/", 1)[1]
         paths = ([item["observed"]["witness_path"]] if item["check"] == "key-too-coarse" else []) + [item["path"]]
         files = {"paths.json": {"schema": PATHS_SCHEMA, "criteria": list(criteria), "paths": paths}}
-        files.update(item.get(PRIVATE, {}))
+        for file_name, data in item.get(PRIVATE, {}).items():
+            if not _EVIDENCE_NAME.fullmatch(file_name) or file_name == "paths.json":
+                raise InternalError("a judge's evidence file name %r is not allowed" % (file_name,))
+            files[file_name] = data
         os.makedirs(os.path.join(directory, name))
         for file_name in sorted(files):
             jsonio.write_atomic(os.path.join(directory, name, file_name), jsonio.canonical_dumps(files[file_name]))
         item["evidence"] = [name + "/" + file_name for file_name in sorted(files)]
 
 
-def _capabilities(config):
-    """The capabilities the probe's greeting announces (a probe that cannot greet has none; its runs report it)."""
+def _greet(config, word):
+    """The first launch: (capabilities, None), or (None, the finding of a probe that could not greet)."""
     try:
         session = Session([config.probe], config.deadline_s, config.budget)
-    except ProbeError:
-        return ()
+    except ProbeError as error:
+        run = Run([word], [Step(0, word, error=error)], (0, error))
+        return None, probe_error_judge(config.catalogue.key)(run, run, None)[0]
     caps = session.caps
     session.close()
-    return caps
+    return caps, None
 
 
 def _load(args):
@@ -173,30 +177,39 @@ def _strategy(args, explorer, paths):
                            args.extra_origins), []
 
 
+def _budget_finding(args, catalogue, word, runs):
+    return make("ui-explore-timeout", ["budget", catalogue.sha256, args.strategy], None, [word],
+                {"kind": "budget", "budget_s": args.budget_s, "runs": runs})
+
+
 def explore(args):
     """(findings, summary) of one ui-explore run."""
     _check_args(args)
     catalogue, contract = _load(args)
-    config = Config(os.path.abspath(args.probe), args.deadline_ms / 1000.0, catalogue, Budget(args.budget_s),
-                    args.starvation_steps)
-    caps = _capabilities(config)
-    taps = [event.id for event in catalogue.events if event.cls in ("u2", "u3")]
-    if taps and "tap" not in caps:
-        raise InternalError("catalogue taps %s need a probe that announces the tap capability" % ", ".join(taps))
-    paths = None
-    if args.strategy == "replay":
-        criteria, paths = load_paths(args.paths, catalogue, caps)
-        word = paths[0][0]
-    else:
-        criteria, word = strategies.REQUIRED[args.strategy], strategies.open_word(args.origin_ms, args.seed)
-    explorer = strategies.Explorer(config, contract, args.starvation_steps, word, caps)
-    evaluated, extra, spent = [], [], False
+    budget = Budget(args.budget_s)
+    config = Config(os.path.abspath(args.probe), args.deadline_ms / 1000.0, catalogue, budget)
+    paths = load_paths(args.paths, catalogue, CAPABILITIES) if args.strategy == "replay" else None
+    criteria, word = (paths[0], paths[1][0][0]) if paths else \
+        (strategies.REQUIRED[args.strategy], strategies.open_word(args.origin_ms, args.seed))
+    paths = paths[1] if paths else None
     try:
-        detail, extra = _strategy(args, explorer, paths)
+        caps, greeting = _greet(config, word)
     except BudgetSpent:
-        spent, detail = True, {}
-        extra = [make("ui-explore-timeout", ["budget", catalogue.sha256, args.strategy], None, [word],
-                      {"kind": "budget", "budget_s": args.budget_s, "runs": explorer.runs})]
+        caps, greeting = None, _budget_finding(args, catalogue, word, 0)
+    if caps is not None:
+        _check_taps(catalogue, caps, paths)
+        strategies.check_cost(catalogue, args, paths, caps)
+        config = Config(config.probe, config.deadline_s, catalogue, budget, caps)
+    explorer = strategies.Explorer(config, contract, word, caps or ())
+    evaluated, extra, spent = [], [], greeting is not None
+    detail = {}
+    if greeting is not None:
+        extra = [greeting]
+    else:
+        try:
+            detail, extra = _strategy(args, explorer, paths)
+        except BudgetSpent:
+            spent, extra = True, [_budget_finding(args, catalogue, word, explorer.runs)]
     if not spent:
         for criterion in criteria:
             done, found = CRITERIA[criterion](explorer.exploration, contract)
@@ -212,17 +225,28 @@ def explore(args):
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
 
 
+def _check_taps(catalogue, caps, paths):
+    taps = [event.id for event in catalogue.events if event.cls in ("u2", "u3")]
+    if taps and "tap" not in caps:
+        raise InternalError("catalogue taps %s need a probe that announces the tap capability" % ", ".join(taps))
+    for words in paths or ():
+        check_words(words, catalogue, caps)
+
+
 def _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found):
     exploration = explorer.exploration
     events = {event.id: {"accepted_states": len(exploration.events[event.id].accepted),
-                         "refused_states": len(exploration.events[event.id].refused)}
+                         "refused_states": len(exploration.events[event.id].refused),
+                         "missed_states": len(exploration.events[event.id].missed)}
               for event in catalogue.events if event.id in exploration.events}
     return {"schema": SUMMARY_SCHEMA, "strategy": args.strategy, "criteria": list(criteria), "evaluated": evaluated,
             "budget_spent": spent, "catalogue_sha256": catalogue.sha256,
             "probe_sha256": jsonio.sha256_hex(jsonio.read_bytes(args.probe)), "runs": explorer.runs,
             "abstract_states": len(exploration.reachable), "pairs_exercised": len(exploration.exercised()),
             "domain_count": exploration.domain_count, "domain_visited": sorted(exploration.domain_visited),
-            "events": events, "findings": {check: sum(1 for f in found if f["check"] == check) for check in CHECKS},
+            "events": events, "outcomes": exploration.outcomes,
+            "cost": {"probe_commands": explorer.commands, "virtual_ms": explorer.virtual_ms},
+            "findings": {check: sum(1 for f in found if f["check"] == check) for check in CHECKS},
             "detail": detail}
 
 
@@ -237,10 +261,28 @@ def _stop(signum, frame):
     raise SystemExit(128 + signum)
 
 
+def _same(a, b):
+    return os.path.realpath(a) == os.path.realpath(b) or (os.path.exists(a) and os.path.exists(b)
+                                                          and os.path.samefile(a, b))
+
+
+def _check_outputs(args):
+    """An output that is an input (or the other output) is refused before anything is deleted. `args.out` is cleared
+    first, so the CLI's error path does not remove it either."""
+    inputs = [name for name in (args.catalogue, args.paths, args.probe, args.contract) if name]
+    outputs = [name for name in (args.out, args.summary) if name]
+    clash = [o for o in outputs if any(_same(o, i) for i in inputs)]
+    if clash or (len(outputs) == 2 and _same(*outputs)):
+        args.out = None
+        raise InternalError("an output is the same file as an input or as the other output: %s"
+                            % ", ".join(clash or outputs))
+
+
 def handle(args):
+    _check_outputs(args)
     _remove(args.out)              # a stale result never survives this run
     _remove(args.summary)
-    previous = {sig: signal.signal(sig, _stop) for sig in (signal.SIGTERM, signal.SIGINT)}
+    previous = {sig: signal.signal(sig, _stop) for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
     try:
         found, summary = explore(args)
     finally:

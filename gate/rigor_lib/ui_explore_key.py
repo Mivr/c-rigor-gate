@@ -6,6 +6,7 @@ An observation here is the dict of a step's replies (`semantic`, `due`, `env`) a
 
 import bisect
 import re
+import unicodedata
 
 from rigor_lib import jsonio
 from rigor_lib.ui_explore_grammar import SEMANTIC_FIELDS
@@ -29,8 +30,11 @@ def _chosen(records, fact):
 
 def _measure(record, fact):
     index = SEMANTIC_FIELDS.index(fact.field)
-    if fact.measure == "length":
-        return len(record.values[index])
+    if fact.measure == "length":       # characters (NFC code points of UTF-8), not bytes: Bulgarian text counts right
+        try:
+            return len(unicodedata.normalize("NFC", record.values[index].decode("utf-8")))
+        except UnicodeDecodeError:
+            return None
     if fact.measure == "value":
         return int(record.fields[index]) if _NUMBER.fullmatch(record.fields[index]) else None
     run = _DIGIT_RUN.search(record.values[index])
@@ -39,6 +43,11 @@ def _measure(record, fact):
 
 def _bucket(value, bounds):
     return "none" if value is None else bisect.bisect_right(bounds, value)
+
+
+def derived_matched(fact, obs):
+    """Whether a record-selecting derived fact found a record in this observation (a model fact always does)."""
+    return fact.model is not None or bool(_chosen(obs["semantic"], fact))
 
 
 def derived_value(fact, obs, now):

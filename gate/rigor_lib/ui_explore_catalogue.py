@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from rigor_lib import jsonio, ui_contract
 from rigor_lib.errors import InternalError
-from rigor_lib.ui_explore_grammar import SEMANTIC_FIELDS, TEXT_MAX
+from rigor_lib.ui_explore_grammar import SEMANTIC_FIELDS, TEXT_MAX, printable, unescape
 
 SCHEMA = "ui-events/1"
 CLASSES = ("u1", "u2", "u3", "u4", "u5", "e1", "t1")
@@ -30,14 +30,21 @@ MEASURES = ("value", "length", "digits")
 MODEL_SOURCES = ("due-in-ms", "env-count")
 RESERVED_IDS = ("open", "domain-at", "settle", "wait-change", "at")
 MAX_WAIT_CEILING_MS = 3600000             # the hard ceiling of `max_wait_ms` (one hour of virtual time)
+DRAIN_CEILING_MS = 60000                  # the hard ceiling of `drain_ms` (the real adapter's logs hold about a minute)
+FRAME_MS = 16
+# timer-starvation (docs/ui-explore.md): more than STARVE_FIRINGS deadline firings within STARVE_WINDOW_FRAMES frames
+# of virtual time; a catalogue may set both in `starvation = { firings, window_frames, provenance }`
+STARVE_FIRINGS = 32
+STARVE_WINDOW_FRAMES = 64
 TIME_MAX_MS = 1 << 52
 _ID = re.compile(r"[a-z][a-z0-9-]{0,63}")
 _NAME = re.compile(r"[a-z][a-z0-9_-]{0,63}")
 _HEX = re.compile(r"(?:[0-9a-f]{2}){0,%d}" % TEXT_MAX)
 _DIGITS = re.compile(r"[0-9]{0,%d}" % TEXT_MAX)
-_SELECTOR = re.compile(r"[ -\[\]-~]{1,64}")     # printable, no backslash (a record field in its escaped spelling)
+_SELECTOR_MAX = 1024                      # a node key or role in its escaped record spelling (model.h grammar)
 _REASON = re.compile(r"[ -~]{1,400}")
-_TOP = ("schema", "product", "app", "version", "max_wait_ms", "key") + CLASSES
+_TOP = ("schema", "product", "app", "version", "max_wait_ms", "drain_ms", "key") + CLASSES
+_OPTIONAL_TOP = ("starvation",)
 
 
 @dataclass(frozen=True)
@@ -78,6 +85,9 @@ class Catalogue:
     app: str
     version: int
     max_wait_ms: int
+    drain_ms: int
+    starve_firings: int
+    starve_window_frames: int
     key: Key
     events: tuple       # every event, class order then file order
     sha256: str
@@ -228,12 +238,29 @@ def _derived(where, raw, taken):
     _keys(where, raw, ("name", "op") + wanted, ("node", "role"))
     if ("node" in raw) == ("role" in raw):
         _fail(where, "needs exactly one of node and role")
-    node = _str(where + ".node", raw["node"], _SELECTOR) if "node" in raw else None
-    role = _str(where + ".role", raw["role"], _SELECTOR) if "role" in raw else None
+    node = _selector(where + ".node", raw["node"]) if "node" in raw else None
+    role = _selector(where + ".role", raw["role"]) if "role" in raw else None
     field = _enum(where + ".field", raw["field"], KEY_FIELDS) if "field" in raw else None
     measure = _enum(where + ".measure", raw["measure"], MEASURES) if "measure" in raw else None
     bounds = _boundaries(where, raw["boundaries"]) if "boundaries" in raw else ()
     return Derived(name, op, node, role, field, measure, None, bounds)
+
+
+def _selector(where, value):
+    """A node key or role in its escaped record spelling: any bytes the grammar can carry, compared exactly."""
+    if type(value) is not str or not 1 <= len(value) <= _SELECTOR_MAX or "\t" in value or not printable(value) \
+            or unescape(value) is None:
+        _fail(where, "must be a record field in its escaped spelling (printable ASCII, model.h escapes), got %r" % (value,))
+    return value
+
+
+def _starvation(raw):
+    if raw is None:
+        return STARVE_FIRINGS, STARVE_WINDOW_FRAMES
+    _keys("starvation", raw, ("firings", "window_frames", "provenance"))
+    ui_contract.check_provenance("starvation", raw["provenance"])
+    return (_int("starvation.firings", raw["firings"], 2, 100000),
+            _int("starvation.window_frames", raw["window_frames"], 1, 3750))
 
 
 def _boundaries(where, value):
@@ -278,17 +305,25 @@ def loads(data):
         _fail("file", "not valid UTF-8 TOML: %s" % error)
     except RecursionError:
         _fail("file", "nested too deeply")
-    _keys("top level", document, _TOP)
+    _keys("top level", document, _TOP, _OPTIONAL_TOP)
     if document["schema"] != SCHEMA:
         _fail("schema", "must be %r, got %r" % (SCHEMA, document["schema"]))
     max_wait = _int("max_wait_ms", document["max_wait_ms"], 1, MAX_WAIT_CEILING_MS)
+    drain = _int("drain_ms", document["drain_ms"], FRAME_MS, DRAIN_CEILING_MS)
+    if drain % FRAME_MS:
+        _fail("drain_ms", "must be a whole number of frames (%d ms), so the drains fall on the frame grid" % FRAME_MS)
+    firings, window = _starvation(document.get("starvation"))
     seen, events = set(), []
     for cls in CLASSES:
         events.extend(_events(cls, document[cls], seen, max_wait))
     if not any(event.cls == "t1" for event in events):
         _fail("t1", "needs at least one time event: states reached only through time must be explored")
+    if not any(event.cls in APPLY_CLASSES and event.get("expect") == "accept" for event in events):
+        _fail("events", "needs at least one input event with expect = \"accept\" (a catalogue nothing is accepted in "
+                        "exercises nothing)")
     return Catalogue(_str("product", document["product"], _NAME), _str("app", document["app"], _NAME),
-                     _int("version", document["version"], 1, 2**31 - 1), max_wait, _key(document["key"]),
+                     _int("version", document["version"], 1, 2**31 - 1), max_wait, drain, firings, window,
+                     _key(document["key"]),
                      tuple(events), jsonio.sha256_hex(data))
 
 

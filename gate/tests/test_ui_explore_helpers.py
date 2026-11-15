@@ -29,7 +29,7 @@ STUB_OPEN_SEMANTIC = [
 def stub(directory, mode, log=None):
     """An executable that runs the stub probe in `mode`; with `log`, the stub logs its commands and pid there."""
     path = Path(directory) / ("probe-" + mode + ("-log" if log else ""))
-    env = "UI_STUB_LOG=%s " % log if log else ""
+    env = "UI_STUB_OWNER=%d " % os.getpid() + ("UI_STUB_LOG=%s " % log if log else "")
     path.write_text("#!/bin/sh\n%sexec %s -I %s %s\n" % (env, sys.executable, STUB, mode))
     os.chmod(path, 0o755)
     return path
@@ -72,6 +72,34 @@ def alive(pid):
             return stream.read().rsplit(")", 1)[1].split()[0] != "Z"
     except FileNotFoundError:
         return False
+
+
+def live_stubs():
+    """Pids of live processes started by this test process's stubs (marked UI_STUB_OWNER=<our pid>), the stub's own
+    children included (they inherit the mark)."""
+    mark = ("UI_STUB_OWNER=%d" % os.getpid()).encode()
+    found = []
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        try:
+            with open("/proc/%s/environ" % name, "rb") as stream:
+                marked = mark in stream.read().split(b"\0")
+        except OSError:
+            continue
+        if marked and alive(int(name)):
+            found.append(int(name))
+    return found
+
+
+def assert_no_stubs():
+    """For tearDownModule: every stub this module started is gone (waits up to 5 s for ones that are exiting)."""
+    end = time.monotonic() + 5
+    while live_stubs() and time.monotonic() < end:
+        time.sleep(0.05)
+    left = live_stubs()
+    if left:
+        raise AssertionError("stub probes still alive after the tests: %s" % left)
 
 
 def finding_id(check, identity):

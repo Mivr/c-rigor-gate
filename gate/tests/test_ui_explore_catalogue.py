@@ -26,11 +26,11 @@ class CatalogueTest(unittest.TestCase):
     def test_the_toy_catalogue(self):
         catalogue = load(TEXT)
         self.assertEqual((catalogue.product, catalogue.app, catalogue.version, catalogue.max_wait_ms),
-                         ("selftest", "toy", 1, 600000))
+                         ("selftest", "toy", 1, 10000))
         self.assertEqual([(e.cls, e.id) for e in catalogue.events],
                          [("u1", "tap-press"), ("u4", "code-empty"), ("u4", "code-one-digit"), ("u4", "code-non-digit"),
                           ("e1", "env-offline"), ("t1", "fire-due"), ("t1", "before-due"), ("t1", "one-frame"),
-                          ("t1", "idle-5min"), ("t1", "until-change"), ("t1", "at-10s")])
+                          ("t1", "idle-10s"), ("t1", "until-change"), ("t1", "at-10s")])
         self.assertEqual(catalogue.by_id("code-empty").get("expect"), "refuse")
         self.assertEqual(catalogue.by_id("at-10s").get("offset_ms"), 10000)
         self.assertIsNone(catalogue.by_id("open"))
@@ -65,9 +65,19 @@ class CatalogueTest(unittest.TestCase):
             (TEXT.replace("[u5]\nevents = []\n", ""), "missing key(s) u5"),
             (TEXT.replace("[u5]\nevents = []\n", "[u5]\n"), "u5: missing key(s) events"),
             (TEXT.replace('version = 1', 'version = 1\nsealed = true'), "unknown key(s) sealed"),
-            (TEXT.replace("max_wait_ms = 600000\n", ""), "missing key(s) max_wait_ms"),
-            (TEXT.replace("max_wait_ms = 600000", "max_wait_ms = 3600001"), "max_wait_ms: must be an integer"),
-            (TEXT.replace("ms = 300000", "ms = 600001"), "ms: must be an integer in 1..600000"),
+            (TEXT.replace("max_wait_ms = 10000\n", ""), "missing key(s) max_wait_ms"),
+            (TEXT.replace("max_wait_ms = 10000", "max_wait_ms = 3600001"), "max_wait_ms: must be an integer"),
+            (TEXT.replace("ms = 10000 }", "ms = 10001 }"), "ms: must be an integer in 1..10000"),
+            (TEXT.replace("drain_ms = 1024\n", ""), "missing key(s) drain_ms"),
+            (TEXT.replace("drain_ms = 1024", "drain_ms = 1000"), "drain_ms: must be a whole number of frames"),
+            (TEXT.replace("drain_ms = 1024", "drain_ms = 60016"), "drain_ms: must be an integer in 16..60000"),
+            (TEXT.replace("drain_ms = 1024", "drain_ms = 1024\nstarvation = { firings = 5, window_frames = 4 }"),
+             "starvation: missing key(s) provenance"),
+            (TEXT.replace("drain_ms = 1024", 'drain_ms = 1024\nstarvation = { firings = 1, window_frames = 4, '
+                          'provenance = "owner:D1" }'), "starvation.firings: must be an integer"),
+            (TEXT.replace('expect = "accept"', 'expect = "refuse"'), "needs at least one input event with expect"),
+            (TEXT[:TEXT.index("[u1]")] + "[u1]\nevents = []\n[u2]\nevents = []\n[u3]\nevents = []\n[u4]\nevents = []\n"
+             "[u5]\nevents = []\n[e1]\nevents = []\n" + TEXT[TEXT.index("[t1]"):], "needs at least one input event"),
             (TEXT.replace(PRESS, PRESS + "\n" + PRESS), "duplicate event id 'tap-press'"),
             (TEXT.replace(PRESS, PRESS.replace(', expect = "accept"', "")), "missing key(s) expect"),
             (TEXT.replace(PRESS, PRESS.replace('"accept"', '"maybe"')), "expect: must be one of"),
@@ -103,9 +113,14 @@ class CatalogueTest(unittest.TestCase):
                   (with_derived('{ name = "a", op = "bucket", node = "n", field = "label", measure = "value", '
                                 'boundaries = [2, 1] }'), "strictly increasing"),
                   (with_derived('{ name = "a", op = "bucket", model = "clock", boundaries = [1] }'), "model: must be"),
-                  (with_derived('{ name = "a", op = "presence", node = "n", expr = "1+1" }'), "unknown key(s) expr")]
+                  (with_derived('{ name = "a", op = "presence", node = "n", expr = "1+1" }'), "unknown key(s) expr"),
+                  (with_derived('{ name = "a", op = "presence", node = "n\\\\q" }'), "escaped spelling"),
+                  (with_derived('{ name = "a", op = "presence", node = "n\\\\x41" }'), "escaped spelling"),
+                  (with_derived('{ name = "a", op = "presence", node = "\u00e9" }'), "escaped spelling")]
         for text, why in cases:
             self.assert_refused(text, why)
+        escaped = load(with_derived('{ name = "a", op = "presence", node = "n\\\\x01\\\\t" }')).key.derived[0]
+        self.assertEqual(escaped.node, "n\\x01\\t")
         ok = TEXT.replace('"x", "y", ', '"y", ').replace("ignore = []", "ignore = [ %s ]" % ignore)
         self.assertEqual(load(ok).key.ignore, (("x", "spec:ui-look.md#4.2", "geometry follows the label"),))
         with self.assertRaises(InternalError):

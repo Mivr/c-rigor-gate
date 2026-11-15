@@ -5,9 +5,9 @@ catalogue order for events, discovery order for states, argument order for seeds
 import hashlib
 
 from rigor_lib.errors import InternalError
-from rigor_lib.ui_explore_coverage import Exploration
-from rigor_lib.ui_explore_judges import (CoarseTable, make, probe_error_judge, run_step_judges, run_twice_judge,
-                                         starvation_judge, state_of, unreachable_judge)
+from rigor_lib.ui_explore_coverage import Exploration, key_facts_judge
+from rigor_lib.ui_explore_judges import (CoarseTable, make, missed_judge, probe_error_judge, run_step_judges,
+                                         run_twice_judge, starvation_judge, state_of, unreachable_judge)
 from rigor_lib.ui_explore_probe import ORIGIN_MAX_MS, BudgetSpent
 from rigor_lib.ui_explore_run import run_twice
 
@@ -26,17 +26,18 @@ def domain_indices(count):
 
 
 class Explorer:
-    def __init__(self, config, contract, settle_bound, word, caps=(), step_judges=(), run_judges=()):
+    def __init__(self, config, contract, word, caps=(), step_judges=(), run_judges=()):
         catalogue = config.catalogue
-        self.config, self.contract, self.settle_bound = config, contract, settle_bound
-        self.step_judges = [starvation_judge(settle_bound, catalogue.key), unreachable_judge(catalogue.key)]
+        self.config, self.contract = config, contract
+        self.step_judges = [starvation_judge(catalogue.key), unreachable_judge(catalogue.key),
+                            missed_judge(catalogue.key)]
         self.step_judges += list(step_judges)
         self.run_judges = [probe_error_judge(catalogue.key), run_twice_judge(catalogue.key)] + list(run_judges)
         self.sendable = [e.id for e in catalogue.events if e.cls not in ("u2", "u3") or "tap" in caps]
         self.exploration = Exploration(catalogue, word)
         self.coarse = CoarseTable(catalogue.key)
         self.findings = []
-        self.runs = 0
+        self.runs = self.commands = self.virtual_ms = 0
 
     def run(self, words, settle=True, explore=True):
         """Run `words` twice; returns the steps of the first run."""
@@ -44,6 +45,8 @@ class Explorer:
             raise BudgetSpent()
         first, second = run_twice(self.config, words, settle)
         self.runs += 1
+        self.commands += first.commands + second.commands
+        self.virtual_ms += first.virtual_ms + second.virtual_ms
         for judge in self.run_judges:
             self.findings.extend(judge(first, second, self.contract))
         self.findings.extend(run_step_judges(self.step_judges, first, self.contract))
@@ -57,7 +60,49 @@ class Explorer:
         return first.steps
 
     def all_findings(self):
-        return self.findings + self.coarse.found
+        return self.findings + self.coarse.found + key_facts_judge(self.exploration)
+
+
+# The cost model of check_cost (docs/ui-explore.md): a probe advances about VIRTUAL_MS_PER_WALL_S of virtual time per
+# second of wall time (the lockers adapter takes about 1 ms per 16 ms step); every path runs twice.
+VIRTUAL_MS_PER_WALL_S = 16000
+
+
+def word_span(catalogue, word):
+    """The longest virtual time one path word can take."""
+    event = catalogue.by_id(word)
+    if event is not None and event.cls != "t1":
+        return 0
+    if event is not None and event.get("kind") == "advance":
+        return event.get("ms")
+    if event is not None and event.get("kind") == "at":
+        return min(event.get("offset_ms"), catalogue.max_wait_ms)
+    if event is None and not (word in ("settle", "wait-change") or word.startswith("at ")):
+        return 0
+    return catalogue.max_wait_ms
+
+
+def check_cost(catalogue, args, paths, caps):
+    """Refuse (exit 2) a run whose time words could exceed the budget by simple arithmetic, instead of ending in a
+    budget timeout. Worst virtual time: bfs 2 x max_states x sum over sendable events of (its span + one starvation
+    window for the settle check); walk 2 x seeds x origins x (length x the longest span + a window); replay 2 x the
+    spans of its words; sweep has no time words."""
+    window = catalogue.starve_window_frames * 16
+    sendable = [e.id for e in catalogue.events if e.cls not in ("u2", "u3") or "tap" in caps]
+    if args.strategy == "bfs":
+        worst = 2 * args.max_states * sum(word_span(catalogue, e) + window for e in sendable)
+    elif args.strategy == "walk":
+        longest = max(word_span(catalogue, e) for e in sendable) if sendable else 0
+        worst = 2 * len(args.walk_seeds) * (1 + args.extra_origins) * (args.walk_length * longest + window)
+    elif args.strategy == "replay":
+        worst = 2 * sum(word_span(catalogue, w) for path in paths for w in path[1:])
+    else:
+        worst = 0
+    if worst > args.budget_s * VIRTUAL_MS_PER_WALL_S:
+        raise InternalError("the time words of this run could take %d ms of virtual time, about %d s at %d virtual ms "
+                            "per second, over --budget-s %d: lower max_wait_ms, the bounds or the time events"
+                            % (worst, worst // VIRTUAL_MS_PER_WALL_S, VIRTUAL_MS_PER_WALL_S, args.budget_s))
+    return worst
 
 
 def sweep(explorer, word):

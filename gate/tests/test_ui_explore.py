@@ -11,6 +11,12 @@ AFTER_PRESS = ["title\tlabel\tToy\t8\t8\t24\t16\t1\t-\t-\tbody\tnormal\tnone\tno
                "button\tbutton\tPress\t8\t40\t100\t36\t1\t1:0\t-\tbody\tnormal\ttap\tnone",
                "notice\tlabel\tPressed\t8\t90\t56\t16\t1\t-\t-\tbody\tnormal\tnone\tnone"]
 SHA = h.sha256_file(h.TOY)
+PRESS_LINE = '{ id = "tap-press", intent = 1, arg = 0, expect = "accept" },'
+PRESSED_KEY = h.toy_key(AFTER_PRESS, "pending", [])
+
+
+def tearDownModule():
+    h.assert_no_stubs()
 
 
 class DeterminismTest(h.ExploreCase):
@@ -79,9 +85,9 @@ class CoverageTest(h.ExploreCase):
         self.assertIn("states_per_depth: [1,2,2,0]", outcome.stdout)
         summary = json.loads((self.tmp / "s.json").read_text())
         self.assertEqual(summary["evaluated"], ["C8"])
-        self.assertEqual(summary["events"]["code-empty"], {"accepted_states": 0, "refused_states": 5})
+        self.assertEqual(summary["events"]["code-empty"], {"accepted_states": 0, "refused_states": 5, "missed_states": 0})
         # the press is accepted only where the notice is hidden: the open state (the stub clears the notice text)
-        self.assertEqual(summary["events"][PRESS], {"accepted_states": 1, "refused_states": 4})
+        self.assertEqual(summary["events"][PRESS], {"accepted_states": 1, "refused_states": 4, "missed_states": 0})
 
     def test_a_too_small_depth_bound_is_depth_unsaturated_with_c8_gaps(self):
         _, found = self.bfs("good", 1, code=1)
@@ -127,7 +133,7 @@ class CoverageTest(h.ExploreCase):
         press = [item for item in never if item["observed"]["event"] == PRESS][0]
         self.assertEqual(press["id"], h.finding_id("event-never-accepted", [SHA, PRESS]))
         self.assertEqual(press["observed"], {"event": PRESS, "expect": "accept", "accepted_states": 0,
-                                             "refused_states": 1})
+                                             "refused_states": 1, "missed_states": 0})
 
     def test_an_event_declared_refused_that_is_accepted(self):
         catalogue = self.catalogue('hex = "37", expect = "accept"', 'hex = "37", expect = "refuse"')
@@ -148,6 +154,53 @@ class CoverageTest(h.ExploreCase):
         _, found = self.replay("nodomain", [[h.OPEN]], "--summary", str(self.tmp / "s.json"), criteria=["C1"], code=0)
         self.assertEqual(json.loads((self.tmp / "s.json").read_text())["evaluated"], [])
         self.replay("nodomain", [[h.OPEN]], "--require", "C1", criteria=["C1"], code=1)
+
+
+class AcceptanceTest(h.ExploreCase):
+    def replays(self, mode, catalogue, item, ev):
+        name = item["id"].rsplit("/", 1)[1]
+        outcome = run_rigor(["ui-explore", "--probe", h.stub(self.tmp, mode), "--catalogue", catalogue, "--strategy",
+                             "replay", "--paths", ev / name / "paths.json", "--out", self.tmp / "r.json"])
+        self.assertEqual(outcome.code, 1, outcome.stderr)
+        self.assertIn(item["id"], [r["id"] for r in h.findings(self.tmp / "r.json")])
+
+    def test_event_accepted_names_the_accepting_send_and_replays(self):
+        catalogue = self.catalogue(PRESS_LINE, PRESS_LINE + '\n  { id = "tap-late", intent = 2, arg = 0, expect = "refuse" },')
+        _, found = self.bfs("good", 3, "--evidence", str(self.tmp / "ev"), catalogue=catalogue, code=1)
+        accepted = h.by_check(found, "event-accepted")
+        self.assertEqual([(item["path"], item["state"]["key"]) for item in accepted],
+                         [([h.OPEN, PRESS, "tap-late"], PRESSED_KEY)])
+        self.replays("good", catalogue, accepted[0], self.tmp / "ev")
+
+    def test_event_never_accepted_names_a_refusing_send_and_replays(self):
+        _, found = self.bfs("refuseall", 1, "--evidence", str(self.tmp / "ev"), code=1)
+        never = [item for item in h.by_check(found, "event-never-accepted") if item["observed"]["event"] == PRESS]
+        self.assertEqual(never[0]["path"], [h.OPEN, PRESS])
+        self.replays("refuseall", h.TOY, never[0], self.tmp / "ev")
+
+    def test_an_input_that_misses_its_intent(self):
+        _, found = self.replay("missed", [[h.OPEN, PRESS, PRESS]], "--summary", str(self.tmp / "s.json"), code=1)
+        self.assertEqual([(item["id"], item["observed"], item["path"]) for item in found],
+                         [(h.finding_id("intent-missed", ["missed", PRESSED_KEY, PRESS]),
+                           {"word": PRESS, "applies": ["missed"]}, [h.OPEN, PRESS, PRESS])])
+        _, found = self.bfs("missed", 2, "--summary", str(self.tmp / "s.json"), code=1)
+        # the press misses wherever the notice is shown: the pressed and the offline state (depth 1)
+        self.assertEqual(json.loads((self.tmp / "s.json").read_text())["events"][PRESS]["missed_states"], 2)
+        self.assertEqual(len(h.by_check(found, "intent-missed")), 2)
+
+    def test_a_derived_fact_that_matches_nothing_is_a_finding(self):
+        catalogue = self.catalogue("derived = []", 'derived = [ { name = "ghost", op = "presence", node = "nosuch" }, '
+                                   '{ name = "shown", op = "presence", node = "notice" } ]')
+        _, found = self.bfs("good", 4, catalogue=catalogue, code=1)
+        self.assertEqual([(item["id"], item["observed"]) for item in found],
+                         [(h.finding_id("key-fact-unmatched", [h.sha256_file(catalogue), "ghost"]),
+                           {"fact": "ghost", "node": "nosuch", "role": None})])
+
+    def test_the_summary_reports_the_cost(self):
+        self.bfs("good", 6, "--summary", str(self.tmp / "s.json"), code=0)
+        cost = json.loads((self.tmp / "s.json").read_text())["cost"]
+        self.assertGreater(cost["probe_commands"], 1000)
+        self.assertGreater(cost["virtual_ms"], 100000)
 
 
 class ReplayTest(h.ExploreCase):
@@ -237,7 +290,7 @@ class ArgumentTest(h.ExploreCase):
         self.assertIn("announces the tap capability", outcome.stderr)
         _, found = self.bfs("tapcap", 1, "--summary", str(self.tmp / "s.json"), catalogue=catalogue)
         self.assertEqual(json.loads((self.tmp / "s.json").read_text())["events"]["probe-1"],
-                         {"accepted_states": 0, "refused_states": 1})
+                         {"accepted_states": 0, "refused_states": 1, "missed_states": 0})
 
     def test_a_probe_that_is_not_executable_or_has_a_bad_format_is_exit_2(self):
         (self.tmp / "plain").write_text("")
@@ -256,6 +309,19 @@ class ArgumentTest(h.ExploreCase):
                      str(self.tmp / "s.json"), code=2)
         self.assertFalse((self.tmp / "f.json").exists())
         self.assertFalse((self.tmp / "s.json").exists())
+
+    def test_an_output_that_is_an_input_is_refused_and_nothing_is_deleted(self):
+        catalogue = self.catalogue("version = 1", "version = 1")
+        before = catalogue.read_bytes()
+        for out, summary in ((catalogue, None), (self.tmp / "o.json", self.tmp / "o.json")):
+            argv = ["ui-explore", "--probe", h.stub(self.tmp, "good"), "--catalogue", catalogue, "--strategy", "sweep",
+                    "--origin-ms", "1", "--seed", "1", "--out", out] + (["--summary", summary] if summary else [])
+            (self.tmp / "o.json").write_text("previous\n")
+            outcome = run_rigor(argv)
+            self.assertExit(outcome, 2)
+            self.assertIn("same file as an input or as the other output", outcome.stderr)
+            self.assertEqual(catalogue.read_bytes(), before)
+            self.assertEqual((self.tmp / "o.json").read_text(), "previous\n")
 
     def test_evidence_into_a_non_empty_directory_is_refused(self):
         (self.tmp / "ev").mkdir()

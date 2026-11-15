@@ -4,8 +4,10 @@ schema = "ui-events/1"
 product = "selftest"
 app = "toy"
 version = 1
-# The longest virtual wait of one path word (a deadline further away is timer-unreachable).
-max_wait_ms = 600000
+# The longest virtual wait of one path word (a deadline further away is timer-unreachable), and how often the
+# logs (trace, patches) are fetched during a long advance (a whole number of 16 ms frames).
+max_wait_ms = 10000
+drain_ms = 1024
 
 # Every semantic field is in the key; so are the deadline bucket and the enabled env inputs (the two facts).
 [key]
@@ -51,7 +53,7 @@ events = [
   { id = "fire-due", kind = "fire-due" },
   { id = "before-due", kind = "before-due" },
   { id = "one-frame", kind = "advance", ms = 16 },
-  { id = "idle-5min", kind = "advance", ms = 300000 },
+  { id = "idle-10s", kind = "advance", ms = 10000 },
   { id = "until-change", kind = "until-change" },
   { id = "at-10s", kind = "at", offset_ms = 10000 },
 ]

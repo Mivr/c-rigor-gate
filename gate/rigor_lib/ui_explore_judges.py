@@ -14,13 +14,14 @@ those files next to the finding's `paths.json` and removes the key before the fi
 
 from rigor_lib import jsonio
 from rigor_lib.ui_explore_key import normalised, readable
+from rigor_lib.ui_explore_probe import NOT_A_REPLY
 from rigor_lib.ui_explore_run import first_difference
 
 GATE = "ui-explore"
 LAYERS = {"model-nondeterministic": "L0", "run-twice-mismatch": "L0", "timer-starvation": "L0"}
 CHECKS = ("ui-coverage-gap", "model-nondeterministic", "run-twice-mismatch", "timer-starvation", "timer-unreachable",
-          "depth-unsaturated", "key-too-coarse", "event-never-accepted", "event-accepted", "probe-internal-error",
-          "ui-explore-timeout")
+          "depth-unsaturated", "key-too-coarse", "key-fact-unmatched", "event-never-accepted", "event-accepted",
+          "intent-missed", "probe-internal-error", "ui-explore-timeout")
 SEVERITY = {"key-too-coarse": "info"}     # P004 3.7: I -> E after report-first; every other check is an error
 PRIVATE = "_evidence"
 
@@ -53,22 +54,32 @@ def origin_of(words):
 
 
 # ---- step judges ----------------------------------------------------------------------------------------------
-def starvation_judge(bound, catalogue_key):
-    """`timer-starvation`: `bound` consecutive firings each left the next deadline at most one frame away. Reported at
-    the step that completes the streak; the state is where it began. O(1) per step (the run counts the streak)."""
+def starvation_judge(catalogue_key):
+    """`timer-starvation`: more than `starve_firings` deadline firings within `starve_window_frames` frames of virtual
+    time (ui_explore_words.fired). Reported once per run, at the step that crossed the limit; the state is the one
+    before the first firing of that window. O(1) per step: the run counts the firings."""
     def judge(step, path, contract):
         del contract
-        if step.streak != bound:
+        if step.starved is None:
             return []
-        words = [view.word for view in path] + [step.word]
-        if step.starved:            # one until-change word fired them all
-            start, dues = step, step.firings
-        else:
-            steps = list(path[len(path) + 1 - bound:]) + [step]
-            start, dues = steps[0], [[s.now, s.obs["due"]] for s in steps]
-        observed = {"firings": bound, "frame_ms": 16, "now_and_next_due": dues}
-        return [make("timer-starvation", ["streak", start.key_before],
-                     state_of(start.key_before, start.proj_before, catalogue_key, step.origin), words, observed)]
+        info = step.starved
+        observed = {name: info[name] for name in ("firings", "limit", "window_ms", "first_ms", "last_ms")}
+        return [make("timer-starvation", ["window", info["start_key"]],
+                     state_of(info["start_key"], info["start_proj"], catalogue_key, step.origin),
+                     [view.word for view in path] + [step.word], observed)]
+    return judge
+
+
+def missed_judge(catalogue_key):
+    """`intent-missed`: an input reached the product through the production path, but the product did not produce the
+    intent it was aimed at (`ok apply missed`, a probe with apply-missed)."""
+    def judge(step, path, contract):
+        del contract
+        if step.result != "missed":
+            return []
+        return [make("intent-missed", ["missed", step.key_before, step.word],
+                     state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
+                     [view.word for view in path] + [step.word], {"word": step.word, "applies": list(step.applies)})]
     return judge
 
 
@@ -127,10 +138,13 @@ def _error_finding(run, catalogue_key):
         check = "timer-starvation"
     else:
         check = "probe-internal-error"
-    observed = {"kind": error.kind, "command": error.command, "detail": error.detail, "step": index}
+    # Output nobody asked for is caught before a command or read as its reply, whichever the timing gives: the command
+    # is then left out of the finding, so its id and bytes do not depend on timing (the evidence keeps it).
+    command = None if error.detail == NOT_A_REPLY else error.command
+    observed = {"kind": error.kind, "command": command, "detail": error.detail, "step": index}
     path = run.words[:index + 1] if step.word != "quit" else run.words
-    evidence = {"error.json": {"raw": error.raw}} if error.raw is not None else None
-    return make(check, [error.kind, error.command, step.key_before, step.word],
+    evidence = {"error.json": {"raw": error.raw, "command": error.command}} if error.raw is not None else None
+    return make(check, [error.kind, command, step.key_before, step.word],
                 state_of(step.key_before, step.proj_before, catalogue_key, origin_of(run.words)), path, observed,
                 evidence)
 

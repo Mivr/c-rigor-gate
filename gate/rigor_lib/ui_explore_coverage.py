@@ -9,16 +9,18 @@ findings)`; `evaluated` is False when the criterion could not be judged (then it
 from dataclasses import dataclass, field
 
 from rigor_lib.ui_explore_judges import make, state_of
+from rigor_lib.ui_explore_key import derived_matched
+from rigor_lib.ui_explore_words import outcome_kind
 
 
 @dataclass
 class EventCount:
-    """The abstract states in which an event was accepted and refused (a state may be in both: refusal in one run
-    of a state and acceptance in another is the run-twice judge's business)."""
+    """The abstract states in which an input event's outcome (its last input's) was accepted, refused or missed, and
+    for each outcome the first send that had it: (path, (key, projection, origin) before the send)."""
     accepted: set = field(default_factory=set)
     refused: set = field(default_factory=set)
-    first_path: object = None      # the first path that sent it
-    first_state: object = None     # (key, projection, origin) before that send
+    missed: set = field(default_factory=set)
+    first: dict = field(default_factory=dict)       # outcome -> (path, state before)
 
 
 @dataclass
@@ -31,16 +33,24 @@ class Exploration:
     edges: set = field(default_factory=set)            # (key before, word, key after or None)
     env: dict = field(default_factory=dict)            # (key, enabled env input) -> path
     events: dict = field(default_factory=dict)         # event id -> EventCount
+    outcomes: dict = field(default_factory=dict)       # path word or event id -> {outcome type: count}
+    derived_matched: set = field(default_factory=set)  # derived facts whose selector matched in some visited state
+    visited: bool = False
 
     def record(self, words, steps):
         """Add the exploration steps of one first run (steps of `words`, not the appended ones)."""
         ids = self.catalogue.event_ids
         for step in steps[:len(words)]:
+            self._outcomes(step)
             if step.index > 0 and step.word in ids:
                 self.edges.add((step.key_before, step.word, step.key))
                 self._count(step, words)
             if step.key is None:
                 break
+            self.visited = True
+            for fact in self.catalogue.key.derived:
+                if fact.name not in self.derived_matched and derived_matched(fact, step.obs):
+                    self.derived_matched.add(fact.name)
             if step.key not in self.reachable:
                 self.reachable[step.key] = (list(words[:step.index + 1]), step.proj, step.origin)
             for item in step.obs["env"]:
@@ -50,13 +60,20 @@ class Exploration:
                 self.domain_visited.add(int(step.word.split(" ")[1]))
 
     def _count(self, step, words):
-        if not step.applies:
+        if step.result is None:
             return
         count = self.events.setdefault(step.word, EventCount())
-        if count.first_path is None:
-            count.first_path = list(words[:step.index + 1])
-            count.first_state = (step.key_before, step.proj_before, step.origin)
-        (count.accepted if "ok" in step.applies else count.refused).add(step.key_before)
+        outcome = {"ok": "accepted", "refused": "refused", "missed": "missed"}[step.result]
+        getattr(count, outcome).add(step.key_before)
+        if outcome not in count.first:
+            count.first[outcome] = (list(words[:step.index + 1]), (step.key_before, step.proj_before, step.origin))
+
+    def _outcomes(self, step):
+        word = "settle" if step.word == "settle" else step.word.split(" ")[0] if step.index else "open"
+        counts = self.outcomes.setdefault(word, {})
+        for item in step.outcome:
+            kind = outcome_kind(item)
+            counts[kind] = counts.get(kind, 0) + 1
 
     def exercised(self):
         return {(before, word) for before, word, _after in self.edges}
@@ -108,12 +125,24 @@ def _acceptance(exploration):
         expect = event.get("expect")
         bad = (expect == "accept" and not count.accepted) or (expect == "refuse" and count.accepted)
         if bad:
+            # the witness is the first send with the offending outcome: replaying it gives the same finding
             check = "event-never-accepted" if expect == "accept" else "event-accepted"
-            before = count.first_state
-            out.append(make(check, [sha, event.id], state_of(before[0], before[1], key, before[2]), count.first_path,
+            witness = count.first["accepted"] if expect == "refuse" else count.first.get("refused", count.first.get("missed"))
+            path, before = witness
+            out.append(make(check, [sha, event.id], state_of(before[0], before[1], key, before[2]), path,
                             {"event": event.id, "expect": expect, "accepted_states": len(count.accepted),
-                             "refused_states": len(count.refused)}))
+                             "refused_states": len(count.refused), "missed_states": len(count.missed)}))
     return out
+
+
+def key_facts_judge(exploration):
+    """`key-fact-unmatched`: a derived fact whose node/role selector matched no record in any visited state is a
+    constant, not a fact; every strategy runs this once some state was visited."""
+    sha = exploration.catalogue.sha256
+    return [make("key-fact-unmatched", [sha, fact.name], None, [exploration.open_word],
+                 {"fact": fact.name, "node": fact.node, "role": fact.role})
+            for fact in exploration.catalogue.key.derived
+            if exploration.visited and fact.model is None and fact.name not in exploration.derived_matched]
 
 
 CRITERIA = {"C1": c1_judge, "C8": c8_judge}

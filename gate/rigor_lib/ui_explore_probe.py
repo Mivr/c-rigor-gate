@@ -19,6 +19,7 @@ groups (the explorer calls it on SIGTERM and SIGINT).
 """
 
 import os
+import re
 import select
 import signal
 import subprocess
@@ -29,7 +30,8 @@ from rigor_lib.ui_explore_grammar import (BUF_MAX, DOMAIN_MAX, MAX_LINE, UNSIGNE
                                           parse_env_inputs, parse_frame_line, parse_record, printable)
 
 GREETING = "ui-probe/1 ready"
-CAPABILITIES = ("tap",)                 # what a greeting may announce, in this order
+# what a greeting may announce, in this order (the C probe of a later task announces them all)
+CAPABILITIES = ("frame-facts", "ink", "hit-test", "tap", "apply-missed")
 FRAME_MS = 16
 ADVANCE_MAX_MS = 600000
 TIME_MAX_MS = 1 << 52
@@ -38,6 +40,7 @@ MAX_LINES = BUF_MAX                     # every line of a framed reply carries a
 # the commands whose model call may return false (docs/ui-model.md); a `fail` reply to any other is a protocol error
 FAILABLE = ("open", "env-inputs", "apply", "advance", "frame", "semantic", "patches", "trace", "domain-at")
 LIVE = set()
+_DUE = re.compile(r"0|[1-9][0-9]{0,19}")       # next-due: the full uint64 range the C probe can print
 # Output nobody asked for may arrive before the next command is sent or be read as its reply, depending on timing:
 # both are the same finding, with the same gate text.
 NOT_A_REPLY = "a line that is not the reply to this command"
@@ -78,10 +81,12 @@ def _raw(data):
 class Session:
     """One probe process."""
 
-    def __init__(self, argv, deadline_s, budget):
+    def __init__(self, argv, deadline_s, budget, expect_caps=None):
+        """`expect_caps`: the capabilities of the first launch; a launch that announces others is a protocol error."""
         self.deadline_s, self.budget = deadline_s, budget
         self.now = self.origin = None
-        self._buf, self._eof = b"", False
+        self.commands = self.virtual_ms = 0
+        self._buf, self._eof, self._reaped = b"", False, False
         try:
             self._proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                           stderr=subprocess.DEVNULL, start_new_session=True)
@@ -92,6 +97,9 @@ class Session:
         os.set_blocking(self._fd, False)
         try:
             self.caps = self._greeting(self._line("greeting", self._limit()))
+            if expect_caps is not None and self.caps != tuple(expect_caps):
+                raise ProbeError("protocol", "greeting", "capabilities differ from the first launch of this probe",
+                                 " ".join(self.caps))
         except (ProbeError, BudgetSpent):
             self.close()
             raise
@@ -121,25 +129,40 @@ class Session:
         return True
 
     def _drain(self, command):
-        """Before a command nothing may be pending: output nobody asked for is a protocol error."""
-        while not self._eof and self._read_ready(0):
-            pass
+        """Before a command nothing may be pending: what is buffered, or what one non-blocking read returns, is output
+        nobody asked for (a protocol error)."""
+        if not self._buf and not self._eof:
+            self._read_ready(0)
         if self._buf:
             raise ProbeError("protocol", command, NOT_A_REPLY, _raw(self._buf))
 
     def _send(self, command):
         name = command.split(" ")[0]
         self._drain(name)
+        self.commands += 1
         try:
             self._proc.stdin.write(command.encode("ascii") + b"\n")
             self._proc.stdin.flush()
         except (BrokenPipeError, ConnectionResetError):
             raise self._crashed(name)
 
-    def _crashed(self, command):
+    def _exit_status(self, limit):
+        """Wait until monotonic `limit` for the probe to exit, without reaping it (so its pid and process group stay
+        valid for killpg); its exit status (negative: the signal), or None."""
+        fd = os.pidfd_open(self._proc.pid)
         try:
-            code = self._proc.wait(timeout=max(min(self.deadline_s, self.budget.end - time.monotonic()), 0.001))
-        except subprocess.TimeoutExpired:
+            left = min(limit, self.budget.end) - time.monotonic()
+            ready, _, _ = select.select([fd], [], [], max(left, 0))
+            found = os.waitid(os.P_PID, self._proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) if ready else None
+        finally:
+            os.close(fd)
+        if found is None:
+            return None
+        return found.si_status if found.si_code == os.CLD_EXITED else -found.si_status
+
+    def _crashed(self, command):
+        code = self._exit_status(self._limit())
+        if code is None:
             self.kill()
             if self.budget.spent():
                 raise BudgetSpent()
@@ -155,6 +178,8 @@ class Session:
     def _line(self, command, limit):
         while True:
             end = self._buf.find(b"\n")
+            if end > MAX_LINE:
+                raise ProbeError("protocol", command, "a reply line longer than %d bytes" % MAX_LINE, _raw(self._buf))
             if end >= 0:
                 raw, self._buf = self._buf[:end], self._buf[end + 1:]
                 text = raw.decode("latin-1")
@@ -238,19 +263,21 @@ class Session:
             raise ProbeError("protocol", "env-inputs", str(error), line[:400])
 
     def apply(self, kind, ident, arg, hex_text):
-        """True when delivered, False when refused."""
+        """"ok" (delivered), "refused" (not enabled; nothing changed) or "missed" (delivered through the production
+        path, but the product did not produce the intent it was aimed at; only from a probe announcing apply-missed)."""
         self._need_open("apply")
         if kind not in (1, 2, 3) or "00" in pairs(hex_text):
             raise InternalError("apply: bad input %r" % ((kind, ident, arg, hex_text),))
-        line = self._exact("apply %d %d %d %s" % (kind, ident, arg, hex_text or "-"), "ok apply", "ok apply refused")
-        return line == "ok apply"
+        allowed = ("ok apply", "ok apply refused") + (("ok apply missed",) if "apply-missed" in self.caps else ())
+        line = self._exact("apply %d %d %d %s" % (kind, ident, arg, hex_text or "-"), *allowed)
+        return {"ok apply": "ok", "ok apply refused": "refused", "ok apply missed": "missed"}[line]
 
     def tap(self, x, y):
-        """True when the tap reached an intent, False when it was refused (only with the `tap` capability)."""
+        """"ok" when the tap reached an intent, "refused" when nothing took it (only with the `tap` capability)."""
         self._need_open("tap")
         if "tap" not in self.caps:
             raise InternalError("tap needs a probe that announces the tap capability")
-        return self._exact("tap %d %d" % (x, y), "ok tap", "ok tap refused") == "ok tap"
+        return "ok" if self._exact("tap %d %d" % (x, y), "ok tap", "ok tap refused") == "ok tap" else "refused"
 
     def next_due(self):
         """The next deadline in ms, or None."""
@@ -259,7 +286,7 @@ class Session:
         if line == "ok next-due none":
             return None
         head = "ok next-due "
-        if not line.startswith(head) or not UNSIGNED.fullmatch(line[len(head):]):
+        if not line.startswith(head) or not _DUE.fullmatch(line[len(head):]) or int(line[len(head):]) >= 2**64:
             raise ProbeError("protocol", "next-due", NOT_A_REPLY, line)
         due = int(line[len(head):])
         if due <= self.now:
@@ -274,6 +301,7 @@ class Session:
         now = self._number("advance %d" % to_ms, "advance")
         if now != to_ms:
             raise ProbeError("protocol", "advance", "the clock did not reach the target", "ok advance %d" % now)
+        self.virtual_ms += now - self.now
         self.now = now
 
     def frame(self):
@@ -311,20 +339,24 @@ class Session:
             self._read_ready(left)
         if self._buf:
             raise ProbeError("protocol", "quit", "output after ok quit", _raw(self._buf))
-        try:
-            code = self._proc.wait(timeout=max(min(limit, self.budget.end) - time.monotonic(), 0.001))
-        except subprocess.TimeoutExpired:
+        code = self._exit_status(limit)
+        if code is None:
             self._expired("quit", limit)
         if code != 0:
             raise ProbeError("crash", "quit", "exit status %d after quit" % code)
 
     def kill(self):
-        """Kill the probe's whole process group (a grandchild holding stdout included), then reap; idempotent."""
+        """Kill the probe's whole process group (a grandchild holding stdout included), then reap the probe. The probe is
+        never reaped before (waits use WNOWAIT), so its pid still names its group; after reaping, killpg is not called
+        again. Idempotent."""
+        if self._reaped:
+            return
         try:
             os.killpg(self._proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
         self._proc.wait()
+        self._reaped = True
 
     def close(self):
         for stream in (self._proc.stdin, self._proc.stdout):

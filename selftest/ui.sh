@@ -268,39 +268,39 @@ for mode in rel san; do
 done
 
 begin "ui-explore bfs on the toy terminates saturated (states per depth, C8 evaluated); depth 1 is depth-unsaturated, byte-identical twice"
-explore bfs.1 0 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 1000 --require C8
-expect bfs.1 'F == [] and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 77 and S["evaluated"] == ["C8"] and S["events"]["code-empty"] == {"accepted_states": 0, "refused_states": 7}'
-explore shallow.1 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 1000
-explore shallow.2 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 1000
+explore bfs.1 0 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8
+expect bfs.1 'F == [] and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 77 and S["evaluated"] == ["C8"] and S["events"]["code-empty"] == {"accepted_states": 0, "refused_states": 7, "missed_states": 0}'
+explore shallow.1 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
+explore shallow.2 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
 same shallow.1 shallow.2
 expect shallow.1 'len(ids("depth-unsaturated")) == 1 and one("depth-unsaturated")["observed"]["reasons"] == ["last-depth-adds-states"] and one("depth-unsaturated")["observed"]["states_per_depth"] == [1, 2] and len(ids("ui-coverage-gap")) == 22 and len(F) == 23'
 echo "  states per depth [1, 2, 4, 0]; depth 1: depth-unsaturated + 22 C8 gaps, byte-identical"
 
 begin "a nondeterministic adapter (pid in the trace) is model-nondeterministic at the press, byte-identical twice, and replays"
 build_out probe_nondet "$REL" "$P:probe_nondet"
-explore nondet.1 1 "$probe_nondet" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 1000 --evidence "$out/ev.nondet.1"
-explore nondet.2 1 "$probe_nondet" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 1000 --evidence "$out/ev.nondet.2"
+explore nondet.1 1 "$probe_nondet" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.nondet.1"
+explore nondet.2 1 "$probe_nondet" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.nondet.2"
 same nondet.1 nondet.2
 expect nondet.1 'F == all_of("model-nondeterministic") and len(F) == 1 and F[0]["observed"] == {"step": 1, "word": "tap-press", "part": "trace", "item": 0} and F[0]["path"] == ["'"$OPENW"'", "tap-press"]'
 replays nondet.1 "$probe_nondet" "$FIX"
 
-begin "an adapter whose deadline never moves gives timer-starvation, byte-identical twice, which replays"
+begin "an adapter whose deadline never moves gives timer-starvation (33 firings in one 1024 ms window), byte-identical twice, which replays"
 build_out probe_starve "$REL" "$P:probe_starve"
-explore starve.1 1 "$probe_starve" "$FIX" --strategy bfs "${SEED[@]}" --depth 1 --max-states 1000 --evidence "$out/ev.starve.1"
-explore starve.2 1 "$probe_starve" "$FIX" --strategy bfs "${SEED[@]}" --depth 1 --max-states 1000 --evidence "$out/ev.starve.2"
+explore starve.1 1 "$probe_starve" "$FIX" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100 --evidence "$out/ev.starve.1"
+explore starve.2 1 "$probe_starve" "$FIX" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100 --evidence "$out/ev.starve.2"
 same starve.1 starve.2
-expect starve.1 'len(ids("timer-starvation")) >= 1 and all(f["observed"]["firings"] == 32 and f["path"][:2] == ["'"$OPENW"'", "tap-press"] for f in all_of("timer-starvation"))'
+expect starve.1 'len(ids("timer-starvation")) == 1 and one("timer-starvation")["observed"]["firings"] == 33 and one("timer-starvation")["observed"]["limit"] == 32 and one("timer-starvation")["path"][:2] == ["'"$OPENW"'", "tap-press"] and len(ids("ui-coverage-gap")) == 9 and len(ids("depth-unsaturated")) == 1 and len(F) == 11'
 replays starve.1 "$probe_starve" "$FIX"
 
 begin "an adapter with a perpetual 250 ms tick: bfs terminates with no finding (settle ends, until-change is one event)"
 build_out probe_tick "$REL" "$P:probe_tick"
-explore tick 0 "$probe_tick" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 1000 --require C8
+explore tick 0 "$probe_tick" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8
 expect tick 'F == [] and S["detail"]["states_per_depth"][-1] == 0 and S["evaluated"] == ["C8"]'
 echo "  states per depth $(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["detail"]["states_per_depth"])' "$out/x.tick.sum")"
 
 begin "a key that omits the label and geometry is key-too-coarse (info) on the toy, and the findings replay"
-explore coarse 0 "$probe_rel" "$prod/toy_coarse.events.toml" --strategy bfs "${SEED[@]}" --depth 8 --max-states 1000 --evidence "$out/ev.coarse"
-expect coarse 'len(ids("key-too-coarse")) >= 1 and all(f["severity"] == "info" for f in F) and [f["observed"]["witness_path"] for f in F if f["path"] == ["'"$OPENW"'", "env-offline"]] == [["'"$OPENW"'", "tap-press"]]'
+explore coarse 0 "$probe_rel" "$prod/toy_coarse.events.toml" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.coarse"
+expect coarse 'len(ids("key-too-coarse")) == 2 and len(F) == 2 and all(f["severity"] == "info" for f in F) and [f["observed"]["witness_path"] for f in F if f["path"] == ["'"$OPENW"'", "env-offline"]] == [["'"$OPENW"'", "tap-press"]]'
 replays coarse "$probe_rel" "$prod/toy_coarse.events.toml"
 
 begin "ui-explore walks on the toy (2 seeds x 3 clock origins) give no finding, evaluate nothing, and are byte-identical twice"
@@ -311,4 +311,29 @@ expect walk.1 'F == [] and S["runs"] == 6 and S["evaluated"] == []'
 explore walk.req 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11 --walk-length 3 --extra-origins 0 --require C8
 expect walk.req 'ids("ui-coverage-gap") and F[0]["observed"] == {"criterion": "C8", "evaluated": False}'
 
+begin "no probe process this selftest started is still alive"
+python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" <<'PY' || fail "$CUR: probe processes left behind"
+import os, sys, time
+root, binaries = sys.argv[1], {os.path.realpath(os.path.join(sys.argv[1], b)) for b in sys.argv[2:]}
+stub = os.path.join(root, "gate/tests/data/ui_explore/stub_probe.py").encode()
+def live():
+    """Live processes running one of the probe binaries (by /proc/<pid>/exe) or the unit tests' stub probe."""
+    out = []
+    for pid in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            state = open("/proc/%s/stat" % pid).read().rsplit(")", 1)[1].split()[0]
+            cmd = open("/proc/%s/cmdline" % pid, "rb").read().split(b"\0")
+            exe = os.path.realpath("/proc/%s/exe" % pid)
+        except OSError:
+            continue
+        if state != "Z" and (exe in binaries or any(stub in part for part in cmd)):
+            out.append(pid)
+    return out
+end = time.monotonic() + 5
+while live() and time.monotonic() < end:
+    time.sleep(0.05)
+if live():
+    print("alive:", live()); sys.exit(1)
+PY
+echo "  none"
 echo "ui selftest passed"

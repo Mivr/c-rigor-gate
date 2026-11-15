@@ -10,6 +10,10 @@ from tests import test_ui_explore_helpers as h
 from tests.helpers import TempDirTestCase
 
 
+def tearDownModule():
+    h.assert_no_stubs()
+
+
 class GrammarTest(unittest.TestCase):
     def test_unescape(self):
         self.assertEqual(g.unescape(r"a\\b\tc\nd\x01\xff"), b"a\\b\tc\nd\x01\xff")
@@ -67,8 +71,8 @@ class SessionTest(TempDirTestCase):
         session.open(1000, 7)
         self.assertEqual([r.fields[2] for r in session.records("semantic")], ["Toy", "Press", ""])
         self.assertEqual(session.env_inputs(), ((1, 0, ""),))
-        self.assertTrue(session.apply(3, 1, 0, ""))
-        self.assertFalse(session.apply(3, 1, 0, ""))
+        self.assertEqual(session.apply(3, 1, 0, ""), "ok")
+        self.assertEqual(session.apply(3, 1, 0, ""), "refused")
         self.assertEqual(session.next_due(), 4000)
         session.advance(4000)
         self.assertIsNone(session.next_due())
@@ -80,7 +84,7 @@ class SessionTest(TempDirTestCase):
         session = self.session("tapcap")
         self.assertEqual(session.caps, ("tap",))
         session.open(1000, 7)
-        self.assertFalse(session.tap(10, 20))
+        self.assertEqual(session.tap(10, 20), "refused")
         plain = self.session("good")
         plain.open(1000, 7)
         with self.assertRaises(InternalError):
