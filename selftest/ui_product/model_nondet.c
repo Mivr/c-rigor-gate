@@ -44,6 +44,13 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     return r == FIX_OK ? UIM_OK : r == FIX_REFUSED ? UIM_REFUSED : UIM_ERROR;
 }
 
+/* The fixture queues no work: nothing is ever due without moving the clock. */
+uim_result_t uim_settle(uim_t *m, bool *worked)
+{
+    *worked = false;
+    return m->f.open ? UIM_OK : UIM_ERROR;
+}
+
 uint64_t uim_next_due(const uim_t *m)
 {
     return fix_next_due(&m->f);

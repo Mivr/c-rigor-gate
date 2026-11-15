@@ -14,7 +14,10 @@ from tests.helpers import TempDirTestCase, run_rigor
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 STUB = HERE / "data" / "ui_explore" / "stub_probe.py"
-TOY = REPO / "selftest" / "ui_product" / "toy.events.toml"
+# The stub's catalogue: byte for byte the toy catalogue as U05 sealed it (no taps). The selftest's toy catalogue has taps
+# since U05a, which the stub only answers in its tap modes (those tests use edited copies).
+TOY = HERE / "data" / "ui_explore" / "stub.events.toml"
+SELFTEST_TOY = REPO / "selftest" / "ui_product" / "toy.events.toml"
 TOY_COARSE = REPO / "selftest" / "ui_product" / "toy_coarse.events.toml"
 FIXTURE = REPO / "selftest" / "ui_product" / "fixture.events.toml"
 OPEN = "open 1000 7"

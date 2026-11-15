@@ -4,7 +4,8 @@
  * and the n lines it announces). Strict: a malformed or unknown command, a model that breaks the interface contract,
  * a last line without newline and input after `quit` are protocol errors: an `err` reply, counted, exit status 1.
  * Model failures are ordinary replies (`fail <command>`) that poison the session until the next `open`; a refused
- * input is `ok apply refused`. The probe owns the time loop (`advance`). Static memory only; no recursion. */
+ * input is `ok apply refused`, a missed one `ok apply missed`. The probe owns the time loop (`advance`) and the lvprobe of
+ * the session (closed before every `open` and before exit). Static memory only; no recursion. */
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,7 +24,8 @@ typedef bool (*buffer_fn_t)(uim_t *, uim_buf_t *);
 
 typedef struct {
     const char *name;
-    size_t argc;
+    size_t argc;            /* the fewest arguments */
+    size_t argc_max;        /* the most */
     bool needs_open;
     handler_t run;
 } command_t;
@@ -34,6 +36,10 @@ static char g_reply[PROBE_REPLY_MAX];
 static char g_payload[UIM_BUF_MAX];
 static size_t g_tail_len;   /* bytes of g_payload written after the reply header line */
 static uim_input_t g_inputs[UIM_ENV_MAX];
+static lvprobe_t g_lv;      /* the lvprobe of the session; its storage is probe_frame.c's */
+
+/* The greeting: the protocol name, `ready` and the capabilities (docs/ui-model.md, "The greeting"). */
+static const char GREETING[] = "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop";
 
 /* ---- replies ------------------------------------------------------------------------------------------------- */
 
@@ -74,7 +80,14 @@ bool probe_reply_lines(const char *name, size_t lines, size_t bytes)
     return fits(snprintf(g_reply, sizeof g_reply, "ok %s lines %zu", name, lines));
 }
 
-
+/* lvprobe stops observing the display before the model can delete it (`open`) and before exit. */
+static void close_lvprobe(probe_t *p)
+{
+    lvprobe_close(p->lv);
+    p->disp = NULL;
+    p->framed = false;
+    p->tick_set = false;   /* the next session's tick offset is taken at its first frame */
+}
 
 /* ---- handlers ------------------------------------------------------------------------------------------------ */
 
@@ -85,6 +98,7 @@ static bool cmd_open(probe_t *p, char **arg)
     if (!probe_parse_u64(arg[0], &origin) || !probe_parse_u64(arg[1], &seed) || origin > UIM_ORIGIN_MAX_MS) {
         return probe_reply_err("open", "bad-arguments");
     }
+    close_lvprobe(p);
     p->opened = uim_open(p->model, origin, seed);
     p->origin = origin;
     p->now = origin;
@@ -151,12 +165,14 @@ static bool cmd_apply(probe_t *p, char **arg)
     }
     in.kind = (uint16_t)kind;
     in.id = (uint32_t)id;
+    p->framed = false;
     r = uim_apply(p->model, &in);
-    if (r == UIM_OK || r == UIM_REFUSED) {
-        return fits(snprintf(g_reply, sizeof g_reply, r == UIM_OK ? "ok apply" : "ok apply refused"));
+    if (r == UIM_OK || r == UIM_REFUSED || r == UIM_MISSED) {
+        return fits(snprintf(g_reply, sizeof g_reply, "%s",
+                             r == UIM_OK ? "ok apply" : r == UIM_REFUSED ? "ok apply refused" : "ok apply missed"));
     }
     p->opened = false;
-    return probe_reply_plain("apply", false);
+    return r == UIM_ERROR ? probe_reply_plain("apply", false) : probe_reply_err("apply", "model-contract");
 }
 
 static bool cmd_next_due(probe_t *p, char **arg)
@@ -180,6 +196,7 @@ static bool cmd_advance(probe_t *p, char **arg)
     if (!probe_parse_u64(arg[0], &to) || to < p->now || to > UIM_TIME_MAX_MS || to - p->now > UIM_ADVANCE_MAX_MS) {
         return probe_reply_err("advance", "bad-arguments");
     }
+    p->framed = false;
     r = probe_advance_to(p, to);
     if (r == PROBE_ADV_CONTRACT) {
         p->opened = false;
@@ -244,6 +261,7 @@ static bool cmd_domain_at(probe_t *p, char **arg)
     if (!probe_parse_u64(arg[0], &i) || i >= uim_domain_count()) {
         return probe_reply_err("domain-at", "bad-arguments");
     }
+    p->framed = false;
     if (!uim_domain_at(p->model, (uint16_t)i)) {
         p->opened = false;
         return probe_reply_plain("domain-at", false);
@@ -259,18 +277,22 @@ static bool cmd_quit(probe_t *p, char **arg)
 }
 
 static const command_t g_commands[] = {
-    {"open", 2, false, cmd_open},
-    {"env-inputs", 0, true, cmd_env_inputs},
-    {"apply", 4, true, cmd_apply},
-    {"next-due", 0, true, cmd_next_due},
-    {"advance", 1, true, cmd_advance},
-    {"frame", 0, true, probe_cmd_frame},
-    {"semantic", 0, true, cmd_semantic},
-    {"patches", 0, true, cmd_patches},
-    {"domain-count", 0, false, cmd_domain_count},
-    {"domain-at", 1, true, cmd_domain_at},
-    {"trace", 0, true, cmd_trace},
-    {"quit", 0, false, cmd_quit},
+    {"open", 2, 2, false, cmd_open},
+    {"env-inputs", 0, 0, true, cmd_env_inputs},
+    {"apply", 4, 4, true, cmd_apply},
+    {"next-due", 0, 0, true, cmd_next_due},
+    {"advance", 1, 1, true, cmd_advance},
+    {"frame", 0, 0, true, probe_cmd_frame},
+    {"ink", 0, 1, true, probe_cmd_ink},
+    {"hit-test", 2, 2, true, probe_cmd_hit_test},
+    {"tap", 2, 2, true, probe_cmd_tap},
+    {"crop", 4, 4, true, probe_cmd_crop},
+    {"semantic", 0, 0, true, cmd_semantic},
+    {"patches", 0, 0, true, cmd_patches},
+    {"domain-count", 0, 0, false, cmd_domain_count},
+    {"domain-at", 1, 1, true, cmd_domain_at},
+    {"trace", 0, 0, true, cmd_trace},
+    {"quit", 0, 0, false, cmd_quit},
 };
 
 /* ---- the loop ------------------------------------------------------------------------------------------------ */
@@ -312,25 +334,27 @@ static int split(char **tok, size_t max)
 
 static bool dispatch(probe_t *p)
 {
-    char *tok[PROBE_TOKENS];
+    char *tok[PROBE_TOKENS + 1];
     size_t i = 0;
     int n = split(tok, PROBE_TOKENS);
     g_tail_len = 0;
     if (n < 0) {
         return probe_reply_err("?", "malformed");
     }
+    tok[n] = NULL;   /* the handlers see NULL-terminated arguments */
     for (i = 0; i < sizeof g_commands / sizeof g_commands[0]; i++) {
         const command_t *c = &g_commands[i];
         bool good = false;
         if (strcmp(tok[0], c->name) != 0) {
             continue;
         }
-        if ((size_t)n - 1u != c->argc) {
+        if ((size_t)n - 1u < c->argc || (size_t)n - 1u > c->argc_max) {
             return probe_reply_err(c->name, "bad-arguments");
         }
         if (c->needs_open && !p->opened) {
             return probe_reply_err(c->name, "not-open");
         }
+        p->cmd = c->name;
         good = c->run(p, tok + 1);
         if (!good && strncmp(g_reply, "err ", 4) != 0) {
             return probe_reply_err(c->name, "internal");
@@ -448,17 +472,26 @@ static bool serve(probe_t *p)
 int main(void)
 {
     probe_t p;
+    bool served = false;
     p.model = uim_instance();
     p.opened = false;
     p.quit = false;
     p.failed = false;
     p.origin = 0;
     p.now = 0;
+    p.cmd = "?";
+    p.lv = &g_lv;
+    p.disp = NULL;
+    p.framed = false;
+    p.tick_set = false;
+    p.tick_offset = 0;
     g_tail_len = 0;
-    if (p.model == NULL || !fits(snprintf(g_reply, sizeof g_reply, "ui-probe/1 ready")) || !emit()) {
+    if (p.model == NULL || !fits(snprintf(g_reply, sizeof g_reply, "%s", GREETING)) || !emit()) {
         return 2;
     }
-    if (!serve(&p)) {
+    served = serve(&p);
+    close_lvprobe(&p);
+    if (!served) {
         return 2;
     }
     return p.failed ? 1 : 0;

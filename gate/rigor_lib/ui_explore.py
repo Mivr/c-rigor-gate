@@ -15,7 +15,7 @@ from rigor_lib import ui_explore_catalogue as catalogue_mod
 from rigor_lib import ui_explore_strategies as strategies
 from rigor_lib.ui_explore_coverage import CRITERIA, not_evaluated
 from rigor_lib.ui_explore_judges import CHECKS, PRIVATE, make
-from rigor_lib.ui_explore_probe import CAPABILITIES, Budget, BudgetSpent, ProbeError, Session, kill_all
+from rigor_lib.ui_explore_probe import CAPABILITIES, TAP_CAPS, Budget, BudgetSpent, ProbeError, Session, kill_all
 from rigor_lib.ui_explore_judges import probe_error_judge
 from rigor_lib.ui_explore_run import Config, Run, Step, check_words
 
@@ -29,6 +29,7 @@ _RANGES = {"origin_ms": (0, 1 << 48), "seed": (0, 2**64 - 1), "depth": (1, 64), 
            "walk_length": (1, 10000), "extra_origins": (0, 16), "deadline_ms": (1, 600000),
            "budget_s": (1, 86400)}
 _EVIDENCE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\.json")
+_IMAGE_NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\.png")      # an evidence image: PNG bytes (ui_explore_png)
 
 
 def _uint(text):
@@ -135,12 +136,17 @@ def _evidence(found, directory, criteria):
         paths = ([item["observed"]["witness_path"]] if item["check"] == "key-too-coarse" else []) + [item["path"]]
         files = {"paths.json": {"schema": PATHS_SCHEMA, "criteria": list(criteria), "paths": paths}}
         for file_name, data in item.get(PRIVATE, {}).items():
-            if not _EVIDENCE_NAME.fullmatch(file_name) or file_name == "paths.json":
+            image = _IMAGE_NAME.fullmatch(file_name) is not None and isinstance(data, bytes)
+            document = _EVIDENCE_NAME.fullmatch(file_name) is not None and file_name != "paths.json" \
+                and not isinstance(data, bytes)
+            if not (image or document):
                 raise InternalError("a judge's evidence file name %r is not allowed" % (file_name,))
             files[file_name] = data
         os.makedirs(os.path.join(directory, name))
         for file_name in sorted(files):
-            jsonio.write_atomic(os.path.join(directory, name, file_name), jsonio.canonical_dumps(files[file_name]))
+            data = files[file_name]
+            jsonio.write_atomic(os.path.join(directory, name, file_name),
+                                data if isinstance(data, bytes) else jsonio.canonical_dumps(data))
         item["evidence"] = [name + "/" + file_name for file_name in sorted(files)]
 
 
@@ -197,6 +203,7 @@ def explore(args):
     except BudgetSpent:
         caps, greeting = None, _budget_finding(args, catalogue, word, 0)
     if caps is not None:
+        _check_requires(catalogue, caps)
         _check_taps(catalogue, caps, paths)
         strategies.check_cost(catalogue, args, paths, caps)
         config = Config(config.probe, config.deadline_s, catalogue, budget, caps)
@@ -225,10 +232,18 @@ def explore(args):
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
 
 
+def _check_requires(catalogue, caps):
+    missing = [cap for cap in catalogue.requires if cap not in caps]
+    if missing:
+        raise InternalError("the catalogue requires the probe capabilities %s, which the probe does not announce"
+                            % ", ".join(missing))
+
+
 def _check_taps(catalogue, caps, paths):
     taps = [event.id for event in catalogue.events if event.cls in ("u2", "u3")]
-    if taps and "tap" not in caps:
-        raise InternalError("catalogue taps %s need a probe that announces the tap capability" % ", ".join(taps))
+    if taps and not all(cap in caps for cap in TAP_CAPS):
+        raise InternalError("catalogue taps %s need a probe that announces the tap capability and hit-test"
+                            % ", ".join(taps))
     for words in paths or ():
         check_words(words, catalogue, caps)
 

@@ -29,6 +29,13 @@ GATE_ID = "symbols"
 UI_PREFIX = "uim_"
 UI_PROBE = "gate//ui/model:probe"
 UI_MODEL = "gate//ui/model:model"
+# U05a: the gate's renderer observer `gate//ui/lvprobe:lvprobe`, which the probe library calls. Its prefixes are reserved
+# like `uim_`: a product module may neither define nor reference an `lvprobe_` or `lvp_` symbol, whatever its policy says;
+# the lvprobe library itself (which defines them) and the gate's probe library (which may only reference them) are the
+# exceptions, matched by their exact gate labels. Its facts are judged like those of any gate-owned library: a product
+# policy lists it as trusted, and the probe library's references to it are granted by its exports.
+UI_LVPROBE = "gate//ui/lvprobe:lvprobe"
+UI_LVPROBE_PREFIXES = ("lvprobe_", "lvp_")
 
 
 def ui_exempt(products):
@@ -57,6 +64,20 @@ def ui_findings(facts, exempt):
         for use, names in (("defined", unit.defined), ("referenced", unit.undefined)):
             for symbol in sorted(n for n in names if n.startswith(UI_PREFIX)):
                 found.append(finding("ui-model-symbol", target=facts.label, unit=unit.name, symbol=symbol, use=use))
+    return found
+
+
+def lvprobe_findings(facts):
+    """`ui-lvprobe-symbol`: an `lvprobe_`/`lvp_` name defined or referenced by a module that may not (`use`: how)."""
+    found = []
+    if facts.label == UI_LVPROBE:
+        return found
+    for unit in facts.units:
+        uses = (("defined", unit.defined),) if facts.label == UI_PROBE else (("defined", unit.defined),
+                                                                            ("referenced", unit.undefined))
+        for use, names in uses:
+            for symbol in sorted(n for n in names if n.startswith(UI_LVPROBE_PREFIXES)):
+                found.append(finding("ui-lvprobe-symbol", target=facts.label, unit=unit.name, symbol=symbol, use=use))
     return found
 
 
@@ -213,6 +234,7 @@ def run(facts_by_label, policy, libc, third=None, libc_android=None):
     units = 0
     for label in sorted(products):
         found.extend(ui_findings(products[label], exempt))   # before the trusted skip: a policy cannot bypass it
+        found.extend(lvprobe_findings(products[label]))
         if label in policy.trusted:
             continue
         facts = products[label]

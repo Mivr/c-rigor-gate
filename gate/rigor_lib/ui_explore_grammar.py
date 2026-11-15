@@ -19,6 +19,13 @@ SEMANTIC_FIELDS = ("key", "role", "label", "x", "y", "w", "h", "enabled", "inten
 PATCH_FIELDS = ("op", "key", "field", "old", "new")
 TRACE_FIELDS = ("seq", "type", "mono_ms")
 RECORD_FIELDS = {"semantic": SEMANTIC_FIELDS, "patches": PATCH_FIELDS, "trace": TRACE_FIELDS}
+# The record types of a `frame` reply from a probe that announces frame-facts, and of `ink`, with their field counts
+# (the type name included): docs/ui-model.md "Frame facts", docs/ui-lvprobe.md "Text format".
+FRAME_FIELDS = {"lvprobe": 3, "frame": 4, "node": 21, "label": 15, "fit": 8, "region": 3, "life": 7}
+INK_FIELDS = {"ink": 8, "noink": 3}
+# the numeric fields of those records the explorer reads (u: unsigned, s: signed): walk indexes, parents, boxes, sizes
+_TYPED_KINDS = {"lvprobe": {2: "u"}, "frame": {1: "u", 2: "u"},
+                "node": {1: "u", 2: "s", 3: "u", 5: "s", 6: "s", 7: "s", 8: "s"}}
 _FIELD_KINDS = {"semantic": {3: "s", 4: "s", 5: "s", 6: "s", 7: "f"}, "patches": {}, "trace": {0: "u", 2: "u"}}
 UNSIGNED = re.compile(r"0|[1-9][0-9]{0,17}")
 _SIGNED = re.compile(r"0|-?[1-9][0-9]{0,17}")
@@ -92,8 +99,22 @@ def parse_record(kind, line):
 
 
 def parse_frame_line(line):
-    """A line of the `frame` reply (the lvprobe seam): any number of TAB-separated fields, each escaped as above."""
+    """A line of the `frame` reply of a probe without frame-facts: any number of TAB-separated fields, escaped as above."""
     fields, values = _split(line)
+    return Record(line, fields, values)
+
+
+def parse_typed_line(types, line):
+    """A frame-facts or ink record: its type (the first field) is one of `types`, with exactly that many fields."""
+    fields, values = _split(line)
+    want = types.get(fields[0])
+    if want is None:
+        raise GrammarError("a record of a type this reply does not have")
+    if len(fields) != want:
+        raise GrammarError("a %s record with %d fields, wanted %d" % (fields[0], len(fields), want))
+    for index, how in _TYPED_KINDS.get(fields[0], {}).items():
+        if not (UNSIGNED if how == "u" else _SIGNED).fullmatch(fields[index]):
+            raise GrammarError("a %s record whose field %d is not a number of its kind" % (fields[0], index))
     return Record(line, fields, values)
 
 

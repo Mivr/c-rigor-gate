@@ -3,7 +3,9 @@
  * fail (the session is poisoned), INTENT_BAD_RECORD writes a trace record that breaks the record grammar (model-contract).
  * Three more inputs exist to show the gate's time loop: INTENT_DUE_NOW arms a deadline at the current time (a contract
  * violation), INTENT_CHAIN makes the next notice timeout arm a second timer 20 ms later (a deadline created during an
- * advance), INTENT_SHRINK_BUF makes uim_semantic change the capacity of the caller's buffer, INTENT_MANY_TABS writes a trace record with 40 TABs, INTENT_LOG_STEPS toggles one trace event per uim_step (so the frame grid is visible). */
+ * advance), INTENT_SHRINK_BUF makes uim_semantic change the capacity of the caller's buffer, INTENT_MANY_TABS writes a trace record with 40 TABs, INTENT_LOG_STEPS toggles one trace event per uim_step (so the frame grid is visible).
+ * INTENT_PRESS taps the button through the app's pointer: while the notice shows, its scrim takes the tap and the apply
+ * is UIM_MISSED (U05a, the F3b canary). */
 #include <stdio.h>
 #include <string.h>
 
@@ -172,9 +174,12 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     if (in->kind == UIM_IN_INTENT && in->id == INTENT_BAD_RECORD) {
         return log_add(m->trace, &m->trace_len, "a record without tabs") ? UIM_OK : UIM_ERROR;
     }
-    if (in->kind == UIM_IN_INTENT && in->id == INTENT_PRESS && !toy_notice_shown()) {
+    if (in->kind == UIM_IN_INTENT && in->id == INTENT_PRESS) {   /* a tap at the button through the app's pointer */
         toy_press();
-        return toy_take_press() && show(m, "Pressed") && event(m, "press") ? UIM_OK : UIM_ERROR;
+        if (!toy_take_press()) {
+            return UIM_MISSED;   /* the notice's scrim took it: delivered, but no press */
+        }
+        return show(m, "Pressed") && event(m, "press") ? UIM_OK : UIM_ERROR;
     }
     if (in->kind == UIM_IN_ENV && in->id == ENV_OFFLINE && !toy_notice_shown()) {
         return show(m, "Offline") && event(m, "env_offline") ? UIM_OK : UIM_ERROR;
@@ -183,6 +188,20 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
         return event(m, "line") ? UIM_OK : UIM_ERROR;
     }
     return UIM_REFUSED;
+}
+
+/* A probe tap at the button leaves a press queued (the button's handler records it): run it now, as an apply would. */
+uim_result_t uim_settle(uim_t *m, bool *worked)
+{
+    *worked = false;
+    if (!m->open) {
+        return UIM_ERROR;
+    }
+    if (!toy_take_press()) {
+        return UIM_OK;
+    }
+    *worked = true;
+    return show(m, "Pressed") && event(m, "press") ? UIM_OK : UIM_ERROR;
 }
 
 uint64_t uim_next_due(const uim_t *m)

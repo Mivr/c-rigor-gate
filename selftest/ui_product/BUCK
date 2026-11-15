@@ -69,3 +69,15 @@ c_library(
 )
 
 c_ui_probe(name = "probe_tick", model = ":model_tick")
+
+# U05a: ordinary product code that calls an lvprobe symbol, and code that defines an `lvp_` name: both flagged
+# (`ui-lvprobe-symbol`), whatever the policy allows.
+c_library(
+    name = "lvpuse",
+    srcs = ["lvpuse.c"],
+)
+
+c_library(
+    name = "lvpdef",
+    srcs = ["lvpdef.c"],
+)

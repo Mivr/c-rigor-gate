@@ -15,7 +15,7 @@ from rigor_lib import jsonio
 from rigor_lib.errors import InternalError
 from rigor_lib import ui_explore_words as words_mod
 from rigor_lib.ui_explore_key import key_hash, projection
-from rigor_lib.ui_explore_probe import FRAME_MS, NOT_A_REPLY, ORIGIN_MAX_MS, ProbeError, Session
+from rigor_lib.ui_explore_probe import FRAME_MS, NOT_A_REPLY, ORIGIN_MAX_MS, TAP_CAPS, ProbeError, Session
 
 _OPEN = re.compile(r"open (0|[1-9][0-9]{0,17}) (0|[1-9][0-9]{0,19})")
 _DOMAIN = re.compile(r"domain-at (0|[1-9][0-9]{0,4})")
@@ -38,7 +38,8 @@ class Config:
 class Step:
     """One executed path word. `outcome` says what it did; `applies` the results ("ok", "refused", "missed") of its
     inputs, the last of which is the word's `result`; `obs` the replies read after it; `unreachable` a wait it did not
-    take; `starved` the window that made the run starve, on the step that crossed the limit. `error` is the ProbeError
+    take; `starved` the window that made the run starve, on the step that crossed the limit; `images` evidence images
+    (PNG bytes by file name) of a missed tap, never compared by run-twice. `error` is the ProbeError
     that ended the run here (then `obs` is partial and `key` None). `key`/`proj` are its abstraction key and
     projection, `key_before`/`proj_before` those of the step before."""
     index: int
@@ -53,6 +54,10 @@ class Step:
     unreachable: object = None
     starved: object = None
     error: object = None
+    images: dict = field(default_factory=dict)
+    misrouted: object = None      # a u2 tap pressed another non-root node than the one its target names
+    noop: object = None           # a tap that must change nothing changed the model
+    image_box: object = None      # (x, y, w, h) of the evidence image of the node a tap pressed
     key: object = None
     proj: object = None
     key_before: object = None
@@ -109,8 +114,9 @@ def check_words(words, catalogue, caps=()):
         event = catalogue.by_id(word)
         if not (word in (SETTLE, WAIT_CHANGE) or _DOMAIN.fullmatch(word) or _AT.fullmatch(word) or event):
             raise InternalError("path word %r is not a path word or a catalogue event id" % word)
-        if event is not None and event.cls in ("u2", "u3") and "tap" not in caps:
-            raise InternalError("path word %r is a tap, and the probe does not announce the tap capability" % word)
+        if event is not None and event.cls in ("u2", "u3") and not all(cap in caps for cap in TAP_CAPS):
+            raise InternalError("path word %r is a tap, and the probe does not announce the tap capability and "
+                                "hit-test" % word)
     return origin, seed
 
 
@@ -165,6 +171,23 @@ def _one(session, run, word, catalogue):
         return False
     step.proj = projection(step.obs, step.now, catalogue.key)
     step.key = key_hash(step.proj)
+    return _evidence(session, run, step)
+
+
+def _evidence(session, run, step):
+    """The image of the node a tap pressed, fetched after the step is complete, so that the step's own outcome and its
+    findings stand when the evidence cannot be read: then a pseudo step `evidence` carries the error and the run ends."""
+    if step.image_box is None:
+        return True
+    try:
+        image = words_mod.box_image(session, step.image_box)
+    except ProbeError as error:
+        run.steps.append(Step(len(run.steps), "evidence", error=error, key_before=step.key, proj_before=step.proj,
+                              origin=step.origin))
+        run.error = (len(run.steps) - 1, error)
+        return False
+    if image is not None:
+        step.images["tap-node.png"] = image
     return True
 
 

@@ -101,51 +101,59 @@ printf 'open 0 1\napply 3 666 0 -\nsemantic\nopen 0 1\napply 3 99 0 -\nsemantic\
 begin "rigor buckfiles accepts the product tree (c_ui_probe, its load, the model header dep)"
 "${RIGOR[@]}" buckfiles --root "$prod" --out "$out/bf.json" > "$out/bf.txt" 2>&1 || fail "$CUR: buckfiles refuses $prod" "$out/bf.txt"
 
-begin "the symbols gate reserves the uim_ prefix: the adapter and the probe pass under an unmodified product-style policy; product code that references or defines one is flagged"
-for t in model toy misuse misdef probe; do build_out "f_$t" "$REL" "$P:${t}_facts"; done
+begin "the symbols gate reserves the uim_, lvprobe_ and lvp_ prefixes: the adapter and the probe pass under an unmodified product-style policy (the gate's lvprobe trusted); product code that references or defines one is flagged"
+for t in model toy misuse misdef lvpuse lvpdef probe; do build_out "f_$t" "$REL" "$P:${t}_facts"; done
 build_out f_hdr "$REL" //ui/model:model_facts
 build_out f_main "$REL" //ui/model:probe_facts
+build_out f_lvp "$REL" //ui/lvprobe:lvprobe_facts
 build_out f_lvgl "$REL" //third_party/lvgl:lvgl_symbols
 build_out f_ctest "$REL" //ctest:ctest_facts
 build_out libc "$REL" toolchains//:libc_symbols
 # relabel <src> <dest>: the facts of a product build print the gate's own targets as `gate//...`; this root cell is the gate,
-# so `//ui/model:...` is rewritten to that spelling (label and deps), the way a product repo's facts read.
+# so `//ui/model:...` and `//ui/lvprobe:...` are rewritten to that spelling (label and deps), the way a product repo's facts read.
 relabel() {
   python3 -I - "$1" "$2" <<'PY' || fail "$CUR: relabel $1"
 import json, sys
 doc = json.load(open(sys.argv[1]))
-fix = lambda x: "gate" + x if x.startswith("//ui/model:") else x
+fix = lambda x: "gate" + x if x.startswith(("//ui/model:", "//ui/lvprobe:")) else x
 doc["label"] = fix(doc["label"])
 doc["deps"] = sorted(fix(d) for d in doc["deps"])
 json.dump(doc, open(sys.argv[2], "w"))
 PY
 }
-# The libc (and other non-gate) symbols the probe library really references: from its facts, checked against the
-# checked-in list so that a change of the probe's imports is visible in review, and the policy's `allow` is built from it.
+# The libc, LVGL and other symbols the probe library really references that no gate dependency defines (not the model's
+# `uim_*`, not what the gate's lvprobe exports): from the facts, checked against the checked-in list so that a change of
+# the probe's imports is visible in review, and the policy's `allow` is built from it.
 relabel "$f_main" "$out/probe_lib.json"
-python3 -I - "$out/probe_lib.json" > "$out/probe_libc.actual" <<'PY' || fail "$CUR: cannot read the probe library facts"
+python3 -I - "$out/probe_lib.json" "$f_lvp" > "$out/probe_imports.actual" <<'PY' || fail "$CUR: cannot read the probe library facts"
 import json, sys
 doc = json.load(open(sys.argv[1]))
+lvprobe = {s for u in json.load(open(sys.argv[2]))["units"] for s in u["defined"]}
 defined = {s for u in doc["units"] for s in u["defined"]}
-undefined = {s for u in doc["units"] for s in u["undefined"]} - defined
+undefined = {s for u in doc["units"] for s in u["undefined"]} - defined - lvprobe
 print("\n".join(sorted(s for s in undefined if not s.startswith("uim_"))))
 PY
-cmp -s "$out/probe_libc.actual" "$prod/probe_libc.expected" || { diff "$prod/probe_libc.expected" "$out/probe_libc.actual" > "$out/d.txt"; fail "$CUR: the probe library's imports differ from $prod/probe_libc.expected" "$out/d.txt"; }
+cmp -s "$out/probe_imports.actual" "$prod/probe_imports.expected" || { diff "$prod/probe_imports.expected" "$out/probe_imports.actual" > "$out/d.txt"; fail "$CUR: the probe library's imports differ from $prod/probe_imports.expected" "$out/d.txt"; }
 python3 -I - "$out" <<'PY' || fail "$CUR: could not write the policy"
 import sys
 out = sys.argv[1]
-UIM = ["uim_instance", "uim_open", "uim_env_inputs", "uim_apply", "uim_next_due", "uim_step", "uim_frame",
+UIM = ["uim_instance", "uim_open", "uim_env_inputs", "uim_apply", "uim_settle", "uim_next_due", "uim_step", "uim_frame",
        "uim_semantic", "uim_patches", "uim_domain_count", "uim_domain_at", "uim_trace"]
 # The policy of a product: the gate's global block as it is (no uim_ entry of any kind), then the modules.
 text = open("policy/hello.toml").read()
 head = text.split("[module.")[0]
-assert head.count("[global]") == 1 and "uim_" not in head
+assert head.count("[global]") == 1 and "uim_" not in head and head.count('trusted = ["//ctest:ctest"]') == 1
+# the gate's lvprobe is a gate-owned library like ctest: trusted, its facts given, its exports grant the probe's calls
+head = head.replace('trusted = ["//ctest:ctest"]', 'trusted = ["//ctest:ctest", "gate//ui/lvprobe:lvprobe"]')
 toy = ["toy_start", "toy_display", "toy_press", "toy_take_press", "toy_show_notice", "toy_hide_notice", "toy_notice_due",
        "toy_step", "toy_node", "toy_notice_shown", "toy_draw"]
 probe = ["main", "probe_parse_u64", "probe_parse_i32", "probe_parse_text", "probe_to_hex", "probe_hex_digit",
          "probe_check_records", "probe_advance_to", "probe_reply_err", "probe_reply_plain", "probe_reply_lines",
-         "probe_payload", "probe_cmd_frame", "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
-libc = open(out + "/probe_libc.actual").read().split()
+         "probe_payload", "probe_cmd_frame", "probe_cmd_ink", "probe_cmd_hit_test", "probe_cmd_tap", "probe_cmd_crop",
+         "probe_life_line", "probe_why", "probe_fatal", "probe_refuse", "probe_reply_words", "probe_lv_settle",
+         "probe_model_settle", "probe_tick_ok", "probe_point", "probe_point_err", "probe_node_word",
+         "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
+libc = open(out + "/probe_imports.actual").read().split()
 q = lambda names: "[" + ", ".join('"%s"' % n for n in names) + "]"
 mods = """
 [module."gate//ui/model:model"]
@@ -181,6 +189,14 @@ open(out + "/policy.good.toml", "w").write(head + mods)
 open(out + "/policy.misdef_legacy.toml", "w").write(head + mods + '\n[module."//selftest/ui_product:misdef"]\nallow = []\n')   # no exports key
 for name, exports in (("misuse", ["misuse_peek"]), ("misdef", [])):
     open(out + "/policy.%s.toml" % name, "w").write(head + mods + case % (name, q(exports)))
+# the lvprobe prefixes are the gate's whatever a policy allows: the caller's policy even allows the lvprobe name it calls
+lvp = """
+[module."//selftest/ui_product:%s"]
+allow = %s
+exports = %s
+"""
+for name, allow, exports in (("lvpuse", ["lvprobe_count"], ["lvpuse_peek"]), ("lvpdef", [], ["lvp_mine"])):
+    open(out + "/policy.%s.toml" % name, "w").write(head + mods + lvp % (name, q(allow), q(exports)))
 PY
 # gate_case <name> <expected exit> <expected finding>... -- <facts name>...: runs the gate on that set of facts
 gate_case() {
@@ -205,12 +221,14 @@ if got != want or (doc["status"] == "PASS") != (not want):
 PY
   echo "  $name -> exit $rc ${expected[*]:-}"
 }
-gate_case good 0 -- hdr main lvgl model toy probe ctest
-gate_case misuse 1 "ui-model-symbol:uim_instance" "ui-model-symbol:uim_open" -- hdr main lvgl model toy probe misuse ctest
-gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_due" -- hdr main lvgl model toy probe misdef ctest
+gate_case good 0 -- hdr main lvgl model toy probe lvp ctest
+gate_case misuse 1 "ui-model-symbol:uim_instance" "ui-model-symbol:uim_open" -- hdr main lvgl model toy probe misuse lvp ctest
+gate_case misdef 1 "ui-model-symbol:uim_next_due" "unexpected-export:uim_next_due" -- hdr main lvgl model toy probe misdef lvp ctest
 # a policy table without an exports key (a legacy table) cannot hide it: the prefix is reserved by the gate itself
 cp "$f_misdef" "$out/f_misdef_legacy.json"; f_misdef_legacy="$out/f_misdef_legacy.json"
-gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy ctest
+gate_case misdef_legacy 1 "ui-model-symbol:uim_next_due" -- hdr main lvgl model toy probe misdef_legacy lvp ctest
+gate_case lvpuse 1 "ui-lvprobe-symbol:lvprobe_count" -- hdr main lvgl model toy probe lvpuse lvp ctest
+gate_case lvpdef 1 "ui-lvprobe-symbol:lvp_mine" -- hdr main lvgl model toy probe lvpdef lvp ctest
 
 # ---- U05: rigor ui-explore, the explorer driver ------------------------------------------------------------------------
 CAT="$prod/toy.events.toml"
@@ -267,14 +285,30 @@ for mode in rel san; do
   expect "sweep.$mode.1" 'F == [] and S["domain_count"] == 2 and S["domain_visited"] == [0, 1] and S["evaluated"] == ["C1"]'
 done
 
-begin "ui-explore bfs on the toy terminates saturated (states per depth, C8 evaluated); depth 1 is depth-unsaturated, byte-identical twice"
-explore bfs.1 0 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8
-expect bfs.1 'F == [] and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 77 and S["evaluated"] == ["C8"] and S["events"]["code-empty"] == {"accepted_states": 0, "refused_states": 7, "missed_states": 0}'
+begin "ui-explore bfs on the toy terminates saturated (states per depth, C8 evaluated) and finds the intended F3b canary: in each of the 4 states where the notice shows, its transparent scrim takes the press (tap-press: ok apply missed; probe-press: the scrim, not the lv_button it aims at, takes the tap and nothing changes: tap-misrouted and intent-missed, with the scrim's image), 12 findings that replay; depth 1 is depth-unsaturated; byte-identical twice"
+explore bfs.1 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8 --evidence "$out/ev.bfs.1"
+explore bfs.2 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8 --evidence "$out/ev.bfs.2"
+same bfs.1 bfs.2
+expect bfs.1 'len(F) == 12 and len(all_of("intent-missed")) == 8 and sorted(f["observed"]["word"] for f in all_of("intent-missed")) == ["probe-press"] * 4 + ["tap-press"] * 4 and all(f["observed"]["applies"] == ["missed"] for f in all_of("intent-missed")) and len({f["state"]["key"] for f in F}) == 4 and len(all_of("tap-misrouted")) == 4 and all(f["observed"] == {"word": "probe-press", "pressed": {"index": 6, "class": "lv_obj", "box": [0, 0, 159, 119]}, "aimed": {"index": 3, "class": "lv_button", "box": [8, 40, 107, 75]}} for f in all_of("tap-misrouted")) and S["outcomes"]["probe-press"] == {"pressed lv_button 8,40,107,75 aimed": 3, "pressed lv_obj 0,0,159,119 other": 4, "tap missed": 4, "tap ok": 3} and S["outcomes"]["probe-blank"] == {"pressed lv_obj 0,0,159,119 root": 3, "pressed lv_obj 0,0,159,119 untargeted": 4, "tap refused": 7} and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 91 and S["evaluated"] == ["C8"] and S["events"]["code-empty"] == {"accepted_states": 0, "refused_states": 7, "missed_states": 0} and S["events"]["tap-press"] == {"accepted_states": 3, "refused_states": 0, "missed_states": 4} and S["events"]["probe-press"] == {"accepted_states": 3, "refused_states": 0, "missed_states": 4} and S["events"]["probe-blank"] == {"accepted_states": 0, "refused_states": 7, "missed_states": 0}'
+# the missed and misrouted probe taps carry the PNG of the node that took them (the 160x120 scrim), fetched with crop
+python3 -I - "$out/x.bfs.1.json" "$out/ev.bfs.1" <<'PY' || fail "$CUR: the evidence images of the missed taps"
+import json, struct, sys, zlib
+found = [json.loads(line) for line in open(sys.argv[1])]
+taps = [f for f in found if f["observed"]["word"] == "probe-press"]
+assert len(taps) == 8 and all(f["id"].rsplit("/", 1)[1] + "/tap-node.png" in f["evidence"] for f in taps)
+for f in taps:
+    data = open("%s/%s" % (sys.argv[2], f["id"].rsplit("/", 1)[1] + "/tap-node.png"), "rb").read()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", data[16:24]) == (160, 120)
+    raw = zlib.decompress(data[41:-16])
+    assert len(raw) == 120 * (1 + 160 * 4) and all(raw[r * 641] == 0 for r in range(120))
+assert not any("tap-node.png" in "".join(f["evidence"]) for f in found if f["observed"]["word"] == "tap-press")
+PY
+replays bfs.1 "$probe_rel" "$CAT"
 explore shallow.1 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
 explore shallow.2 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
 same shallow.1 shallow.2
-expect shallow.1 'len(ids("depth-unsaturated")) == 1 and one("depth-unsaturated")["observed"]["reasons"] == ["last-depth-adds-states"] and one("depth-unsaturated")["observed"]["states_per_depth"] == [1, 2] and len(ids("ui-coverage-gap")) == 22 and len(F) == 23'
-echo "  states per depth [1, 2, 4, 0]; depth 1: depth-unsaturated + 22 C8 gaps, byte-identical"
+expect shallow.1 'len(ids("depth-unsaturated")) == 1 and one("depth-unsaturated")["observed"]["reasons"] == ["last-depth-adds-states"] and one("depth-unsaturated")["observed"]["states_per_depth"] == [1, 2] and len(ids("ui-coverage-gap")) == 26 and len(F) == 27'
+echo "  states per depth [1, 2, 4, 0]; 8 intent-missed + 4 tap-misrouted (the scrim canary); depth 1: depth-unsaturated + 26 C8 gaps, byte-identical"
 
 begin "a nondeterministic adapter (pid in the trace) is model-nondeterministic at the press, byte-identical twice, and replays"
 build_out probe_nondet "$REL" "$P:probe_nondet"
@@ -298,18 +332,27 @@ explore tick 0 "$probe_tick" "$FIX" --strategy bfs "${SEED[@]}" --depth 8 --max-
 expect tick 'F == [] and S["detail"]["states_per_depth"][-1] == 0 and S["evaluated"] == ["C8"]'
 echo "  states per depth $(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["detail"]["states_per_depth"])' "$out/x.tick.sum")"
 
-begin "a key that omits the label and geometry is key-too-coarse (info) on the toy, and the findings replay"
-explore coarse 0 "$probe_rel" "$prod/toy_coarse.events.toml" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.coarse"
-expect coarse 'len(ids("key-too-coarse")) == 2 and len(F) == 2 and all(f["severity"] == "info" for f in F) and [f["observed"]["witness_path"] for f in F if f["path"] == ["'"$OPENW"'", "env-offline"]] == [["'"$OPENW"'", "tap-press"]]'
+begin "a key that omits the label and geometry is key-too-coarse (info) on the toy (beside the scrim canary's 2 intent-missed), and the findings replay"
+explore coarse 1 "$probe_rel" "$prod/toy_coarse.events.toml" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --evidence "$out/ev.coarse"
+expect coarse 'len(ids("key-too-coarse")) == 2 and len(ids("intent-missed")) == 2 and len(F) == 4 and all(f["severity"] == "info" for f in all_of("key-too-coarse")) and [f["observed"]["witness_path"] for f in F if f["path"] == ["'"$OPENW"'", "env-offline"]] == [["'"$OPENW"'", "tap-press"]]'
 replays coarse "$probe_rel" "$prod/toy_coarse.events.toml"
 
-begin "ui-explore walks on the toy (2 seeds x 3 clock origins) give no finding, evaluate nothing, and are byte-identical twice"
-explore walk.1 0 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
-explore walk.2 0 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
+begin "ui-explore walks on the toy (2 seeds x 3 clock origins) find only the scrim canary (intent-missed, tap-misrouted), evaluate nothing, and are byte-identical twice"
+explore walk.1 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
+explore walk.2 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11,12 --walk-length 12 --extra-origins 2
 cmp -s "$out/x.walk.1.sum" "$out/x.walk.2.sum" || fail "$CUR: two walk summaries differ"
-expect walk.1 'F == [] and S["runs"] == 6 and S["evaluated"] == []'
+same walk.1 walk.2
+expect walk.1 'len(all_of("intent-missed")) == 2 and len(all_of("tap-misrouted")) == 1 and len(F) == 3 and S["runs"] == 6 and S["evaluated"] == []'
 explore walk.req 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11 --walk-length 3 --extra-origins 0 --require C8
-expect walk.req 'ids("ui-coverage-gap") and F[0]["observed"] == {"criterion": "C8", "evaluated": False}'
+expect walk.req 'len(ids("ui-coverage-gap")) == 1 and one("ui-coverage-gap")["observed"] == {"criterion": "C8", "evaluated": False} and len(ids("intent-missed")) == 1 and len(F) == 2'
+
+begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
+for plat in "$REL" "$SAN"; do
+  run "$out/lvprobe.log" test --target-platforms "$plat" //ui/lvprobe/... || fail "$CUR: //ui/lvprobe/... failed in $plat" "$out/lvprobe.log"
+  grep -Eq "Pass [1-9][0-9]*\. Fail 0\." "$out/lvprobe.log" || fail "$CUR: the test summary in $plat is not a clean pass" "$out/lvprobe.log"
+done
+
+bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
 
 begin "no probe process this selftest started is still alive"
 python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" <<'PY' || fail "$CUR: probe processes left behind"

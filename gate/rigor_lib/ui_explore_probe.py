@@ -26,21 +26,25 @@ import subprocess
 import time
 
 from rigor_lib.errors import InternalError
-from rigor_lib.ui_explore_grammar import (BUF_MAX, DOMAIN_MAX, MAX_LINE, UNSIGNED, GrammarError, pairs,
-                                          parse_env_inputs, parse_frame_line, parse_record, printable)
+from rigor_lib.ui_explore_grammar import (BUF_MAX, DOMAIN_MAX, FRAME_FIELDS, INK_FIELDS, MAX_LINE, UNSIGNED,
+                                          GrammarError, pairs, parse_env_inputs, parse_frame_line, parse_record,
+                                          parse_typed_line, printable)
 
 GREETING = "ui-probe/1 ready"
-# what a greeting may announce, in this order (the C probe of a later task announces them all)
-CAPABILITIES = ("frame-facts", "ink", "hit-test", "tap", "apply-missed")
+# what a greeting may announce, in this order (docs/ui-model.md "The greeting"; the C probe announces them all)
+CAPABILITIES = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop")
+TAP_CAPS = ("hit-test", "tap")          # catalogue taps (u2, u3) need both: every tap is preceded by its hit query
 FRAME_MS = 16
 ADVANCE_MAX_MS = 600000
 TIME_MAX_MS = 1 << 52
 ORIGIN_MAX_MS = 1 << 48
 MAX_LINES = BUF_MAX                     # every line of a framed reply carries at least its LF
 # the commands whose model call may return false (docs/ui-model.md); a `fail` reply to any other is a protocol error
-FAILABLE = ("open", "env-inputs", "apply", "advance", "frame", "semantic", "patches", "trace", "domain-at")
+FAILABLE = ("open", "env-inputs", "apply", "advance", "frame", "semantic", "patches", "trace", "domain-at", "tap")
 LIVE = set()
 _DUE = re.compile(r"0|[1-9][0-9]{0,19}")       # next-due: the full uint64 range the C probe can print
+_NODE = re.compile(r"none|0|[1-9][0-9]{0,4}")    # a walk index (lvprobe: at most 32767) or none
+_HEX = re.compile(r"[0-9a-f]*")
 # Output nobody asked for may arrive before the next command is sent or be read as its reply, depending on timing:
 # both are the same finding, with the same gate text.
 NOT_A_REPLY = "a line that is not the reply to this command"
@@ -224,7 +228,10 @@ class Session:
         return int(line[len(head):])
 
     def _lines(self, name):
-        line, limit = self._reply(name)
+        return self._lines_of(name, name)
+
+    def _lines_of(self, command, name):
+        line, limit = self._reply(command)
         head = "ok %s lines " % name
         if not line.startswith(head) or not UNSIGNED.fullmatch(line[len(head):]):
             raise ProbeError("protocol", name, NOT_A_REPLY, line)
@@ -272,12 +279,53 @@ class Session:
         line = self._exact("apply %d %d %d %s" % (kind, ident, arg, hex_text or "-"), *allowed)
         return {"ok apply": "ok", "ok apply refused": "refused", "ok apply missed": "missed"}[line]
 
+    def _need_cap(self, name, cap):
+        self._need_open(name)
+        if cap not in self.caps:
+            raise InternalError("%s needs a probe that announces the %s capability" % (name, cap))
+
+    def _node(self, name, word, line):
+        if not _NODE.fullmatch(word) or (word != "none" and int(word) > 32767):
+            raise ProbeError("protocol", name, NOT_A_REPLY, line)
+        return None if word == "none" else int(word)
+
+    def hit_test(self, x, y):
+        """What LVGL's own search finds at (x, y): a walk index, None, or "blocked" (a tap would not be processed)."""
+        self._need_cap("hit-test", "hit-test")
+        line, _ = self._reply("hit-test %d %d" % (x, y))
+        words = line.split(" ")
+        if len(words) != 3 or words[:2] != ["ok", "hit-test"]:
+            raise ProbeError("protocol", "hit-test", NOT_A_REPLY, line)
+        return "blocked" if words[2] == "blocked" else self._node("hit-test", words[2], line)
+
     def tap(self, x, y):
-        """"ok" when the tap reached an intent, "refused" when nothing took it (only with the `tap` capability)."""
-        self._need_open("tap")
-        if "tap" not in self.caps:
-            raise InternalError("tap needs a probe that announces the tap capability")
-        return "ok" if self._exact("tap %d %d" % (x, y), "ok tap", "ok tap refused") == "ok tap" else "refused"
+        """A press and release through the production pointer path: "blocked", or (pressed, clicked), each a walk
+        index or None."""
+        self._need_cap("tap", "tap")
+        line, _ = self._reply("tap %d %d" % (x, y))
+        words = line.split(" ")
+        if line == "ok tap blocked":
+            return "blocked"
+        if len(words) != 4 or words[:2] != ["ok", "tap"]:
+            raise ProbeError("protocol", "tap", NOT_A_REPLY, line)
+        pressed, clicked = self._node("tap", words[2], line), self._node("tap", words[3], line)
+        if pressed is None and clicked is not None:
+            raise ProbeError("protocol", "tap", "a tap that clicked a node it did not press", line)
+        return pressed, clicked
+
+    def crop(self, x, y, w, h):
+        """The RGBA bytes of the box (x, y, w, h) of the current frame: h lines of 8 w lowercase hex digits."""
+        self._need_cap("crop", "crop")
+        lines = self._lines_of("crop %d %d %d %d" % (x, y, w, h), "crop")
+        if len(lines) != h or any(len(row) != 8 * w or not _HEX.fullmatch(row) for row in lines):
+            raise ProbeError("protocol", "crop", "a crop that is not %d rows of %d hex digits" % (h, 8 * w))
+        return bytes.fromhex("".join(lines))
+
+    def ink(self, node=None):
+        """The `ink` and `noink` records of every node (or of `node`) of the current frame."""
+        self._need_cap("ink", "ink")
+        command = "ink" if node is None else "ink %d" % node
+        return self._parse("ink", lambda line: parse_typed_line(INK_FIELDS, line), self._lines_of(command, "ink"))
 
     def next_due(self):
         """The next deadline in ms, or None."""
@@ -305,8 +353,11 @@ class Session:
         self.now = now
 
     def frame(self):
+        """The frame lines: lvprobe's records and `life` lines, by type and field count, from a probe that announces
+        frame-facts; seam lines of any shape (each escaped) from one that does not."""
         self._need_open("frame")
-        return self._parse("frame", parse_frame_line, self._lines("frame"))
+        parse = (lambda line: parse_typed_line(FRAME_FIELDS, line)) if "frame-facts" in self.caps else parse_frame_line
+        return self._parse("frame", parse, self._lines("frame"))
 
     def records(self, name):
         self._need_open(name)

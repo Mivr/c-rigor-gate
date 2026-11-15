@@ -21,7 +21,7 @@ GATE = "ui-explore"
 LAYERS = {"model-nondeterministic": "L0", "run-twice-mismatch": "L0", "timer-starvation": "L0"}
 CHECKS = ("ui-coverage-gap", "model-nondeterministic", "run-twice-mismatch", "timer-starvation", "timer-unreachable",
           "depth-unsaturated", "key-too-coarse", "key-fact-unmatched", "event-never-accepted", "event-accepted",
-          "intent-missed", "probe-internal-error", "ui-explore-timeout")
+          "intent-missed", "tap-misrouted", "noop-tap-effect", "probe-internal-error", "ui-explore-timeout")
 SEVERITY = {"key-too-coarse": "info"}     # P004 3.7: I -> E after report-first; every other check is an error
 PRIVATE = "_evidence"
 
@@ -72,14 +72,43 @@ def starvation_judge(catalogue_key):
 
 def missed_judge(catalogue_key):
     """`intent-missed`: an input reached the product through the production path, but the product did not produce the
-    intent it was aimed at (`ok apply missed`, a probe with apply-missed)."""
+    intent it was aimed at (`ok apply missed`, a probe with apply-missed; or a catalogue tap that pressed a node and
+    changed nothing, whose node box is the evidence image `tap-node.png`)."""
     def judge(step, path, contract):
         del contract
         if step.result != "missed":
             return []
         return [make("intent-missed", ["missed", step.key_before, step.word],
                      state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
-                     [view.word for view in path] + [step.word], {"word": step.word, "applies": list(step.applies)})]
+                     [view.word for view in path] + [step.word], {"word": step.word, "applies": list(step.applies)},
+                     dict(step.images) or None)]
+    return judge
+
+
+def misrouted_judge(catalogue_key):
+    """`tap-misrouted` (P004 3.4): a u2 tap aimed at a node (its declared `target` class at the point, in the frame
+    before) pressed another node that is not a screen or layer root, whether or not anything changed."""
+    def judge(step, path, contract):
+        del contract
+        if step.misrouted is None:
+            return []
+        return [make("tap-misrouted", ["misrouted", step.key_before, step.word],
+                     state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
+                     [view.word for view in path] + [step.word], dict(step.misrouted, word=step.word),
+                     dict(step.images) or None)]
+    return judge
+
+
+def noop_judge(catalogue_key):
+    """`noop-tap-effect` (P004 3.4): a tap that must change nothing (a u3 complement tap, or a u2 tap that was blocked
+    or pressed nothing or a root) changed the model."""
+    def judge(step, path, contract):
+        del contract
+        if step.noop is None:
+            return []
+        return [make("noop-tap-effect", ["noop", step.key_before, step.word],
+                     state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
+                     [view.word for view in path] + [step.word], dict(step.noop, word=step.word))]
     return judge
 
 
@@ -142,7 +171,7 @@ def _error_finding(run, catalogue_key):
     # is then left out of the finding, so its id and bytes do not depend on timing (the evidence keeps it).
     command = None if error.detail == NOT_A_REPLY else error.command
     observed = {"kind": error.kind, "command": command, "detail": error.detail, "step": index}
-    path = run.words[:index + 1] if step.word != "quit" else run.words
+    path = run.words[:index + 1] if step.word not in ("quit", "evidence") else run.words
     evidence = {"error.json": {"raw": error.raw, "command": error.command}} if error.raw is not None else None
     return make(check, [error.kind, command, step.key_before, step.word],
                 state_of(step.key_before, step.proj_before, catalogue_key, origin_of(run.words)), path, observed,

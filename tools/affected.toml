@@ -44,6 +44,13 @@ selftests = ["ui"]
 [[rule]]
 glob = "selftest/ui_product/**"
 selftests = ["ui"]
+# U05a: the probe's frame facts, run by selftest/ui.sh.
+[[rule]]
+glob = "selftest/ui_frame.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_frame_product/**"
+selftests = ["ui"]
 # U05: the explorer driver (`rigor ui-explore`); only the ui selftest runs it.
 [[rule]]
 glob = "gate/rigor_lib/ui_explore*"

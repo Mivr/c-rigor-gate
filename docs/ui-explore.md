@@ -19,10 +19,11 @@ owner-declared abstraction key, applies the judges and writes one JSON line per 
 | `ui_explore_strategies.py` | sweep, bfs, walk, replay, and the cost check |
 | `ui_explore_png.py` | the PNG writer |
 
-Selftest: `selftest/ui.sh` steps 8 to 15. The fixtures are the toy probe and three adapters: a nondeterministic one, a
-starving one and one with a perpetual tick. The last step checks that no probe process is left. Unit tests:
-`gate/tests/test_ui_explore*.py`, with a stub probe (`gate/tests/data/ui_explore/stub_probe.py`, one mode per
-misbehaviour). Each test module's `tearDownModule` fails if a stub it started is still alive. A stub that would sleep
+Selftest: `selftest/ui.sh` steps 8 to 14 and its last step, 16. The fixtures are the toy probe and three adapters: a
+nondeterministic one, a starving one and one with a perpetual tick. The last step checks that no probe process is left.
+Unit tests: `gate/tests/test_ui_explore*.py`, with a stub probe (`gate/tests/data/ui_explore/stub_probe.py`, one mode
+per misbehaviour, and frame-facts modes that speak the protocol as the C probe does) and its catalogue
+(`gate/tests/data/ui_explore/stub.events.toml`, the toy catalogue as U05 sealed it, without taps). Each test module's `tearDownModule` fails if a stub it started is still alive. A stub that would sleep
 exits as soon as its parent is gone.
 
 ## The CLI
@@ -71,7 +72,7 @@ wiring (U14).
 - `runs`, `abstract_states`, `pairs_exercised`, `domain_count`, `domain_visited`;
 - `events`: per input event, `accepted_states`, `refused_states` and `missed_states`;
 - `outcomes`: per path word, its outcome types (`fired`, `now`, `past`, `no-deadline`, `deadline-within-a-frame`,
-  `no-change`, `changed`, `starving`, `unreachable`, `apply ok|refused|missed`, ...) with counts. No time outcome is
+  `no-change`, `changed`, `starving`, `unreachable`, `apply ok|refused|missed`, `tap ok|refused|missed`, ...) with counts. No time outcome is
   silent;
 - `cost`: `probe_commands` and `virtual_ms` over both runs of every path;
 - the finding counts and the strategy detail.
@@ -91,8 +92,13 @@ A path is a list of words:
 
 After every word the explorer reads, in this order: `frame`, `semantic`, `patches`, `trace`, `next-due`, `env-inputs`.
 The `open` step reads `domain-count` first. Patches and trace fetched during the word (drains and snapshots) come first
-in the step's `patches` and `trace`, so nothing is lost and run-twice compares all of it. Frame-seam lines are parsed by
-the record grammar (fields split and unescaped), and the verbatim text is kept alongside. A failing command ends the
+in the step's `patches` and `trace`, so nothing is lost and run-twice compares all of it. Frame lines are parsed by the
+record grammar (fields split and unescaped), and the verbatim text is kept alongside. From a probe that announces
+`frame-facts`, every line must be one of the record types of docs/ui-model.md ("Frame facts") with exactly its field
+count (`lvprobe` 3, `frame` 4, `node` 21, `label` 15, `fit` 8, `region` 3, `life` 7; `ink` 8 and `noink` 3 in an
+`ink` reply); an unknown type or a wrong count is a protocol finding. From an older probe the lines may have any shape.
+Every `err` reply (`no-frame` and `too-large` included) ends the run at that command: nothing more is sent to that
+probe, which is killed. A failing command ends the
 run at that step and becomes a finding. Nothing is retried, and no run is shortened silently.
 
 **Virtual time.** Every time word is bounded by the catalogue's `max_wait_ms`, which has a hard ceiling of 1 h. A wait
@@ -140,15 +146,48 @@ there are at most `firings` + 1 of them. A perpetual 250 ms tick gives 4. The se
 the first; `replay` appends nothing.
 
 **Inputs and the refusal check.** Every `apply` and `tap` of a word is checked on its own. Before it the explorer holds
-a snapshot: semantic records, next deadline, env inputs and frame lines. For the first input of a word that is the step
-before's observation; otherwise a fresh one. After a refused input it takes another snapshot and fetches patches and
-trace. Anything new, or any difference (frame lines included), is `probe-internal-error` with kind `contract`, at that
-input; a refused pad digit that changes the model is caught at that digit.
+a snapshot: frame records, semantic records, next deadline and env inputs. For the first input of a word that is the
+step before's observation; otherwise a fresh one. Every snapshot is read in the order of the step's own observation,
+`frame` FIRST (a `frame` runs the product's due work and may retake its snapshot, docs/ui-model.md), then `semantic`,
+`patches`, `trace`, `next-due`, `env-inputs`. A `life` line is in the first frame after its event only, so the frame is
+compared without its `life` lines, and a `life` line in the frame AFTER an input counts as a change (an object was
+created or deleted). After a refused input it takes another snapshot and fetches patches and trace. Anything new, or any
+difference, is `probe-internal-error` with kind `contract`, at that input; a refused pad digit that changes the model is
+caught at that digit.
 
 A word's outcome is the outcome of its last input, so a pad macro is accepted only when its enter is. `ok apply missed`
 (only from a probe that announces `apply-missed`) means the input was delivered but the product did not produce the
 intent it was aimed at. It is not a refusal and is not checked; the session continues; it is the finding
 `intent-missed`, and it never satisfies `expect = "accept"`.
+
+**Taps** (`u2`, `u3`; a probe that announces `hit-test` and `tap`). A catalogue tap at `x y` is `hit-test x y` (what
+LVGL's own search names), then `tap x y` (a press and release through the product's pointer path; the probe then runs
+the product's due work, `uim_settle`), then a snapshot (frame first). Only the probe contradicting itself is
+`probe-internal-error` kind `contract`: one of the two is `blocked` and the other is not, the tap pressed another node
+than the hit query found, or it pressed a node that is not in the frame. The pressed node is read from the frame of the
+step before (its `node` record): a screen or layer root (a node with no parent; LVGL screens are clickable by default)
+counts as pressing nothing. The step's outcome records `pressed <index> <class> <box> <how>`, `how` being `aimed`,
+`other`, `root` or `untargeted`, or `pressed none` / `pressed blocked`.
+
+A `u2` event may declare a `target`, an LVGL class name: the node it aims at is the deepest (then the last drawn) node of
+that class whose box holds the point, in the frame of the step before. A `u2` probe tap that pressed a non-root node is:
+- `ok` when the model changed (patches, trace, semantic, deadline or env inputs);
+- `missed` when it changed nothing: `intent-missed`;
+- and in either case `tap-misrouted` when it aims at a node and pressed another non-root node.
+
+A tap that must change nothing (every `u3` complement tap, and a `u2` tap that was blocked or pressed nothing or a root)
+is `refused` when nothing changed, frame records included; when something changed it is `ok` and the product finding
+`noop-tap-effect` (P004 3.4), and the run goes on.
+
+The finding of a tap that pressed a node carries the node's image `tap-node.png`, read with `crop` AFTER the step is
+complete: the outcome and the findings are recorded first, and an evidence error is a finding of its own (on a pseudo
+step `evidence`, which ends the run) beside them. The image is the node's box cut to the display and to its top-left 256
+x 256 pixels (`IMAGE_SIDE`), read in row bands that each fit one `crop` reply, so a full-screen or very wide node costs
+at most a few small crops. The toy's `probe-press` (the button's centre, `target = "lv_button"`) and `probe-blank`
+exercise all of this; under the toy's notice its transparent scrim takes `probe-press` (`tap-misrouted` and
+`intent-missed`) and `tap-press` is `ok apply missed`: the F3b canary of `selftest/ui.sh`. Matching a scene node
+(O2, by key) to the rendered node it should be (O3) beyond the declared target class is the later `ui-input` judge's
+work.
 
 **The strict client.** Output nobody asked for is a protocol error. Before every command the client looks once, without
 blocking, at what is buffered or readable. Every reply line is capped at 65 536 bytes, and so is a framed reply's
@@ -190,6 +229,10 @@ Top level, all required unless marked otherwise, nothing else:
 - `schema = "ui-events/1"`;
 - `product`, `app`, `version`;
 - `max_wait_ms` (1 to 3 600 000);
+- optional `requires`: probe capabilities the catalogue needs, distinct names of the six known ones. A probe whose
+  greeting lacks one is the gate's input error (exit 2: "the catalogue requires the probe capabilities ..., which the
+  probe does not announce"). The toy catalogue requires all six; an older probe's greeting (no capabilities) only serves
+  a catalogue that requires none;
 - `drain_ms` (16 to 60 000, a multiple of 16);
 - optional `starvation`;
 - `[key]`;
@@ -204,8 +247,8 @@ are `[a-z][a-z0-9-]*`, at most 64 characters, unique, never a reserved path word
 | Class | Meaning (P004 4.3) | Keys | Sent as |
 |---|---|---|---|
 | `u1` | intent taps | `intent` (uint32), `arg` (int32), `expect` | `apply 3 <intent> <arg> -` |
-| `u2` | probe taps through the hit-test | `x`, `y` (0..65535) | `tap x y`, only to a probe that announces `tap` |
-| `u3` | complement taps | `x`, `y` | as `u2` |
+| `u2` | probe taps through the hit-test | `x`, `y` (0..65535), optional `target` (an LVGL class name) | `hit-test x y`, then `tap x y` ("Taps"), only to a probe that announces `hit-test` and `tap` |
+| `u3` | complement taps | `x`, `y` | as `u2`; must change nothing |
 | `u4` | code macros with a boundary class | `boundary`, `expect`, and either `via = "wedge"` with `hex`, or `via = "pad"` with `digits`, `digit_intent`, `enter_intent` | wedge: `apply 2 0 0 <hex>`; pad: one `apply 3 <digit_intent> <d>` per digit, then `apply 3 <enter_intent> 0`; one step |
 | `u5` | language | `intent`, `arg`, `expect` | as `u1` |
 | `e1` | environment replies | `env` (uint32), `arg`, `hex`, `expect` | `apply 1 <env> <arg> <hex>` |
@@ -214,10 +257,12 @@ are `[a-z][a-z0-9-]*`, at most 64 characters, unique, never a reserved path word
 The `u4` boundary classes are `empty`, `one-digit`, `max-minus-1`, `max`, `max-plus-1`, `valid-visitor`, `valid-staff`,
 `unknown`, `expired` and `non-digit`.
 
-**Capabilities.** A probe's greeting is `ui-probe/1 ready[ <cap>...]`. The known capabilities, in this order:
-`frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`. An unknown, repeated or unordered capability is a protocol
-error. The first launch fixes the capabilities, and a later launch that announces others is a protocol finding.
-Catalogue taps need `tap`. A probe that cannot greet is reported as such, not as missing capabilities.
+**Capabilities.** A probe's greeting is `ui-probe/1 ready[ <cap>...]` (docs/ui-model.md, "The greeting"). The known
+capabilities, in this order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop`; the C probe announces all
+six, a probe without any is an older probe of the same protocol. An unknown, repeated or unordered capability is a
+protocol error. The first launch fixes the capabilities, and a later launch that announces others is a protocol finding.
+Catalogue taps need `hit-test` and `tap`. A probe that cannot greet is reported as such, not as missing
+capabilities.
 
 **The abstraction key** (P004 4.3 item 3):
 
@@ -290,7 +335,9 @@ nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` 
 | `timer-unreachable` | a wait past `max_wait_ms` or 2^52 | key before, word, reason | `word`, `target_ms`, `now_ms`, `max_wait_ms`, `reason` |
 | `model-nondeterministic` | the two runs' traces differ | key before, word, `trace` | `step`, `word`, `part`, `item`; both values in `runs.json` |
 | `run-twice-mismatch` | the first other differing part, in read order | key before, word, part | as above |
-| `intent-missed` | an input's outcome was `missed` | key before, word | `word`, `applies` |
+| `intent-missed` | an input's outcome was `missed` (`ok apply missed`, or a `u2` tap that pressed a non-root node and changed nothing) | key before, word | `word`, `applies`; a tap's node image in `tap-node.png` |
+| `tap-misrouted` | a `u2` tap aimed at a node (its `target`) pressed another non-root node | key before, word | `word`, `pressed` and `aimed` (index, class, box); the pressed node's image |
+| `noop-tap-effect` | a tap that must change nothing changed the model | key before, word | `word`, `changed` (the parts) |
 | `ui-coverage-gap` | C1 entry not visited; C8 pair not exercised; an env input that is no `e1` event; a `--require`d criterion not evaluated | `["C1", sha, i]`, `["C8", key, event]`, `["C8-env", key, input]`, `["not-evaluated", criterion, sha]` | criterion-specific |
 | `event-never-accepted` | an `accept` event whose outcome was never `ok` | sha, event | `event`, `expect`, per-outcome state counts; `path` is the first refusing send |
 | `event-accepted` | a `refuse` event accepted somewhere | sha, event | as above; `path` is the first accepting send |
@@ -336,8 +383,11 @@ Built-in judges:
 ## Evidence images
 
 `ui_explore_png.write_png(width, height, rgba)` writes an 8-bit RGBA PNG with `zlib` and `struct` only. It uses filter
-0, level 9 and no ancillary chunk, so the same pixels give the same bytes. `crop(...)` cuts a box out of a frame. No
-judge draws images yet.
+0, level 9 and no ancillary chunk, so the same pixels give the same bytes. `crop(...)` cuts a box out of a frame. A
+finding that names a node gets its image: a `u2` tap that is `missed` carries `tap-node.png`, the pressed node's box read
+from the probe with `crop` ("Taps"). A judge passes an image as `{"<name>.png": <PNG bytes>}` in its evidence; JSON
+evidence stays `{"<name>.json": data}`. Images are evidence only: run-twice does not compare them and they are never in
+`observed`.
 
 ## Deviations and limits
 
@@ -347,12 +397,19 @@ judge draws images yet.
   - `ui-explore-timeout` for `probe-timeout`;
   - `model-nondeterministic` (a differing trace) and `run-twice-mismatch` (any other differing part) where the contract
     named only the first.
+- **Product errors reported as protocol errors (known).** `err frame model-contract` and `err frame too-large` (and the
+  other `err` replies of the probe that a product causes) reach the explorer as `probe-internal-error` kind `protocol`,
+  although the product caused them; telling them apart is left to the judges task.
 - **Checks added beyond P004 3.7:**
   - `timer-unreachable`, `event-never-accepted`, `event-accepted` and `key-fact-unmatched`;
   - `intent-missed`. P004 3.4's `tap-misrouted` belongs to the `ui-input` gate and judges hit-test facts (both nodes
     named, per probe point), which this gate does not have. A `missed` apply only says the aimed intent did not happen.
 - **The starvation rule (32 firings within 1024 ms) also flags a legitimate perpetual timer of about 31 ms or less;**
   the owner decision is open.
-- **U1 taps** are catalogue intents until the rendered tree exists, and the C probe announces no capability yet.
+- **U1 taps** are catalogue intents (`apply 3 <intent> <arg>`): the adapter delivers them through the product's own
+  path (the toy taps its button through its pointer indev). Probe taps at points of the rendered tree are `u2`.
+- **A `u2` tap's aim is a declared LVGL class at its point** (`target`), not a scene node: the scene's geometry is
+  relative to each node's parent and keys are not walk indexes, so matching scene keys to rendered nodes is the later
+  `ui-input` judge's work.
 - **Residual timing dependence.** A stray line that arrives across a step boundary would still change the step it is
   attributed to.
