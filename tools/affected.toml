@@ -44,6 +44,11 @@ selftests = ["all"]
 [[rule]]
 glob = ".buckconfig"
 selftests = ["all"]
+# Read only through an explicit `--config-file` (cache-only hosts); no gate run or selftest reads it. The switch it
+# flips lives in toolchains/platforms.bzl, which `toolchains/**` already maps to "all".
+[[rule]]
+glob = ".buckconfig.cache-only"
+selftests = ["gate"]
 [[rule]]
 glob = ".buckroot"
 selftests = ["all"]
