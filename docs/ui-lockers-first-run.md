@@ -1,5 +1,9 @@
 # The first exploration of the real lockers kiosk (U23)
 
+(The second run, U05e, after the explorer changes this first run asked for, is at the end: "The second run (U05e)".
+The commands of the first run need the first run's catalogue, sha256 `32c7ed60...`, `git show cc64f10:products/
+business-apps/ui/lockers.events.toml`: U05e removed its fixed u2 points.)
+
 `rigor ui-explore` with the `ui-scene` and `ui-fit` judges on the release probe of the real kiosk, with the DRAFT event
 catalogue and key `products/business-apps/ui/lockers.events.toml` (unsigned, for the owner's review, row by row). This
 page records what the machine found, what it cost, and where the gate, the catalogue or the adapter is still wrong.
@@ -289,3 +293,135 @@ gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers
 
 The loader test: `gate/tests/test_ui_lockers_catalogue.py` (schema, requires, the ambient declaration, every e1 row of
 the adapter once, no `due_restart_ms`, the key without countdown values, fake codes only).
+
+# The second run (U05e)
+
+The explorer changed as "The changes that would most raise what the machine finds" asked (items 1, 2, 3, 5, 6; not 4,
+the adapter's view domain), and the DRAFT catalogue uses the changes. Same probe (sha256 `0e068b0bd0d2ab30...`,
+business-apps `1acc1cb`, built read-only in the U04a checkout, cached), same contract, `--today 2026-11-16`, gate at
+`task/U05e`, catalogue sha256 `512f3e41f2f315f9...`. This is also the first INKED run: `--judges
+ui-scene,ui-fit,ui-render`. Evidence in `/var/tmp/cache/U05e/run2/` (not committed).
+
+**The catalogue (still DRAFT, unsigned; every new row has its provenance; fake fixture codes only).**
+- `taps = { scope = "scene", max_per_state = 32, grid_pct = [20, 50, 80], intent_node = "key" }`: every state taps
+  its own controls (centre and the contract's 3x3 probe grid, every node's centre first), and its own blank area,
+  disabled controls and scrims; the 18 fixed u2 points are gone (the 4 fixed u3 points stay). `intent_node = "key"`:
+  a u1 intent is the scene node key (model:L76), so the u1 inputs are judged under the layer policy too.
+- Every pad macro has a `digit_map` ("0" key 42, "1".."9" keys 32..40); new pad rows type the fixture codes 121212,
+  666662 and 666661: the valid codes now go through the pad (`pad-visitor` reaches Choose size, `pad-staff` the report).
+- `[boot] seeds = [112 .. 120]`; `[[prefix]] welcome = ["at 3200"]`.
+
+**Cost and admission.** Before: the pre-run check bounded the whole run (2 x max_states x ~1.42 M ms), admitting 6
+states under `--budget-s 1200`. Now it bounds one path (2 x (depth x 300 256 + 1024) = 7.2 M ms at depth 12, admitted
+for any `--max-states`; depth 32 would be refused) and the budget is measured: the bfs below asked for 1000 states and
+was cut by its 1200 s budget, ending cleanly with `depth-unsaturated` reason `budget`. Measured: 1778 paths in 1202 s
+(0.68 s per path, both runs, with all three judges and ink), 452 508 probe commands, 29.7 M ms of virtual time.
+
+## The second run table
+
+All from the worktree with `gate/rigor ui-explore --probe <probe> --catalogue products/business-apps/ui/lockers.events.toml
+--judges ui-scene,ui-fit,ui-render --contract products/business-apps/ui/lockers.toml --today 2026-11-16 --out F
+--summary S --evidence E` and the arguments below, under `timeout`.
+
+| Run | Arguments | Exit | Wall | States | Runs x2 | Findings |
+|---|---|---|---|---|---|---|
+| bfs-welcome-20min | `--strategy bfs --origin-ms 1000 --seed 112 --prefix welcome --depth 12 --max-states 1000 --budget-s 1200` | 1 | 1202 s | 35 (`[1, 8, 18, 7]`, 0 dropped) | 1778 | 114 (64): 21 intent-missed, 14 tap-misrouted, 1 timer-starvation, 1 depth-unsaturated (`budget`), 12 occluded-target, 2+2 text-clipped/overflow on 8, 31 taps-capped (info), 19 key-too-coarse (info), contract-pending 5+2, contract-incomplete 4 |
+| walk-5x100 | `--strategy walk --origin-ms 1000 --seed 112 --walk-seeds 1,2,3,4,5 --walk-length 100 --extra-origins 1 --budget-s 4000` (a walk path of 100 words now needs 4000: one path is bounded, not the run) | 1 | 306 s | 43 | 10 | 132 (96): 2 intent-missed, 49 occluded-target, 12 overlay-policy, 1 target-spacing, 20 ui-render.invisible-node, 1 ui-render.check-vacuous, 33 key-too-coarse (info), contract-pending 5+2, contract-incomplete 4 |
+| walk-boot-seeds | `--strategy walk --origin-ms 1000 --boot-seeds catalogue --walk-seeds 1,2,3 --walk-length 30 --extra-origins 0 --budget-s 2400` (seeds 112 to 120) | 1 | 174 s | 40 | 27 | 86 (52): 4 intent-missed, 28 occluded-target, 2 stage-text-mismatch (5, the `?40`), 7 ui-render.invisible-node, 1 ink-plan-capped (info), 30 key-too-coarse (info) |
+| second.json (below) | `--strategy replay --paths second.json --budget-s 600` | 1 | 4 s | 8 | 6 | 32 (22), byte-identical twice; no ui-explore error |
+
+The same bfs before the two `covered` fixes (commits `c6a68db`, `1d21286`): 131 findings, of them 4 then 16 false
+`blocked-target-live` / `intent-missed`: scene taps at pad keys 7 and 8 under the rejection dialog press the dialog's
+Dismiss drawn over them (a real dismiss, not a live target), and taps at keys 4, 5, 7, 8 and EN press the dialog's
+clickable card. Both are judged now (`covered`: the layer's own control took the tap; the card itself: inert).
+
+**Screen classes reached by the bfs** (34 of its 35 states carry a finding, `taps-capped` included, so their
+projections name them; the 35th is the splash before the prefix): Welcome with the self-test banner (bg, en), the pad
+with 0 to 3 digits (with and without the banner, bg and en), the rejection dialog over the pad (with and without the
+banner, bg and en), Choose size (bg), the end-of-shift report (bg). The bfs-m18 of the first run reached the same five
+classes and the splash with 18 admitted states; this one admitted every state it found (no state bound) and was stopped
+by time at depth 3 from Welcome. The documented replay reaches Opened with the snackbar, Choose size through the pad
+and the report through the pad.
+
+## The first run's finding classes, in the second run
+
+| First run class (Triage above) | Second run |
+|---|---|
+| `occluded-target` `layer-unreachable` on the banner scrims | **still there, true**: 296 (self-test) in every Welcome/pad state of the bfs (12) |
+| `intent-missed` on `banner-*-scrim` (u1) | **still there, true**: `banner-selftest-scrim` (7 states), and now ALSO through the scene taps: `tap@296#0`, `tap@296#1` are `intent-missed` and `tap-misrouted` (14 + 14: the scrim's own points press its card, same rect) - the same known defect seen at the rendered input |
+| `overlay-policy` captures of the snackbar, its stage findings | **still there, true** (the documented replay, path 4: overlay-policy x3, stage-unmatched, stage-unowned-target) |
+| `overlay-policy` stacked banners, audit banner over Choose size; `stage-text-mismatch` 5 and 325 | **not reached** by the bfs (healthy seed 112 from Welcome); **still there, true** in the walks: overlay-policy `captures` of the persistent banners 288, 272, 264 and 296 over BG/EN (11, 12), Cancel (17) and Small (48), and a NEW `target-spacing` `overlap` of Cancel (17) and the sync banner's Dismiss (275) on Choose size, the same cause; the walk's `intent-missed` of `lang-bg` (after `wedge-visitor > env-sync-503`) is the captured BG, the same cause; `stage-text-mismatch` on 5 in the boot-seed walk (the `?40`) |
+| `text-clipped`, `text-overflow` on 8 (BG licences line) | **still there, true**, now reached through the pad (`pad-staff`) as well |
+| `timer-starvation` during a locker opening | **still there**, pending owner decision (`wedge-visitor > size-small > settle x33`, 33 firings 4205..4500 ms) |
+| `intent-missed`, `tap-misrouted` under the rejection dialog (gate false positive) | **gone**: 0 in the bfs, which reached the dialog in 8 states. `digit-1` under it is `apply missed` + `layer inert` (result `inert`), a scene tap on a key under it is `layer inert` `tap refused`, a tap at keys 7/8 presses the dialog's Dismiss (`layer covered`, `tap ok`) |
+| `intent-missed` of fixed u2 points that are no control in that state (gate limitation) | **gone**: no fixed u2 point is left; every u2 tap is a control of the state it is sent in |
+| `noop-tap-effect` `blank-bottom-left` on the snackbar (gate false positive) | **gone**: the snackbar's sealed `tap_outside_dismisses` makes it the outcome `dismissed` (the replay, path 4: `layer dismiss`, `tap dismissed`) |
+| `event-never-accepted`, `ui-coverage-gap` C8 (exploration limits) | **not evaluated**: a run the budget cuts evaluates no criterion (never reported as complete) |
+| `depth-unsaturated` `state-bound` | now `budget` (the state bound is no longer what stops the bfs) |
+| `key-too-coarse` (info) | still there, intended merges (19) |
+| `ambient-restart` (info) | not in the bfs (no complement tap on the report restarted its countdown within the run: the first tap of a state restarts 300 -> 300); the restart rule is unchanged (selftest) |
+| `contract-pending` x5, `contract-incomplete` `role-wrap` x4 | still there (pending Q9, Q7; contract gap) |
+
+New finding classes: `taps-capped` (info, 31 states: the cap of 32 cut the grid points, never a centre), and, before
+the `covered` fixes, the false `blocked-target-live` above. No `tap-swallowed-first`: the kiosk has no pass-through
+layer with a tap-outside area over a control in the reached states.
+
+**Limits of the second run.** A walk sends the catalogue's events only (no scene taps: they are derived per state by
+the bfs); a bfs the budget cuts evaluates no criterion, so C8 and event acceptance are not judged; the screen classes
+above are read from the projections of the states that carry a finding (every bfs state but the splash does); the
+view domain is still missing (sweep refuses), so the fault screens are reached by the boot-seed walk only.
+
+## The first inked run: ui-render triage
+
+`ui-render` (U07) ran on every first visit of a state (ink, then frame again). In the bfs it gave only its two
+`contract-pending` (the run was cut, so no end-of-run findings); the walks and the replay give the rest. Classified
+without fixing anything:
+
+| ui-render finding | Where | Class |
+|---|---|---|
+| `invisible-node` `covered` on BG 11 / EN 12 (by the codes-stale banner card 289, the self-test card 297), on the Welcome headline 3 (by the audit card 265, the sync card 273) and on the report countdown 6 (by 273) | walks: states with two or three persistent banners | **true defect**: the persistent banners are drawn over the screen's own controls and texts (the cause of the first run's stacked-banner `overlay-policy`), now seen in the ink |
+| `invisible-node` `text` on BG 11 / EN 12 | walk: Choose size under the audit and sync banners (`... one-tick > digit-7 > wedge-visitor`) | **true defect**, the same cause: the label `EN` (675,110 33x27) has no ink pixel in the frame, the banner stack is painted over it |
+| `invisible-node` `node` on text 3 ("Моля, изчакайте" under three banners; "Добре дошли" under self-test and codes-offline) | walks | **true defect, likely**, the same cause: no pixel of the label reaches the frame and banner cards lie over its box; not verified pixel by pixel (no single node covers the whole box, so the judge names none) |
+| `contract-pending` `contrast_text`, `contrast_large` (Q15) | every run | **pending owner decision**: the contrast thresholds are not sealed |
+| `check-vacuous` `contrast-low` (8, 43, 40 states) | replay, walks | **contract gap / unmeasurable**: with Q15 pending no contrast is measured; examined 0 everywhere |
+| `ink-plan-capped` (info) | boot-seed walk | **a fact of the run**: one state had more frame checksums than the ink plan inks (4) |
+
+`flag-mismatch`, `align-mismatch`, `line-height-mismatch` and `ink-unmeasurable` were examined (`checks-examined`: e.g.
+51, 23, 23 and 10 in one state of the replay) and found nothing. No ui-render finding was classified a gate false
+positive.
+
+## Re-running the second run
+
+Build the probe as above; from the worktree, with `P` that output and `second.json`:
+
+```json
+{"schema": "ui-explore-paths/1", "criteria": [], "paths": [
+ ["open 1000 112", "timer-snackbar", "enter", "digit-1"],
+ ["open 1000 112", "timer-snackbar", "enter", "tap@32#0"],
+ ["open 1000 112", "timer-snackbar", "enter", "tap@39#0"],
+ ["open 1000 112", "at 3200", "env-book-second-save-fails", "wedge-visitor", "size-small", "at 4300", "blank-bottom-left"],
+ ["open 1000 112", "at 3200", "pad-visitor"],
+ ["open 1000 112", "at 3200", "pad-staff"]
+]}
+```
+
+```sh
+gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers.events.toml --strategy replay \
+  --paths second.json --budget-s 600 --out OUT --summary SUM \
+  --judges ui-scene,ui-fit,ui-render --contract products/business-apps/ui/lockers.toml --today 2026-11-16
+# exit 1; 32 findings, no ui-explore error (paths 1-3: the rejection dialog's inert pad, `layer inert`, `layer covered`;
+# path 4: `tap dismissed`; paths 5, 6: the valid codes through the pad):
+# ui-explore.key-too-coarse/75b3512d986f, ui-explore.key-too-coarse/7cff7b31c6af, ui-fit.checks-examined/4e0d1448cc93,
+# ui-fit.text-clipped/971c4b3a0575, ui-fit.text-overflow/6117603b8ff9, ui-render.check-vacuous/56bd3907d221,
+# ui-render.checks-examined/c50bebeacf21, ui-render.contract-pending/0249d3836b00,
+# ui-render.contract-pending/2e2f515fff9b, ui-scene.checks-examined/c4c4df33ffbd,
+# ui-scene.contract-incomplete/951558b98cb8, ui-scene.contract-incomplete/980d4e4eb125,
+# ui-scene.contract-incomplete/cf468399e460, ui-scene.contract-incomplete/d4bdc5505308,
+# ui-scene.contract-pending/148b81015f4f, ui-scene.contract-pending/3eef6d994176,
+# ui-scene.contract-pending/5ae64644b993, ui-scene.contract-pending/91f89d0854c9,
+# ui-scene.contract-pending/aa9761e42588, ui-scene.occluded-target/439bd29e91fe, ui-scene.overlay-policy/2611559a788a,
+# ui-scene.overlay-policy/d03dae1f662d, ui-scene.overlay-policy/e9c560d5ae69, ui-scene.stage-unmatched/15f50acbbaff,
+# ui-scene.stage-unmatched/445edb718280, ui-scene.stage-unmatched/901d602868b0, ui-scene.stage-unmatched/9349709cc74e,
+# ui-scene.stage-unmatched/96a2f6b9e5fe, ui-scene.stage-unmatched/b4cd6c33fe72, ui-scene.stage-unmatched/b975cfe24c0c,
+# ui-scene.stage-unowned-target/ee73e9dc58f3, ui-scene.stage-unowned-target/ff8c3cafc055
+```
