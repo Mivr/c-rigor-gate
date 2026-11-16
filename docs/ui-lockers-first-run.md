@@ -328,7 +328,7 @@ All from the worktree with `gate/rigor ui-explore --probe <probe> --catalogue pr
 | bfs-welcome-20min | `--strategy bfs --origin-ms 1000 --seed 112 --prefix welcome --depth 12 --max-states 1000 --budget-s 1200` | 1 | 1202 s | 35 (`[1, 8, 18, 7]`, 0 dropped) | 1778 | 114 (64): 21 intent-missed, 14 tap-misrouted, 1 timer-starvation, 1 depth-unsaturated (`budget`), 12 occluded-target, 2+2 text-clipped/overflow on 8, 31 taps-capped (info), 19 key-too-coarse (info), contract-pending 5+2, contract-incomplete 4 |
 | walk-5x100 | `--strategy walk --origin-ms 1000 --seed 112 --walk-seeds 1,2,3,4,5 --walk-length 100 --extra-origins 1 --budget-s 4000` (a walk path of 100 words now needs 4000: one path is bounded, not the run) | 1 | 306 s | 43 | 10 | 132 (96): 2 intent-missed, 49 occluded-target, 12 overlay-policy, 1 target-spacing, 20 ui-render.invisible-node, 1 ui-render.check-vacuous, 33 key-too-coarse (info), contract-pending 5+2, contract-incomplete 4 |
 | walk-boot-seeds | `--strategy walk --origin-ms 1000 --boot-seeds catalogue --walk-seeds 1,2,3 --walk-length 30 --extra-origins 0 --budget-s 2400` (seeds 112 to 120) | 1 | 174 s | 40 | 27 | 86 (52): 4 intent-missed, 28 occluded-target, 2 stage-text-mismatch (5, the `?40`), 7 ui-render.invisible-node, 1 ink-plan-capped (info), 30 key-too-coarse (info) |
-| second.json (below) | `--strategy replay --paths second.json --budget-s 600` | 1 | 4 s | 8 | 6 | 32 (22), byte-identical twice; no ui-explore error |
+| second.json (below) | `--strategy replay --paths second.json --budget-s 600` | 1 | 4 s | 8 | 6 | 33 (23) since the merge with U24 (32 (22) before: U24's `check-blocked`, below), byte-identical twice; no ui-explore error |
 
 The same bfs before the two `covered` fixes (commits `c6a68db`, `1d21286`): 131 findings, of them 4 then 16 false
 `blocked-target-live` / `intent-missed`: scene taps at pad keys 7 and 8 under the rejection dialog press the dialog's
@@ -409,12 +409,12 @@ Build the probe as above; from the worktree, with `P` that output and `second.js
 gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers.events.toml --strategy replay \
   --paths second.json --budget-s 600 --out OUT --summary SUM \
   --judges ui-scene,ui-fit,ui-render --contract products/business-apps/ui/lockers.toml --today 2026-11-16
-# exit 1; 32 findings, no ui-explore error (paths 1-3: the rejection dialog's inert pad, `layer inert`, `layer covered`;
+# exit 1; 33 findings, no ui-explore error (paths 1-3: the rejection dialog's inert pad, `layer inert`, `layer covered`;
 # path 4: `tap dismissed`; paths 5, 6: the valid codes through the pad):
 # ui-explore.key-too-coarse/75b3512d986f, ui-explore.key-too-coarse/7cff7b31c6af, ui-fit.checks-examined/4e0d1448cc93,
 # ui-fit.text-clipped/971c4b3a0575, ui-fit.text-overflow/6117603b8ff9, ui-render.check-vacuous/56bd3907d221,
 # ui-render.checks-examined/c50bebeacf21, ui-render.contract-pending/0249d3836b00,
-# ui-render.contract-pending/2e2f515fff9b, ui-scene.checks-examined/c4c4df33ffbd,
+# ui-render.contract-pending/2e2f515fff9b, ui-scene.check-blocked/64f0b856dc68, ui-scene.checks-examined/c4c4df33ffbd,
 # ui-scene.contract-incomplete/951558b98cb8, ui-scene.contract-incomplete/980d4e4eb125,
 # ui-scene.contract-incomplete/cf468399e460, ui-scene.contract-incomplete/d4bdc5505308,
 # ui-scene.contract-pending/148b81015f4f, ui-scene.contract-pending/3eef6d994176,
@@ -424,4 +424,6 @@ gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers
 # ui-scene.stage-unmatched/445edb718280, ui-scene.stage-unmatched/901d602868b0, ui-scene.stage-unmatched/9349709cc74e,
 # ui-scene.stage-unmatched/96a2f6b9e5fe, ui-scene.stage-unmatched/b4cd6c33fe72, ui-scene.stage-unmatched/b975cfe24c0c,
 # ui-scene.stage-unowned-target/ee73e9dc58f3, ui-scene.stage-unowned-target/ff8c3cafc055
+# (ui-scene.check-blocked/64f0b856dc68 is new since the merge with U24: `required-element-missing` needs the scene
+# identity, which this probe does not announce; every other id is unchanged)
 ```
