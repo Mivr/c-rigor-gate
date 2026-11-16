@@ -1056,10 +1056,5 @@ kind = "pure"
 
 [[edge]]
 from = "//apps/fiscal/dtadp/pushhttp:pushhttp"
-to = "//lib/fmt/url:url"
-kind = "pure"
-
-[[edge]]
-from = "//apps/fiscal/dtadp/pushhttp:pushhttp"
 to = "//lib/fmt/httpdef:httpdef"
 kind = "pure"

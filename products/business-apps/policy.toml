@@ -5251,27 +5251,27 @@ exports = ["ph_build", "ph_live", "ph_map_err", "ph_read_response", "pushhttp_in
 
 [module."//apps/fiscal/dtadp/pushhttp:init_test"]
 allow = ["memcpy", "memset", "snprintf"]
-exports = ["g_push", "g_reply", "g_script", "g_steps", "g_stream", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_start", "kit_stream", "kit_write", "main"]
+exports = ["kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_push", "kit_read", "kit_read_rc", "kit_reply", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_write", "main"]
 
 [module."//apps/fiscal/dtadp/pushhttp:request_test"]
 allow = ["memcpy", "memset", "snprintf"]
-exports = ["g_push", "g_reply", "g_script", "g_steps", "g_stream", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_start", "kit_stream", "kit_write", "main"]
+exports = ["kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_push", "kit_read", "kit_read_rc", "kit_reply", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_write", "main"]
 
 [module."//apps/fiscal/dtadp/pushhttp:args_test"]
 allow = ["memcpy", "memset", "snprintf"]
-exports = ["g_push", "g_reply", "g_script", "g_steps", "g_stream", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_start", "kit_stream", "kit_write", "main"]
+exports = ["kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_push", "kit_read", "kit_read_rc", "kit_reply", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_write", "main"]
 
 [module."//apps/fiscal/dtadp/pushhttp:response_test"]
 allow = ["memcpy", "memset", "snprintf"]
-exports = ["g_push", "g_reply", "g_script", "g_steps", "g_stream", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_start", "kit_stream", "kit_write", "main"]
+exports = ["kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_push", "kit_read", "kit_read_rc", "kit_reply", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_write", "main"]
 
 [module."//apps/fiscal/dtadp/pushhttp:error_test"]
 allow = ["memcpy", "memset", "snprintf"]
-exports = ["g_push", "g_reply", "g_script", "g_steps", "g_stream", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_start", "kit_stream", "kit_write", "main"]
+exports = ["kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_push", "kit_read", "kit_read_rc", "kit_reply", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_write", "main"]
 
 [module."//apps/fiscal/dtadp/pushhttp:secret_test"]
 allow = ["memcpy", "memset", "snprintf"]
-exports = ["g_push", "g_reply", "g_script", "g_steps", "g_stream", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_start", "kit_stream", "kit_write", "main"]
+exports = ["kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_expect", "kit_port", "kit_post", "kit_push", "kit_read", "kit_read_rc", "kit_reply", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_write", "main"]
 
 [module."//apps/fiscal/dtadp/pushhttp:testkit"]
 level = "L1"
