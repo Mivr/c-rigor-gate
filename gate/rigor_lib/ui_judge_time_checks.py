@@ -101,12 +101,16 @@ def _changes(fact, keys):
 
 def countdown_verdicts(kind, seq, timer):
     """countdown-wrong over one run's consecutive observations `seq` from the appearance on (P004 3.5): the countdown
-    is present while the element is shown (`absent`), starts at ceil(L/1000) +-1 (`start`), never shows 0 (`zero`),
+    is present while the element is shown (`absent`), starts at ceil(L/1000) +-1 (`start`; for an element that
+    appeared inside a time step, at any value from ceil((L - the step's span)/1000) - 1 up), never shows 0 (`zero`),
     never increases in a time step but by a declared restart (`increase`), and changes at least once per virtual second
     (`stalled`: no change for 1000 ms or more after the last instant a change can have happened, or one step of W ms
     with c changes and W >= 1000 (c + 1))."""
     parts = {}
     want = ceil_div(timer["lifetime_ms"], SECOND_MS)
+    # an element that appeared inside a time step was observed up to (now - appear_lo) ms after it appeared: its first
+    # value may already have counted down that far (an input step: exactly ceil(L/1000) +-1)
+    low = ceil_div(timer["lifetime_ms"] - (seq[0].now - seq[0].appear_lo), SECOND_MS) if seq else want
     quiet = seq[0].now if seq else 0
     for m, fact in enumerate(seq):
         if kind not in fact.present:
@@ -115,8 +119,8 @@ def countdown_verdicts(kind, seq, timer):
         if not shown:
             parts.setdefault("absent", {"step": fact.index})
         values = [v for _key, v in shown if v is not None]
-        if m == 0 and values and timer["lifetime_ms"] > 0 and abs(values[0] - want) > 1:
-            parts.setdefault("start", {"step": fact.index, "shown": values[0], "wanted": want})
+        if m == 0 and values and timer["lifetime_ms"] > 0 and not low - 1 <= values[0] <= want + 1:
+            parts.setdefault("start", {"step": fact.index, "shown": values[0], "wanted": [low, want]})
         keys = {key for key, _v in shown} | ({k for k, _v in seq[m - 1].countdowns.get(kind, ())} if m else set())
         changes, seen, increases = (0, [], []) if m == 0 else _changes(fact, keys)
         if 0 in values + seen:

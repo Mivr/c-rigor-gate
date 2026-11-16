@@ -143,6 +143,13 @@ class RulesTest(unittest.TestCase):
                           (jump, "stalled"), (absent, "absent")):
             self.assertEqual([v["identity"][1] for v in checks.countdown_verdicts("dialog", seq, TIMER)], [part])
 
+    def test_start_of_an_element_that_appeared_inside_a_time_step(self):
+        inside = [fact(7000, prev=5000, countdown=6)]          # appeared in (5000, 7000]: up to 1999 ms counted
+        self.assertEqual(checks.countdown_verdicts("dialog", inside, dict(TIMER, lifetime_ms=8000)), [])
+        late = [fact(7000, prev=5000, countdown=4)]
+        self.assertEqual([v["observed"]["wanted"] for v in checks.countdown_verdicts(
+            "dialog", late, dict(TIMER, lifetime_ms=8000))], [[7, 8]])   # 6 (= 7 - 1) is still accepted
+
     def test_increase_of_a_declared_restart_or_an_input_is_not_judged(self):
         restart = fact(900, prev=0, countdown=4, patches=[update(3, 4)])
         restart.restarts = frozenset(("7",))
