@@ -82,6 +82,10 @@ selftests = ["ui"]
 [[rule]]
 glob = "selftest/ui_canary_product/**"
 selftests = ["ui"]
+# U09: the ui-time judge's selftest (selftest/ui_time.sh, run by selftest/ui.sh) on the timed canary.
+[[rule]]
+glob = "selftest/ui_time.sh"
+selftests = ["ui"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"

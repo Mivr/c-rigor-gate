@@ -509,3 +509,94 @@ No `scene-controls-untapped`, no `scene-taps-vacuous` (192 u2 scene taps sent, n
 carry a finding): Welcome with and without the self-test banner, the pad with 0 to 2 digits, the rejection dialog,
 Choose size, the report (bg and en). Wall time per path is unchanged (0.67 s, both runs, three judges with ink).
 
+# ui-time on the class paths (U09)
+
+The 29 screen-class paths (`products/business-apps/ui/lockers.classes.paths.json`, a DRAFT copied from the adapter
+task) replayed with `--judges ui-scene,ui-fit,ui-render,ui-time` (docs/ui-judges-time.md), re-recorded after U09 fix-up
+2 (elements are instances; what a step shows only inside is sampled) and fix-up 3 (the carry rule, a language event
+keeps the element, probing runs counted after their prefix only). Evidence stayed in `/var/tmp/cache/U09/kiosk/`
+(`k12`, not committed). Everything under "Triage" is MY READING, for the owner to confirm.
+
+**Inputs.** Probe: business-apps checkout `3e8c46e` (read only; its `gate/` pins a gate without U05e and U09 but with
+the same probe protocol), `biz//apps/lockers/lkapp/uimodel:lockers_ui_probe` from `gate/tools/buck2 build
+//apps/lockers/lkapp/uimodel:lockers_ui_probe --show-output` (cached), sha256 `89b98f34e57ba414...`; it greets with
+`pointer identity`, so every timer is bound through the state class (`bound`: banner, choose_size, dialog, lockout,
+opened, report, snackbar; nothing `check-blocked`). Catalogue `lockers.events.toml` as U05e left it (it requires
+`identity`, scene-scoped taps; the class paths use no scene word), sha256 `5f97a0acd1583b11...`; class paths sha256
+`b9b2a7b700d80b33...`; contract `lockers.toml` unchanged; `--today 2026-11-16`.
+
+```sh
+gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers.events.toml --strategy replay \
+  --paths products/business-apps/ui/lockers.classes.paths.json --budget-s 3300 \
+  --judges ui-scene,ui-fit,ui-render,ui-time --contract products/business-apps/ui/lockers.toml --today 2026-11-16 \
+  --out OUT --summary SUM
+# exit 1; 125 findings (99 errors); the 103 of ui-explore, ui-scene, ui-fit and ui-render are byte for byte those of
+# the same run without ui-time; the 22 of ui-time:
+# ui-time.checks-examined/e74957cad6bf (info),
+# ui-time.contract-pending/{2f7f00586a4b,4a72ad2c6d21,f466054ed8a3},
+# ui-time.countdown-wrong/{087d07dfd13e,1db991ca3cff,1e8a11e9b90a,23d8b3440bc2,350065c7c3e7,53441aabd78d,
+#   594997279cf5,64c2c2435e9b,690ce7fc7b88,7557977fa5f2,88b864d88c1c,8ff23f1f4c0e,a2e294591896,b147e726512c,
+#   cefe9964d811,fa18ba33caa1},
+# ui-time.notice-lifetime-short-floor/{19a4b5fd681e,e75dd3657b94}
+```
+
+(`--budget-s` must be at least 1989 for the pre-run cost check of these paths' `at` words, ui-time or not.)
+
+**Verdicts reached** (`checks-examined`): 21 elements probed (66 probing runs), every lifetime rule DECIDED (no
+`lifetime-undecided`, no `hidden-unsampled`, no `probe-diverged`, none capped): `notice-lifetime-short-floor` 21,
+`notice-lifetime-long` 14; `countdown-wrong` 440 (probes and the path's own steps); `invisible-auto-transition` 322
+time and env steps; `patches-inconsistent` 383 steps, none inconsistent; `clock-origin-divergence` 48 replays (12
+paths: the quota is per seed of the `open` word, 4 origins each); `notice-lifetime-short`, `dwell-below-reading-time`
+and `flash` none: their contract values are pending.
+
+## Triage (my reading)
+
+| Findings | Reading |
+|---|---|
+| `countdown-wrong` part `zero`, 14 (dialog x4, snackbar x2, choose_size x2, opened x2, report x2, lockout x2; bg and en) | **true defect** by P004 3.5's rule "never shows 0": every countdown of the kiosk shows `0 сек` as a step-end label in its last moments (the disappearance is refined to one ms for countdown timers, so the last label is read). Measured on the rejection dialog shown at 4200 (virtual ms, origin 1000): `1 сек` at 11200, `0 сек` at 11950 and 11999 (two step-end labels), gone at 12000. An F6a-class "countdown shown wrong", under a tick long. If the owner accepts 0 for the last tick, it is a contract gap (the rule would need a declared tolerance) |
+| `countdown-wrong` part `absent`, 2 (choose_size after `size-small`, bg and en): NEW in fix-up 2 | **contract gap** (my reading; a true defect if the owner wants the countdown kept): after a size is chosen the kiosk removes only the countdown node (key 6) and keeps Choose size, still class `choose_size`, for about 860 ms until Opened; the timer's `countdown_shown` says a countdown is shown while it is. The contract cannot say that the countdown stops once a choice is made |
+| `notice-lifetime-short-floor` on the "book save fails" path (bg, en) | **true defect** (F1 class), confirmed by the orchestrator's review: the banner "Не е записано: вратата се отво..." (not saved) appears at 4029..4097 and its nodes are removed at most 271 ms later (4235..4300), replaced by the snackbar "Резервацията е записана." (reservation saved); no input in between. It is shown only inside the path's `at 4300` step, so since fix-up 2 it is judged by the sampling inside that step (`banner#0`): the ids changed (`116420954d1e`, `36fe2e0bdba2` before) with the identity's form `["inside", "at 4300", "banner#0", "banner"]`. If the owner sees the snackbar as its declared successor, it is a contract gap: the contract has no successor table |
+| `contract-pending` `thresholds.flicker_floor_ms` (flash), `reading.rate_wpm` (notice-lifetime-short, dwell-below-reading-time) | **contract gap**: the owner's Q5 and Q11. Until they are decided flash, the dwell rule and the exact short rule are **blocked** on the kiosk; the floor approximation ran instead |
+| no `notice-lifetime-long`, no `invisible-auto-transition`, no `clock-origin-divergence`, no `patches-inconsistent` | no defect seen at these bounds (the lifetimes below; no class change without a visible change; the same scenes, times since the origin and relative deadlines from 1, 10^9, 2^32 + 7 and 2^40) |
+| (fixed) `countdown-wrong` `start` on the relay-hang dialog (first record) | **gate false positive**: the dialog appeared inside a 2 s `at` step; fixed (`c907a24`), and the appearance is now bisected |
+| (fixed) `notice-lifetime-long` and `countdown-wrong` `absent` for choose_size, report, lockout and opened (fix-up 1's first carry rule) | **gate false positive**: after the screen's timer the kiosk shows Welcome under the self-test banner and the screen kind was carried under the banner; an element is now carried only while its own nodes hold |
+| (fixed during fix-up 2) `notice-lifetime-short-floor` for the codes-offline and audit banners of seeds 119 and 120, and for choose_size after `size-small` | **gate false positives** of a first per-instance rule that looked at the topmost element only: at about 1.8..2.0 s the self-test banner is stacked OVER the boot banner, whose nodes do not change, and after a size choice only the countdown node goes. Instances are now followed by their own nodes (covered ones live on; countdown nodes aside) |
+
+## Measured lifetimes against the contract
+
+`appeared` is the appearance bracket (ms after the origin; an input step is exact; an appearance inside an `at` step is
+bisected), `shown` the lifetime bounds (more than, at most), `floor` max(L, dwell_floor_ms) (the reading rate is
+pending). Short: `no` when shown for more than floor - tick - 1 (tick 250); long: `no` when at most L + tick. Every
+element is an instance: the table has a row per appearing instance.
+
+| Kind | Path (seed 112 unless named) | L | floor | appeared | shown | runs | short (floor) | long |
+|---|---|---|---|---|---|---|---|---|
+| banner (codes offline) | `open 1000 120` | 0 | 3500 | 0 | > 3249, still shown | 1 | no | - |
+| banner (audit) | `open 1000 119` | 0 | 3500 | 0 | > 3249, still shown | 1 | no | - |
+| banner (self-test, stacked over the boot banner of 119 and 120) | `at 3200` (seeds 112, 119, 120) | 0 | 3500 | 1801..2000 | > 3249, still shown | 2 | no | - |
+| banner (not saved), shown only inside `at 4300` | `at 3200`, `env-book-second-save-fails`, `wedge-visitor`, `size-small`, `at 4300` (and `lang-en`) | 0 | 3500 | 4029..4097 | (138, 271] | - | **yes** | - |
+| choose_size | `at 3200`, `wedge-visitor` (and `lang-en`) | 30000 | 30000 | 3200 | (29799, 29800] | 3 | no | no |
+| dialog (not recognised) | `at 3200`, `wedge-unknown` (and `lang-en`) | 8000 | 8000 | 3200 | (7799, 7800] | 4 | no | no |
+| dialog (door may have opened) | `at 3200`, `env-relay-hang`, `wedge-visitor`, `size-small`, `at 5200` (and `lang-en`) | 8000 | 8000 | 3826..3950 | (7799, 7924] | 5 | no | no |
+| opened | `at 3200`, `wedge-visitor`, `size-small`, `at 5200` (and `lang-en`) | 8000 | 8000 | 3951..4075 | (7924, 8049] | 5 | no | no |
+| snackbar (reservation saved) | `at 3200`, `env-book-second-save-fails`, `wedge-visitor`, `size-small`, `at 4300` (and `lang-en`) | 4000 | 4000 | 4236..4300 | (3949, 4014] | 4 | no | no |
+| lockout | the five `wedge-unknown` path (and `lang-en`) | 60000 | 60000 | 39200 | (59799, 59800] | 3 | no | no |
+| report | `at 3200`, `wedge-staff` (and `lang-en`) | 300000 | 300000 | 3200 | (299799, 299800] | 4 | no | no |
+
+**What changed with fix-up 3** (against the fix-up 2 record, `k10`): no finding id. The three rows "banner after
+`lang-en`" are gone (a language event now keeps the element), so 21 elements instead of 24, and the non-zero
+`checks-examined` totals other than the origin replays and `notice-lifetime-long` went down (a probing run's prefix is no
+longer counted again): `countdown-wrong` 474 to 440, `invisible-auto-transition` 399 to 322, `patches-inconsistent`
+498 to 383, `notice-lifetime-short-floor` 24 to 21. **What changed with per-instance presence** (fix-up 2, against
+the fix-up 1 record): the self-test
+banner of seeds 119 and 120 is its own row (stacked over the boot banner, which lives on); the "not saved" banner is
+now an element seen inside a step (new ids, same reading); the two `absent` findings are new. The "not saved" path
+shows one banner instance and one snackbar, not two banners: the self-test banner was dismissed earlier on that path.
+Every timer that starts on an input ends 200 ms before L (7800, 29800, 59800, 299800): inside the tick tolerance, no
+finding, but a consistent offset the owner may want to know.
+
+## Cost
+
+86 s of wall time for the 29 paths with all four judges, against 13 s without ui-time: 66 probing runs (each twice,
+inside-step sampling included) and 48 origin replays; the run's `cost` 61 956 probe commands and 11.39 M virtual ms
+against 7 842 and 1.58 M, of which ui-time's share is 54 114 commands and 9.80 M ms. No probe was capped (21 of 64).

@@ -21,6 +21,7 @@ owner-declared abstraction key, applies the judges and writes one JSON line per 
 | `ui_explore_layers.py` | U05e: the layer policy of the tap judges under `--contract` ("Taps under a layer") |
 | `ui_explore_catalogue_ext.py` | U05e: the optional tables `taps`, `[boot]`, `[[prefix]]` and the pad's `digit_map` |
 | `ui_explore_png.py` | the PNG writer |
+| `ui_explore_time.py` | U09: with `--judges ui-time`, hands every path to the ui-time judge and runs its probing runs and clock-origin replays ([docs/ui-judges-time.md](ui-judges-time.md)) |
 
 Selftest: `selftest/ui.sh` steps 8 to 14 and its last step, 16; U05e: `selftest/ui_taps.sh` (run by ui.sh) on the
 scene stub `gate/tests/data/ui_explore/stub_scene.py` with its catalogue `scene.events.toml` (scene taps, the layer
@@ -79,7 +80,7 @@ set (`Session.__init__`), so one arriving in between cannot leak a probe; the pr
 | `--budget-s` (1800) | the wall-clock budget of the whole run, measured. When it is spent, the run stops: a `bfs` drops the path it cut and ends cleanly with its bound finding `depth-unsaturated` (`reasons` holds `budget`; `detail.budget_cut` true); `sweep`, `walk` and `replay` end with one `ui-explore-timeout` (`observed.kind` = `budget`). Either way `budget_spent` is true, no criterion counts as evaluated (a cut run is never reported as complete), and the exit is 1, never a hang and never 2. Where it stops depends on the host, so such a findings file is not reproducible |
 | `--require` | criteria that must be evaluated; each one not evaluated becomes a `ui-coverage-gap` with `observed.evaluated` = false |
 | `--contract` | the UI contract (docs/ui-contract.md) handed to the judges; of the built-in judges only the tap judges read it, for the layer policy and the probe grid (U05e, "Taps under a layer") |
-| `--judges` | judges of other gates to run as well: distinct names of `ui-scene` and `ui-fit` (docs/ui-judges.md). They need `--contract`, `--today` and a probe that announces `frame-facts` (exit 2 otherwise, the capability right after the greeting). With `ui-scene` and a probe that announces `identity` the explorer also reads the scene identity of every step ("Scene identity"); without that capability ui-scene's identity checks are `check-blocked` |
+| `--judges` | judges of other gates to run as well: distinct names of `ui-scene` and `ui-fit` (docs/ui-judges.md). They need `--contract`, `--today` and a probe that announces `frame-facts` (exit 2 otherwise, the capability right after the greeting). With `ui-scene` and a probe that announces `identity` the explorer also reads the scene identity of every step ("Scene identity"); without that capability ui-scene's identity checks are `check-blocked`. `ui-time` (U09) judges every path as a timeline and runs extra probing paths and clock-origin replays; it reads identity too when the probe announces it ([docs/ui-judges-time.md](ui-judges-time.md)) |
 | `--today` | the date (`YYYY-MM-DD`) the contract's exceptions expire against; only with `--judges`. The judges never read the wall clock, so the same inputs give the same bytes on any day |
 
 Clock origins and seeds are arguments. Deriving them from the verdict's input hash (P004 6.3) belongs to the grade
@@ -246,6 +247,10 @@ bounds one path, never the number of paths: that is what the budget, measured, i
 1024), any `--max-states`: depth 12 needs 7.2 M (admitted), depth 31 19.2 M (admitted), depth 32 is refused. A replay
 of four paths of two `at` words (`at 3200`, `at 5200`) needed `--budget-s 600` before (each `at` at 300 256); now its
 longest path is 2 x 8 400 ms (admitted at `--budget-s 2`).
+
+**ui-time's extra runs (U09).** The probing runs and clock-origin replays of `--judges ui-time` are not in this
+pre-run check: they depend on what the paths show. They are bounded by the judge (docs/ui-judges-time.md, "The
+time-probing mode"), spend the same wall budget and are added to `cost`.
 
 **Scene identity (U24).** With `--judges` naming `ui-scene` and a probe that announces `identity`, the explorer sends
 one `identity` command per completed step of BOTH runs of a path (read last in the step's observation, after
@@ -693,7 +698,11 @@ What a step judge receives:
 To attach evidence, a judge passes `evidence={"<name>.json": data}`, where the name matches `[a-z0-9][a-z0-9_-]*.json`
 and is not `paths.json`.
 
-The `--judges` set registers one step judge (`ui_judge_findings.JudgeSet.step_judge`) and the end-of-run hook.
+The `--judges` set registers one step judge (`ui_judge_findings.JudgeSet.step_judge`) and the end-of-run hook. With
+`ui-time` (U09) a fifth kind: a PATH judge, `TimeJudge.path(runner, steps)`, called once per path the strategy runs with
+the steps of its first run (`ui_explore_time.attach` wraps `Explorer.run`); through the runner it may run more paths
+(probing runs, each twice, and clock-origin replays, once), which spend the budget and the summary's `cost` but are not
+strategy paths (docs/ui-judges-time.md, "The time-probing mode").
 
 Built-in judges:
 - step judges: `timer-starvation`, `timer-unreachable`, `intent-missed`, `tap-misrouted`, `noop-tap-effect`,

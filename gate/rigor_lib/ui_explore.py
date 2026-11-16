@@ -21,6 +21,7 @@ from rigor_lib.ui_explore_probe import (CAPABILITIES, STOP_SIGNALS, TAP_CAPS, Bu
 from rigor_lib.ui_explore_judges import probe_error_judge
 from rigor_lib.ui_explore_run import Config, Run, Step, check_words
 from rigor_lib.ui_judge_findings import JudgeSet
+from rigor_lib.ui_explore_time import attach as attach_time, end as end_time
 
 PATHS_SCHEMA = "ui-explore-paths/1"
 SUMMARY_SCHEMA = "ui-explore-summary/1"
@@ -65,7 +66,7 @@ def add_parser(subparsers):
     parser.add_argument("--out", required=True, help="findings, one JSON line each")
     parser.add_argument("--contract", help="the UI contract (ui-contract/1) handed to the judges")
     parser.add_argument("--judges", type=_list(r"[a-z][a-z-]{0,31}"),
-                        help="judges to run besides the explorer's own: ui-scene,ui-fit,ui-render (they need "
+                        help="judges to run besides the explorer's own: ui-scene,ui-fit,ui-render,ui-time (they need "
                              "--contract and --today; ui-render also a probe with ink; ui-scene reads identity when "
                              "the probe announces it)")
     parser.add_argument("--today", type=_date, help="the date (YYYY-MM-DD) the contract's exceptions expire against")
@@ -288,16 +289,16 @@ def explore(args):
     paths, criteria, word = _start(args, catalogue)
     config, caps, greeting, prefix = _launch(args, config, contract, judges, paths, word)
     _check_judges(judges, caps)
-    explorer = strategies.Explorer(config, contract, word, caps or (),
+    explorer = attach_time(strategies.Explorer(config, contract, word, caps or (),   # U09: ui-time's per-path hook
                                    step_judges=[judges.step_judge] if judges else (),
-                                   ink=judges is not None and judges.needs_ink)
+                                   ink=judges is not None and judges.needs_ink), judges)
     evaluated, extra, spent = [], [], greeting is not None
     detail = {}
     if greeting is not None:
         extra = [greeting]
     else:
         try:
-            detail, extra = _seeds(args, explorer, paths, catalogue, prefix)
+            detail, extra = end_time(explorer, *_seeds(args, explorer, paths, catalogue, prefix))   # U09: origin fill
         except BudgetSpent:
             spent, extra = True, [_budget_finding(args, catalogue, word, explorer.runs)]
         spent = spent or bool(detail.get("budget_cut"))   # a bfs the budget cut is never reported as complete
