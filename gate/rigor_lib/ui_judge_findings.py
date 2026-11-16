@@ -18,6 +18,7 @@ instead of a verdict, and neither counted nor vacuous.
 """
 
 from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_identity, ui_judge_render, ui_judge_scene
+from rigor_lib import ui_judge_time
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_judges import PRIVATE, state_of
 from rigor_lib.ui_explore_key import normalised
@@ -37,6 +38,7 @@ GATES = {gate: checks + COMMON for gate, checks in NODE_CHECKS.items()}
 GATES["ui-scene"] += ui_judge_identity.CHECKS  # U24: judged with the probe's identity only (JudgeSet.node_checks)
 GATES["ui-scene"] += ("state-class-unstable",)  # U24 fix-up 1: two state classes for one abstraction key
 GATES["ui-render"] += ("ink-plan-capped",)    # U07: a state key whose frames took more checksums than the ink plan inks
+GATES["ui-time"] = ui_judge_time.ALL          # U09: judged per path (ui_judge_time.TimeJudge), not per step
 ORDER = ("ui-scene", "ui-fit", "ui-render")   # the stage findings belong to the first selected gate in this order
 MODULES = {"ui-scene": ui_judge_scene, "ui-fit": ui_judge_fit, "ui-render": ui_judge_render}
 LAYERS = {"stage-unmatched": "L3", "stage-text-mismatch": "L3", "stage-unowned-target": "L3", "font-shrunk": "L3",
@@ -156,8 +158,10 @@ class JudgeSet:
             raise InternalError("--judges need --today YYYY-MM-DD (the date exceptions expire against)")
         unknown = [g for g in gates if g not in GATES]
         if unknown or len(set(gates)) != len(gates) or not gates:
-            raise InternalError("--judges: distinct names of %s" % ", ".join(ORDER))
+            raise InternalError("--judges: distinct names of %s" % ", ".join(ORDER + ("ui-time",)))
         self.gates = tuple(g for g in ORDER if g in gates)
+        self.time = ui_judge_time.TimeJudge(contract, catalogue_key, Exceptions(contract, ("ui-time",), today)) \
+            if "ui-time" in gates else None     # U09: the per-path judge; ui_explore_time drives it
         self.contract, self.catalogue_key = contract, catalogue_key
         self.exceptions = Exceptions(contract, self.gates, today)
         self.examined = {gate: {} for gate in self.gates}       # gate -> state key -> check -> nodes
@@ -169,8 +173,10 @@ class JudgeSet:
     def wants_identity(self, caps):
         """Records whether the probe announces `identity` (U24) and whether the explorer must read it: ui-scene is
         selected and the probe has it. Without it, ui-scene's identity checks are `check-blocked` at `finish`."""
+        if caps is not None and self.time is not None:
+            self.time.identity = "identity" in caps          # U09: ui-time reads identity too
         if "ui-scene" not in self.gates or caps is None:
-            return False
+            return bool(caps is not None and self.time is not None and self.time.identity)
         self.identity = "identity" in caps
         return self.identity
 
@@ -180,6 +186,8 @@ class JudgeSet:
 
     def step_judge(self, step, path, contract):
         del contract
+        if not self.gates:
+            return []                           # U09: only ui-time selected, which judges paths, not steps
         context = Context(self, step)
         names = set(context.by_key) | {context.rendered_name(i)["target"] for i in context.frame.labels
                                        if i not in context.assoc.owner}
@@ -242,4 +250,4 @@ class JudgeSet:
                 if states and totals[check] == 0 and applies(check, self.contract):
                     out.append(_item(gate, "check-vacuous", ["vacuous", check], "error", None, [open_word],
                                      {"check": check, "states": len(states)}))
-        return out
+        return out + (self.time.finish(open_word) if self.time is not None else [])
