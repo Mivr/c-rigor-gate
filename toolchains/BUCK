@@ -58,9 +58,17 @@ target_platform(
 # on the RE farm by the pinned LLVM's clang and `lld -flavor wasm`; the module is never run there. The mode is release, so a
 # module is compiled with exactly the native release flags and warnings; the cpu (wasm32) selects the toolchain. `c_wasm`
 # configures its deps to this platform itself (rules/wasm.bzl); nothing else is meant to be built for it.
+# The cpu is a gate-owned constraint: the pinned bundled prelude has no `prelude//cpu/constraints:wasm32` (its
+# `prelude//cpu:wasm32` is a config_setting, not a constraint value), and a gate-owned select key cannot drift with the
+# prelude. No other platform sets `:wasm_cpu`, so every native platform takes the DEFAULT branch of a select on it.
+# gate/tests/test_toolchain_labels.py checks every prelude constraint label used here against the pinned prelude.
+constraint_setting(name = "wasm_cpu")
+
+constraint_value(name = "wasm32", constraint_setting = ":wasm_cpu", visibility = ["PUBLIC"])
+
 target_platform(
     name = "wasm32_release",
-    cpu_configuration = "prelude//cpu/constraints:wasm32",
+    cpu_configuration = ":wasm32",
     os_configuration = "prelude//os/constraints:none",
     mode = ":release",
     visibility = ["PUBLIC"],
@@ -495,7 +503,7 @@ cxx_select(
         "DEFAULT": False,
     }),
     use_wasm = select({
-        "prelude//cpu/constraints:wasm32": True,
+        ":wasm32": True,
         "DEFAULT": False,
     }),
     visibility = ["PUBLIC"],
