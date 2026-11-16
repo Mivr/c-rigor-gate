@@ -136,22 +136,15 @@ def ambient_judge(catalogue_key):
 
 def restart_judge(catalogue_key):
     """`ambient-restart` (U05d, info): a tap whose residual change was a declared countdown restart and so counted as
-    "changed nothing" (docs/ui-explore.md, "Countdown restart"). At most one per (state key, node key) in one
-    explorer run, so a sweep that taps the same screen again and again does not flood the report: a step names only
-    the nodes not yet reported from its state, and reports nothing when there are none."""
-    seen = set()
-
+    "changed nothing" (docs/ui-explore.md, "Countdown restart"). One finding per restarted node, identity (key before,
+    node key), so a sweep that taps the same screen again and again gives one per node and state: the explorer keeps
+    one finding per id, the one with the shortest path."""
     def judge(step, path, contract):
         del contract
-        if not step.restart:
-            return []
-        fresh = [item for item in step.restart if (step.key_before, item["node"]) not in seen]
-        seen.update((step.key_before, item["node"]) for item in fresh)
-        if not fresh:
-            return []
-        return [make("ambient-restart", ["restart", step.key_before, step.word],
-                     state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
-                     [view.word for view in path] + [step.word], {"word": step.word, "restarts": fresh})]
+        words = [view.word for view in path] + [step.word]
+        return [make("ambient-restart", ["restart", step.key_before, item["node"]],
+                     state_of(step.key_before, step.proj_before, catalogue_key, step.origin), words,
+                     dict(item, word=step.word)) for item in step.restart or ()]
     return judge
 
 

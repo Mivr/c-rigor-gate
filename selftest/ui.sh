@@ -433,29 +433,6 @@ expect ptr.1 'len(F) == 12 and len(all_of("tap-misrouted")) == 4 and all(f["obse
 cmp -s <(python3 -I -c 'import json,sys; print(sorted((f["check"], f["observed"]) for f in map(json.loads, open(sys.argv[1])) if f["check"] != "taps-injected"))' "$out/x.ptr.1.json") <(python3 -I -c 'import json,sys; print(sorted((f["check"], f["observed"]) for f in map(json.loads, open(sys.argv[1])) if f["check"] != "taps-injected"))' "$out/x.bfs.1.json") || fail "$CUR: the canary differs between the two builds"
 replays ptr.1 "$probe_ptr_rel" "$PCAT"
 
-# ---- U05d: a countdown restarted by every tap (the unit tests' stub probe, docs/ui-explore.md "Countdown restart") -----
-# countdown <name> <stub mode> <wanted exit> <python check of the findings F>: replays a complement tap and a root tap of
-# the open state against the stub in that mode, with the catalogue that declares the countdown role
-countdown() {
-  local name="$1" mode="$2" want="$3" check="$4"
-  printf '#!/bin/sh\nexec python3 -I -B %s %s\n' "$root/gate/tests/data/ui_explore/stub_probe.py" "$mode" > "$out/stub-$mode"
-  chmod +x "$out/stub-$mode"
-  python3 -I -B -c 'import sys; sys.path[:0] = [sys.argv[1]]; from tests.test_ui_explore_restart import catalogue_text; open(sys.argv[2], "w").write(catalogue_text())' "$root/gate" "$out/countdown.toml" || fail "$CUR: the countdown catalogue"
-  printf '{"schema": "ui-explore-paths/1", "criteria": [], "paths": [["open 1000 7", "probe-blank"], ["open 1000 7", "probe-screen"]]}' > "$out/countdown.paths"
-  "${RIGOR[@]}" ui-explore --probe "$out/stub-$mode" --catalogue "$out/countdown.toml" --strategy replay --paths "$out/countdown.paths" --out "$out/x.$name.json" > "$out/x.$name.txt" 2>&1
-  local rc=$?
-  [ "$rc" = "$want" ] || fail "$CUR: ui-explore $name exited $rc, wanted $want" "$out/x.$name.txt"
-  python3 -I - "$out/x.$name.json" "$check" <<'PY' || fail "$CUR: $name: wanted $check" "$out/x.$name.json"
-import json, sys
-F = [json.loads(line) for line in open(sys.argv[1])]
-sys.exit(0 if eval(sys.argv[2]) else 1)
-PY
-}
-begin "a declared countdown restart (the stub's pcount: every tap restarts 298 s to 300 s) is no tap effect: the complement and the root tap refused, one info ambient-restart, no noop-tap-effect; a countdown that skips forward (pskip, 298 s to 290 s) stays noop-tap-effect on both"
-countdown restart pcount 0 '[(f["check"], f["severity"], f["observed"]) for f in F] == [("ambient-restart", "info", {"word": "probe-blank", "restarts": [{"node": "count", "old": 298, "new": 300}]})]'
-countdown skip pskip 1 'sorted((f["check"], f["observed"]["word"], f["observed"]["changed"]) for f in F) == [("noop-tap-effect", w, ["patches", "semantic", "frame"]) for w in ("probe-blank", "probe-screen")]'
-echo "  pcount: one ambient-restart (info), exit 0; pskip: two noop-tap-effect, exit 1"
-
 begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
 for plat in "$REL" "$SAN"; do
   run "$out/lvprobe.log" test --target-platforms "$plat" //ui/lvprobe/... || fail "$CUR: //ui/lvprobe/... failed in $plat" "$out/lvprobe.log"
@@ -464,6 +441,7 @@ done
 
 bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
 bash selftest/ui_judges.sh || fail "selftest/ui_judges.sh (the ui-scene and ui-fit judges on the canary) failed"
+bash selftest/ui_restart.sh || fail "selftest/ui_restart.sh (the declared countdown restart) failed"
 
 begin "no probe process this selftest started is still alive"
 build_out canary_rel "$REL" "//selftest/ui_canary_product:probe"   # built by ui_judges.sh: its processes are checked too
