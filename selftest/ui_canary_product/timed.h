@@ -31,6 +31,9 @@ typedef enum {
     TV_SILENT,  /* the state class turns `detail` 1 s later, nothing visible changes: invisible-auto-transition */
     TV_CLOCK,   /* the expiry kept modulo 2^32: the dialog never shows from an origin of 2^32 or more */
     TV_WORDY,   /* a 4 s dialog whose text takes longer to read: dwell-below-reading-time, notice-lifetime-short */
+    TV_UP,      /* the countdown counts 4 3 4 3: an increase without input, countdown-wrong */
+    TV_BARE,    /* a 4 s dialog without a countdown: countdown-wrong (absent) */
+    TV_BUMP,    /* not a variant: the input restarts the countdown of the dialog shown (an increase on an input) */
     TV_COUNT
 } timed_variant_t;
 

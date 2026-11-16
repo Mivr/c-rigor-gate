@@ -56,55 +56,65 @@ import hashlib, json, sys
 found = [json.loads(line) for line in open(sys.argv[1])]
 paths = json.load(open(sys.argv[2]))["paths"]
 summary = json.load(open(sys.argv[3]))
-# variant -> (check, identity, target key, target) of the findings it must give (docs/ui-judges-time.md, "Canaries")
+# path (after open) -> (check, identity, target key, target) of the findings it must give, each exactly once
+# (docs/ui-judges-time.md, "Canaries")
 WANT = {
     "v-clean": [],
     "v-early": [("notice-lifetime-short", ["dialog"], "kind", "dialog")],
     "v-never": [("notice-lifetime-long", ["dialog"], "kind", "dialog"),
                 ("countdown-wrong", ["dialog", "stalled"], "part", "stalled")],
     "v-flash": [("flash", ["flash", "panel"], "key", "flash")],
-    "v-blink": [("flash", ["blink", "panel"], "key", "blink")],
+    "v-blink fire-due": [("flash", ["blink", "panel"], "key", "blink")],
     "v-skip": [("countdown-wrong", ["dialog", "stalled"], "part", "stalled")],
     "v-zero": [("countdown-wrong", ["dialog", "zero"], "part", "zero")],
     "v-start": [("countdown-wrong", ["dialog", "start"], "part", "start")],
-    "v-silent": [("invisible-auto-transition", ["main", "detail"], "to", "detail")],
+    "v-silent fire-due": [("invisible-auto-transition", ["main", "detail"], "to", "detail")],
     "v-clock": [("clock-origin-divergence", ["origin", "v-clock", "semantic"], "part", "semantic")],
     # 96 characters need 6878 ms of dwell: the 4 s timer is below it (static), and the 4 s shown is short of it
     "v-wordy": [("dwell-below-reading-time", None, "min_dwell_ms", 6878),
                 ("notice-lifetime-short", ["dialog"], "dwell_ms", 6878)],
+    "v-up": [("countdown-wrong", ["dialog", "increase"], "part", "increase")],
+    "v-bare": [("countdown-wrong", ["dialog", "absent"], "part", "absent")],
+    # an input that raises the countdown of the dialog shown: judged on the path itself (no declared restart)
+    "v-clean fire-due v-bump": [("countdown-wrong", ["dialog", "increase"], "part", "increase")],
 }
 def fid(check, identity, key):
     data = json.dumps(["ui-time", check, [identity, key]], sort_keys=True, separators=(",", ":")).encode() + b"\n"
     return "ui-time.%s/%s" % (check, hashlib.sha256(data).hexdigest()[:12])
-assert sorted(WANT) == sorted(p[1] for p in paths[1:]) and paths[0] == ["open 1000000000 7"], "paths"
+name = lambda path: " ".join(path[1:])
+assert sorted(WANT) == sorted(name(p) for p in paths[1:]) and paths[0] == ["open 1000000000 7"], "paths"
 errors = [f for f in found if f["severity"] == "error"]
 assert all(f["gate"] == "ui-time" for f in found), [f["id"] for f in found if f["gate"] != "ui-time"]
-got = sorted((f["path"][1], f["check"]) for f in errors)
+got = sorted((name(f["path"]), f["check"]) for f in errors)
 want = sorted((v, check) for v, items in WANT.items() for check, _i, _k, _t in items)
 assert got == want, (got, want)
 for f in errors:
-    (check, identity, name, target), = [w for w in WANT[f["path"][1]] if w[0] == f["check"]]
+    (check, identity, key, target), = [w for w in WANT[name(f["path"])] if w[0] == f["check"]]
     if identity is None:      # static: [kind, message], no state (the message is its text's digest here)
         assert f["state"] is None and f["id"] == "ui-time.%s/%s" % (check, hashlib.sha256(json.dumps(
             ["ui-time", check, ["dialog", f["observed"]["message"]]], sort_keys=True,
             separators=(",", ":")).encode() + b"\n").hexdigest()[:12]), f
     else:
         assert f["id"] == fid(check, identity, f["state"]["key"]), (f["id"], check, identity)
-    assert f["observed"][name] == target, (f["id"], name, f["observed"])
+    assert f["observed"][key] == target, (f["id"], key, f["observed"])
     assert f["evidence"] and f["evidence"][0].endswith("paths.json"), f["evidence"]
-short = [f for f in errors if f["check"] == "notice-lifetime-short"][0]
-assert short["state"]["key"] != found[0]["state"], "keyed by the state of the first appearance"
 examined, = [f for f in found if f["check"] == "checks-examined"]
+rows = {name(r["path"]): r for r in examined["observed"]["lifetimes"]}
+early, = [f for f in errors if f["check"] == "notice-lifetime-short" and name(f["path"]) == "v-early"]
+assert early["state"]["key"] == rows["v-early"]["state"], "keyed by the state of the first appearance"
+clock, = [f for f in errors if f["check"] == "clock-origin-divergence"]
+assert sorted(o for o, _step, _part in clock["observed"]["origins"]) == [2**32 + 7, 2**40], clock["observed"]
 totals = examined["observed"]["totals"]
 assert all(n > 0 for c, n in totals.items() if c != "notice-lifetime-short-floor"), totals
 assert totals["notice-lifetime-short-floor"] == 0, totals            # the reading rate is decided here
-assert not [f for f in found if f["check"] in ("check-vacuous", "check-blocked", "contract-pending")]
-rows = {r["path"][1]: r for r in examined["observed"]["lifetimes"]}
+assert not [f for f in found if f["check"] in ("check-vacuous", "check-blocked", "contract-pending",
+                                              "lifetime-undecided", "probe-diverged", "time-budget-cut")]
 clean = rows["v-clean"]
 assert (clean["shown_more_than_ms"], clean["shown_at_most_ms"]) == (3999, 4000), clean
 assert rows["v-never"]["shown_at_most_ms"] is None and rows["v-early"]["shown_at_most_ms"] == 1000, rows
-assert examined["observed"]["cost"]["probe_runs"] > 0 and examined["observed"]["cost"]["origin_runs"] == 4 * 8
-assert summary["findings"]["ui-time.flash"] == 2 and summary["findings"]["ui-time.countdown-wrong"] == 4 \
+cost = examined["observed"]["cost"]
+assert cost["probe_runs"] > 0 and cost["origin_runs"] == 4 * examined["observed"]["origin_paths"] > 0, examined
+assert summary["findings"]["ui-time.flash"] == 2 and summary["findings"]["ui-time.countdown-wrong"] == 7 \
     and summary["findings"]["ui-time.notice-lifetime-short"] == 2, summary
 PY
 

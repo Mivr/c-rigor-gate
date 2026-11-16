@@ -1,13 +1,15 @@
 """The timeline of one path for the `ui-time` judge (U09, P004 3.5): per step, what the judge reads (docs/ui-judges-time.md).
 
-A step is one `Facts`: its word's mode (`open`, `input`, `time`, `domain`), its virtual time and the time of the step
-before, the state class of the probe's identity (None without it), the timed elements present, per element its
-countdown values and its text, the comparable semantic and frame records, the parsed patches and the keys of a declared
-countdown restart (U05d). Nothing here reads the wall clock.
+A step is one `Facts`: its word's mode (`open`, `input`, `env`, `time`, `domain`), its virtual time and the time of the
+step before, the state class of the probe's identity (None without it), the timed elements present, per element its
+countdown values and its text, the comparable semantic and frame records, the parsed patches, whether those patches
+agree with the semantic records (`chain`), and the keys of a declared countdown restart (U05d). Nothing here reads the
+wall clock.
 
 Binding a contract timer (`[[timer]]` kind) to what the scene shows:
 - with the probe's identity: the kind is present iff the state class IS the kind (the class of the topmost message,
-  else of the screen; docs/ui-judges-identity.md);
+  else of the screen; docs/ui-judges-identity.md); a SCREEN kind stays present while a message kind is the class and
+  it was present at the step before (ui-rules: a message is drawn over its screen, which stays visible behind it);
 - without it: only a message timer whose kind is a layer role of the scene vocabulary (`dialog`, `banner`, `snackbar`)
   is bindable, present iff a semantic record has that role; every other timer is `check-blocked` (needs identity).
 
@@ -15,6 +17,10 @@ The scope of an element (where its countdown and text are): the semantic records
 is drawn above the screen, so a message's scope is the records from the LAST record of a message layer role
 (`dialog`, `banner`, `snackbar`) to the end, and a screen's scope the records before the FIRST layer record (`scrim`
 included). For a role-bound kind, the scope starts at the last record of that role.
+
+A countdown's value (no contract or catalogue declares a countdown format): a label with exactly one run of 1 to 18
+digits is that many seconds; a label whose only digits are `M:SS` is minutes and seconds; anything else is no value
+and the judge's `contract-incomplete` (`countdown-format`).
 """
 
 import re
@@ -22,7 +28,9 @@ from dataclasses import dataclass, field
 
 LAYER_KINDS = ("dialog", "banner", "snackbar")   # message timer kinds bindable by scene role, without identity
 LAYERS = ("scrim",) + LAYER_KINDS
-_DIGITS = re.compile(rb"[0-9]{1,18}")
+_RUN = re.compile(rb"[0-9]+")
+_SECONDS = re.compile(rb"[^0-9]*([0-9]{1,18})[^0-9]*")
+_MINUTES = re.compile(rb"[^0-9]*([0-9]{1,16}):([0-5][0-9])[^0-9]*")
 _AT = re.compile(r"at (0|[1-9][0-9]{0,15})")
 
 
@@ -42,9 +50,17 @@ def word_mode(word, catalogue):
 
 
 def countdown_value(label):
-    """The value a countdown label shows: its first run of 1 to 18 digits, or None."""
-    found = _DIGITS.search(label)
-    return None if found is None else int(found.group(0))
+    """The seconds a countdown label shows (one digit run: seconds; `M:SS`: minutes and seconds), or None."""
+    found = _SECONDS.fullmatch(label)
+    if found is not None:
+        return int(found.group(1))
+    found = _MINUTES.fullmatch(label)
+    return None if found is None else int(found.group(1)) * 60 + int(found.group(2))
+
+
+def masked_label(label):
+    """A countdown label as clock-origin-divergence compares it: every digit run masked, the rest kept, and its value."""
+    return _RUN.sub(b"#", label).decode("utf-8", "surrogateescape") + "=" + str(countdown_value(label))
 
 
 @dataclass
@@ -60,13 +76,17 @@ class Facts:
     cls: object = None                                # the identity's state class, or None
     present: frozenset = frozenset()                  # the bound timer kinds shown
     countdowns: dict = field(default_factory=dict)    # kind -> ((key, value or None), ...)
+    unparsed: tuple = ()                              # countdown labels with no value (contract-incomplete)
     texts: dict = field(default_factory=dict)         # kind -> the text of its scope (role `text`), joined by a space
     msgids: dict = field(default_factory=dict)        # kind -> the first msgid of a text node of its scope, or None
     semantic: tuple = ()
-    masked: tuple = ()                                # semantic raws, a countdown's label as its value (origins)
+    labels: dict = field(default_factory=dict)        # key -> label bytes of the semantic records
+    masked: tuple = ()                                # semantic raws, a countdown's label masked (origins)
     ident: tuple = ()                                 # the identity records' raws
+    due: object = None                                # next-due relative to the origin, or None
     frame: tuple = ()
     patches: tuple = ()                               # (op, key, field, old bytes, new bytes)
+    chain: object = None                              # None, or why the patches disagree with the semantic records
     restarts: frozenset = frozenset()                 # keys of a declared countdown restart (U05d) at this step
 
     @property
@@ -113,23 +133,14 @@ def _identity_msgids(step):
     return records[0].values[1].decode("utf-8", "surrogateescape"), msgids
 
 
-def _present(records, cls, binding):
-    if binding.identity:
-        return frozenset(k for k in binding.bound() if k == cls)
-    roles = {r.fields[1] for r in records}
-    return frozenset(k for k in binding.bound() if k in roles)
-
-
-def masked(records):
-    """The semantic records with absolute times masked as clock-origin-divergence compares them: a countdown's label
-    is its value (P004 3.5: countdowns compared as values)."""
-    out = []
-    for r in records:
-        if r.fields[1] == "countdown":
-            out.append("\t".join(r.fields[:2] + (str(countdown_value(r.values[2])),) + r.fields[3:]))
-        else:
-            out.append(r.raw)
-    return tuple(out)
+def _present(records, cls, binding, before):
+    if not binding.identity:
+        roles = {r.fields[1] for r in records}
+        return frozenset(k for k in binding.bound() if k in roles)
+    own = {k for k in binding.bound() if k == cls}
+    if cls in binding.timers and binding.message(cls) and before is not None:
+        own |= {k for k in before.present if not binding.message(k)}     # the screen under the message
+    return frozenset(own)
 
 
 def comparable_frame(frame):
@@ -137,36 +148,68 @@ def comparable_frame(frame):
     return tuple(r.raw for r in frame if not r.raw.startswith(("life\t", "taps\t")))
 
 
+def chain_error(before_labels, patches, labels):
+    """None, or why the step's patches do not lead from the step before's semantic records to this step's: every
+    `create` of a key not shown, `remove` of a key shown, `update text` whose old text is not the label shown, and at
+    the end the same keys and, where a label is known, the same label (as the countdown-restart rule checks them)."""
+    shown = dict(before_labels)
+    for op, key, name, old, new in patches:
+        if op == "create":
+            if key in shown:
+                return "create of a key already shown: %s" % key
+            shown[key] = None                     # a created node's label is known only from a later text update
+        elif op == "remove":
+            if key not in shown:
+                return "remove of a key not shown: %s" % key
+            del shown[key]
+        elif op == "update" and name == "text":
+            if key not in shown or (shown[key] is not None and shown[key] != old):
+                return "text update of %s from a label it did not show" % key
+            shown[key] = new
+    if set(shown) != set(labels):
+        return "the patches end on other keys than the semantic records"
+    wrong = sorted(k for k, label in shown.items() if label is not None and label != labels[k])
+    return None if not wrong else "the patches end on another label than the semantic record of %s" % wrong[0]
+
+
 def facts_of(step, before, catalogue, binding):
-    """The Facts of one completed step (`before`: the step before, or None)."""
+    """The Facts of one completed step (`before`: the Facts of the step before, or None)."""
     records = tuple(step.obs.get("semantic", ()))
     cls, msgids = _identity_msgids(step)
-    present = _present(records, cls, binding)
+    present = _present(records, cls, binding, before)
+    due = step.obs.get("due")
     out = Facts(step.index, step.word, word_mode(step.word, catalogue), step.now,
                 step.now if before is None else before.now, step.origin, step.key, step.proj, cls=cls,
-                present=present, semantic=tuple(r.raw for r in records), masked=masked(records),
+                present=present, semantic=tuple(r.raw for r in records),
+                labels={r.fields[0]: r.values[2] for r in records},
+                masked=tuple("\t".join(r.fields[:2] + (masked_label(r.values[2]),) + r.fields[3:])
+                             if r.fields[1] == "countdown" else r.raw for r in records),
                 ident=tuple(r.raw for r in step.obs.get("identity") or ()),
-                frame=comparable_frame(step.obs.get("frame", ())),
+                due=None if due is None else due - step.origin, frame=comparable_frame(step.obs.get("frame", ())),
                 patches=tuple((p.fields[0], p.fields[1], p.fields[2], p.values[3], p.values[4])
                               for p in step.obs.get("patches", ())),
                 restarts=frozenset(item["node"] for item in (step.restart or ())))
+    # the open step's patches are the product's boot log, whatever it reports: the chain starts after it
+    out.chain = None if before is None else chain_error(before.labels, out.patches, out.labels)
     for kind in present:
         scope = _scope(records, kind, binding, not binding.identity)
-        out.countdowns[kind] = tuple((r.fields[0], countdown_value(r.values[2])) for r in scope
-                                     if r.fields[1] == "countdown")
+        counts = [(r.fields[0], countdown_value(r.values[2])) for r in scope if r.fields[1] == "countdown"]
+        out.countdowns[kind] = tuple(counts)
+        out.unparsed += tuple(r.values[2] for r in scope if r.fields[1] == "countdown"
+                              and countdown_value(r.values[2]) is None)
         texts = [r for r in scope if r.fields[1] == "text" and r.values[2] != b""]
         out.texts[kind] = b" ".join(r.values[2] for r in texts).decode("utf-8", "replace")
         out.msgids[kind] = next((msgids[r.fields[0]] for r in texts if r.fields[0] in msgids), None)
     return out
 
 
-def timeline(steps, catalogue, binding):
+def timeline(steps, catalogue, binding, before=None):
     """The Facts of every completed step of a run, up to the first that has no abstraction key (an error)."""
     out = []
     for step in steps:
         if step.key is None or step.error is not None:
             break
-        out.append(facts_of(step, out[-1] if out else None, catalogue, binding))
+        out.append(facts_of(step, out[-1] if out else before, catalogue, binding))
     return out
 
 

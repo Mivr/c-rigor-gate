@@ -1,5 +1,5 @@
 # The event catalogue of the U09 timed canary (ui-events/1, docs/ui-explore.md; docs/ui-judges-time.md "Canaries").
-# A selftest fixture: intent v (1..11) asks for one timed variant at the current instant (v-clean: a correct dialog
+# A selftest fixture: intent v (1..13; 14 restarts the dialog shown) asks for one timed variant at the current instant (v-clean: a correct dialog
 # of 4 s whose countdown counts 4 3 2 1); `open` shows the title only.
 schema = "ui-events/1"
 product = "selftest"
@@ -28,6 +28,9 @@ events = [
   { id = "v-silent", intent = 9, arg = 0, expect = "accept" },
   { id = "v-clock", intent = 10, arg = 0, expect = "accept" },
   { id = "v-wordy", intent = 11, arg = 0, expect = "accept" },
+  { id = "v-up", intent = 12, arg = 0, expect = "accept" },
+  { id = "v-bare", intent = 13, arg = 0, expect = "accept" },
+  { id = "v-bump", intent = 14, arg = 0, expect = "accept" },
 ]
 
 [u2]

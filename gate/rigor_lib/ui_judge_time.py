@@ -1,13 +1,14 @@
 """The `ui-time` judge (U09, P004 3.5): reads every path of the explorer as a timeline (ui_judge_time_model) and judges
 how long timed elements stay, their countdowns, flashes, silent auto-transitions, dwell against reading time and the
-clock origin (ui_judge_time_checks). docs/ui-judges-time.md has the rules, the time-probing mode and its bound, and the
-honesty table.
+clock origin (ui_judge_time_checks, ui_judge_time_probe, ui_judge_time_origin). docs/ui-judges-time.md has the rules,
+the time-probing mode and its bound, and the honesty table.
 
 The judge is called once per path the explorer runs (`path(runner, steps)`, with the steps of the first run) and once
-at the end (`finish`). Through `runner` (ui_explore_time) it runs the time-probing runs and the clock-origin replays;
-both are counted (`checks-examined`: cost) and spend the explorer's wall budget. Findings have the schema of
-docs/ui-explore.md, gate `ui-time`, ids `ui-time.<check>/<12 hex of sha256([gate, check, [identity, state key]])>`
-(the state key of the element's first appearance), or `[gate, check, identity]` for run-level and static findings.
+at the end (`finish`, ui_judge_time_finish). Through `runner` (ui_explore_time) it runs the time-probing runs and the
+clock-origin replays; both are counted (`checks-examined`: cost) and spend the explorer's wall budget. Findings have
+the schema of docs/ui-explore.md, gate `ui-time`, ids `ui-time.<check>/<12 hex of sha256([gate, check, [identity,
+state key]])>` (the state key of the element's first appearance), or `[gate, check, identity]` for run-level and
+static findings.
 """
 
 import hashlib
@@ -15,27 +16,24 @@ import hashlib
 from rigor_lib import jsonio, ui_contract
 from rigor_lib.ui_contract_dwell import char_count, reading_ms
 from rigor_lib.ui_explore_judges import state_of
-from rigor_lib.ui_judge_time_checks import (bracket, countdown_verdicts, flash_verdicts, invisible_verdicts,
-                                            lifetime_verdicts, plan, refine)
+from rigor_lib.ui_judge_time_checks import (chain_verdicts, countdown_verdicts, decisions, flash_verdicts,
+                                            increase_verdicts, invisible_verdicts, zero_verdicts)
 from rigor_lib.ui_judge_time_model import Binding, appearances, timeline
+from rigor_lib.ui_judge_time_origin import Origins
+from rigor_lib.ui_judge_time_probe import Diverged, Prober
 
 GATE = "ui-time"
 CHECKS = ("notice-lifetime-short", "notice-lifetime-short-floor", "notice-lifetime-long", "flash", "countdown-wrong",
-          "invisible-auto-transition", "dwell-below-reading-time", "clock-origin-divergence")
-META = ("contract-pending", "exception-unused", "checks-examined", "check-vacuous", "check-blocked")
+          "invisible-auto-transition", "dwell-below-reading-time", "clock-origin-divergence", "patches-inconsistent")
+META = ("contract-pending", "contract-incomplete", "exception-unused", "checks-examined", "check-vacuous",
+        "check-blocked", "lifetime-undecided", "probe-diverged", "time-probes-capped", "time-budget-cut")
 ALL = CHECKS + META
-ORIGINS = (1, 1000, 10**9, 2**32 + 7, 2**40)     # P004 3.5, ms
-ORIGIN_PATHS = 8       # paths replayed at the other origins: the first ones (run order) that show a timed element
+LIFETIME = ("notice-lifetime-short", "notice-lifetime-short-floor", "notice-lifetime-long")
+DWELL = ("notice-lifetime-short", "dwell-below-reading-time")
 MAX_PROBES = 64        # (state key, timer kind) appearances probed per exploration
-MAX_PHASES = 4         # probing runs per appearance: the grid, then refinements to one tick
-BLOCKED_PARTS = {      # what the gate has no fact for (the honesty table of docs/ui-judges-time.md)
-    "countdown-wrong": "the formatted string against the oracle's at the same virtual time: no oracle in the gate",
-    "invisible-auto-transition": "a user-relevant O1 (view-state) field: the probe protocol has no view-state stage",
-    "unresponsive-intent": "the contract does not mark which intents are effective in which state class",
-}
 
 
-def _item(check, identity, severity, state, path, observed):
+def item(check, identity, severity, state, path, observed):
     digest = jsonio.sha256_hex(jsonio.canonical_dumps([GATE, check, identity]))[:12]
     layer = "meta" if check in META else ("L5" if check == "clock-origin-divergence" else "L4")
     return {"id": "%s.%s/%s" % (GATE, check, digest), "gate": GATE, "check": check, "layer": layer,
@@ -48,9 +46,9 @@ class TimeJudge:
         self.contract, self.catalogue_key, self.exceptions = contract, catalogue_key, exceptions
         self.identity = None              # whether the probe announces `identity` (JudgeSet.wants_identity)
         self.counts = {check: 0 for check in CHECKS}
-        self.pendings, self.lifetimes = {}, []
-        self.probed, self.capped, self.paths = set(), 0, 0
-        self.origin_done = set()
+        self.pendings, self.lifetimes, self.incomplete = {}, [], {}
+        self.probed, self.capped, self.paths = set(), [], 0
+        self.origins = Origins(contract)
         self.runner = None
 
     # ---- contract values ------------------------------------------------------------------------------------------
@@ -59,7 +57,7 @@ class TimeJudge:
             return self.contract.get(section, key)
         except ui_contract.ContractPending as error:
             for check in checks:
-                self.pendings.setdefault((check, error.path), _item(
+                self.pendings.setdefault((check, error.path), item(
                     "contract-pending", [check, error.path], ui_contract.PENDING_SEVERITY, None, words[:1],
                     {"check": check, "entry": error.path, "question": error.question}))
             return None
@@ -79,43 +77,54 @@ class TimeJudge:
         words = [step.word for step in steps[:len(facts)]]
         for fact in facts:
             self.exceptions.see(set(fact.present) | {raw.split("\t", 1)[0] for raw in fact.semantic})
-        out = self._flash(facts, words) + self._invisible(facts, words)
+        out = self._observed(facts, words, True)
         for index, kind in appearances(facts):
-            out += self._probe(runner, binding, facts, words, index, kind)
-        return out + self._origins(runner, facts, words)
+            out += self._lifetime(runner, binding, facts, words, index, kind)
+        for index in _hidden_steps(facts):
+            out += self._hidden(runner, binding, facts, words, index)
+        if self.origins.offer(facts, words):
+            self.origins.take(words)
+            out += self.origin_findings(runner, facts, words)
+        return out
 
-    def _finding(self, verdict, facts, words, at):
+    def _observed(self, facts, words, main):
+        """flash, invisible-auto-transition, patches-inconsistent, countdown increases (on the main path, input steps
+        included) and countdown formats, read from one run's observations."""
+        verdicts = []
+        threshold = self._get(("flash",), "thresholds", "flicker_floor_ms", words)
+        if threshold is not None:
+            found, judged = flash_verdicts(facts, threshold)
+            verdicts, self.counts["flash"] = found, self.counts["flash"] + judged
+        # a probing run repeats the path's prefix: its patches are judged (and reported) on the path itself
+        for name, judge in (("invisible-auto-transition", invisible_verdicts),) \
+                + ((("patches-inconsistent", chain_verdicts), ("countdown-wrong", increase_verdicts)) if main else ()):
+            found, judged = judge(facts)
+            verdicts, self.counts[name] = verdicts + found, self.counts[name] + judged
+        for fact in facts:
+            for kind in sorted(fact.present):
+                if fact.unparsed and kind not in self.incomplete:
+                    self.incomplete[kind] = item("contract-incomplete", ["countdown-format", kind], "error", None,
+                                                 words[:1], {"what": "countdown-format", "kind": kind})
+        return [self.finding(v, facts, words, 0) for v in verdicts]
+
+    def finding(self, verdict, facts, words, at):
         state_at = at if verdict["state_at"] is None else verdict["state_at"]
         path_at = at if verdict["path_at"] is None else verdict["path_at"]
         fact = facts[state_at]
-        item = _item(verdict["check"], [verdict["identity"], fact.key], "error",
+        found = item(verdict["check"], [verdict["identity"], fact.key], "error",
                      state_of(fact.key, fact.proj, self.catalogue_key, fact.origin), words[:path_at + 1],
                      verdict["observed"])
-        return self.exceptions.apply(item, verdict["target"])
-
-    def _flash(self, facts, words):
-        threshold = self._get(("flash",), "thresholds", "flicker_floor_ms", words)
-        if threshold is None:
-            return []
-        verdicts, judged = flash_verdicts(facts, threshold)
-        self.counts["flash"] += judged
-        return [self._finding(v, facts, words, 0) for v in verdicts]
-
-    def _invisible(self, facts, words):
-        verdicts, judged = invisible_verdicts(facts)
-        self.counts["invisible-auto-transition"] += judged
-        return [self._finding(v, facts, words, 0) for v in verdicts]
+        return self.exceptions.apply(found, verdict["target"])
 
     # ---- dwell ------------------------------------------------------------------------------------------------------
     def _dwell(self, kind, appear, words, timer, binding):
         """(D, the floor approximation max(L, dwell_floor_ms), findings): D = max(L, max(floor, base + reading)) of
         the text the run shows (no message catalogue is given; docs/ui-judges-time.md); None while pending."""
         lifetime = timer["lifetime_ms"]
-        floor = self._get(("notice-lifetime-short", "dwell-below-reading-time"), "thresholds", "dwell_floor_ms", words)
-        base = self._get(("notice-lifetime-short", "dwell-below-reading-time"), "thresholds", "dwell_base_ms", words)
-        per_word = self._get(("notice-lifetime-short", "dwell-below-reading-time"), "thresholds",
-                             "dwell_chars_per_word", words)
-        rate = self._get(("notice-lifetime-short", "dwell-below-reading-time"), "reading", "rate_wpm", words)
+        floor = self._get(DWELL, "thresholds", "dwell_floor_ms", words)
+        base = self._get(DWELL, "thresholds", "dwell_base_ms", words)
+        per_word = self._get(DWELL, "thresholds", "dwell_chars_per_word", words)
+        rate = self._get(DWELL, "reading", "rate_wpm", words)
         floor_only = None if floor is None else max(lifetime, floor)
         if None in (floor, base, per_word, rate):
             return None, floor_only, []
@@ -128,175 +137,128 @@ class TimeJudge:
             return max(lifetime, least), floor_only, []
         msgid = appear.msgids.get(kind)
         name = msgid.decode("utf-8", "replace") if msgid else "text:" + hashlib.sha256(text.encode()).hexdigest()[:16]
-        item = _item("dwell-below-reading-time", [kind, name], "error", None, words,
+        found = item("dwell-below-reading-time", [kind, name], "error", None, words,
                      {"kind": kind, "message": name, "chars": char_count(text), "lifetime_ms": lifetime,
                       "min_dwell_ms": least, "text_from": "the run" if not msgid else "the run (msgid from identity)"})
-        return max(lifetime, least), floor_only, [self.exceptions.apply(item, kind)]
+        return max(lifetime, least), floor_only, [self.exceptions.apply(found, kind)]
 
     # ---- the time-probing mode --------------------------------------------------------------------------------------
-    def _probe(self, runner, binding, facts, words, index, kind):
-        appear = facts[index]
+    def _lifetime(self, runner, binding, facts, words, index, kind):
+        appear, timer, prefix = facts[index], binding.timers[kind], words[:index + 1]
         if (appear.key, kind) in self.probed:
             return []
         if len(self.probed) >= MAX_PROBES:
-            self.capped += 1
+            self.capped.append([appear.key, kind])
             return []
         self.probed.add((appear.key, kind))
-        timer = binding.timers[kind]
-        prefix = words[:index + 1]
-        tick = self._get(("notice-lifetime-short", "notice-lifetime-long", "countdown-wrong"), "clock", "tick_ms",
-                         prefix)
+        dwell, floor, out = self._dwell(kind, appear, prefix, timer, binding)      # needs no tick
+        tick = self._get(LIFETIME + ("countdown-wrong",), "clock", "tick_ms", prefix)
+        if tick is None:
+            return out
+        try:
+            probe = Prober(runner, binding, tick).probe(facts, words, index, kind, timer, (dwell, floor))
+        except Diverged as error:
+            return out + [self.finding({"check": "probe-diverged", "identity": [kind], "target": kind,
+                                        "state_at": None, "path_at": None,
+                                        "observed": {"kind": kind, "path": prefix, "probe_path": error.words}},
+                                       facts, words, index)]
+        return out + self._judge_probe(facts, words, index, kind, timer, (dwell, floor, tick), probe)
+
+    def _judge_probe(self, facts, words, index, kind, timer, values, probe, inside=None):
+        """Findings of one probed element; `inside` = (the state's step, an identity prefix) for a hidden one."""
+        dwell, floor, tick = values
+        found, bounds = decisions(probe.appear, probe.gone, timer["lifetime_ms"], dwell, floor, tick)
+        out, observed = [], {"kind": kind, "lifetime_ms": timer["lifetime_ms"], "tick_ms": tick,
+                             "appeared": list(probe.appear), "shown_more_than_ms": bounds[0],
+                             "shown_at_most_ms": bounds[1]}
+        for check, yes in sorted(found.items()):
+            limit = {"notice-lifetime-short": dwell, "notice-lifetime-short-floor": floor}.get(check)
+            if yes is None:
+                out.append({"check": "lifetime-undecided", "identity": [kind, check], "target": kind,
+                            "state_at": None, "path_at": None,
+                            "observed": dict(observed, check=check, why=probe.why or "bracket", bound_ms=limit)})
+                continue
+            self.counts[check] += 1
+            if yes:
+                out.append({"check": check, "identity": [kind], "target": kind, "state_at": None, "path_at": None,
+                            "observed": dict(observed, **({"dwell_ms": dwell} if check.endswith("short") else
+                                                          {"floor_ms": floor} if check.endswith("floor") else {}))})
+        if timer["countdown_shown"] and probe.seq:
+            self.counts["countdown-wrong"] += 1
+            parts = countdown_verdicts(kind, probe.seq, timer, probe.appear[0])
+            seen = {p["identity"][1] for p in parts}
+            out += parts + ([] if "zero" in seen else zero_verdicts(kind, probe.samples))
+        self.lifetimes.append({"kind": kind, "state": facts[index].key, "lifetime_ms": timer["lifetime_ms"],
+                               "dwell_ms": dwell, "floor_ms": floor, "appeared": list(probe.appear),
+                               "shown_more_than_ms": bounds[0], "shown_at_most_ms": bounds[1], "runs": probe.runs,
+                               "decided": {c: v for c, v in sorted(found.items())}, "path": words[:index + 1]})
+        run_facts, run_words = probe.run
+        if inside is not None:
+            out = [dict(v, state_at=inside[0], path_at=index, identity=inside[1] + v["identity"]) for v in out]
+        return [self.finding(v, facts, words, index) for v in out] + \
+            (self._observed(run_facts, run_words, False) if run_facts else [])
+
+    def _hidden(self, runner, binding, facts, words, index):
+        """The timed elements shown only inside the time step `index`: their lifetime rules (no countdown)."""
+        if (facts[index - 1].key, facts[index].word, "inside") in self.probed:
+            return []
+        self.probed.add((facts[index - 1].key, facts[index].word, "inside"))
+        tick = self._get(LIFETIME, "clock", "tick_ms", words[:index + 1])
         if tick is None:
             return []
-        dwell, floor, out = self._dwell(kind, appear, prefix, timer, binding)
-        instants = plan(appear, timer["lifetime_ms"], dwell if dwell is not None else floor, tick,
-                        runner.catalogue.max_wait_ms)
-        if not instants:
-            return out
-        first = self._sample(runner, binding, prefix, instants, index, kind)
-        if first is None:
-            return out
-        seq, samples, run_facts, run_words = first
-        lo_hi, phases = bracket(appear, samples, kind), 1
-        while lo_hi[1] is not None and phases < MAX_PHASES:
-            more = refine(lo_hi[0], lo_hi[1], tick, runner.catalogue.max_wait_ms)
-            again = self._sample(runner, binding, prefix, more, index, kind) if more else None
-            if again is None:
-                break
-            phases += 1
-            samples = samples + again[1]
-            lo_hi = bracket(appear, samples, kind)
-        measured, verdicts = lifetime_verdicts(kind, appear, lo_hi, timer, dwell, floor, tick)
-        self._count_lifetime(timer, dwell, floor)
-        if timer["countdown_shown"]:
-            verdicts += countdown_verdicts(kind, seq, timer)
-            self.counts["countdown-wrong"] += 1
-        self.lifetimes.append({"kind": kind, "state": appear.key, "appear_ms": appear.now - appear.origin,
-                               "lifetime_ms": timer["lifetime_ms"], "dwell_ms": dwell, "floor_ms": floor,
-                               "shown_more_than_ms": measured[0], "shown_at_most_ms": measured[1],
-                               "phases": phases, "path": prefix})
-        out += [self._finding(v, facts, words, index) for v in verdicts]
-        return out + self._flash(run_facts, run_words) + self._invisible(run_facts, run_words)
-
-    def _count_lifetime(self, timer, dwell, floor):
-        if dwell is not None:
-            self.counts["notice-lifetime-short"] += 1
-        elif floor is not None:
-            self.counts["notice-lifetime-short-floor"] += 1
-        if timer["lifetime_ms"] > 0:
-            self.counts["notice-lifetime-long"] += 1
-
-    def _sample(self, runner, binding, prefix, instants, index, kind):
-        """One probing run: the prefix, then `at` words at `instants`; (the observations from the appearance on, the
-        samples taken, the run's facts and words), or None when the run does not show the element at the appearance
-        step as the path did (the run ended early or the product diverged: its own findings say so)."""
-        origin = int(prefix[0].split(" ")[1])
-        steps = runner.probe(prefix + ["at %d" % (at - origin) for at in instants])
-        run_facts = timeline(steps, runner.catalogue, binding)
-        if len(run_facts) <= index or kind not in run_facts[index].present:
-            return None
-        wanted = set(instants)
-        samples = [f for f in run_facts[index + 1:] if f.now in wanted and f.word.startswith("at ")]
-        run_words = [step.word for step in steps[:len(run_facts)]]
-        return run_facts[index:], samples, run_facts, run_words
+        prober = Prober(runner, binding, tick)
+        try:
+            probes, _samples = prober.hidden(facts, words, index)
+        except Diverged as error:
+            return [self.finding({"check": "probe-diverged", "identity": ["inside", facts[index].word],
+                                  "target": facts[index].word, "state_at": index - 1, "path_at": index,
+                                  "observed": {"path": words[:index + 1], "probe_path": error.words}},
+                                 facts, words, index)]
+        out = []
+        for kind, probe in sorted(probes.items()):
+            timer = binding.timers[kind]
+            dwell, floor, found = self._dwell(kind, facts[index - 1], words[:index + 1], timer, binding)
+            limits = (timer["lifetime_ms"], dwell, floor if dwell is None else None, tick)
+            try:
+                prober.refine_hidden(facts, words, index, kind, probe,
+                                     lambda p: None not in decisions(p.appear, p.gone, *limits[:3], tick)[0].values())
+            except Diverged:
+                pass                       # the first hidden run reached the same step: the bracket stands as is
+            out += found + self._judge_probe(facts, words, index, kind, timer, (dwell, floor, tick), probe,
+                                             (index - 1, ["inside", facts[index].word]))
+        return out
 
     # ---- clock-origin-divergence ------------------------------------------------------------------------------------
-    def _origins(self, runner, facts, words):
-        """Replays the first ORIGIN_PATHS distinct paths that show a timed element at the other origins of ORIGINS and
-        compares, step by step, the masked semantic records and the identity (docs/ui-judges-time.md)."""
-        if len(self.origin_done) >= ORIGIN_PATHS or not any(f.present for f in facts) \
-                or tuple(words) in self.origin_done:
-            return []
-        self.origin_done.add(tuple(words))
-        seed = words[0].split(" ")[2]
-        diverged = []
-        for origin in ORIGINS:
-            if origin == facts[0].origin:
-                continue
-            steps = runner.once(["open %d %s" % (origin, seed)] + words[1:])
-            self.counts["clock-origin-divergence"] += 1
-            other = timeline(steps, runner.catalogue, Binding(self.contract, self.identity))
-            found = _divergence(facts, other)
-            if found is not None:
-                diverged.append((found[0], found[1], origin))
+    def origin_findings(self, runner, facts, words):
+        before_runs = self.origins.runs
+        diverged = self.origins.replay(runner, self.identity, facts, words)
+        self.counts["clock-origin-divergence"] += self.origins.runs - before_runs
         if not diverged:
             return []
         at, part, _origin = min(diverged)
         before = facts[at - 1] if at > 0 else facts[0]
-        item = _item("clock-origin-divergence", [["origin", words[at], part], before.key], "error",
+        found = item("clock-origin-divergence", [["origin", words[at], part], before.key], "error",
                      state_of(before.key, before.proj, self.catalogue_key, before.origin), words,
                      {"step": at, "word": words[at], "part": part,
                       "origins": [[o, s, p] for s, p, o in sorted(diverged)]})
-        return [self.exceptions.apply(item, words[at])]
+        return [self.exceptions.apply(found, words[at])]
 
-    # ---- the end of the run -----------------------------------------------------------------------------------------
     def finish(self, open_word):
-        binding = Binding(self.contract, bool(self.identity))
-        out = list(self.pendings.values())
-        for row, expired in self.exceptions.unused():
-            visited = row["target"] in self.exceptions.visited
-            out.append(_item("exception-unused", ["exception", row["id"]], "error" if visited or expired else "info",
-                             None, [open_word], {"exception": row["id"], "rule": row["rule"], "target": row["target"],
-                                                 "expires": str(row["expires"]), "expired": expired,
-                                                 "target_visited": visited}))
-        out += [_item("check-blocked", ["blocked", check, kind], "error", None, [open_word],
-                      {"check": check, "kind": kind, "needs": "identity"}) for check, kind in _blocked(binding)]
-        if self.identity is False:
-            out.append(_item("check-blocked", ["blocked", "invisible-auto-transition"], "error", None, [open_word],
-                             {"check": "invisible-auto-transition", "needs": "identity"}))
-        cost = dict(self.runner.cost) if self.runner is not None else {}
-        out.append(_item("checks-examined", ["examined"], "info", None, [open_word], {
-            "paths": self.paths, "totals": dict(self.counts), "bound": list(binding.bound()),
-            "blocked_kinds": list(binding.blocked()), "probes": len(self.probed), "probes_capped": self.capped,
-            "origin_paths": len(self.origin_done), "cost": cost, "blocked_parts": BLOCKED_PARTS,
-            "lifetimes": sorted(self.lifetimes, key=lambda r: (r["kind"], r["state"]))}))
-        for check in CHECKS:
-            if self.paths and self.counts[check] == 0 and not self.pending(check) and _applies(check, binding, self):
-                out.append(_item("check-vacuous", ["vacuous", check], "error", None, [open_word],
-                                 {"check": check, "paths": self.paths}))
-        return out
+        from rigor_lib.ui_judge_time_finish import finish
+        return finish(self, open_word)
 
 
-def _divergence(facts, other):
-    """(step, part) of the first step whose masked semantic records or identity differ, or where one run ended."""
-    for at, fact in enumerate(facts):
-        if at >= len(other):
-            return at, "ended"
-        if fact.masked != other[at].masked:
-            return at, "semantic"
-        if fact.ident != other[at].ident:
-            return at, "identity"
-    return None
-
-
-def _blocked(binding):
-    """(check, kind) for every timer the run cannot bind (it needs identity) and the check would read."""
+def _hidden_steps(facts):
+    """Time steps whose patches create and later remove one key: something was shown only inside the step."""
     out = []
-    for kind in binding.blocked():
-        timer = binding.timers[kind]
-        out.append(("notice-lifetime-short", kind))
-        if timer["lifetime_ms"] > 0:
-            out.append(("notice-lifetime-long", kind))
-        if timer["countdown_shown"]:
-            out.append(("countdown-wrong", kind))
-        if timer["class"] == "message" and timer["lifetime_ms"] > 0:
-            out.append(("dwell-below-reading-time", kind))
+    for index in range(1, len(facts)):
+        fact, created = facts[index], set()
+        if fact.mode != "time" or fact.chain or fact.now - fact.prev_now <= 1:
+            continue
+        for op, key, _name, _old, _new in fact.patches:
+            if op == "create":
+                created.add(key)
+            elif op == "remove" and key in created:
+                out.append(index)
+                break
     return out
-
-
-def _applies(check, binding, judge):
-    """Whether a check had something to judge in this contract and run (else no verdict is not vacuous)."""
-    timers = [binding.timers[kind] for kind in binding.bound()]
-    if check == "notice-lifetime-short-floor":
-        return judge.pending("notice-lifetime-short") and bool(timers)
-    if check in ("notice-lifetime-short", "clock-origin-divergence"):
-        return bool(timers)
-    if check == "notice-lifetime-long":
-        return any(t["lifetime_ms"] > 0 for t in timers)
-    if check == "countdown-wrong":
-        return any(t["countdown_shown"] for t in timers)
-    if check == "dwell-below-reading-time":
-        return any(t["class"] == "message" and t["lifetime_ms"] > 0 for t in timers)
-    if check == "invisible-auto-transition":
-        return bool(judge.identity)
-    return True

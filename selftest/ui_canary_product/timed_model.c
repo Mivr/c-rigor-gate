@@ -150,6 +150,10 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     if (in->kind != UIM_IN_INTENT || in->arg != 0 || in->id == 0u || in->id >= (uint32_t)TV_COUNT) {
         return UIM_REFUSED;
     }
+    if (in->id == (uint32_t)TV_BUMP) {
+        m->since = m->now;   /* the dialog shown, if any, starts again: its countdown goes up on this input */
+        return event(m, "bump") && refresh(m, &worked) ? UIM_OK : UIM_ERROR;
+    }
     m->variant = (timed_variant_t)in->id;
     m->since = m->now;
     if (m->variant == TV_FLASH && !(timed_flash_object() && patch(m, "create", "flash", "node", "-", "panel") &&

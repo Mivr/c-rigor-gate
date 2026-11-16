@@ -48,6 +48,8 @@ static bool dialog_shown(timed_variant_t v, uint64_t since, uint64_t now)
     case TV_ZERO:
     case TV_START:
     case TV_WORDY:
+    case TV_UP:
+    case TV_BARE:
         return now < since + LIFE_MS;
     case TV_EARLY:
         return now < since + EARLY_MS;
@@ -75,6 +77,8 @@ static uint64_t countdown(timed_variant_t v, uint64_t since, uint64_t now)
         return secs + 5u;
     case TV_NEVER:
         return secs > 0u ? secs : 1u;
+    case TV_UP:
+        return ((now - since) / SECOND_MS) % 2u == 0u ? 4u : 3u;
     default:
         return secs;
     }
@@ -98,7 +102,7 @@ void timed_scene_at(timed_variant_t v, uint64_t since, uint64_t now, timed_scene
         int n = snprintf(digits, sizeof digits, "%llu s", (unsigned long long)countdown(v, since, now));
         ok = ok && n > 0 && (size_t)n < sizeof digits && add(out, "card", "dialog", "", card) &&
              add(out, "msg", "text", v == TV_WORDY ? WORDY : "Saved.", msg) &&
-             add(out, "count", "countdown", digits, count);
+             (v == TV_BARE || add(out, "count", "countdown", digits, count));
         out->cls = "dialog";
     }
     if (v == TV_BLINK && now < since + BLINK_MS) {

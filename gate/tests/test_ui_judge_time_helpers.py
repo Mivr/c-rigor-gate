@@ -12,7 +12,7 @@ from rigor_lib.ui_explore_run import Step
 from tests.test_ui_judge_helpers import REPO, esc
 
 TIME_CONTRACT = REPO / "selftest" / "ui_canary_product" / "time.toml"
-INPUTS = ("show", "flash", "blink", "silent", "other")
+INPUTS = ("show", "flash", "blink", "silent", "other", "later", "bump")
 
 
 def contract(edit=None):
@@ -31,15 +31,17 @@ class Sim:
     `blink` shows key 9 for 200 ms, `silent` turns the state class to `detail` 1000 ms later without any visible
     change, `other` shows a dialog of another text."""
 
-    def __init__(self, life=4000, count=None, wrap32=False, identity=True, text="Saved."):
-        self.life, self.wrap32, self.identity, self.text = life, wrap32, identity, text
+    def __init__(self, life=4000, count=None, wrap32=False, identity=True, text="Saved.", diverge=False,
+                 lie=False):
+        self.life, self.wrap32, self.identity, self.text, self.diverge = life, wrap32, identity, text, diverge
+        self.lie = lie            # patches that claim the countdown changed when the records say it did not
         self.count = count or (lambda elapsed, life: ceil_s(life - elapsed))
         self.runs = []
 
     def scene(self, t, st):
         nodes = {"1": ("text", "Title")}
         cls = "main"
-        if st["shown"] is not None and (st["until"] is None or t < st["until"]):
+        if st["shown"] is not None and t >= st["shown"] and (st["until"] is None or t < st["until"]):
             elapsed = t - st["shown"]
             nodes.update({"5": ("dialog", ""), "6": ("text", st["text"]),
                           "7": ("countdown", "%d s" % self.count(elapsed, self.life if self.life else 0))})
@@ -56,6 +58,11 @@ class Sim:
             st["until"] = None if self.life is None else now + self.life
             if self.wrap32 and now >= 2**32:
                 st["until"] = now           # the expiry modulo 2^32 compared with the 64-bit clock: already past
+        elif word == "later":           # the product's own deadline shows the dialog 2 s after the input
+            st["shown"], st["text"] = now + 2000, self.text
+            st["until"] = None if self.life is None else now + 2000 + self.life
+        elif word == "bump":            # restarts a shown dialog's countdown (an input that raises it)
+            st["shown"], st["until"] = now, None if self.life is None else now + self.life
         elif word == "blink":
             st["blink"] = now + 200
         elif word == "silent":
@@ -64,6 +71,8 @@ class Sim:
 
     def run(self, words):
         self.runs.append(list(words))
+        if self.diverge and len(self.runs) > 1:
+            words = [w if w != "show" else "other" for w in words]     # a product that differs on a later run
         origin = int(words[0].split(" ")[1])
         st = {"shown": None, "until": None, "text": "", "blink": None, "silent": None}
         now, steps, scene = origin, [], None
@@ -83,6 +92,8 @@ class Sim:
                 new = self.scene(t, st)[0]
                 patches += _diff(scene, new)
                 scene = new
+            if self.lie and word.startswith("at "):
+                patches.append(("update", "7", "text", "9 s", "8 s"))
             now = target
             steps.append(self._step(index, word, now, origin, st, patches))
         return steps
@@ -117,7 +128,8 @@ def _diff(old, new):
 
 
 class Catalogue:
-    max_wait_ms = 600000
+    def __init__(self, max_wait_ms=600000):
+        self.max_wait_ms = max_wait_ms
 
     @staticmethod
     def by_id(word):
@@ -129,8 +141,8 @@ class Catalogue:
 class Runner:
     """The explorer's Runner (ui_explore_time) over the simulated product."""
 
-    def __init__(self, sim):
-        self.sim, self.catalogue = sim, Catalogue()
+    def __init__(self, sim, max_wait_ms=600000):
+        self.sim, self.catalogue = sim, Catalogue(max_wait_ms)
         self.cost = {"probe_runs": 0, "origin_runs": 0, "probe_commands": 0, "virtual_ms": 0}
 
     def probe(self, words):

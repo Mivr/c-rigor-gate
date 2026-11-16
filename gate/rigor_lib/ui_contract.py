@@ -60,6 +60,8 @@ EXCEPTION_RULES = frozenset((
     'fit-unmeasurable', 'glyph-missing', 'stage-unmatched', 'stage-text-mismatch', 'stage-unowned-target',
     # U07: the ui-render judge's own findings (docs/ui-judges-render.md)
     'ink-unmeasurable', 'line-height-mismatch',
+    # U09: the ui-time judge could not decide a lifetime rule of a contract timer (docs/ui-judges-time.md)
+    'lifetime-undecided',
 ))
 TOGGLE_MARKS = ("bg", "bg_opa", "style")   # U06: what tells a toggle group's selected member apart
 STYLE_TOKENS = 21

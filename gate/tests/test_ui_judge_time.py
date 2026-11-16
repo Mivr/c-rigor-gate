@@ -12,12 +12,15 @@ from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_judges import PathSoFar
 from rigor_lib.ui_explore_run import Step
 from rigor_lib.ui_judge_findings import JudgeSet
-from rigor_lib.ui_judge_time_model import Binding, Facts
+from rigor_lib.ui_judge_time_model import Binding, Facts, chain_error, countdown_value, masked_label
+
+from rigor_lib.ui_judge_time_probe import MAX_PHASES
 
 from tests.test_ui_judge_helpers import KEY, TODAY, pending
 from tests.test_ui_judge_time_helpers import Runner, Sim, contract
 
 OPEN = "open 1000000000 7"
+OPEN_MS = 1000000000
 TIMER = {"kind": "dialog", "class": "message", "lifetime_ms": 4000, "countdown_shown": True}
 
 
@@ -54,54 +57,65 @@ def errors(found):
 
 class RulesTest(unittest.TestCase):
     def test_plan_brackets_the_two_deciding_instants(self):
-        appear = fact(10000, mode="input")
-        instants = checks.plan(appear, 4000, 4000, 250, 600000)
-        self.assertIn(10000 + 4000 - 250 - 1, instants)          # the last instant a short element is gone by
-        self.assertIn(10000 + 4000 + 250, instants)              # the first instant a long one is still shown at
+        instants = checks.plan(10000, 10000, 4000, 4000, 250, 600000)
+        self.assertIn(10000 + 4000 - 250 - 1, instants)          # shown then: not short
+        self.assertIn(10000 + 4000 + 250, instants)              # shown then: long
         self.assertEqual(max(instants), 14250)
         self.assertLessEqual(len(instants), checks.GRID + 2)
-        self.assertEqual(checks.plan(appear, 0, None, 250, 600000), [])
+        self.assertEqual(checks.plan(10000, 10000, 0, None, 250, 600000), [])
+        self.assertEqual(checks.plan(20000, 10000, 4000, 4000, 250, 600000), [])   # both instants behind
 
     def test_plan_never_jumps_more_than_max_wait(self):
-        instants = checks.plan(fact(0, mode="input"), 300000, None, 250, 1000)
+        instants = checks.plan(0, 0, 300000, None, 250, 1000)
         gaps = [b - a for a, b in zip([0] + instants, instants)]
         self.assertLessEqual(max(gaps), 1000)
+        self.assertGreater(len(instants), checks.MAX_AT)         # the judge does not run such a plan
 
-    def test_refine_stops_within_one_tick(self):
-        self.assertEqual(checks.refine(3749, 3999, 250, 600000), [])
-        self.assertEqual(checks.refine(3749, 4000, 250, 600000), [3999])
-        many = checks.refine(0, 300000, 250, 600000)
-        self.assertLessEqual(len(many), checks.GRID)
+    def test_refine_down_to_one_ms(self):
+        self.assertEqual(checks.refine(3999, 4000, 600000), [])
+        self.assertEqual(len(checks.refine(3749, 4000, 600000)), checks.GRID - 1)
+        self.assertEqual(checks.refine(10, 12, 600000), [11])
 
-    def test_bracket(self):
-        appear = fact(0, mode="input")
-        samples = [fact(500), fact(1000, present=()), fact(750)]
-        self.assertEqual(checks.bracket(appear, samples, "dialog"), (750, 1000))
-        self.assertEqual(checks.bracket(appear, [fact(500)], "dialog"), (500, None))
+    def test_rising_and_falling(self):
+        samples = [fact(500), fact(1000, present=()), fact(750), fact(1200, present=())]
+        self.assertEqual(checks.falling(samples, "dialog", 0), (750, 1000))
+        self.assertEqual(checks.falling([fact(500)], "dialog", 0), (500, None))
+        self.assertEqual(checks.rising([fact(300, present=()), fact(600), fact(400, present=())], "dialog", 0, 1000),
+                         (400, 600))
 
     def test_short_boundary(self):
-        appear = fact(0, mode="input")
-        _m, ok = checks.lifetime_verdicts("dialog", appear, (3700, 3750), TIMER, 4000, None, 250)
-        _m, short = checks.lifetime_verdicts("dialog", appear, (3700, 3749), TIMER, 4000, None, 250)
-        self.assertEqual([v["check"] for v in ok], [])
-        self.assertEqual([v["check"] for v in short], ["notice-lifetime-short"])
+        ok, _b = checks.decisions((0, 0), (3749, 3750), 4000, 4000, None, 250)
+        short, _b = checks.decisions((0, 0), (3700, 3749), 4000, 4000, None, 250)
+        self.assertEqual((ok["notice-lifetime-short"], short["notice-lifetime-short"]), (False, True))
 
-    def test_short_uses_the_earliest_appearance_of_a_time_step(self):
-        appear = fact(1000, prev=0)                          # appeared somewhere in (0, 1000]
-        _m, found = checks.lifetime_verdicts("dialog", appear, (4000, 4600), TIMER, 4000, None, 250)
-        self.assertEqual(found, [])                          # at most 4599 ms: not certainly under 3750
+    def test_a_wide_appearance_is_undecided_not_silent(self):
+        found, bounds = checks.decisions((1, 1000), (4000, 4600), 4000, 4000, None, 250)
+        self.assertEqual(found, {"notice-lifetime-short": None, "notice-lifetime-long": None})
+        self.assertEqual(bounds, (3000, 4599))
+        found, _b = checks.decisions((999, 1000), (4800, 4900), 4000, 4000, None, 250)
+        self.assertEqual(found["notice-lifetime-short"], False)
 
     def test_long_boundary(self):
-        appear = fact(0, mode="input")
-        _m, ok = checks.lifetime_verdicts("dialog", appear, (4249, None), TIMER, 4000, None, 250)
-        _m, long_ = checks.lifetime_verdicts("dialog", appear, (4250, None), TIMER, 4000, None, 250)
-        self.assertEqual(ok, [])
-        self.assertEqual([v["check"] for v in long_], ["notice-lifetime-long"])
+        ok, _b = checks.decisions((0, 0), (4249, 4250), 4000, None, None, 250)
+        long_, _b = checks.decisions((0, 0), (4250, None), 4000, None, None, 250)
+        self.assertEqual((ok["notice-lifetime-long"], long_["notice-lifetime-long"]), (False, True))
 
     def test_floor_approximation_only_without_dwell(self):
-        appear = fact(0, mode="input")
-        _m, found = checks.lifetime_verdicts("dialog", appear, (500, 1000), TIMER, None, 4000, 250)
-        self.assertEqual([v["check"] for v in found], ["notice-lifetime-short-floor"])
+        found, _b = checks.decisions((0, 0), (500, 1000), 4000, None, 4000, 250)
+        self.assertEqual(found, {"notice-lifetime-short-floor": True, "notice-lifetime-long": False})
+
+    def test_countdown_formats(self):
+        for label, value in ((b"29 s", 29), (b"0:29", 29), (b"1:05", 65), (b"\xd0\xb7 8 \xd1\x81", 8),
+                             (b"step 1 of 3, 29 s", None), (b"soon", None), (b"1:5", None)):
+            self.assertEqual(countdown_value(label), value, label)
+        self.assertEqual(masked_label(b"0:29 left"), "#:# left=29")
+
+    def test_patch_chain(self):
+        before = {"1": b"Title", "7": b"4 s"}
+        self.assertIsNone(chain_error(before, [update(4, 3)], {"1": b"Title", "7": b"3 s"}))
+        self.assertIn("did not show", chain_error(before, [update(5, 3)], {"1": b"Title", "7": b"3 s"}))
+        self.assertIn("another label", chain_error(before, [update(4, 3)], {"1": b"Title", "7": b"2 s"}))
+        self.assertIn("other keys", chain_error(before, [], {"1": b"Title"}))
 
     def test_flash_within_one_input_step(self):
         steps = [fact(0, mode="open", present=()),
@@ -129,7 +143,7 @@ class RulesTest(unittest.TestCase):
                                                            patches=[update(5 - t // 1000, 4 - t // 1000)]
                                                            if t % 1000 == 0 else [])
                                                       for t in range(500, 4000, 500)]
-        self.assertEqual(checks.countdown_verdicts("dialog", seq, TIMER), [])
+        self.assertEqual(checks.countdown_verdicts("dialog", seq, TIMER, seq[0].now), [])
 
     def test_countdown_parts(self):
         start = [fact(0, mode="input", countdown=9)]
@@ -141,21 +155,35 @@ class RulesTest(unittest.TestCase):
         absent = [fact(0, mode="input")]
         for seq, part in ((start, "start"), (zero, "zero"), (up, "increase"), (stalled, "stalled"),
                           (jump, "stalled"), (absent, "absent")):
-            self.assertEqual([v["identity"][1] for v in checks.countdown_verdicts("dialog", seq, TIMER)], [part])
+            self.assertEqual([v["identity"][1] for v in checks.countdown_verdicts("dialog", seq, TIMER, seq[0].now)], [part])
 
     def test_start_of_an_element_that_appeared_inside_a_time_step(self):
         inside = [fact(7000, prev=5000, countdown=6)]          # appeared in (5000, 7000]: up to 1999 ms counted
-        self.assertEqual(checks.countdown_verdicts("dialog", inside, dict(TIMER, lifetime_ms=8000)), [])
+        self.assertEqual(checks.countdown_verdicts("dialog", inside, dict(TIMER, lifetime_ms=8000), 5001), [])
         late = [fact(7000, prev=5000, countdown=4)]
         self.assertEqual([v["observed"]["wanted"] for v in checks.countdown_verdicts(
-            "dialog", late, dict(TIMER, lifetime_ms=8000))], [[7, 8]])   # 6 (= 7 - 1) is still accepted
+            "dialog", late, dict(TIMER, lifetime_ms=8000), 5001)], [[7, 8]])   # 6 (= 7 - 1) is still accepted
 
-    def test_increase_of_a_declared_restart_or_an_input_is_not_judged(self):
-        restart = fact(900, prev=0, countdown=4, patches=[update(3, 4)])
-        restart.restarts = frozenset(("7",))
-        self.assertEqual(checks.countdown_verdicts("dialog", [fact(0, mode="input", countdown=3), restart], TIMER), [])
-        tap = fact(0, mode="input", countdown=4, patches=[update(3, 4)])
-        self.assertEqual(checks.countdown_verdicts("dialog", [fact(0, mode="input", countdown=3), tap], TIMER), [])
+    def test_start_accepts_one_second_either_way(self):
+        for shown, parts in ((3, []), (4, []), (5, []), (2, ["start"]), (6, ["start"])):
+            found = checks.countdown_verdicts("dialog", [fact(0, mode="input", countdown=shown)], TIMER, 0)
+            self.assertEqual([v["identity"][1] for v in found], parts, shown)
+
+    def test_zero_only_when_shown_at_a_step_end(self):
+        gone = fact(4000, prev=3500, countdown=None, present=(), patches=[update(1, 0)])
+        seq = [fact(3000, mode="input", countdown=1), fact(3500, prev=3000, countdown=1), gone]
+        self.assertEqual(checks.countdown_verdicts("dialog", seq, TIMER, 0), [])         # never a step-end label
+        brief = [fact(3000, mode="input", countdown=1), fact(3999, prev=3000, countdown=0, patches=[update(1, 0)])]
+        self.assertEqual([v["identity"][1] for v in checks.countdown_verdicts("dialog", brief, TIMER, 0)],
+                         ["zero"])                                                       # 0 for 1 ms, under a tick
+        self.assertEqual(len(checks.zero_verdicts("dialog", [fact(3999, countdown=0)])), 1)
+
+    def test_increase_on_input_steps_unless_a_declared_restart(self):
+        tap = fact(900, prev=0, mode="input", countdown=4, patches=[update(3, 4)], index=1)
+        found, judged = checks.increase_verdicts([fact(0, mode="input", countdown=3), tap])
+        self.assertEqual(([v["identity"] for v in found], judged), ([["dialog", "increase"]], 1))
+        tap.restarts = frozenset(("7",))
+        self.assertEqual(checks.increase_verdicts([fact(0, mode="input", countdown=3), tap])[0], [])
 
     def test_invisible_auto_transition(self):
         same = [fact(0, mode="input", cls="main"), fact(1000, prev=0, cls="detail")]
@@ -188,15 +216,19 @@ class JudgeTest(unittest.TestCase):
         examined = by_check(found, "checks-examined")[0]["observed"]
         row = examined["lifetimes"][0]
         self.assertEqual((row["kind"], row["shown_more_than_ms"], row["shown_at_most_ms"]), ("dialog", 3999, 4000))
-        self.assertEqual(row["phases"], 2)
+        self.assertEqual(row["appeared"], [OPEN_MS, OPEN_MS])           # an input: exact
+        self.assertEqual(row["decided"], {"notice-lifetime-long": False, "notice-lifetime-short": False})
         self.assertEqual(examined["totals"]["clock-origin-divergence"], 4)
-        self.assertEqual(runner.cost, {"probe_runs": 2, "origin_runs": 4, "probe_commands": 0, "virtual_ms": 0})
+        self.assertEqual(runner.cost["origin_runs"], 4)
+        self.assertLessEqual(runner.cost["probe_runs"], 2 * MAX_PHASES)
 
     def test_each_defect_gives_its_finding(self):
         cases = [
             (Sim(life=1000, count=lambda e, life: -(-(4000 - e) // 1000)), "notice-lifetime-short"),
             # it stalls too, and nothing is ever removed, so flash has no verdict
             (Sim(life=None, count=lambda e, life: 4), "notice-lifetime-long", "countdown-wrong", "check-vacuous"),
+            # the countdown counts 4 3 4 3: an increase in a time step
+            (Sim(count=lambda e, life: 4 - (e // 1000) % 2), "countdown-wrong"),
             (Sim(count=lambda e, life: 2 * -(-(life - e) // 2000)), "countdown-wrong"),
             (Sim(count=lambda e, life: -(-(life - e) // 1000) - 1), "countdown-wrong"),
             (Sim(count=lambda e, life: -(-(life - e) // 1000) + 5), "countdown-wrong"),
@@ -204,7 +236,7 @@ class JudgeTest(unittest.TestCase):
         ]
         for sim, *wanted in cases:
             found, _runner = judge_run(sim, [[OPEN, "show"]])
-            self.assertEqual(set(errors(found)), set(wanted), wanted)
+            self.assertEqual(errors(found), sorted(wanted), wanted)       # counts, not sets: one finding each
 
     def test_countdown_parts_end_to_end(self):
         parts = {}
@@ -242,10 +274,10 @@ class JudgeTest(unittest.TestCase):
                              {f["id"] for f in again if f["severity"] == "error"})
 
     def test_one_probe_per_state_and_kind(self):
-        sim = Sim()
-        _found, runner = judge_run(sim, [[OPEN, "show"], [OPEN, "show"], [OPEN, "show", "at 100000"]])
-        self.assertEqual(runner.cost["probe_runs"], 2)
-        self.assertEqual(runner.cost["origin_runs"], 8)        # two distinct paths show the dialog
+        _found, once = judge_run(Sim(), [[OPEN, "show"]])
+        _found, runner = judge_run(Sim(), [[OPEN, "show"], [OPEN, "show"], [OPEN, "show", "at 100000"]])
+        self.assertEqual(runner.cost["probe_runs"], once.cost["probe_runs"])
+        self.assertEqual(runner.cost["origin_runs"], 8)        # the third path waits for the end of the run, then fills
 
     def test_without_identity_screen_timers_are_blocked(self):
         edit = lambda text: text.replace('kind = "banner"\nclass = "message"', 'kind = "banner"\nclass = "screen"')
