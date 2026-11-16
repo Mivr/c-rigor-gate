@@ -114,7 +114,9 @@ class RuleTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(self.verdict([patch()], after), (None, why))
         for index, line, why in ((1, "frame\t101\t100\t2", "frame record frame"),
-                                 (0, "lvprobe\t1\t4", "frame record lvprobe")):
+                                 (0, "lvprobe\t1\t4", "frame record lvprobe"),
+                                 (4, (LABEL_NODE % ("10\t10\t40\t20", "ffffff")).replace("lv_label", "lv_obj"),
+                                  "frame label match")):
             after = snapshot("300 s")
             after["frame"][index] = line
             self.assertEqual(self.verdict([patch()], after), (None, why))
