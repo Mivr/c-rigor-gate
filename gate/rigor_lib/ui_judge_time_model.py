@@ -8,8 +8,9 @@ wall clock.
 
 Binding a contract timer (`[[timer]]` kind) to what the scene shows:
 - with the probe's identity: the kind is present iff the state class IS the kind (the class of the topmost message,
-  else of the screen; docs/ui-judges-identity.md); a SCREEN kind stays present while a message kind is the class and
-  it was present at the step before (ui-rules: a message is drawn over its screen, which stays visible behind it);
+  else of the screen; docs/ui-judges-identity.md); a kind shown at the step before stays shown while another MESSAGE
+  kind is the class and every node of its own scope at the step before is still in the scene (ui-rules: a message is
+  drawn over what it covers, which stays visible behind it: a screen under a dialog, a banner under a snackbar);
 - without it: only a message timer whose kind is a layer role of the scene vocabulary (`dialog`, `banner`, `snackbar`)
   is bindable, present iff a semantic record has that role; every other timer is `check-blocked` (needs identity).
 
@@ -79,6 +80,7 @@ class Facts:
     unparsed: tuple = ()                              # countdown labels with no value (contract-incomplete)
     texts: dict = field(default_factory=dict)         # kind -> the text of its scope (role `text`), joined by a space
     msgids: dict = field(default_factory=dict)        # kind -> the first msgid of a text node of its scope, or None
+    scopes: dict = field(default_factory=dict)        # kind -> the keys of its scope at this step
     semantic: tuple = ()
     labels: dict = field(default_factory=dict)        # key -> label bytes of the semantic records
     masked: tuple = ()                                # semantic raws, a countdown's label masked (origins)
@@ -134,13 +136,16 @@ def _identity_msgids(step):
 
 
 def _present(records, cls, binding, before):
+    """(the kinds shown, the kinds carried under another message with their scope's keys)."""
     if not binding.identity:
         roles = {r.fields[1] for r in records}
-        return frozenset(k for k in binding.bound() if k in roles)
-    own = {k for k in binding.bound() if k == cls}
+        return frozenset(k for k in binding.bound() if k in roles), {}
+    keys = {r.fields[0] for r in records}
+    carried = {}
     if cls in binding.timers and binding.message(cls) and before is not None:
-        own |= {k for k in before.present if not binding.message(k)}     # the screen under the message
-    return frozenset(own)
+        carried = {k: before.scopes[k] for k in before.present
+                   if k != cls and before.scopes.get(k) and before.scopes[k] <= keys}
+    return frozenset({k for k in binding.bound() if k == cls} | set(carried)), carried
 
 
 def comparable_frame(frame):
@@ -176,7 +181,7 @@ def facts_of(step, before, catalogue, binding):
     """The Facts of one completed step (`before`: the Facts of the step before, or None)."""
     records = tuple(step.obs.get("semantic", ()))
     cls, msgids = _identity_msgids(step)
-    present = _present(records, cls, binding, before)
+    present, carried = _present(records, cls, binding, before)
     due = step.obs.get("due")
     out = Facts(step.index, step.word, word_mode(step.word, catalogue), step.now,
                 step.now if before is None else before.now, step.origin, step.key, step.proj, cls=cls,
@@ -192,7 +197,9 @@ def facts_of(step, before, catalogue, binding):
     # the open step's patches are the product's boot log, whatever it reports: the chain starts after it
     out.chain = None if before is None else chain_error(before.labels, out.patches, out.labels)
     for kind in present:
-        scope = _scope(records, kind, binding, not binding.identity)
+        scope = tuple(r for r in records if r.fields[0] in carried[kind]) if kind in carried else \
+            _scope(records, kind, binding, not binding.identity)
+        out.scopes[kind] = frozenset(r.fields[0] for r in scope)
         counts = [(r.fields[0], countdown_value(r.values[2])) for r in scope if r.fields[1] == "countdown"]
         out.countdowns[kind] = tuple(counts)
         out.unparsed += tuple(r.values[2] for r in scope if r.fields[1] == "countdown"

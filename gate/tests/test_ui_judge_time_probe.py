@@ -135,6 +135,24 @@ class ScreenUnderMessageTest(unittest.TestCase):
         self.assertEqual(appearances(facts), [(1, "choose_size"), (2, "dialog")])
         self.assertEqual(facts[3].countdowns["choose_size"], (("6", 28),))       # the screen's own countdown
 
+    def test_not_carried_when_the_screen_underneath_changed(self):
+        rows = [{"kind": "choose_size", "class": "screen", "lifetime_ms": 30000, "countdown_shown": True},
+                {"kind": "banner", "class": "message", "lifetime_ms": 0, "countdown_shown": False},
+                {"kind": "snackbar", "class": "message", "lifetime_ms": 4000, "countdown_shown": True}]
+        binding = Binding(SimpleNamespace(rows=lambda name: rows), True)
+        banner = [("297", "banner", ""), ("298", "text", "Self-test")]
+        steps = [step(0, "show", 0, "choose_size", [("17", "button", "Cancel"), ("6", "countdown", "30 s")]),
+                 # the timer expired: Welcome with its banner (the class is the banner, a message)
+                 step(1, "at 30000", 30000, "banner", [("14", "panel", "")] + banner),
+                 # a snackbar over the banner: the banner's nodes are all still there
+                 step(2, "save", 30000, "snackbar", [("14", "panel", "")] + banner + [("400", "snackbar", ""),
+                                                                                     ("401", "countdown", "4 s")]),
+                 step(3, "at 34000", 34000, "banner", [("14", "panel", "")] + banner)]
+        facts = timeline(steps, Catalogue(), binding)
+        self.assertEqual([sorted(f.present) for f in facts],
+                         [["choose_size"], ["banner"], ["banner", "snackbar"], ["banner"]])
+        self.assertEqual(appearances(facts), [(0, "choose_size"), (1, "banner"), (2, "snackbar")])
+
 
 class RunnerTest(unittest.TestCase):
     def test_probing_runs_use_a_non_judging_scene(self):

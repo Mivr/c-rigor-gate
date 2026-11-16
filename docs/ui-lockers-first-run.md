@@ -512,75 +512,80 @@ Choose size, the report (bg and en). Wall time per path is unchanged (0.67 s, bo
 # ui-time on the class paths (U09)
 
 The 29 screen-class paths (`products/business-apps/ui/lockers.classes.paths.json`, a DRAFT copied from the adapter
-task) replayed with `--judges ui-scene,ui-fit,ui-render,ui-time` (docs/ui-judges-time.md). Evidence stayed in
-`/var/tmp/cache/U09/kiosk/` (not committed). Everything under "Triage" is MY READING, for the owner to confirm.
+task) replayed with `--judges ui-scene,ui-fit,ui-render,ui-time` (docs/ui-judges-time.md), re-recorded on the tree
+merged with U05e (U09 fix-up 1). Evidence stayed in `/var/tmp/cache/U09/kiosk/` (`k6`, not committed). Everything under
+"Triage" is MY READING, for the owner to confirm.
 
 **Inputs.** Probe: business-apps checkout `3e8c46e` (read only; its `gate/` pins a gate without U05e and U09 but with
 the same probe protocol), `biz//apps/lockers/lkapp/uimodel:lockers_ui_probe` from `gate/tools/buck2 build
 //apps/lockers/lkapp/uimodel:lockers_ui_probe --show-output` (cached), sha256 `89b98f34e57ba414...`; it greets with
 `pointer identity`, so every timer is bound through the state class (`bound`: banner, choose_size, dialog, lockout,
-opened, report, snackbar; nothing `check-blocked`). Catalogue `lockers.events.toml` sha256 `32c7ed60f2559a97...`
-(the draft as U23 left it), class paths sha256 `b9b2a7b700d80b33...`, contract `lockers.toml` unchanged,
-`--today 2026-11-16`.
+opened, report, snackbar; nothing `check-blocked`). Catalogue `lockers.events.toml` as U05e left it (it requires
+`identity`, scene-scoped taps; the class paths use no scene word), sha256 `5f97a0acd1583b11...`; class paths sha256
+`b9b2a7b700d80b33...`; contract `lockers.toml` unchanged; `--today 2026-11-16`.
 
 ```sh
 gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers.events.toml --strategy replay \
   --paths products/business-apps/ui/lockers.classes.paths.json --budget-s 3300 \
   --judges ui-scene,ui-fit,ui-render,ui-time --contract products/business-apps/ui/lockers.toml --today 2026-11-16 \
   --out OUT --summary SUM
-# exit 1; 119 findings (93 errors); the 101 of ui-explore, ui-scene, ui-fit and ui-render are byte for byte those of
-# the same run without ui-time; the 18 of ui-time:
+# exit 1; 123 findings (97 errors); the 103 of ui-explore, ui-scene, ui-fit and ui-render are byte for byte those of
+# the same run without ui-time; the 20 of ui-time:
 # ui-time.checks-examined/e74957cad6bf (info),
 # ui-time.contract-pending/{2f7f00586a4b,4a72ad2c6d21,f466054ed8a3},
 # ui-time.countdown-wrong/{087d07dfd13e,1db991ca3cff,1e8a11e9b90a,23d8b3440bc2,53441aabd78d,594997279cf5,
-#   64c2c2435e9b,690ce7fc7b88,7557977fa5f2,88b864d88c1c,8ff23f1f4c0e,b147e726512c,cefe9964d811,fa18ba33caa1}
+#   64c2c2435e9b,690ce7fc7b88,7557977fa5f2,88b864d88c1c,8ff23f1f4c0e,b147e726512c,cefe9964d811,fa18ba33caa1},
+# ui-time.notice-lifetime-short-floor/{116420954d1e,36fe2e0bdba2}
 ```
 
 (`--budget-s` must be at least 1989 for the pre-run cost check of these paths' `at` words, ui-time or not.)
 
-**Verdicts reached** (`checks-examined`): 17 lifetimes probed (31 probing runs), `notice-lifetime-short-floor` 17,
-`notice-lifetime-long` 14, `countdown-wrong` 14, `invisible-auto-transition` 315 time and env steps,
-`clock-origin-divergence` 32 replays (8 paths x 4 origins); `notice-lifetime-short`, `dwell-below-reading-time` and
-`flash` none: their contract values are pending.
+**Verdicts reached** (`checks-examined`): 19 elements probed (62 probing runs), every lifetime rule DECIDED (no
+`lifetime-undecided`, no `probe-diverged`, none capped): `notice-lifetime-short-floor` 19, `notice-lifetime-long` 14;
+`countdown-wrong` 18; `invisible-auto-transition` 337 time and env steps; `patches-inconsistent` 122 steps, none
+inconsistent (the kiosk's patches agree with its records); `clock-origin-divergence` 48 replays (12 paths: the quota
+is per seed of the `open` word, 4 origins each); `notice-lifetime-short`, `dwell-below-reading-time` and `flash` none:
+their contract values are pending.
 
 ## Triage (my reading)
 
 | Findings | Reading |
 |---|---|
-| `countdown-wrong` part `zero`, 14 (dialog x4, snackbar x2, choose_size x2, opened x2, report x2, lockout x2; bg and en) | **true defect** by P004 3.5's rule "never shows 0": every countdown of the kiosk shows `0 сек` for its last tick. Measured on the rejection dialog shown at 4200 (virtual ms, origin 1000): `1 сек` at 11200, `0 сек` at 11950 and 11999, gone at 12000 (lifetime 7800 ms). An F6a-class "countdown shown wrong", one tick long. If the owner accepts 0 for the last tick, it is a contract gap (the rule would need a declared tolerance), not a gate error |
-| `contract-pending` `thresholds.flicker_floor_ms` (flash), `reading.rate_wpm` (notice-lifetime-short, dwell-below-reading-time) | **contract gap**: the owner's Q5 and Q11. Until they are decided flash, the dwell rule and the exact short rule are **blocked** on the kiosk; the floor approximation ran instead and found nothing |
-| no `notice-lifetime-long`, no `invisible-auto-transition`, no `clock-origin-divergence` | no defect seen at these bounds (the lifetimes below; no class change without a visible change; the same scenes from 1, 10^9, 2^32 + 7 and 2^40) |
-| (fixed before this record) `countdown-wrong` part `start` on the relay-hang dialog, 6 shown for 8 | **gate false positive**: the dialog appeared inside a 2 s `at` step, so its first observed value is not its start; fixed in the judge (`c907a24`), the rule now accepts what the step's span allows |
+| `countdown-wrong` part `zero`, 14 (dialog x4, snackbar x2, choose_size x2, opened x2, report x2, lockout x2; bg and en) | **true defect** by P004 3.5's rule "never shows 0": every countdown of the kiosk shows `0 сек` as a step-end label in its last moments (the disappearance is refined to one ms for countdown timers, so the last label is read). Measured on the rejection dialog shown at 4200 (virtual ms, origin 1000): `1 сек` at 11200, `0 сек` at 11950 and 11999 (two step-end labels), gone at 12000. An F6a-class "countdown shown wrong", under a tick long. If the owner accepts 0 for the last tick, it is a contract gap (the rule would need a declared tolerance), not a gate error. The fix-up's rule (a 0 counts only as a step-end label or a patch on a node still shown) kept all 14 |
+| `notice-lifetime-short-floor` on the "book save fails" path (bg, en) | **true defect** (F1 class): the banner "Не е записано: вратата се отво..." (not saved) appears at 4029..4097 and its nodes are REMOVED at most 271 ms later, replaced by the snackbar "Резервацията е записана." (reservation saved); no input in between. Under the floor of 3500 ms whatever the reading rate. If the owner sees the snackbar as the banner's declared successor, it is a contract gap: the contract has no successor table |
+| `contract-pending` `thresholds.flicker_floor_ms` (flash), `reading.rate_wpm` (notice-lifetime-short, dwell-below-reading-time) | **contract gap**: the owner's Q5 and Q11. Until they are decided flash, the dwell rule and the exact short rule are **blocked** on the kiosk; the floor approximation ran instead |
+| no `notice-lifetime-long`, no `invisible-auto-transition`, no `clock-origin-divergence`, no `patches-inconsistent` | no defect seen at these bounds (the lifetimes below; no class change without a visible change; the same scenes, times since the origin and relative deadlines from 1, 10^9, 2^32 + 7 and 2^40) |
+| (fixed) `countdown-wrong` `start` on the relay-hang dialog (first record) | **gate false positive**: the dialog appeared inside a 2 s `at` step; fixed (`c907a24`), and the appearance is now bisected |
+| (fixed before this record) `notice-lifetime-long` and `countdown-wrong` `absent` for choose_size, report, lockout and opened | **gate false positive** of fix-up 1's first carry rule: after the screen's timer the kiosk shows Welcome under the self-test banner, and the screen kind was carried under the banner (a message). The rule now carries an element only while all its own nodes are still in the scene (unit tests for both sides) |
 
 ## Measured lifetimes against the contract
 
-`shown` is the bracket the probing runs found: the element was shown for more than the first number and at most the
-second (ms; open: still shown at the last sample; L = 0 is "no limit"). An input-step appearance is exact, so the
-bracket is one tick; an appearance inside an `at` step widens it by that step. `floor` is max(L, dwell_floor_ms), the
-short approximation's D (the reading rate is pending). Short: `no` when shown >= floor - tick (250); long: `no` when
-shown <= L + tick.
+`appeared` is the appearance bracket (ms after the origin; an input step is exact; an appearance inside an `at` step is
+bisected), `shown` the lifetime bounds (more than, at most), `floor` max(L, dwell_floor_ms) (the reading rate is
+pending). Short: `no` when shown for more than floor - tick - 1 (tick 250); long: `no` when at most L + tick.
 
-| Kind | Path (after `open`) | L | floor | shown | runs | short | long |
-|---|---|---|---|---|---|---|---|
-| banner (self-test) | `open 1000 112`, `at 3200` | 0 | 3500 | > 50, open | 1 | undecided (appeared inside the 3.2 s step) | - |
-| banner (codes offline) | `open 1000 120` | 0 | 3500 | > 3249, open | 1 | no | - |
-| banner (audit) | `open 1000 119` | 0 | 3500 | > 3249, open | 1 | no | - |
-| choose_size | `at 3200`, `wedge-visitor` (and with `lang-en`) | 30000 | 30000 | (29749, 29999] | 2 | no | no |
-| dialog (not recognised) | `at 3200`, `wedge-unknown` (and with `lang-en`) | 8000 | 8000 | (7749, 7999] | 2 | no | no |
-| dialog (door may have opened) | `at 3200`, `env-relay-hang`, `wedge-visitor`, `size-small`, `at 5200` (and with `lang-en`) | 8000 | 8000 | (6500, 8749] | 2 | undecided | undecided |
-| opened | `at 3200`, `wedge-visitor`, `size-small`, `at 5200` (and with `lang-en`) | 8000 | 8000 | (6750, 8999] | 2 | undecided | undecided |
-| snackbar (reservation saved) | `at 3200`, `env-book-second-save-fails`, `wedge-visitor`, `size-small`, `at 4300` (and with `lang-en`) | 4000 | 4000 | (3750, 5099] | 2 | no | undecided |
-| lockout | the five `wedge-unknown` path (and with `lang-en`) | 60000 | 60000 | (59749, 59999] | 2 | no | no |
-| report | `at 3200`, `wedge-staff` (and with `lang-en`) | 300000 | 300000 | (299749, 299999] | 2 | no | no |
+| Kind | Path (seed 112 unless named) | L | floor | appeared | shown | runs | short (floor) | long |
+|---|---|---|---|---|---|---|---|---|
+| banner (codes offline) | `open 1000 120` | 0 | 3500 | 0 | > 3249, still shown | 1 | no | - |
+| banner (audit) | `open 1000 119` | 0 | 3500 | 0 | > 3249, still shown | 1 | no | - |
+| banner (self-test) | `at 3200` | 0 | 3500 | 1801..2000 | > 3249, still shown | 2 | no | - |
+| banner (not saved) | `at 3200`, `env-book-second-save-fails`, `wedge-visitor`, `size-small`, `at 4300` (and `lang-en`) | 0 | 3500 | 4029..4097 | (138, 271] | 1 | **yes** | - |
+| choose_size | `at 3200`, `wedge-visitor` (and `lang-en`) | 30000 | 30000 | 3200 | (29799, 29800] | 3 | no | no |
+| dialog (not recognised) | `at 3200`, `wedge-unknown` (and `lang-en`) | 8000 | 8000 | 3200 | (7799, 7800] | 4 | no | no |
+| dialog (door may have opened) | `at 3200`, `env-relay-hang`, `wedge-visitor`, `size-small`, `at 5200` (and `lang-en`) | 8000 | 8000 | 3826..3950 | (7799, 7924] | 5 | no | no |
+| opened | `at 3200`, `wedge-visitor`, `size-small`, `at 5200` (and `lang-en`) | 8000 | 8000 | 3951..4075 | (7924, 8049] | 5 | no | no |
+| snackbar (reservation saved) | `at 3200`, `env-book-second-save-fails`, `wedge-visitor`, `size-small`, `at 4300` (and `lang-en`) | 4000 | 4000 | 4236..4300 | (3949, 4014] | 4 | no | no |
+| lockout | the five `wedge-unknown` path (and `lang-en`) | 60000 | 60000 | 39200 | (59799, 59800] | 3 | no | no |
+| report | `at 3200`, `wedge-staff` (and `lang-en`) | 300000 | 300000 | 3200 | (299799, 299800] | 4 | no | no |
 
-Every timer the kiosk shows after an input lives within one tick of its contract value (choose size, the rejection
-dialog, lockout, report). Opened, the relay-hang dialog and the snackbar appear inside an `at` step of the class paths,
-so their brackets are 1.1 to 2.2 s wide and decide less; a path that reaches them with an input as the last word (or
-the appearance refinement of docs/ui-judges-time.md "Deviations and limits") would decide them.
+Every decided timer lives within one tick of its contract value; the exact ones (an input appearance) all end 200 ms
+before L (7800 for 8000, 29800, 59800, 299800): inside the tick tolerance, so no finding, but a consistent offset the
+owner may want to know. The opened screen, the relay-hang dialog and the snackbar, undecided in the first record, are
+decided now (appearance bisected to under a tick).
 
 ## Cost
 
-39 to 43 s of wall time for the 29 paths with all four judges, against 14 s without ui-time: 31 probing runs (each
-twice) and 32 origin replays; the run's `cost` 28 160 probe commands and 5.56 M virtual ms against 7 842 and 1.58 M,
-of which ui-time's share is 20 318 commands and 3.97 M ms (the report's 300 s timer twice, at four origins for the
-first eight timed paths). No probe was capped (17 of 64).
+87 s of wall time for the 29 paths with all four judges, against 13 s without ui-time: 62 probing runs (each twice)
+and 48 origin replays; the run's `cost` 59 924 probe commands and 11.35 M virtual ms against 7 842 and 1.58 M, of
+which ui-time's share is 52 082 commands and 9.77 M ms (the report's 300 s timer, probed and refined, and replayed at
+four origins, dominates). No probe was capped (19 of 64).

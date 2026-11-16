@@ -151,8 +151,24 @@ begin "ui-time refuses to run without a contract"
 explore nocontract 2 "$probe_rel" "$PATHS" --judges ui-time --today "$TODAY"
 grep -q "need --contract" "$out/t.nocontract.txt" || fail "$CUR: no contract message" "$out/t.nocontract.txt"
 
-begin "no timed canary probe is left"
-for bin in "$probe_rel" "$probe_san"; do
-  if pgrep -f "$bin" > /dev/null; then fail "$CUR: a probe $bin is still running"; fi
-done
+begin "no timed canary probe is left (by /proc/<pid>/exe, zombies aside, as selftest/ui.sh checks)"
+python3 -I - "$root" "$probe_rel" "$probe_san" <<'PY' || fail "$CUR: a timed canary probe is still running"
+import os, sys, time
+binaries = {os.path.realpath(os.path.join(sys.argv[1], b)) for b in sys.argv[2:]}
+def live():
+    out = []
+    for pid in filter(str.isdigit, os.listdir("/proc")):
+        try:
+            state = open("/proc/%s/stat" % pid).read().rsplit(")", 1)[1].split()[0]
+            exe = os.path.realpath("/proc/%s/exe" % pid)
+        except OSError:
+            continue
+        if state != "Z" and exe in binaries:
+            out.append(pid)
+    return out
+end = time.monotonic() + 5
+while live() and time.monotonic() < end:
+    time.sleep(0.05)
+assert not live(), live()
+PY
 echo "ui_time: OK"
