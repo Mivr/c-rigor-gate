@@ -76,9 +76,15 @@ class Budget:
         return time.monotonic() >= self.end
 
 
-def kill_all():
+def kill_all(reap=True):
+    """Kill every live probe's process group and reap it. `reap=False` (the signal handler, U05e): only SIGKILL the
+    groups, never wait: the interrupted code may be inside `Popen.wait`, whose lock is not reentrant (a wait here
+    deadlocked); the main flow reaps them (`kill_all()` in `handle`'s finally, `Session.close`)."""
     for session in list(LIVE):
-        session.kill()
+        if reap:
+            session.kill()
+        else:
+            session.signal_group()
 
 
 def _raw(data):
@@ -420,6 +426,16 @@ class Session:
             pass
         self._proc.wait()
         self._reaped = True
+
+    def signal_group(self):
+        """SIGKILL the probe's process group without waiting, unless the probe is reaped (Popen's returncode is set as
+        it reaps)."""
+        if self._reaped or self._proc.returncode is not None:
+            return
+        try:
+            os.killpg(self._proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
 
     def close(self):
         for stream in (self._proc.stdin, self._proc.stdout):

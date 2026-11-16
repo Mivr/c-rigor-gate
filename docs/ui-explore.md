@@ -65,7 +65,9 @@ budget spent during the first launch are all findings.
 
 `--out` and `--summary` are removed when the run starts and written atomically at the end, so a stale result never
 survives an exit 2 or a signal. On SIGTERM, SIGINT or SIGHUP the explorer kills every live probe's process group and
-exits with 128 + the signal.
+exits with 128 + the signal. The handler only sends SIGKILL to each live probe's group and never waits (U05e fix-up:
+waiting there deadlocked when the signal arrived while the main flow was inside `Popen.wait`, whose lock is not
+reentrant); the main flow's `finally` reaps them (gate/tests/test_ui_explore_fixup.py `SignalTest`).
 
 | Option | Meaning |
 |---|---|
@@ -446,6 +448,23 @@ the state's key and the class; `observed` the class, the uncapped count and the 
 catalogue's sendable events and then that state's own scene words; a walk uses the catalogue's events only. A scene word
 is replayable: in a replay it is resolved in the state it is sent in, and a word that names no point there is the
 outcome `unbound` (no input is sent, no finding). Fixed u2 and u3 rows stay valid beside them.
+
+**A spent budget, by strategy** (U05e). The budget is measured wall time; the probe's commands stop at its end.
+
+| Strategy | Ends with | Exit | `budget_spent` | Criteria, end-of-run judges |
+|---|---|---|---|---|
+| `bfs` | the path the budget cut is dropped; `depth-unsaturated` (error) with `reasons` holding `budget`; `detail.budget_cut` true | 1 | true | none evaluated; the `--judges` set's `finish` (`checks-examined`, `check-vacuous`, `check-blocked`, `exception-unused`) does not run; a `--require`d criterion is `ui-coverage-gap` not-evaluated |
+| `walk`, `replay`, `sweep` | one `ui-explore-timeout` (error, `observed.kind` `budget`); the findings of the paths completed before it stay | 1 | true | the same: none evaluated, no `finish` |
+| any, during the first launch | one `ui-explore-timeout` | 1 | true | the same |
+
+Neither is ever reported as complete: `evaluated` is empty and the summary says `budget_spent`. Findings of single
+steps (a step judge's, as U24's `state-class-unstable`) are kept: each describes a step that completed, not the run.
+
+**With scene identity (U24).** Boot seeds and prefix words run through the same step path as every other word, so
+under ui-scene with a probe that announces `identity` they read identity after every step and are compared by
+run-twice (`IdentityTest`). Identity is read only in a step's observation; a tap's "changed nothing" compares the
+snapshot (frame, semantic, deadline, env inputs, patches and trace), never identity. The lockers draft catalogue
+requires exactly the seven capabilities its probe announces, not `identity`.
 
 **Taps under a layer** (U05e; with `--contract` only; gate/rigor_lib/ui_explore_layers.py). The tap judges read the
 layer context the ui-scene judge reads, shared, not copied (ui_judge_context.Context: the association, every layer's

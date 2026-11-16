@@ -400,8 +400,10 @@ def _remove(path):
 
 
 def _stop(signum, frame):
+    """SIGTERM, SIGINT, SIGHUP: SIGKILL every live probe's group WITHOUT waiting (the interrupted code may hold
+    Popen's wait lock), then exit 128 + the signal; `handle`'s finally reaps them."""
     del frame
-    kill_all()
+    kill_all(reap=False)
     raise SystemExit(128 + signum)
 
 
