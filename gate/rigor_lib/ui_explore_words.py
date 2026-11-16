@@ -20,6 +20,7 @@ from rigor_lib.ui_explore_grammar import BUF_MAX
 from rigor_lib.ui_explore_key import key_hash, projection
 from rigor_lib.ui_explore_png import write_png
 from rigor_lib.ui_explore_probe import FRAME_MS, TIME_MAX_MS, ProbeError
+from rigor_lib.ui_explore_restart import declared
 
 SPAN_FRAMES = 64
 
@@ -198,6 +199,19 @@ def tap_ambient(session, step, marks, catalogue):
     return other, restart
 
 
+def tap_changes(step, marks, before, after, frame, ambient, catalogue):
+    """`changes` of a tap step; with a declared countdown role, a residual change that is exactly a declared countdown
+    restart (ui_explore_restart) is no change, and the step records the restarts (`ambient-restart`, U05d)."""
+    changed = changes(step, marks, before, after, frame=frame, ambient=ambient)
+    role = None if catalogue is None or ambient is None else catalogue.countdown_role
+    if changed and role is not None:
+        restarts = declared(step.acc_patches[marks[0]:], before, after, changed, frame, role)
+        if restarts is not None:
+            step.restart = (step.restart or []) + restarts
+            return []
+    return changed
+
+
 def tap_input(session, step, before, event, catalogue=None):
     """`hit-test x y`, `tap x y`, then a snapshot (frame first). A u2 tap that pressed a node (not a root): `ok` when the
     model changed, `missed` when it did not (the node's box becomes the evidence image); one that was blocked or pressed
@@ -211,11 +225,11 @@ def tap_input(session, step, before, event, catalogue=None):
     node = _pressed(step, nodes, expect, got, event)
     ambient = tap_ambient(session, step, marks, catalogue)
     if event.cls == "u2" and node is not None:
-        result = "ok" if changes(step, marks, before, after, frame=False, ambient=ambient) else "missed"
+        result = "ok" if tap_changes(step, marks, before, after, False, ambient, catalogue) else "missed"
         if result == "missed" or step.misrouted:
             step.image_box = image_box(nodes[node][3], size)
     else:
-        changed = changes(step, marks, before, after, ambient=ambient)
+        changed = tap_changes(step, marks, before, after, True, ambient, catalogue)
         result = "ok" if changed else "refused"
         if changed:
             step.noop = {"changed": changed}

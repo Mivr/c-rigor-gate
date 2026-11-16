@@ -300,12 +300,66 @@ only (`u2`, `u3`; never `apply`, an advance or a frame, where these types are or
 Why this cannot hide an effect: what is set aside is at most one record per declared type, of that exact type, stamped
 with the tap's own instant, and it is demanded on every tap (so it cannot appear only when the tap did something); a
 second one, any other record, any patch, any scene, env or frame difference, and any deadline but the one declared
-restart are still changes. A product that wants an effect to vanish would have to make it be its ambient record, which
+restart are still changes (but for a declared countdown restart, below). A product that wants an effect to vanish would have to make it be its ambient record, which
 then appears on every tap of every state and carries no information about the tap. The selftest's pointer build with
 `touch` declared gives exactly the canary of the injected build (8 `intent-missed`, 4 `tap-misrouted`, no
 `noop-tap-effect`); the stub's modes `pnotouch`, `ptwice`, `pchange` and `prestart` give `ambient-missing`,
 `ambient-extra` (with the repeat's `noop-tap-effect`), `noop-tap-effect` for a scene change, and no finding for a
 declared restart but a `due` change for an undeclared one (gate/tests/test_ui_explore_taps.py, `AmbientTest`).
+
+**Countdown restart** (U05d). A product's sample may also restart a VISIBLE countdown: the kiosk's end-of-shift report
+restarts its 5-minute deadline on every touch, by design (the core handles `touch` only in that phase). That is a
+patch on the countdown node (`update 6 text 298 сек 300 сек`), a semantic label difference of that node and a frame
+difference of that label. `due_restart_ms` cannot express it: `next-due` does not move (the 250 ms tick is nearer than
+the restarted deadline), the new deadline is the last tick + 300000 ms rather than the tap's instant + 300000, and the
+change is visible only when the displayed seconds change (a tap within about a second of the last restart makes no
+patch). Without a declaration every complement or root tap on that screen is a false `noop-tap-effect`, and a `u2` tap
+on a non-root node without an intent is `ok` instead of `missed`. The catalogue declares the countdown's scene role in
+`[ambient]`, with provenance, the two keys together (one without the other, a role that is not a record field in its
+escaped spelling as for `[[key.derived]] role`, or a provenance of the wrong form is the input error, exit 2); they
+need `trace`, as every `[ambient]` does:
+
+    ambient = { trace = ["touch"], trace_provenance = "<provenance>",
+                countdown_restart_role = "<role>", countdown_restart_provenance = "<provenance>" }
+
+The rule (gate/rigor_lib/ui_explore_restart.py), in a TAP step only, after the ambient trace records are set aside: the
+residual change of the step is a DECLARED RESTART, and then counts as "changed nothing", iff ALL of:
+- every new patch is `update <key> text <old> <new>` on a key whose semantic records, before and after, all have the
+  declared role;
+- the semantic trees differ only in the label field of those keys: the same records in the same order, no node added or
+  removed, every other field of those records and every other record byte-identical;
+- where frame records are compared (a `u3` tap, or a `u2` tap that pressed nothing, a root or was blocked): there is no
+  `life` line, the frame has the same lines in the same order, and every line that differs is a `node`, `label`, `fit`
+  or `region` record of a walk index whose `label` record shows the node's old label before and its new label after,
+  or the `frame` line with the same size (its crc covers every pixel, so it changes with the label's pixels);
+- in every such patch's old and new text and every such node's old and new label there is exactly one run of decimal
+  digits, the text around the run is identical, and the new value is at least the old one (a restart never skips a
+  countdown forward);
+- there is no other new trace record and no change of `next-due` other than a declared `due_restart_ms`, and the env
+  inputs are unchanged.
+
+Anything else stays a change exactly as before. A step that used the rule records the restarts, and the step judge
+`ambient-restart` (info) reports them: identity key before and word; `observed` the word and `restarts`, one
+`{"node", "old", "new"}` per node (the node key in its escaped spelling; the old and new values as integers, from the
+node's labels, or from its patches if its label did not change). It reports at most one finding per (state key, node
+key) in one explorer run, so a sweep that taps the same screen again and again does not flood the report: a step names
+only the nodes not yet reported from its state, and is not reported when there are none. With the rule applied, a `u3`
+or root tap is judged `refused` and a `u2` tap on a non-root node with no intent is `missed` (`intent-missed`), as on
+any other screen.
+
+Why this cannot hide an effect: the rule can hide only a text change of a node of the declared role whose number does
+not decrease, on a tap, in a catalogue whose sealed `[ambient]` declares it with provenance. A navigation (a node added
+or removed, another node's field), a new node, a style or flag change of the countdown itself, a patch of any other
+kind or node, a countdown that jumps forward, a changed text around the number, a second number, a trace record, a
+deadline or env change, a frame record of another node and a created or deleted object all stay changes; the rule
+never applies on an `apply`, a wait or a frame step, where the same restart is an ordinary change (a refused input that
+restarts it is still `probe-internal-error` kind `contract`). The stub's mode `pcount` (the declared restart: both taps
+of the open state refused, `ambient-restart` once; a `u2` tap under the notice `intent-missed`), its broken variants
+`pskip`, `pplus`, `ptworun`, `ptext`, `pnode`, `pflag`, `pframe` and `plife`, `pcount` without the declaration or with
+another role, and `pcount` on a refused apply prove each of these (gate/tests/test_ui_explore_restart.py; the rule's
+parts one at a time on snapshots in `RuleTest`). Limit: the frame line's crc is not attributable to a node, so where
+frames are compared a pixel change that no frame record describes would pass with a declared restart (the semantic
+tree, the patches and every other frame record would still have to be unchanged).
 
 **The abstraction key** (P004 4.3 item 3):
 
@@ -366,7 +420,7 @@ What each strategy does:
 `--out` holds one canonical JSON object per line, one per id, sorted by id. The same inputs give the same bytes, also
 for a nondeterministic product, because values that vary go to the evidence and no product text appears in `observed`.
 Keys: `id` (`ui-explore.<check>/<12 hex of sha256([check, identity])>`), `gate`, `check`, `layer` (`L0` for
-nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` for key-too-coarse, otherwise
+nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` for key-too-coarse, taps-injected and ambient-restart, otherwise
 `error`), `state` (`{"key", "origin_ms", "projection": {"nodes": [...], "facts": {...}}}` or null), `path`, `observed`,
 `blame` (`[]`), `evidence`, `explanation` (null).
 
@@ -383,6 +437,7 @@ nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` 
 | `noop-tap-effect` | a tap that must change nothing changed the model | key before, word | `word`, `changed` (the parts) |
 | `ambient-missing` | a tap did not post a declared ambient event at its instant (U05c) | key before, word | `word`, `types` |
 | `ambient-extra` | a tap posted a declared ambient event more than once (U05c) | key before, word | `word`, `types` |
+| `ambient-restart` (info) | a tap's residual change was a declared countdown restart and counted as no change; at most one per (state key, node key) per run (U05d) | key before, word | `word`, `restarts` (`node`, `old`, `new`) |
 | `taps-injected` (info) | the run's taps were injected at the product's own pointer indev: no `pointer` (U05c) | the catalogue | `taps`, `pointer` |
 | `ui-coverage-gap` | C1 entry not visited; C8 pair not exercised; an env input that is no `e1` event; a `--require`d criterion not evaluated | `["C1", sha, i]`, `["C8", key, event]`, `["C8-env", key, input]`, `["not-evaluated", criterion, sha]` | criterion-specific |
 | `event-never-accepted` | an `accept` event whose outcome was never `ok` | sha, event | `event`, `expect`, per-outcome state counts; `path` is the first refusing send |
@@ -426,7 +481,8 @@ and is not `paths.json`.
 The `--judges` set registers one step judge (`ui_judge_findings.JudgeSet.step_judge`) and the end-of-run hook.
 
 Built-in judges:
-- step judges: `timer-starvation`, `timer-unreachable`, `intent-missed`;
+- step judges: `timer-starvation`, `timer-unreachable`, `intent-missed`, `tap-misrouted`, `noop-tap-effect`,
+  `ambient-missing`, `ambient-extra`, `ambient-restart`;
 - run judges: the probe errors and run-twice;
 - exploration judges: C1, and C8 with env completeness and event acceptance;
 - `key-fact-unmatched` and `key-too-coarse`, run by the explorer.

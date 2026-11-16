@@ -22,10 +22,11 @@ LAYERS = {"model-nondeterministic": "L0", "run-twice-mismatch": "L0", "timer-sta
 CHECKS = ("ui-coverage-gap", "model-nondeterministic", "run-twice-mismatch", "timer-starvation", "timer-unreachable",
           "depth-unsaturated", "key-too-coarse", "key-fact-unmatched", "event-never-accepted", "event-accepted",
           "intent-missed", "tap-misrouted", "noop-tap-effect", "probe-internal-error", "ui-explore-timeout",
-          "ambient-missing", "ambient-extra", "taps-injected")
+          "ambient-missing", "ambient-extra", "taps-injected", "ambient-restart")
 # P004 3.7: I -> E after report-first; every other check is an error. `taps-injected` (U05c) says that the taps of the
 # run were injected at a product's own pointer indev: a fact about the run's fidelity, not a product defect.
-SEVERITY = {"key-too-coarse": "info", "taps-injected": "info"}
+# `ambient-restart` (U05d) records that a tap's change was judged a declared countdown restart: a fact, not a defect.
+SEVERITY = {"key-too-coarse": "info", "taps-injected": "info", "ambient-restart": "info"}
 PRIVATE = "_evidence"
 
 
@@ -130,6 +131,27 @@ def ambient_judge(catalogue_key):
                                   [view.word for view in path] + [step.word],
                                   {"word": step.word, "types": list(step.ambient[part])}))
         return found
+    return judge
+
+
+def restart_judge(catalogue_key):
+    """`ambient-restart` (U05d, info): a tap whose residual change was a declared countdown restart and so counted as
+    "changed nothing" (docs/ui-explore.md, "Countdown restart"). At most one per (state key, node key) in one
+    explorer run, so a sweep that taps the same screen again and again does not flood the report: a step names only
+    the nodes not yet reported from its state, and reports nothing when there are none."""
+    seen = set()
+
+    def judge(step, path, contract):
+        del contract
+        if not step.restart:
+            return []
+        fresh = [item for item in step.restart if (step.key_before, item["node"]) not in seen]
+        seen.update((step.key_before, item["node"]) for item in fresh)
+        if not fresh:
+            return []
+        return [make("ambient-restart", ["restart", step.key_before, step.word],
+                     state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
+                     [view.word for view in path] + [step.word], {"word": step.word, "restarts": fresh})]
     return judge
 
 
