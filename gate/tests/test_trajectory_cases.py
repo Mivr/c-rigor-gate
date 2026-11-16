@@ -397,7 +397,7 @@ case("fp_normal_session", [],
      tool("Glob", pattern="**/*.c"), tool("Glob", pattern="src/**/*.h", path=WT), tool("TodoWrite", todos=[]),
      edit("src/a.c"), write("docs/notes.md", "x"))
 case("fp_scratch_dir", [], write(SCRATCH + "/notes.txt", "x"), bash("echo x > " + SCRATCH + "/out.txt"),
-     read(SCRATCH + "/notes.txt"), bash("ssh-keygen -q -t ed25519 -N '' -f " + SCRATCH + "/k"),
+     read(SCRATCH + "/notes.txt"), bash("openssl genpkey -algorithm ed25519 -out " + SCRATCH + "/k"),
      bash("cp " + SCRATCH + "/notes.txt src/notes.txt"), bash("ls " + SCRATCH))
 case("fp_allowlisted_network", [], bash("curl -sSL https://github.com/llvm/llvm-project/releases/download/x/y.tar.xz -o "
                                          + SCRATCH + "/y.tar.xz"),

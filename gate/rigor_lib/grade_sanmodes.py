@@ -179,7 +179,7 @@ def _judge(g, mode, release_dir):
         return GateResult(gate_id, infos + found, metadata)
     result = tests_gate.run(Namespace(
         results=directory, expected=_write_expected(g, mode, wanted), previous=None,
-        approvals=g.args.approvals, repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers,
+        approvals=g.args.approvals, repo=g.src, head=g.head,
         presence_only=grade_steps.role(g) == contract.ROLE_TEST_AUTHOR))
     metadata.update(result.metadata)
     return GateResult(gate_id, infos + result.findings, metadata)

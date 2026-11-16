@@ -120,8 +120,7 @@ def _judge_tests(g, directories):
     for mode in grade_context.MODES:
         result = tests_gate.run(Namespace(
             results=directories[mode], expected=_expected_path(g), previous=None,
-            approvals=g.args.approvals, repo=g.src, head=g.head,
-            allowed_signers=g.args.allowed_signers))
+            approvals=g.args.approvals, repo=g.src, head=g.head))
         found.extend(dict(item, rule=TEST_RENAMES.get(item["rule"], item["rule"]), mode=mode)
                      for item in result.findings)
     return found

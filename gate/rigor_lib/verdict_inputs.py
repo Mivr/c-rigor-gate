@@ -1,4 +1,4 @@
-"""What decides a `rigor grade` verdict, bound into the signed `core` (T021, R001 R4), and `rigor verify`.
+"""What decides a `rigor grade` verdict, bound into its hashed `core` (T021, R001 R4); `rigor verify` checks it (verdict_verify).
 
 `core["inputs"]` holds the sha256 of every file the grade used and the ids of the commits it
 graded. Files are *snapshotted* into `<work>/inputs/` first: the grade then reads only the
@@ -12,12 +12,9 @@ import os
 import re
 import stat
 
-from rigor_lib import approval_args, approvals, grade_context, grade_policy, grade_tier, jsonio, oracle_bundle, perf_bundle, sim_policy, witness_bundle
+from rigor_lib import grade_context, grade_tier, jsonio, oracle_bundle, perf_bundle, sim_policy, witness_bundle
 from rigor_lib.errors import InternalError
-from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
-VERDICT_NAMESPACE = "c-rigor-gate-verdict"
-_PASS = "PASS"
 _FULL_SHA = re.compile(r"[0-9a-f]{40}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 NO_PERF = "none"
@@ -36,7 +33,7 @@ PRODUCT_FILES = ("product.toml", "policy.toml", "expected-tests.json", "expected
 SIM_SALT_NAME = "sim-salt"   # the snapshot of the salt the sim gate builds with (grade_sim.SALT_NAME)
 
 SHA_KEYS = ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
-            "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
+            "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256",
             "order_sha256", "buckconfig_sha256", "toolchain_buck_sha256", "llvm_sha256",
             "sysroot_sha256", "buck2_sha256", "witness_sha256", "perf_sha256",
             "fuzz_regressions_sha256", "sim_spec_sha256", "sim_regressions_sha256", "sim_salt_id", "sim_seed_digest", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
@@ -164,18 +161,14 @@ def snapshot_inputs(args, work):
 
 
 def _snapshot_trust_files(args, base, hashes):
-    """T071: copy the signers file and the gate order into `<base>`, hash the copies, and point
-    `args.allowed_signers` and `args.order_file` at them; every reader in a grade uses only those."""
-    sources = {"allowed_signers": getattr(args, "allowed_signers", None) or approval_args.DEFAULT_ALLOWED_SIGNERS,
-               "order.txt": grade_context.ORDER_FILE}
-    for name, source in sources.items():
-        copy = os.path.join(base, name)
-        digest = snapshot_file(source, copy)
-        if digest is None:
-            raise InternalError("cannot snapshot %s (%s)" % (name, source))
-        hashes[{"allowed_signers": "allowed_signers_sha256", "order.txt": "order_sha256"}[name]] = digest
-    args.allowed_signers = os.path.join(base, "allowed_signers")
-    args.order_file = os.path.join(base, "order.txt")
+    """T071: copy the gate order into `<base>`, hash the copy, and point `args.order_file` at it; every
+    reader in a grade uses only that copy."""
+    copy = os.path.join(base, "order.txt")
+    digest = snapshot_file(grade_context.ORDER_FILE, copy)
+    if digest is None:
+        raise InternalError("cannot snapshot order.txt (%s)" % grade_context.ORDER_FILE)
+    hashes["order_sha256"] = digest
+    args.order_file = copy
 
 
 def _copy_regular(source, destination, what="witness bundle"):
@@ -275,7 +268,7 @@ def snapshot_oracle(source, destination, product_name):
 
 # ---------------------------------------------------------------- facts from the grade itself
 
-def _pin_after(text, name):
+def pin_after(text, name):
     """sha256 of the `fetched_tree(name = "<name>", ...)` call in toolchains/BUCK."""
     match = re.search(r'name\s*=\s*"%s"\s*,[^)]*?sha256\s*=\s*"([0-9a-f]{64})"' % re.escape(name), text)
     if match is None:
@@ -301,7 +294,7 @@ def toolchain_pins(g, manifest):
     version = _tree_file(g, manifest, "tools/buck2.version").decode("ascii").strip()
     if not _SHA256.fullmatch(version):
         raise InternalError("tools/buck2.version is not a sha256")
-    return (jsonio.sha256_hex(buck), _pin_after(text, "llvm"), _pin_after(text, "sysroot"), version)
+    return (jsonio.sha256_hex(buck), pin_after(text, "llvm"), pin_after(text, "sysroot"), version)
 
 
 def _metadata(documents, gate_id):
@@ -360,137 +353,3 @@ def missing_inputs(inputs):
         if value is not None and not (isinstance(value, str) and _SHA256.fullmatch(value)):
             bad.append(key)
     return bad
-
-
-# ---------------------------------------------------------------- rigor verify
-
-def check_verdict(data, signature_path, allowed_signers, expect, require_uncached=False, require_tier=None):
-    """Reasons this verdict must not be trusted as a PASS; an empty list means it can be.
-
-    Order: the signature over the exact bytes, then the document, `core_sha256` recomputed from
-    `core`, then the inputs and the expectations of the caller.
-    """
-    if not os.path.isfile(signature_path):
-        return ["no signature file %s" % signature_path]
-    if not approvals.signature_is_valid(data, signature_path, allowed_signers, VERDICT_NAMESPACE):
-        return ["signature is not valid for an allowed signer in namespace %s" % VERDICT_NAMESPACE]
-    try:
-        document = jsonio.strict_loads(data)
-    except ValueError as exc:
-        return ["verdict is not valid JSON: %s" % exc]
-    if not isinstance(document, dict) or set(document) != {"core", "core_sha256", "metadata"}:
-        return ["verdict has the wrong shape"]
-    core = document["core"]
-    if not isinstance(core, dict):
-        return ["core is not an object"]
-    if document["core_sha256"] != jsonio.sha256_hex(jsonio.canonical_dumps(core)):
-        return ["core_sha256 does not match core"]
-    problems = []
-    if core.get("overall") != _PASS:
-        problems.append("overall is %r, not PASS" % (core.get("overall"),))
-    inputs = core.get("inputs")
-    if not isinstance(inputs, dict) or set(inputs) != INPUT_KEYS:
-        return problems + ["core has no well-formed inputs"]
-    problems.extend("input %s is missing or malformed" % key for key in missing_inputs(inputs))
-    if inputs["gate_clean"] is not True:
-        problems.append("the gate tree was dirty")
-    if core.get("uncached") != inputs["uncached"]:
-        problems.append("core.uncached disagrees with inputs.uncached")
-    if require_uncached and inputs["uncached"] is not True:
-        problems.append("not an --uncached grade")
-    if require_tier is not None and inputs["tier"] != require_tier:
-        problems.append("tier is %s, expected %s" % (inputs["tier"], require_tier))
-    for option, key in (("head", "head"), ("gate", "gate_sha"), ("policy_sha", "policy_sha256"),
-                        ("sim_salt_id", "sim_salt_id"), ("sim_spec_sha", "sim_spec_sha256")):
-        wanted = expect.get(option)
-        if wanted is not None and inputs[key] != wanted:
-            problems.append("%s is %s, expected %s" % (key, inputs[key], wanted))
-    wanted = expect.get("witness_sha")
-    if wanted is not None and inputs["witness_sha256"] is None:
-        problems.append("witness_sha256 is null (graded without --witness), expected %s" % wanted)
-    elif wanted is not None and inputs["witness_sha256"] != wanted:
-        problems.append("witness_sha256 is %s, expected %s" % (inputs["witness_sha256"], wanted))
-    wanted = expect.get("oracle_sha")
-    if wanted is not None and inputs["oracle_sha256"] is None:
-        problems.append("oracle_sha256 is null (graded without --oracle), expected %s" % wanted)
-    elif wanted is not None and inputs["oracle_sha256"] != wanted:
-        problems.append("oracle_sha256 is %s, expected %s" % (inputs["oracle_sha256"], wanted))
-    wanted = expect.get("perf_sha")
-    if wanted == NO_PERF and inputs["perf_sha256"] is not None:
-        problems.append("perf_sha256 is %s, expected none (graded without --perf)" % inputs["perf_sha256"])
-    elif wanted not in (None, NO_PERF) and inputs["perf_sha256"] is None:
-        problems.append("perf_sha256 is null (graded without --perf), expected %s" % wanted)
-    elif wanted not in (None, NO_PERF) and inputs["perf_sha256"] != wanted:
-        problems.append("perf_sha256 is %s, expected %s" % (inputs["perf_sha256"], wanted))
-    return problems
-
-
-def verdict_tier(data):
-    """The tier a verdict says it was graded at, or `unknown` when it does not say (or is not a verdict)."""
-    try:
-        tier = jsonio.strict_loads(data)["core"]["inputs"]["tier"]
-    except (ValueError, KeyError, TypeError):
-        return "unknown"
-    return tier if tier in grade_tier.TIERS else "unknown"
-
-
-def sim_lines(data):
-    """`rigor verify` lines for the simulation inputs of a verdict (null as `none`); nothing for a document without inputs."""
-    try:
-        inputs = jsonio.strict_loads(data)["core"]["inputs"]
-    except (ValueError, KeyError, TypeError):
-        return []
-    if not isinstance(inputs, dict):
-        return []
-    return ["rigor verify: %s %s" % (key, inputs.get(key) or "none")
-            for key in ("sim_spec_sha256", "sim_salt_id", "sim_seed_digest")]
-
-
-def run_verify(args):
-    data = jsonio.read_bytes(args.verdict)
-    signature = args.signature or args.verdict + ".sig"
-    expect = {"head": args.expect_head, "gate": args.expect_gate,
-              "policy_sha": args.expect_policy_sha, "witness_sha": args.expect_witness_sha,
-              "perf_sha": args.expect_perf_sha, "oracle_sha": args.expect_oracle_sha, "sim_salt_id": args.expect_sim_salt_id,
-              "sim_spec_sha": args.expect_sim_spec_sha}
-    problems = check_verdict(data, signature, args.allowed_signers, expect, args.require_uncached,
-                             args.require_tier)
-    print("rigor verify: tier %s" % verdict_tier(data))
-    for line in sim_lines(data):
-        print(line)
-    for problem in problems:
-        print("rigor verify: REJECTED: %s" % problem)
-    if problems:
-        return EXIT_FAIL
-    print("rigor verify: OK (signed PASS, core_sha256 %s)" % jsonio.sha256_hex(
-        jsonio.canonical_dumps(jsonio.strict_loads(data)["core"])))
-    return EXIT_PASS
-
-
-def add_verify_parser(subparsers):
-    parser = subparsers.add_parser(
-        "verify", allow_abbrev=False,
-        help="accept a grade verdict only if it is a signed, clean-gate PASS that matches expectations")
-    parser.add_argument("--verdict", required=True)
-    parser.add_argument("--signature", help="default: <verdict>.sig")
-    parser.add_argument("--allowed-signers", required=True,
-                        help='ssh allowed_signers file whose lines allow namespace "%s"' % VERDICT_NAMESPACE)
-    parser.add_argument("--expect-head", help="full sha of the head the verdict must be about")
-    parser.add_argument("--expect-gate", help="full sha of the gate commit that must have graded it")
-    parser.add_argument("--expect-policy-sha", help="sha256 of the policy.toml it must have used")
-    parser.add_argument("--expect-witness-sha",
-                        help="witness_sha256 of the witness bundle it must have been graded with; "
-                             "a verdict graded without --witness is rejected")
-    parser.add_argument("--expect-oracle-sha",
-                        help="oracle_sha256 of the oracle bundle it must have been graded with; "
-                             "a verdict graded without --oracle is rejected")
-    parser.add_argument("--expect-perf-sha",
-                        help="perf_sha256 of the perf bundle it must have been graded with, or `none` for a "
-                             "grade without --perf; a verdict graded without --perf is rejected for a sha")
-    parser.add_argument("--expect-sim-salt-id", help="sim_salt_id (sha256 of the salt) the simulation must have run with")
-    parser.add_argument("--expect-sim-spec-sha", help="sim_spec_sha256 of the sim.toml the grade must have used")
-    parser.add_argument("--require-uncached", action="store_true")
-    parser.add_argument("--require-tier", choices=grade_tier.TIERS,
-                        help="reject a verdict graded at another tier (a merge-tier PASS is not a nightly one)")
-    parser.set_defaults(handler=run_verify, gate_id=None)
-

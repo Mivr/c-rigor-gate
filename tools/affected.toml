@@ -183,13 +183,10 @@ selftests = ["product_checks", "profiles"]
 [[rule]]
 glob = "gate/rigor_lib/policy_check.py"
 selftests = ["product_checks", "profiles"]
-# T132: the ledger library and the signer roles file; only `rigor ledger` and the optional approvals arguments use them.
+# T132: the ledger library; only `rigor ledger` and the optional approvals arguments use it.
 [[rule]]
 glob = "gate/rigor_lib/ledger.py"
 selftests = ["grade"]
-[[rule]]
-glob = "gate/signer_roles.toml"
-selftests = ["grade", "canaries"]
 # T131: the guard judge reads facts, structure facts and policy only; its selftest is the require one.
 [[rule]]
 glob = "gate/rigor_lib/guards_gate.py"
@@ -211,9 +208,6 @@ glob = "gate/rigor_lib/**"
 selftests = ["grade", "product_checks", "structure", "mutate", "canaries", "ui"]
 [[rule]]
 glob = "gate/order.txt"
-selftests = ["grade", "canaries"]
-[[rule]]
-glob = "gate/allowed_signers"
 selftests = ["grade", "canaries"]
 [[rule]]
 glob = "gate/tools/**"

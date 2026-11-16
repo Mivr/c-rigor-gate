@@ -1,4 +1,4 @@
-"""T021: `grade.write_verdict`, signing policy, and `rigor verify` (throwaway keys, no Buck2)."""
+"""T021: `grade.write_verdict` and `rigor verify` (U30: nothing is signed; a throwaway gate repo, no Buck2)."""
 
 import json
 import os
@@ -8,9 +8,10 @@ import subprocess
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import approval_args, approvals, grade, grade_steps, jsonio, verdict, witness_bundle
+from rigor_lib import approvals, grade, grade_steps, jsonio, verdict, witness_bundle
 from rigor_lib.errors import InternalError
-from tests.helpers import GATE_DIR, TempDirTestCase, base_env, read_json, run_rigor
+from tests.gate_repo_fixture import gate_repo
+from tests.helpers import GATE_DIR, TempDirTestCase, read_json, run_rigor
 from tests.test_verdict_inputs import Fixture, HEAD, GATE, WITNESS_FIXTURE
 
 
@@ -40,7 +41,6 @@ class GradeVerdict(TempDirTestCase):
         g.results = str(self.results)
         g.args.verdict_out = str(self.out)
         g.args.order_file = str(GATE_DIR / "order.txt")
-        g.args.allowed_signers = "signers"
         return g
 
     def test_a_pass_binds_the_inputs_and_uncached_stays_top_level(self):
@@ -76,22 +76,11 @@ class GradeVerdict(TempDirTestCase):
         self.assertEqual((code, core["overall"]), (1, "FAIL"))
         self.assertIsNone(core["inputs"]["head"])
 
-    def test_a_dirty_gate_is_recorded_unsigned_and_never_verifies(self):
+    def test_a_dirty_gate_is_recorded(self):
         self.fixture.gate_clean = False
         g = self.grading()
         self.assertEqual(grade.write_verdict(g), 0)
         self.assertIs(read_json(self.out)["core"]["inputs"]["gate_clean"], False)
-
-    def run_grade(self, gate_clean):
-        g = self.grading()
-        g.gate_clean = gate_clean
-        g.args.sign_key = "key"
-        with mock.patch.object(grade, "start_grading", return_value=g), \
-                mock.patch.object(grade, "run_gates", return_value=None), \
-                mock.patch.object(grade.grade_context, "kill_daemon"), \
-                mock.patch.object(grade, "sign_verdict") as sign:
-            code = grade.run(g.args)
-        return code, sign
 
     def test_a_pass_without_a_witness_binds_null(self):
         self.fixture.file_hashes["witness_sha256"] = None
@@ -101,7 +90,6 @@ class GradeVerdict(TempDirTestCase):
 
     def test_the_witness_tree_daemon_is_stopped_too(self):
         g = self.grading()
-        g.args.sign_key = None
         g.gate_clean = True
         with mock.patch.object(grade, "start_grading", return_value=g), \
                 mock.patch.object(grade, "run_gates", return_value=None), \
@@ -110,61 +98,71 @@ class GradeVerdict(TempDirTestCase):
         self.assertEqual([c.args for c in kill.call_args_list],
                          [(g.tree,), (os.path.join(g.work, "tree-witness"),)])
 
-    def test_signing_only_happens_for_a_clean_gate(self):
-        code, sign = self.run_grade(True)
-        self.assertEqual(code, 0)
-        sign.assert_called_once()
-        code, sign = self.run_grade(False)
-        self.assertEqual(code, 0)
-        sign.assert_not_called()
+    def test_nothing_is_signed_and_the_grade_takes_no_key(self):
+        g = self.grading()
+        with mock.patch.object(grade, "start_grading", return_value=g), \
+                mock.patch.object(grade, "run_gates", return_value=None), \
+                mock.patch.object(grade.grade_context, "kill_daemon"):
+            self.assertEqual(grade.run(g.args), 0)
+        self.assertFalse((self.tmp / "verdict.json.sig").exists())
+        self.assertFalse(hasattr(grade, "sign_verdict"))
+        outcome = run_rigor(["grade", "--product-repo", "r", "--base", "b", "--head", "h", "--task", "t",
+                             "--product", "p", "--work", self.tmp / "w", "--out", self.tmp / "o", "--sign-key", "k"])
+        self.assertExit(outcome, 2)
+        self.assertIn("--sign-key", outcome.stderr)
+
+    def test_the_core_counts_and_lists_the_approvals_in_force(self):
+        self.assertEqual(grade.write_verdict(self.grading()), 0)
+        self.assertEqual(read_json(self.out)["core"]["approvals"], {"count": 0, "in_force": []})
+        g = self.grading()
+        g.args.approvals, g.head, g.src = "/a", HEAD, "/src"
+        valid = [approvals.Approval("ratchet", "n.toml:k", "why", "e" * 40, "2" * 64),
+                 approvals.Approval("suppression", "a.c:1-nolint", "ok", "e" * 40, "1" * 64)]
+        with mock.patch.object(grade.approvals, "load_approvals", return_value=approvals.ApprovalSet(valid, [])):
+            self.assertEqual(grade.write_verdict(g), 0)
+        block = read_json(self.out)["core"]["approvals"]
+        self.assertEqual(block["count"], 2)
+        self.assertEqual([e["stem"] for e in block["in_force"]], ["1" * 64, "2" * 64])
+        self.assertEqual(block["in_force"][1], {"kind": "ratchet", "scope": "n.toml:k", "reason": "why", "stem": "2" * 64})
 
 
 class Verify(TempDirTestCase):
     def setUp(self):
         super().setUp()
-        self.key = str(self.tmp / "key")
-        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", self.key], check=True,
-                       capture_output=True, env=base_env())
-        pub = (self.tmp / "key.pub").read_text().split()
-        self.signers = self.tmp / "signers"
-        self.signers.write_text('signer namespaces="c-rigor-gate-verdict" %s %s\n' % (pub[0], pub[1]))
         self.verdict = self.tmp / "verdict.json"
         self.fixture = Fixture(str(self.tmp))
+        self.gate_repo = gate_repo(self.fixture)
 
-    def make(self, mutate_core=None, namespace="c-rigor-gate-verdict", sign=True, fixture=None):
+    def make(self, mutate_core=None, fixture=None):
         fixture = fixture or self.fixture
         core = verdict.build_core(["a"], {"a": {"status": "PASS", "findings": []}})
         core["uncached"] = fixture.uncached
+        core["approvals"] = verdict.approvals_in_force([])
         core["inputs"] = fixture.inputs()
         if mutate_core:
             mutate_core(core)
-        document = {"core": core, "core_sha256": jsonio.sha256_hex(jsonio.canonical_dumps(core)),
+        self.write(core)
+
+    def write(self, core, core_sha256=None):
+        document = {"core": core, "core_sha256": core_sha256 or jsonio.sha256_hex(jsonio.canonical_dumps(core)),
                     "metadata": {}}
         self.verdict.write_bytes(jsonio.canonical_dumps(document))
-        if sign:
-            self.sign(self.key, namespace)
-
-    def sign(self, key, namespace="c-rigor-gate-verdict"):
-        sig = str(self.verdict) + ".sig"
-        if os.path.exists(sig):
-            os.unlink(sig)
-        subprocess.run(["ssh-keygen", "-Y", "sign", "-n", namespace, "-f", key, str(self.verdict)],
-                       check=True, capture_output=True, env=base_env())
 
     def verify(self, *extra):
-        return run_rigor(["verify", "--verdict", self.verdict, "--allowed-signers", self.signers, *extra])
+        return run_rigor(["verify", "--verdict", self.verdict, "--gate-repo", self.gate_repo,
+                          "--expect-head", HEAD, *extra])
 
     def assertRejected(self, outcome, text):
         self.assertEqual(outcome.code, 1, outcome.stdout + outcome.stderr)
         self.assertIn(text, outcome.stdout)
 
-    def test_a_signed_clean_pass_verifies_with_all_expectations(self):
+    def test_a_consistent_clean_pass_verifies_with_all_expectations(self):
         self.make()
         inputs = self.fixture.inputs()
-        outcome = self.verify("--expect-head", HEAD, "--expect-gate", GATE,
-                              "--expect-policy-sha", inputs["policy_sha256"])
+        outcome = self.verify("--expect-gate", self.fixture.gate_sha, "--expect-policy-sha", inputs["policy_sha256"])
         self.assertEqual(outcome.code, 0, outcome.stdout + outcome.stderr)
         self.assertIn("OK", outcome.stdout)
+        self.assertIn("approvals in force 0", outcome.stdout)
 
     def test_each_expectation_is_checked_on_its_own(self):
         self.make()
@@ -173,43 +171,86 @@ class Verify(TempDirTestCase):
         self.assertRejected(self.verify("--expect-policy-sha", "e" * 64), "policy_sha256 is")
         self.assertEqual(self.verify().code, 0)
 
-    def test_no_signature_wrong_namespace_wrong_key(self):
-        self.make(sign=False)
-        self.assertRejected(self.verify(), "no signature")
-        self.make(namespace="c-rigor-gate")
-        self.assertRejected(self.verify(), "signature is not valid")
-        other = str(self.tmp / "other")
-        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", other], check=True,
-                       capture_output=True, env=base_env())
+    def test_the_head_must_be_named(self):
         self.make()
-        self.sign(other)
-        self.assertRejected(self.verify(), "signature is not valid")
+        outcome = run_rigor(["verify", "--verdict", self.verdict, "--gate-repo", self.gate_repo])
+        self.assertExit(outcome, 2)
+        self.assertIn("--expect-head", outcome.stderr)
 
-    def test_a_tampered_file_after_signing_is_rejected(self):
+    def test_a_verdict_of_the_signing_gate_is_refused_by_name_and_its_signature_ignored(self):
+        def legacy(core):
+            core["inputs"]["allowed_signers_sha256"] = "5" * 64
+        self.make(legacy)
+        (self.tmp / "verdict.json.sig").write_bytes(b"-----BEGIN SSH SIGNATURE-----\n")
+        self.assertRejected(self.verify(), "written by a gate that signed verdicts")
+        for option in ("--allowed-signers", "--signature"):
+            self.assertExit(self.verify(option, self.tmp / "verdict.json.sig"), 2)
+
+    def test_a_tampered_file_is_rejected(self):
         self.make()
         document = read_json(self.verdict)
         document["core"]["inputs"]["head"] = "e" * 40
         self.verdict.write_bytes(jsonio.canonical_dumps(document))
-        self.assertRejected(self.verify(), "signature is not valid")
+        self.assertRejected(self.verify(), "core_sha256 does not match")
+        self.write(document["core"])   # rehashed: consistent, but about another tree than the one asked about
+        self.assertRejected(self.verify(), "head is %s, expected %s" % ("e" * 40, HEAD))
 
-    def test_a_signed_document_whose_hash_does_not_match_its_core(self):
+    def test_a_document_whose_hash_does_not_match_its_core(self):
         self.make()
         document = read_json(self.verdict)
-        document["core_sha256"] = "0" * 64
-        self.verdict.write_bytes(jsonio.canonical_dumps(document))
-        self.sign(self.key)
+        self.write(document["core"], "0" * 64)
         self.assertRejected(self.verify(), "core_sha256 does not match")
 
-    def test_a_signed_dirty_gate_pass_is_rejected(self):
+    def test_a_dirty_gate_pass_is_rejected(self):
         self.fixture.gate_clean = False
         self.make()
         self.assertRejected(self.verify(), "gate tree was dirty")
 
-    def test_a_signed_fail_is_rejected(self):
+    def test_a_fail_is_rejected(self):
         def fail(core):
             core["overall"] = "FAIL"
         self.make(fail)
         self.assertRejected(self.verify(), "not PASS")
+
+    def test_a_pass_with_a_failed_gate_is_rejected(self):
+        def lie(core):
+            core["gates"][0]["status"] = "FAIL"
+        self.make(lie)
+        self.assertRejected(self.verify(), "a gate is not")
+
+    def test_a_partial_or_reordered_grade_is_rejected(self):
+        two = Fixture(str(self.tmp / "two"))
+        self.gate_repo = gate_repo(two, ("a", "b"))
+        self.make(fixture=two)   # the core lists only `a`: an `--only` grade
+        self.assertRejected(self.verify(), "not the gate order of revision")
+        self.make(lambda core: core.__setitem__("gates", core["gates"] * 2), fixture=two)
+        self.assertRejected(self.verify(), "not the gate order of revision")
+
+    def test_every_gate_owned_input_is_recomputed_from_the_gate_revision(self):
+        for key in ("order_sha256", "toolchain_buck_sha256", "llvm_sha256", "sysroot_sha256", "buck2_sha256"):
+            self.make(lambda core, key=key: core["inputs"].__setitem__(key, "9" * 64))
+            self.assertRejected(self.verify(), "%s is %s, but gate revision" % (key, "9" * 64))
+
+    def test_a_gate_sha_that_is_not_a_gate_commit_is_rejected(self):
+        self.make(lambda core: core["inputs"].__setitem__("gate_sha", "e" * 40))
+        self.assertRejected(self.verify(), "is not a commit of the gate repository")
+
+    def test_the_approvals_in_force_are_checked_and_printed(self):
+        entry = {"kind": "ratchet", "scope": "n.toml:k", "reason": "why", "stem": "1" * 64}
+        self.make(lambda core: core.__setitem__("approvals", {"count": 1, "in_force": [entry]}))
+        outcome = self.verify()
+        self.assertEqual(outcome.code, 0, outcome.stdout)
+        self.assertIn("approvals in force 1", outcome.stdout)
+        self.assertIn("ratchet n.toml:k " + "1" * 64, outcome.stdout)
+        for block, text in (({"count": 2, "in_force": [entry]}, "count does not match"),
+                            ({"count": 2, "in_force": [entry, entry]}, "without duplicates"),
+                            ({"count": 1, "in_force": [dict(entry, kind="owner")]}, "malformed"),
+                            ({"in_force": []}, "no well-formed approvals count")):
+            self.make(lambda core, block=block: core.__setitem__("approvals", block))
+            self.assertRejected(self.verify(), text)
+        self.fixture.file_hashes["approvals_sha256"] = None
+        self.make(lambda core: core.__setitem__("approvals", {"count": 1, "in_force": [entry]}))
+        self.assertRejected(self.verify(), "no approvals bundle is bound")
 
     def test_a_verdict_without_inputs_is_rejected(self):
         self.make(lambda core: core.pop("inputs"))
@@ -266,13 +307,13 @@ class Verify(TempDirTestCase):
         self.assertEqual(self.verify("--require-tier", "merge").code, 0)
         self.assertEqual(self.verify().code, 0)
 
-    def test_a_forged_tier_breaks_the_signature_and_an_unknown_tier_is_malformed(self):
+    def test_a_tier_edited_in_place_breaks_the_core_hash_and_an_unknown_tier_is_malformed(self):
         self.fixture.tier = "merge"
         self.make()
         document = read_json(self.verdict)
         document["core"]["inputs"]["tier"] = "nightly"
         self.verdict.write_bytes(jsonio.canonical_dumps(document))
-        self.assertRejected(self.verify("--require-tier", "nightly"), "signature is not valid")
+        self.assertRejected(self.verify("--require-tier", "nightly"), "core_sha256 does not match")
 
         def odd(core):
             core["inputs"]["tier"] = "weekly"
@@ -280,7 +321,7 @@ class Verify(TempDirTestCase):
         self.assertRejected(self.verify(), "tier is missing or malformed")
 
     def test_an_unreadable_verdict_is_an_internal_error(self):
-        outcome = run_rigor(["verify", "--verdict", self.tmp / "none.json", "--allowed-signers", self.signers])
+        outcome = run_rigor(["verify", "--verdict", self.tmp / "none.json", "--expect-head", HEAD])
         self.assertEqual(outcome.code, 2)
 
 
@@ -313,7 +354,7 @@ class GradeWitnessOption(TempDirTestCase):
         self.assertEqual(witness_bundle.digest(witness_bundle.load(str(copy))), inputs["witness_sha256"])
 
     def test_a_relative_bundle_path_is_made_absolute(self):
-        names = ("product_repo", "task", "product", "approvals", "witness", "sign_key", "work", "verdict_out")
+        names = ("product_repo", "task", "product", "approvals", "witness", "work", "verdict_out")
         args = SimpleNamespace(**{name: None for name in names})
         args.witness = "bundle"
         grade.absolute_arguments(args)
@@ -411,13 +452,11 @@ class UnusedApprovals(GradeVerdict):
 
 
 class TrustFilesFromSnapshot(TempDirTestCase):
-    """T071: the signers file and the gate order are snapshotted with the other inputs; the gates and
-    the verdict read only the copies, so a change to the live files mid-grade changes nothing."""
+    """T071: the gate order is snapshotted with the other inputs; the gates and the verdict read only the
+    copy, so a change to the live file mid-grade changes nothing. (U30: there is no signers file any more.)"""
 
     def setUp(self):
         super().setUp()
-        self.live_signers = self.tmp / "live_allowed_signers"
-        self.live_signers.write_bytes(b"original signers\n")
         self.live_order = self.tmp / "live_order.txt"
         self.live_order.write_bytes((GATE_DIR / "order.txt").read_bytes())
         self.work = self.tmp / "work"
@@ -425,14 +464,12 @@ class TrustFilesFromSnapshot(TempDirTestCase):
         task = self.tmp / "task.toml"
         task.write_text('id = "t"\nallowed = ["**"]\n')
         self.args = SimpleNamespace(
-            product_repo=str(self.tmp / "repo"), task=str(task), approvals=None, witness=None, sign_key=None,
+            product_repo=str(self.tmp / "repo"), task=str(task), approvals=None, witness=None,
             work=str(self.work), verdict_out=str(self.out), allow_dirty_gate=False, uncached=False,
             product=str(GATE_DIR.parent / "products" / "selftest" / "product.toml"))
 
     def start(self):
         with mock.patch.object(grade.grade_context, "ORDER_FILE", str(self.live_order)), \
-                mock.patch.object(approval_args, "DEFAULT_ALLOWED_SIGNERS",
-                                  str(self.live_signers)), \
                 mock.patch.object(grade.grade_context, "seal_process_environment"), \
                 mock.patch.object(grade.grade_context, "gate_checkout_state", return_value=(GATE, True)):
             return grade.start_grading(self.args)
@@ -441,23 +478,22 @@ class TrustFilesFromSnapshot(TempDirTestCase):
         seen = {}
 
         def hook(g):
-            self.live_signers.write_bytes(b"loosened signers\n")
             self.live_order.write_bytes(b"clone\n")
             with mock.patch.object(grade_steps.suppressions, "run") as run, \
                     mock.patch.object(grade_steps, "_graded_entries", return_value=[]):
                 run.return_value = SimpleNamespace(status="PASS")
                 grade_steps.suppressions_gate(g)
-            path = run.call_args[0][0].allowed_signers
-            seen["signers"] = pathlib.Path(path).read_bytes()
+            seen["order"] = pathlib.Path(g.args.order_file).read_bytes()
+            seen["args"] = vars(run.call_args[0][0])
             return None
 
         g = self.start()
         with mock.patch.object(grade.grade_pipeline, "GATES", (("clone", hook),)):
             grade.run_gates(g)
-        self.assertEqual(seen["signers"], b"original signers\n")
+        self.assertNotIn("allowed_signers", seen["args"])
         inputs = g.inputs
-        self.assertEqual(inputs["allowed_signers_sha256"], jsonio.sha256_hex(b"original signers\n"))
-        self.assertEqual(g.args.allowed_signers, str(self.work / "inputs" / "allowed_signers"))
+        self.assertNotIn("allowed_signers_sha256", inputs)
+        self.assertEqual(seen["order"], (GATE_DIR / "order.txt").read_bytes())
         order = (GATE_DIR / "order.txt").read_bytes()
         self.assertEqual(inputs["order_sha256"], jsonio.sha256_hex(order))
         self.assertEqual(g.order_bytes, order)
@@ -476,11 +512,7 @@ class TrustFilesFromSnapshot(TempDirTestCase):
         self.assertEqual(document["metadata"]["order_file"], str(self.work / "inputs" / "order.txt"))
         self.assertEqual(len(document["core"]["gates"]), len(order))
 
-    def test_a_missing_signers_file_or_order_is_an_internal_error_before_any_gate(self):
-        self.live_signers.unlink()
-        with self.assertRaisesRegex(InternalError, "allowed_signers"):
-            self.start()
-        self.live_signers.write_bytes(b"x\n")
+    def test_a_missing_order_is_an_internal_error_before_any_gate(self):
         self.live_order.unlink()
         with self.assertRaisesRegex(InternalError, "order.txt"):
             self.start()

@@ -1,6 +1,6 @@
 """Tests for `rigor ratchet`."""
 
-from tests.helpers import Repo, Signer, TempDirTestCase, read_json, run_rigor
+from tests.helpers import Repo, TempDirTestCase, read_json, run_rigor
 
 SPEC = """
 [max_mutants]
@@ -155,19 +155,16 @@ class RatchetApprovalTests(RatchetCase):
         self.first = self.repo.commit("first")
         self.repo.write("a.txt", "2\n")
         self.head = self.repo.commit("second")
-        self.signer = Signer(self.tmp / "keys")
-        self.allowed = self.signer.write_allowed_signers(self.tmp / "allowed_signers")
         self.dir = self.sub("approvals")
 
-    def approve(self, scope, kind="ratchet", signer=None, repo_sha=None):
+    def approve(self, scope, kind="ratchet", repo_sha=None):
         outcome = run_rigor(["approve", "--kind", kind, "--scope", scope, "--reason", "ok",
-                             "--repo-sha", repo_sha or self.first, "--key",
-                             (signer or self.signer).key, "--out", self.dir])
+                             "--repo-sha", repo_sha or self.first, "--out", self.dir])
         self.assertExit(outcome, 0)
+        return outcome.stdout.strip()
 
     def approval_args(self):
-        return ["--approvals", self.dir, "--allowed-signers", self.allowed,
-                "--repo", self.repo.root, "--head", self.head]
+        return ["--approvals", self.dir, "--repo", self.repo.root, "--head", self.head]
 
     def grade_approved(self, new_text=REGRESSED):
         return self.grade(new_text, extra=self.approval_args())
@@ -199,8 +196,10 @@ class RatchetApprovalTests(RatchetCase):
         outcome, _ = self.grade_approved()
         self.assertExit(outcome, 1)
 
-    def test_unlisted_signer_is_forged_and_does_not_cover(self):
-        self.approve("n.toml:max_mutants", signer=Signer(self.tmp / "evil", name="evil"))
+    def test_a_signature_file_left_in_the_approvals_is_forged_and_fails(self):
+        path = self.approve("n.toml:min_tests")
+        with open(path + ".sig", "wb") as handle:
+            handle.write(b"old signature\n")
         outcome, result = self.grade_approved()
         self.assertExit(outcome, 1)
         self.assertEqual(sorted(r for r, _ in self.rules(result)),
@@ -224,16 +223,15 @@ class RatchetApprovalTests(RatchetCase):
         self.assertEqual([f["rule"] for f in result["findings"]], ["forged-approval"])
 
     def test_approvals_without_repo_and_head_is_exit_2(self):
-        outcome, _ = self.grade(self.REGRESSED, extra=["--approvals", self.dir,
-                                                       "--allowed-signers", self.allowed])
+        outcome, _ = self.grade(self.REGRESSED, extra=["--approvals", self.dir])
         self.assertExit(outcome, 2)
 
-    def test_missing_ssh_keygen_with_approvals_is_exit_2(self):
+    def test_a_signers_file_option_is_refused(self):
         self.approve("n.toml:max_mutants")
         self.grade(self.REGRESSED)  # leaves o.toml, n.toml, s.toml in place
         outcome = run_rigor(["ratchet", "--old", self.tmp / "o.toml", "--new", self.tmp / "n.toml",
-                             "--spec", self.tmp / "s.toml"] + self.approval_args(),
-                            path=str(self.sub("nobin")))
+                             "--spec", self.tmp / "s.toml", "--allowed-signers", self.tmp / "signers"]
+                            + self.approval_args())
         self.assertExit(outcome, 2)
 
 

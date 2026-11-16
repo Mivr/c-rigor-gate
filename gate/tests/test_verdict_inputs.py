@@ -10,7 +10,7 @@ import subprocess
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import grade_context, jsonio, verdict, verdict_inputs, witness_bundle
+from rigor_lib import grade_context, jsonio, verdict, verdict_inputs, verdict_verify, witness_bundle
 from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase, base_env
 
@@ -20,7 +20,7 @@ BUCK_TEXT = ('fetched_tree(\n    name = "llvm",\n    url = "u",\n    sha256 = "%
 LLVM, SYSROOT, BUCK2 = "1" * 64, "2" * 64, "3" * 64
 FILE_HASHES = {key: jsonio.sha256_hex(key.encode()) for key in
                ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
-                "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
+                "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256",
                 "order_sha256", "witness_sha256", "perf_sha256", "fuzz_regressions_sha256", "sim_spec_sha256",
                 "sim_regressions_sha256", "sim_salt_id", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
                 "oracle_excluded_sha256")}
@@ -410,7 +410,7 @@ class DirtyGate(TempDirTestCase):
 
 class Constants(TempDirTestCase):
     def test_pass_constant_matches_the_verdict_module(self):
-        self.assertEqual(verdict_inputs._PASS, verdict.STATUS_PASS)
+        self.assertEqual(verdict_verify._PASS, verdict.STATUS_PASS)
 
     def test_order_parse_equals_order_read(self):
         path = str(GATE_DIR / "order.txt")

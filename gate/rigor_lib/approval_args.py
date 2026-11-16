@@ -1,24 +1,16 @@
 """Command line options shared by the gates that accept approvals."""
 
-import os
-
 from rigor_lib import approvals, gitrun
 from rigor_lib.errors import InternalError
 
-DEFAULT_ALLOWED_SIGNERS = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "allowed_signers")
-
 
 def add_approval_arguments(parser, repo_and_head_optional):
-    """Add --approvals and --allowed-signers; optionally also --repo and --head.
+    """Add --approvals and --ledger; optionally also --repo and --head.
 
     The approval's repo-sha must be an ancestor of the graded head, so a gate with approvals
     needs a repository and head even if the gate itself reads no git data.
     """
-    parser.add_argument("--approvals", help="directory of signed approvals (outside the repo)")
-    parser.add_argument("--allowed-signers", default=DEFAULT_ALLOWED_SIGNERS,
-                        help="allowed_signers file (default: the one shipped in gate/)")
-    parser.add_argument("--signer-roles", help="signer_roles.toml: limit each signer to its kinds (off if absent)")
+    parser.add_argument("--approvals", help="directory of approval files (outside the repo)")
     parser.add_argument("--ledger", help="ledger directory: honour its tighten-only switch (off if absent)")
     if repo_and_head_optional:
         parser.add_argument("--repo", help="graded repository (required with --approvals)")
@@ -32,5 +24,4 @@ def load_from_args(args):
     if args.repo is None or args.head is None:
         raise InternalError("--approvals needs --repo and --head")
     head = gitrun.resolve_commit(args.repo, args.head)
-    return approvals.load_approvals(args.approvals, args.repo, head, args.allowed_signers,
-                                    getattr(args, "signer_roles", None), getattr(args, "ledger", None))
+    return approvals.load_approvals(args.approvals, args.repo, head, getattr(args, "ledger", None))

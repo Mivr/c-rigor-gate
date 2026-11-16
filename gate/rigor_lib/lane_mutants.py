@@ -76,7 +76,7 @@ def _dirty(repo):
 
 def _grading(args, work, product):
     gate_sha, _ = grade_context.gate_checkout_state(True)
-    work_args = argparse.Namespace(product=args.product, approvals=args.approvals, allowed_signers=args.allowed_signers,
+    work_args = argparse.Namespace(product=args.product, approvals=args.approvals,
                                    uncached=args.uncached, repo=None, head=None)
     return grade_context.Grading(
         args=work_args, product=product, gate_sha=gate_sha, work=work, src=os.path.join(work, "src"),
@@ -154,6 +154,5 @@ def add_parser(subparsers):
     parser.add_argument("--work", help="work directory, outside the checkout (default: $TMPDIR/lane-mutants/<checkout>)")
     parser.add_argument("--uncached", action="store_true", help="build with --no-remote-cache")
     parser.add_argument("--approvals")
-    parser.add_argument("--allowed-signers", default=os.path.join(grade_context.GATE_ROOT, "gate", "allowed_signers"))
     parser.set_defaults(handler=run)
 

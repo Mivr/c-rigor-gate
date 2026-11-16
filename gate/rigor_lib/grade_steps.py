@@ -74,8 +74,7 @@ def _graded_entries(g):
 
 def suppressions_gate(g):
     return suppressions.run(Namespace(
-        repo=g.src, base=g.base, head=g.head, approvals=g.args.approvals,
-        allowed_signers=g.args.allowed_signers), _graded_entries(g))
+        repo=g.src, base=g.base, head=g.head, approvals=g.args.approvals), _graded_entries(g))
 
 
 def _product_entry_findings(g, tree, entry, manifest):
@@ -172,7 +171,6 @@ def tests_gate_for(mode):
             results=directory, expected=expected,
             previous=previous if os.path.isfile(previous) else None,
             approvals=g.args.approvals, repo=g.src, head=g.head,
-            allowed_signers=g.args.allowed_signers,
             presence_only=role(g) == contract.ROLE_TEST_AUTHOR))
         return GateResult("tests-" + mode, result.findings, result.metadata)
     return gate
