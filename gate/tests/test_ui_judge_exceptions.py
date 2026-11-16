@@ -148,7 +148,7 @@ class RunLevelTest(unittest.TestCase):
         self.assertEqual((examined[("ui-scene", "checks-examined")]["observed"]["totals"]["overlay-policy"], vacuous),
                          (1, []))
         # a layer whose sealed rows are missing reaches no verdict: the layer is contract-incomplete, the check vacuous
-        none = contract(lambda t: t.replace('layer = "banner"', 'layer = "notice"'))
+        none = contract(lambda t: t.replace('layer = "banner"', 'layer = "main"'))
         examined, vacuous = self.run_level(semantic, tree, the_contract=none)
         self.assertEqual((examined[("ui-scene", "checks-examined")]["observed"]["totals"]["overlay-policy"], vacuous),
                          (0, [("ui-scene", "overlay-policy")]))

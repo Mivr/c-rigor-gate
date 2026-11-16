@@ -194,7 +194,7 @@ class OverlayTest(unittest.TestCase):
         semantic.append(sem("b", "banner", "", (0, 180, 320, 60)))
         self.assertEqual([f["id"] for f in run(semantic, tree, the_contract=both)],
                          [expected_id("ui-scene", "contract-incomplete", ["input-layer", "banner"], stateless=True)])
-        none = contract(lambda t: t.replace('layer = "banner"', 'layer = "notice"'))
+        none = contract(lambda t: t.replace('layer = "banner"', 'layer = "main"'))
         self.assertEqual([f["id"] for f in run(semantic, tree, the_contract=none)],
                          [expected_id("ui-scene", "contract-incomplete", ["input-layer", "banner"], stateless=True)])
 
