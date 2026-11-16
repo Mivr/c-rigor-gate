@@ -82,104 +82,121 @@ class OccludedTest(unittest.TestCase):
         semantic.append(sem("x", "text", "x", (80, 120, 20, 16), style="body"))
         self.assertEqual(only(run(semantic, tree), "occluded-target"), [])
 
-    def test_an_inert_panel_painted_later_over_every_probe_point_makes_the_target_inert(self):
-        # R5: the full-window panel with I declares the background inert; one pixel short of a probe point does not
-        whole = with_node((0, 0, 319, 239), flags="I", enabled=0)
-        whole[1].node(0, "lv_obj", (0, 90, 159, 159), clickable=1)
-        whole[0].append(sem("veil", "dialog", "", (0, 90, 160, 70)))
-        self.assertEqual(run(*whole), [])
-        short = with_node((0, 0, 87, 239), flags="I", enabled=0)
-        short[1].node(0, "lv_obj", (0, 90, 159, 159), clickable=1)
-        short[0].append(sem("veil", "dialog", "", (0, 90, 160, 70)))
-        self.assertEqual(sorted(checks(run(*short))), ["occluded-target", "overlay-policy"])
+    def test_a_dimmed_clickable_modal_scrim_over_every_probe_point_makes_the_target_inert(self):
+        # R7: a scrim before a dialog card (capture-modal-inert), clickable, background opacity above 0
+        def modal(scrim_box=(0, 0, 319, 239), bg=82, clickable=1):
+            semantic, tree = base()
+            tree.node(0, "lv_obj", scrim_box, clickable=clickable, bg=bg)
+            tree.node(0, "lv_obj", (60, 160, 259, 229), clickable=1, bg=255)
+            x1, y1, x2, y2 = scrim_box
+            semantic += [sem("sc", "scrim", "", (x1, y1, x2 - x1 + 1, y2 - y1 + 1)),
+                         sem("card", "dialog", "", (60, 160, 200, 70))]
+            return run(semantic, tree)
+        self.assertEqual(modal(), [])
+        for broken in (dict(bg=0), dict(clickable=0), dict(scrim_box=(0, 0, 87, 239))):
+            found = modal(**broken)
+            self.assertEqual(checks(found), ["overlay-policy"], broken)       # one cause, one finding (overlay owns it)
+            self.assertEqual(found[0]["observed"]["basis"], "sealed")
 
-    def test_an_inert_panel_painted_before_the_target_does_not(self):
-        semantic, tree = base()
-        tree.nodes.insert(1, {"parent": 0, "depth": 1, "cls": "lv_obj", "box": (0, 0, 319, 239), "hidden": 0,
-                              "clickable": 0, "clip": -1, "scroll": -1, "bg": 0, "exact": 1, "grad": 0, "image": 0,
-                              "label": None, "fit": None, "colour": "ffffff"})
-        for node in tree.nodes[2:]:
-            node["parent"] = node["parent"] + 1 if node["parent"] >= 1 else node["parent"]
-        tree.node(0, "lv_obj", (0, 90, 159, 159), clickable=1)
-        semantic = [sem("p", "panel", "", (0, 0, 320, 240), flags="I", enabled=0)] + semantic + \
-            [sem("veil", "dialog", "", (0, 90, 160, 70))]
-        self.assertEqual(sorted(checks(run(semantic, tree))), ["occluded-target", "overlay-policy"])
+    def test_a_bare_inert_panel_grants_nothing(self):
+        # the reviewer's case: one transparent panel with I painted over everything silences no occlusion
+        semantic, tree = with_node((88, 90, 139, 159), bg=255)
+        tree.node(0, "lv_obj", (0, 0, 319, 239))
+        semantic.append(sem("p", "panel", "", (0, 0, 320, 240), flags="I", enabled=0))
+        self.assertEqual([f["id"] for f in run(semantic, tree)], [expected_id("ui-scene", "occluded-target", ["ok"])])
 
-    def test_a_layer_is_occluded_only_when_its_card_covers_all_of_it(self):
+    def test_a_layer_is_unreachable_without_a_free_square_of_the_touch_floor(self):
         # the kiosk's persistent banner: a scrim with an intent whose card has its rectangle
-        semantic, tree = base()
-        scrim = tree.node(0, "lv_obj", (120, 160, 319, 239), clickable=1)
-        tree.node(scrim, "lv_obj", (120, 160, 319, 239), clickable=1, bg=255)
-        semantic += [sem("s", "scrim", "", (120, 160, 200, 80), intent="9:0"), sem("c", "snackbar", "",
-                                                                              (120, 160, 200, 80))]
-        found = only(run(semantic, tree), "occluded-target")
+        def scrim(card_box):
+            semantic, tree = base()
+            node = tree.node(0, "lv_obj", (120, 160, 319, 239), clickable=1)
+            tree.node(node, "lv_obj", card_box, clickable=1, bg=255)
+            x1, y1, x2, y2 = card_box
+            semantic += [sem("s", "scrim", "", (120, 160, 200, 80), intent="9:0"),
+                         sem("c", "banner", "", (x1, y1, x2 - x1 + 1, y2 - y1 + 1))]
+            return only(run(semantic, tree), "occluded-target")
+        found = scrim((120, 160, 319, 239))
         self.assertEqual([(f["id"], f["observed"]["part"]) for f in found],
                          [(expected_id("ui-scene", "occluded-target", ["s"]), "layer-unreachable")])
-        semantic, tree = base()
-        scrim = tree.node(0, "lv_obj", (120, 160, 319, 239), clickable=1)
-        tree.node(scrim, "lv_obj", (120, 160, 259, 239), clickable=1, bg=255)          # leaves the 80 % column free
-        semantic += [sem("s", "scrim", "", (120, 160, 200, 80), intent="9:0"), sem("c", "snackbar", "",
-                                                                              (120, 160, 140, 80))]
-        self.assertEqual(only(run(semantic, tree), "occluded-target"), [])
+        self.assertEqual(len(scrim((120, 160, 272, 239))), 1)                  # a free band 47 px wide: too narrow
+        self.assertEqual(scrim((120, 160, 271, 239)), [])                      # 48 px: one touch target fits
+        self.assertEqual(scrim((230, 200, 289, 229)), [])                      # the card moved: a wide free band
 
 
 class OverlayTest(unittest.TestCase):
-    def layer(self, role, flags="-", box=(0, 90, 159, 159), before=False, clickable=0, policy="-", scrim=None):
+    def layer(self, role, flags="-", box=(0, 90, 159, 159), before=False, clickable=0, policy="-", scrim=False,
+              bg=0, ok=None):
         semantic, tree = base()
-        semantic[2] = sem("ok", "button", "OK", (8, 100, 100, 50), intent="1:0", style="btn", flags=flags)
+        semantic[2] = ok or sem("ok", "button", "OK", (8, 100, 100, 50), intent="1:0", style="btn", flags=flags)
         x1, y1, x2, y2 = box
         rect = (x1, y1, x2 - x1 + 1, y2 - y1 + 1)
         added = ([sem("sc", "scrim", "", rect)] if scrim else []) + [sem("veil", role, "", rect, policy=policy)]
+        card_bg = 255 if role in ("dialog", "banner", "snackbar") else bg
         if before:
             tree.nodes.insert(1, {"parent": 0, "depth": 1, "cls": "lv_obj", "box": box, "hidden": 0, "clickable": 0,
-                                  "clip": -1, "scroll": -1, "bg": 0, "exact": 1, "grad": 0, "image": 0, "label": None,
-                                  "fit": None, "colour": "ffffff"})
+                                  "clip": -1, "scroll": -1, "bg": card_bg, "exact": 1, "grad": 0, "image": 0,
+                                  "label": None, "fit": None, "colour": "ffffff"})
             for node in tree.nodes[2:]:
                 node["parent"] = node["parent"] + 1 if node["parent"] >= 1 else node["parent"]
             semantic = added + semantic
         else:
             if scrim:
-                tree.node(0, "lv_obj", box, clickable=clickable)
-            tree.node(0, "lv_obj", box, clickable=clickable)
+                tree.node(0, "lv_obj", box, clickable=clickable, bg=bg)
+            tree.node(0, "lv_obj", box, clickable=clickable, bg=card_bg)
             semantic = semantic + added
         return run(semantic, tree)
 
-    def test_a_capturing_layer_over_an_enabled_node(self):
-        self.assertEqual([f["id"] for f in self.layer("dialog")],
-                         [expected_id("ui-scene", "overlay-policy", ["veil", "ok", "captures"])])
-        found = self.layer("snackbar")
-        self.assertEqual([f["observed"] for f in found],
-                         [{"stage": "O2+O3", "layer": "veil", "policy": "capture-and-dismiss", "key": "ok",
-                           "part": "captures"}])
+    def test_a_sealed_modal_layer_over_an_enabled_control(self):
+        found = self.layer("dialog")
+        self.assertEqual([(f["id"], f["observed"]["basis"]) for f in found],
+                         [(expected_id("ui-scene", "overlay-policy", ["veil", "ok", "captures"]), "sealed")])
 
-    def test_inert_under_a_modal_passes_inert_under_a_dismissing_layer_does_not(self):
+    def test_a_pass_through_layer_captures_only_where_it_is_rendered_clickable(self):
+        # not clickable: it takes no tap, it only hides the control (occluded-target's)
+        self.assertEqual(checks(self.layer("snackbar")), ["occluded-target"])
+        found = self.layer("snackbar", clickable=1)
+        self.assertEqual([(f["id"], f["observed"]["policy"], f["observed"]["basis"]) for f in found],
+                         [(expected_id("ui-scene", "overlay-policy", ["veil", "ok", "captures"]), "pass-through",
+                           "rendered")])
+        self.assertEqual(checks(self.layer("banner", scrim=True, clickable=1)), ["overlay-policy"])
+
+    def test_an_inert_control_passes_under_a_modal_only_a_flagged_one_passes_under_any(self):
         self.assertEqual(self.layer("dialog", flags="I"), [])
-        self.assertEqual(checks(self.layer("snackbar", flags="I")), ["overlay-policy"])
+        self.assertEqual(checks(self.layer("snackbar", flags="I", clickable=1)), [])
 
-    def test_a_pass_through_layer_a_layer_below_or_beside_is_no_finding(self):
-        self.assertEqual(self.layer("banner"), [])
+    def test_a_layer_below_or_beside_is_no_finding(self):
         self.assertEqual(self.layer("dialog", before=True), [])
         self.assertEqual(self.layer("dialog", box=(108, 90, 159, 159)), [])           # one pixel right of the box
 
     def test_a_scrim_takes_its_cards_policy_and_the_pair_is_judged_once(self):
         self.assertEqual([f["id"] for f in self.layer("dialog", scrim=True)],
                          [expected_id("ui-scene", "overlay-policy", ["sc", "ok", "captures"])])
-        self.assertEqual(self.layer("banner", scrim=True), [])
+        self.assertEqual(checks(self.layer("banner", scrim=True)), ["occluded-target"])   # the opaque card hides it
 
-    def test_a_policy_in_the_scene_that_is_not_the_contracts_contradicts(self):
-        self.assertEqual(self.layer("banner", policy="pass-through"), [])
-        self.assertEqual([f["id"] for f in self.layer("banner", policy="capture-modal-inert")],
+    def test_a_scrim_without_a_card_and_a_policy_in_the_scene_that_is_not_the_sealed_one(self):
+        semantic, tree = base()
+        tree.node(0, "lv_obj", (0, 180, 319, 239), clickable=1)
+        semantic.append(sem("sc", "scrim", "", (0, 180, 320, 60)))
+        self.assertEqual([(f["id"], f["observed"]["part"]) for f in run(semantic, tree)],
+                         [(expected_id("ui-scene", "overlay-policy", ["sc", "no-card"]), "no-card")])
+        self.assertEqual(only(self.layer("banner", policy="pass-through"), "overlay-policy"), [])
+        self.assertEqual([f["id"] for f in only(self.layer("banner", policy="capture-modal-inert"), "overlay-policy")],
                          [expected_id("ui-scene", "overlay-policy", ["veil", "contradicts"])])
 
-    def test_a_pending_layer_is_contract_pending_and_skipped(self):
+    def test_a_layer_role_without_sealed_rows_or_with_disagreeing_rows_is_contract_incomplete(self):
+        def edit(text, rows):
+            return text.replace('[[input_layer]]\nlayer = "banner"', rows + '[[input_layer]]\nlayer = "banner_x"')
+        both = contract(lambda t: edit(t, '[[input_layer]]\nlayer = "banner_y"\nblocks_input_below = true\n'
+                                       'tap_outside_dismisses = false\naccepts_input = true\n'
+                                       'provenance = "spec:ui-rules.md#presentation"\n'))
         semantic, tree = base()
-        tree.node(0, "lv_obj", (0, 90, 159, 159))
-        semantic.append(sem("veil", "dialog", "", (0, 90, 160, 70)))
-        c = contract(lambda t: t.replace('id = "dialog"\nrole = "dialog"\npolicy = "capture-modal-inert"\n'
-                                         'provenance = "spec:ui-rules.md#presentation"',
-                                         'id = "dialog"\nrole = "dialog"\npending = "7"\nprovenance = "spec:P004#11-q7"'))
-        self.assertEqual([f["id"] for f in run(semantic, tree, the_contract=c)], [
-            expected_id("ui-scene", "contract-pending", ["overlay-policy", "layer.dialog"], stateless=True)])
+        tree.node(0, "lv_obj", (0, 180, 319, 239), bg=255)
+        semantic.append(sem("b", "banner", "", (0, 180, 320, 60)))
+        self.assertEqual([f["id"] for f in run(semantic, tree, the_contract=both)],
+                         [expected_id("ui-scene", "contract-incomplete", ["input-layer", "banner"], stateless=True)])
+        none = contract(lambda t: t.replace('layer = "banner"', 'layer = "notice"'))
+        self.assertEqual([f["id"] for f in run(semantic, tree, the_contract=none)],
+                         [expected_id("ui-scene", "contract-incomplete", ["input-layer", "banner"], stateless=True)])
 
     def test_an_undeclared_capturing_node_is_named_by_class_and_box(self):
         semantic, tree = base()
@@ -266,7 +283,7 @@ class OverlapTest(unittest.TestCase):
         semantic, tree = base()
         parent = 0
         if layer:
-            parent = tree.node(0, "lv_obj", (0, 0, 319, 239))
+            parent = tree.node(0, "lv_obj", (0, 0, 319, 239), bg=255)
             semantic.append(sem("sheet", "banner", "", (0, 0, 320, 240)))
         tree.label(parent, "More", (8, y, 207, y + 23))
         semantic.append(sem("more", "text", "More", (8, y, 200, 24), style="body"))

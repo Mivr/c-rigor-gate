@@ -10,14 +10,20 @@ the vocabulary is `scene-vocabulary`; nothing is guessed.
 The association: a scene node with rect R is paired with a rendered node whose box is R (lvprobe's inclusive coords),
 never a screen or layer root. Equal rects are paired by rank: the k-th scene node with rect R (scene pre-order) is the
 k-th rendered node with box R (walk order) when both counts agree; otherwise every scene node with that rect is
-`ambiguous` (`absent` when no rendered node has it). A paired node whose text is not the rendered one is
-`stage-text-mismatch`; a panel's label is its accessible label (ui-look.md 4.3, X6) and is not compared.
+`ambiguous` (`absent` when no rendered node has it), and so are they when any pair is incompatible (a button or key
+needs an `lv_button`, a text or countdown a label, a card a drawn background, a node with an intent a clickable
+object). A paired node whose text is not the rendered one is `stage-text-mismatch`, except a node whose contract
+element declares its label accessible only (ui-look.md 4.3, X6).
 """
 
 import re
 from dataclasses import dataclass
 
-from rigor_lib.ui_contract import STRUCTURAL_ROLES
+from rigor_lib import ui_judge_contract
+
+STRUCTURAL_ROLES = ("root", "panel", "text", "button", "key", "countdown", "scrim", "dialog", "banner", "snackbar")
+LAYER_ROLES = ("scrim", "dialog", "banner", "snackbar")
+CARD_ROLES = ("dialog", "banner", "snackbar")
 
 FLAG_LETTERS = "IDWNSHX"          # inert, disabled, warn, notice, scroll; hidden, selected (not emitted by lockers yet)
 TEXT_ROLES = frozenset(("text", "button", "key", "countdown"))     # the structural roles whose style is typographic
@@ -90,10 +96,10 @@ def read(record, contract):
 def typography(node, contract):
     """(style id, typographic role, problem) of a node of a text-bearing structural role; problem is None, or
     ("style-token", token) when the contract has no such token, or ("style-role", style) when no role names it."""
-    style = contract.style_by_token(node.token)
+    style = ui_judge_contract.style_by_token(contract, node.token)
     if style is None:
         return None, None, ("style-token", node.token)
-    role = contract.role_of_style(style["id"])
+    role = ui_judge_contract.role_of_style(contract, style["id"])
     if role is None:
         return style["id"], None, ("style-role", style["id"])
     return style["id"], role, None
@@ -123,8 +129,21 @@ def _carrier(frame, index, label):
     return len(carriers) == 1, carriers[0] if len(carriers) == 1 else None
 
 
-def associate(scene, frame):
-    """Pair every non-root scene node with a rendered node (rect = box, by rank among equal boxes)."""
+def compatible(node, frame, index):
+    """Whether a rendered node can be the scene node at all (checked for every pair of the rank pairing)."""
+    rendered = frame.nodes[index]
+    if node.role in ("button", "key") and rendered.cls != "lv_button":
+        return False
+    if node.role in PURE_TEXT and index not in frame.labels:
+        return False
+    if node.role in CARD_ROLES and rendered.bg_opa_drawn <= 0:
+        return False
+    return node.intent == "-" or rendered.clickable
+
+
+def associate(scene, frame, accessible=frozenset()):
+    """Pair every non-root scene node with a rendered node (rect = box, by rank among equal boxes, every pair
+    compatible); `accessible`: the keys whose label is accessible only (not compared with the drawn text)."""
     rendered, wanted = {}, {}
     for node in frame.nodes:
         if not frame.is_root(node.index):
@@ -135,12 +154,12 @@ def associate(scene, frame):
     out = Association({}, {}, [], [], {}, set())
     for rect, nodes in wanted.items():
         found = rendered.get(rect, [])
-        if len(found) != len(nodes):
+        if len(found) != len(nodes) or not all(compatible(n, frame, i) for n, i in zip(nodes, found)):
             out.unmatched.extend((n.key, "absent" if not found else "ambiguous") for n in nodes)
             continue
         for node, index in zip(nodes, found):
             out.match[node.key] = index
-            ok, carrier = (True, None) if node.role == "panel" else _carrier(frame, index, node.label)
+            ok, carrier = (True, None) if node.key in accessible else _carrier(frame, index, node.label)
             out.text[node.key] = carrier if ok else None
             if not ok:
                 out.mismatch.append(node.key)

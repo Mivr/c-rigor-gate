@@ -1,18 +1,21 @@
 """The geometric checks of the `ui-scene` judge (U06, P004 3.1, 3.10). They read the scene (O2) for what a node is
-(structural role, intent, flags, contract policies) and the associated rendered nodes (O3) for where it is: the box
+(structural role, intent, flags, the sealed policies) and the associated rendered nodes (O3) for where it is: the box
 (equal to the scene rect by the association), the paint order (lvprobe's walk order), ancestry and the clip chain. A
 scene node without an association takes part in none of them; it is `stage-unmatched` (ui_judge_context).
 
 Probe points P(n) (P004 3.10): the centre and the grid `thresholds.probe_grid_pct` x the same, inside n's box; and the
 disc of `thresholds.probe_disc_radius_mm` around the centre, clipped to n, which needs the panel's ppi
 (`panel.diagonal_in`): while that is pending the disc is `contract-pending` and the grid points are still judged.
-Inertness (R5) is decided on the grid points and, with the ppi, the disc's bounding box inside n.
+
+One cause, one finding: a layer that takes the taps meant for a control is `overlay-policy`'s (it runs first and records
+the capture); `occluded-target` then does not count that layer's nodes over that control.
 """
 
 from fractions import Fraction
 
-from rigor_lib.ui_contract import LAYER_ROLES, ContractPending
+from rigor_lib.ui_contract import ContractPending
 from rigor_lib.ui_judge_stage import inside, intersect
+from rigor_lib.ui_judge_vocab import LAYER_ROLES
 
 
 def probe_points(box, grid):
@@ -35,6 +38,22 @@ def _distance2(point, box):
     dx = max(box[0] - point[0], 0, point[0] - box[2])
     dy = max(box[1] - point[1], 0, point[1] - box[3])
     return dx * dx + dy * dy
+
+
+def free_square(box, obstacles, side):
+    """Whether an axis-aligned square of `side` pixels fits in the inclusive `box` without meeting any obstacle box.
+    Exact: a free square can be slid left and then up until it touches the box or an obstacle, so its top left corner
+    is one of the candidates below."""
+    if side <= 0:
+        return True
+    xs = {box[0]} | {o[2] + 1 for o in obstacles}
+    ys = {box[1]} | {o[3] + 1 for o in obstacles}
+    for x in sorted(xs):
+        for y in sorted(ys):
+            square = (x, y, x + side - 1, y + side - 1)
+            if inside(square, box) and all(intersect(square, o) is None for o in obstacles):
+                return True
+    return False
 
 
 def _cover_region(frame, index):
@@ -61,27 +80,23 @@ class Probe:
         self.box, self.points, self.mid, self.radius = box, probe_points(box, grid), centre(box), radius
 
     def inert_points(self):
-        """The grid points, and with the ppi the corners of the disc's bounding box inside the node (R5)."""
+        """The grid points, and with the ppi the corners of the disc's bounding box inside the node (R7)."""
         if self.radius is None or not self.points:
             return self.points
         r = int(self.radius) + 1
         disc = intersect(self.box, (self.mid[0] - r, self.mid[1] - r, self.mid[0] + r, self.mid[1] + r))
         return self.points + [(disc[0], disc[1]), (disc[2], disc[3])]
 
-    def hits(self, region):
-        """(grid points inside region, whether the disc meets it)."""
-        region = intersect(region, self.box)
-        if region is None:
-            return 0, False
-        grid = sum(1 for x, y in self.points if inside((x, y, x, y), region))
-        return grid, self.radius is not None and _distance2(self.mid, region) <= self.radius * self.radius
+    def disc_meets(self, region):
+        return self.radius is not None and region is not None and \
+            _distance2(self.mid, region) <= self.radius * self.radius
 
 
 def _radius(ctx, report, check):
     try:
         return ctx.contract.mm_to_px(ctx.contract.get("thresholds", "probe_disc_radius_mm"))
     except ContractPending as error:
-        report.pending(check, error, whole=False)
+        report.pending(check, error)
         return None
 
 
@@ -90,87 +105,89 @@ def _probe(ctx, index, radius):
 
 
 def _covering(ctx, node, index):
-    """Rendered nodes that may cover a target: painted later, not its ancestor, and not part of it (a descendant
-    counts only when another scene node is associated with it: a layer's card over the layer's scrim)."""
+    """Rendered nodes that may cover a target: painted later, not its ancestor, not part of it (a descendant counts
+    only when another scene node is associated with it: a layer's card over the layer's scrim), and not part of a
+    layer whose capture of this target overlay-policy reported."""
     frame, own = ctx.frame, {ctx.assoc.text.get(node.key)}
     others = {i for key, i in ctx.assoc.match.items() if key != node.key}
+    owned = ctx.captured.get(node.key, ())
     for other in range(index + 1, len(frame.nodes)):
         if frame.descends(other, index) and (other not in others or other in own):
+            continue
+        if any(frame.descends(other, part) for part in owned):
             continue
         yield other
 
 
 def occluded_target(ctx, report):
-    """O2 + O3: an interactive, not inert node (R5) one of whose probe points lies under a covering node; for a layer
-    (a scrim with an intent: its own tap area is what its card leaves free) when ALL of its grid points do."""
+    """O2 + O3: an interactive, not inert node (R7) one of whose probe points lies under a covering node; for a scrim
+    with an intent (its tap area is what its card leaves free), no free square of the touch floor
+    (`thresholds.touch_min_dp`) in its visible box once the covering nodes are taken out (part `layer-unreachable`)."""
     frame, radius = ctx.frame, _radius(ctx, report, "occluded-target")
+    floor = ctx.contract.get("thresholds", "touch_min_dp")
     for node, index in ctx.matched():
         probe = _probe(ctx, index, radius)
         if not node.interactive or not probe.points or ctx.inert(node, index, probe.inert_points()):
             continue
         report.examined("occluded-target")
-        layer = node.role in LAYER_ROLES
-        covering, covered = [], set()
-        for other in _covering(ctx, node, index):
-            region = _cover_region(frame, other)
-            if region is None:
-                continue
-            region = intersect(region, probe.box)
-            grid = {p for p in probe.points if region is not None and inside((p[0], p[1], p[0], p[1]), region)}
-            disc = not layer and probe.hits(region)[1] if region is not None else False
-            if grid or disc:
-                covering.append(other)
-                covered |= grid
-        if (layer and covered == set(probe.points)) or (not layer and covering):
-            report.add("occluded-target", [node.key], {
-                "stage": "O2+O3", "key": node.key, "part": "layer-unreachable" if layer else "covered",
-                "covered_by": [ctx.name_of(o) for o in covering], "grid_points_covered": len(covered),
-                "grid_points": len(probe.points)}, target=node.key, records=[node.raw] + ctx.records(index, *covering))
+        regions = [(o, _cover_region(frame, o)) for o in _covering(ctx, node, index)]
+        regions = [(o, intersect(r, probe.box)) for o, r in regions if r is not None]
+        regions = [(o, r) for o, r in regions if r is not None]
+        if node.role in LAYER_ROLES:
+            visible = frame.visible_box(index)
+            if visible is not None and not free_square(visible, [r for _o, r in regions], floor):
+                _occluded(ctx, report, node, index, "layer-unreachable", [o for o, _r in regions], len(probe.points))
+            continue
+        covering = [o for o, r in regions if probe.disc_meets(r)
+                    or any(inside((x, y, x, y), r) for x, y in probe.points)]
+        if covering:
+            hits = sum(1 for x, y in probe.points if any(inside((x, y, x, y), r) for _o, r in regions))
+            _occluded(ctx, report, node, index, "covered", covering, hits)
 
 
-def _policy(ctx, report, node):
-    """The contract policy of a layer node, or None (pending or incomplete: reported, the layer is skipped)."""
-    try:
-        policy = ctx.layer_policy(node)
-    except ContractPending as error:
-        report.pending("overlay-policy", error, whole=False)
-        return None
-    if policy is None:
-        card = ctx.card_of(node) if node.role == "scrim" else None
-        report.incomplete("layer", node.role if card is None else "%s/%s" % (node.role, card.role))
-    return policy
+def _occluded(ctx, report, node, index, part, covering, hits):
+    report.add("occluded-target", [node.key], {
+        "stage": "O2+O3", "key": node.key, "part": part, "covered_by": [ctx.name_of(o) for o in covering],
+        "grid_points_covered": hits}, target=node.key, records=[node.raw] + ctx.records(index, *covering))
 
 
 def overlay_policy(ctx, report):
-    """O2 + O3: (a) a layer (scrim, dialog, banner, snackbar; a card with a scrim is judged through its scrim) whose
-    contract policy captures input, over an enabled node with an intent painted below it, unless the policy is
-    capture-modal-inert and the node is inert (R5); (b) a policy the scene states that is not the contract's; (c) a
-    clickable rendered node in no layer and not part of a scene node, painted over an interactive node."""
+    """O2 + O3, per layer with a sealed policy: (a) capture-modal-inert over an enabled control with an intent painted
+    below it, unless the control is inert (R7): part `captures`, basis `sealed`; (b) pass-through, but the layer's
+    rendered node or card is clickable over an interactive, not inert control: part `captures`, basis `rendered`;
+    (c) a policy the scene states that is not the sealed one: part `contradicts`; (d) a clickable rendered node in no
+    layer and not part of any scene node over an interactive node: part `undeclared`; (e) a scrim the scene does not
+    follow with a card, so that no policy applies: part `no-card`."""
     frame, radius = ctx.frame, _radius(ctx, report, "overlay-policy")
     candidates = [(n, i) for n, i in ctx.matched() if n.intent != "-" and n.enabled and "D" not in n.flags]
-    for layer_node, layer in ctx.layer_nodes():
-        if layer_node.role != "scrim" and ctx.scrim_of(layer_node) is not None:
-            continue
-        report.examined("overlay-policy")
-        policy = _policy(ctx, report, layer_node)
+    for layer_node, layer, parts, policy in ctx.layers():
+        if policy is None and layer_node.role == "scrim" and ctx.card_of(layer_node) is None:
+            report.add("overlay-policy", [layer_node.key, "no-card"],
+                       {"stage": "O2", "layer": layer_node.key, "part": "no-card"}, target=layer_node.key,
+                       records=[layer_node.raw])
         if policy is None:
             continue
+        report.examined("overlay-policy")
         if layer_node.input_policy not in ("-", policy):
             report.add("overlay-policy", [layer_node.key, "contradicts"],
                        {"stage": "O2", "layer": layer_node.key, "part": "contradicts", "scene": layer_node.input_policy,
                         "contract": policy}, target=layer_node.key, records=[layer_node.raw])
-        if policy == "pass-through":
-            continue
         for node, index in candidates:
-            if index > layer or frame.related(index, layer) \
-                    or intersect(frame.nodes[index].box, frame.nodes[layer].box) is None:
+            if index in parts:                  # the layer's own scrim or card
                 continue
-            if policy == "capture-modal-inert" and ctx.inert(node, index, _probe(ctx, index, radius).inert_points()):
+            area = [p for p in parts if p > index and not frame.related(index, p)
+                    and intersect(frame.visible_box(p), frame.nodes[index].box) is not None
+                    and (policy != "pass-through" or frame.nodes[p].clickable)]
+            if not area or ctx.inert(node, index, _probe(ctx, index, radius).inert_points()):
                 continue
+            if policy == "pass-through" and not node.interactive:
+                continue
+            ctx.captured.setdefault(node.key, []).extend(parts)
             report.add("overlay-policy", [layer_node.key, node.key, "captures"],
                        {"stage": "O2+O3", "layer": layer_node.key, "policy": policy, "key": node.key,
-                        "part": "captures"}, target="%s/%s" % (layer_node.key, node.key),
-                       records=[layer_node.raw, node.raw] + ctx.records(layer, index))
+                        "part": "captures", "basis": "sealed" if policy != "pass-through" else "rendered"},
+                       target="%s/%s" % (layer_node.key, node.key),
+                       records=[layer_node.raw, node.raw] + ctx.records(*area, index))
     _undeclared(ctx, report)
 
 
@@ -197,14 +214,14 @@ def target_spacing(ctx, report):
     layer's, judged by overlay-policy and occluded-target) whose boxes share a pixel, unless
     `thresholds.hit_overlap_allowed`; once the panel is sealed, an edge-to-edge gap below `spacing_hard_mm` (error) or
     `spacing_recommended_mm` (info)."""
-    contract, frame = ctx.contract, ctx.frame
+    contract = ctx.contract
     overlap_allowed = contract.get("thresholds", "hit_overlap_allowed")
     radius = _radius(ctx, report, "target-spacing")
     try:
         hard = contract.mm_to_px(contract.get("thresholds", "spacing_hard_mm"))
         soft = contract.mm_to_px(contract.get("thresholds", "spacing_recommended_mm"))
     except ContractPending as error:
-        report.pending("target-spacing", error, whole=False)
+        report.pending("target-spacing", error)
         hard = soft = None
     targets = sorted(((n, i) for n, i in ctx.matched() if n.interactive and n.role not in LAYER_ROLES
                       and not ctx.inert(n, i, _probe(ctx, i, radius).inert_points())), key=lambda p: p[0].key)

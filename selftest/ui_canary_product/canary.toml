@@ -217,22 +217,23 @@ shown_on = ["main"]
 marks = ["bg", "style"]
 provenance = "spec:ui-rules.md#language"
 
+# The input layers by structural role (U06 R8: blocks_input_below = capture-modal-inert, else pass-through).
 [[input_layer]]
-layer = "screen"
-blocks_input_below = false
-tap_outside_dismisses = false
-accepts_input = true
-provenance = "spec:ui-rules.md#presentation"
-[[input_layer]]
-layer = "modal"
+layer = "dialog"
 blocks_input_below = true
 tap_outside_dismisses = false
 accepts_input = true
 provenance = "spec:ui-rules.md#presentation"
 [[input_layer]]
-layer = "dismissable"
+layer = "snackbar"
 blocks_input_below = false
 tap_outside_dismisses = true
+accepts_input = true
+provenance = "spec:ui-rules.md#presentation"
+[[input_layer]]
+layer = "banner"
+blocks_input_below = false
+tap_outside_dismisses = false
 accepts_input = true
 provenance = "spec:ui-rules.md#presentation"
 
@@ -283,40 +284,6 @@ role = "small_button_label"
 scope = "single_line"
 provenance = "spec:ui-look.md#5"
 
-# The input policy of each layer role.
-[[layer]]
-id = "dialog"
-role = "dialog"
-policy = "capture-modal-inert"
-provenance = "spec:ui-rules.md#presentation"
-[[layer]]
-id = "dialog-scrim"
-role = "scrim"
-card = "dialog"
-policy = "capture-modal-inert"
-provenance = "spec:ui-rules.md#presentation"
-[[layer]]
-id = "banner"
-role = "banner"
-policy = "pass-through"
-provenance = "spec:ui-rules.md#presentation"
-[[layer]]
-id = "banner-scrim"
-role = "scrim"
-card = "banner"
-policy = "pass-through"
-provenance = "spec:ui-rules.md#presentation"
-[[layer]]
-id = "snackbar"
-role = "snackbar"
-policy = "capture-and-dismiss"
-provenance = "spec:ui-rules.md#presentation"
-[[layer]]
-id = "snackbar-scrim"
-role = "scrim"
-card = "snackbar"
-policy = "capture-and-dismiss"
-provenance = "spec:ui-rules.md#presentation"
 
 # The scene keys of the toggle group's members.
 [[element]]
@@ -328,36 +295,37 @@ id = "lang_en"
 key = "lang_en"
 provenance = "spec:ui-look.md#4.2"
 
-# The canary draws every style with Montserrat 14: a line of 16 px (v-shrunk draws one text with a 10 px font).
+# The canary draws every style with Montserrat 14: a line of 16 px (v-shrunk draws one text with a 10 px font); a
+# baseline of the canary itself.
 [[style_line]]
 style = "title"
 line_height_px = 16
-provenance = "oracle:the canary app, Montserrat 14"
+provenance = "product-baseline:abd8895"
 [[style_line]]
 style = "body"
 line_height_px = 16
-provenance = "oracle:the canary app, Montserrat 14"
+provenance = "product-baseline:abd8895"
 [[style_line]]
 style = "caption"
 line_height_px = 16
-provenance = "oracle:the canary app, Montserrat 14"
+provenance = "product-baseline:abd8895"
 [[style_line]]
 style = "btn"
 line_height_px = 16
-provenance = "oracle:the canary app, Montserrat 14"
+provenance = "product-baseline:abd8895"
 [[style_line]]
 style = "lang_on"
 line_height_px = 16
-provenance = "oracle:the canary app, Montserrat 14"
+provenance = "product-baseline:abd8895"
 [[style_line]]
 style = "lang_off"
 line_height_px = 16
-provenance = "oracle:the canary app, Montserrat 14"
+provenance = "product-baseline:abd8895"
 [[style_line]]
 style = "small_body"
 line_height_px = 16
-provenance = "oracle:the canary app, Montserrat 14"
+provenance = "product-baseline:abd8895"
 [[style_line]]
 style = "big_body"
 line_height_px = 16
-provenance = "oracle:the canary app, Montserrat 14"
+provenance = "product-baseline:abd8895"

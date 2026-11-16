@@ -122,7 +122,8 @@ static bool escape(char *out, size_t cap, const char *in)
 }
 
 /* key, role, label, x, y, w, h, enabled, intent:arg, flags, style token, and `-` for importance, input_policy and
- * wrap_policy (the judges take them from the contract), as the real lockers adapter writes them. */
+ * wrap_policy (the judges take them from the contract), as the real lockers adapter writes them; V_WRAP_CONTRA states
+ * a wrap scope. */
 static bool node_line(unsigned i, uim_buf_t *out)
 {
     canary_node_t node;
@@ -131,9 +132,9 @@ static bool node_line(unsigned i, uim_buf_t *out)
     if (!canary_node(i, &node) || !escape(text, sizeof text, node.text)) {
         return false;
     }
-    n = snprintf(out->data + out->len, out->cap - out->len, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%u\t-\t-\t-\n",
+    n = snprintf(out->data + out->len, out->cap - out->len, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%u\t-\t-\t%s\n",
                  node.key, node.role, text, (int)node.x, (int)node.y, (int)node.w, (int)node.h, node.enabled ? 1 : 0,
-                 node.intent, node.flags, node.token);
+                 node.intent, node.flags, node.token, node.wrap != NULL ? node.wrap : "-");
     if (n <= 0 || (size_t)n >= out->cap - out->len) {
         return false;
     }

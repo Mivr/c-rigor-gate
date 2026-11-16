@@ -6,7 +6,8 @@
 
 /* The variants (the intent that selects each, docs/ui-judges.md "Canaries"). */
 enum { V_CLEAN, V_OCCLUDED, V_OVERLAY, V_SMALL, V_SPACING, V_BOUNDS, V_OVERLAP, V_FONT, V_HIERARCHY, V_RAW, V_WRAP,
-       V_OVERFLOW, V_CLIPPED, V_DOTS, V_UNMEASURABLE, V_GLYPH, V_UNMATCHED, V_TOGGLE, V_TEXT, V_SHRUNK, V_MODAL };
+       V_OVERFLOW, V_CLIPPED, V_DOTS, V_UNMEASURABLE, V_GLYPH, V_UNMATCHED, V_TOGGLE, V_TEXT, V_SHRUNK, V_MODAL,
+       V_FAKE_INERT, V_UNREACHABLE, V_WRAP_CONTRA };
 enum { N_TITLE, N_BODY, N_OK, N_BACK, N_BG, N_EN };
 /* Style tokens of canary.toml: title 1, body 2, caption 3, button 5, language on 6 / off 7, a small and a big body. */
 enum { T_TITLE = 1, T_BODY = 2, T_CAPTION = 3, T_BUTTON = 5, T_LANG_ON = 6, T_LANG_OFF = 7, T_SMALL = 8, T_BIG = 9 };
@@ -43,32 +44,39 @@ static const lv_font_t g_font_small = {
 static const char *const g_titles[CANARY_VARIANTS] = {
     "Canary", "Canary 1", "Canary 2", "Canary 3", "Canary 4", "Canary 5", "Canary 6", "Canary 7", "Canary 8",
     "Canary 9", "Canary 10", "Canary 11 title far too long for one line", "Canary 12", "Canary 13", "Canary 14",
-    "Canary 15", "Canary 16", "Canary 17", "Canary 18", "Canary 19", "Canary 20",
+    "Canary 15", "Canary 16", "Canary 17", "Canary 18", "Canary 19", "Canary 20", "Canary 21", "Canary 22",
+    "Canary 23",
 };
 
 /* The clean scene: a title, a body text, two buttons and the BG/EN switch, every rect in display pixels. */
 static const canary_node_t g_base[] = {
-    {"title", "text", "Canary", 8, 8, 200, 24, "-", "-", T_TITLE, CANARY_LABEL, true, false, false, false},
-    {"body", "text", "All clear", 8, 40, 200, 24, "-", "-", T_BODY, CANARY_LABEL, true, false, false, false},
-    {"ok", "button", "OK", 8, 100, 100, 50, "100:0", "-", T_BUTTON, CANARY_BUTTON, true, false, false, false},
-    {"back", "button", "Back", 200, 100, 100, 50, "101:0", "-", T_BUTTON, CANARY_BUTTON, true, false, false, false},
-    {"lang_bg", "button", "BG", 216, 8, 48, 48, "8:0", "-", T_LANG_ON, CANARY_BUTTON, true, false, false, false},
-    {"lang_en", "button", "EN", 272, 8, 48, 48, "8:1", "-", T_LANG_OFF, CANARY_BUTTON, true, false, false, false},
+    {"title", "text", "Canary", 8, 8, 200, 24, "-", "-", T_TITLE, CANARY_LABEL, true, 0, false, false, NULL},
+    {"body", "text", "All clear", 8, 40, 200, 24, "-", "-", T_BODY, CANARY_LABEL, true, 0, false, false, NULL},
+    {"ok", "button", "OK", 8, 100, 100, 50, "100:0", "-", T_BUTTON, CANARY_BUTTON, true, 0, false, false, NULL},
+    {"back", "button", "Back", 200, 100, 100, 50, "101:0", "-", T_BUTTON, CANARY_BUTTON, true, 0, false, false, NULL},
+    {"lang_bg", "button", "BG", 216, 8, 48, 48, "8:0", "-", T_LANG_ON, CANARY_BUTTON, true, 0, false, false, NULL},
+    {"lang_en", "button", "EN", 272, 8, 48, 48, "8:1", "-", T_LANG_OFF, CANARY_BUTTON, true, 0, false, false, NULL},
 };
-static const canary_node_t g_cover = {"cover", "panel", "", 60, 90, 80, 70, "-", "-", 0, CANARY_PANEL, true, true,
-                                      false, false};
-static const canary_node_t g_veil = {"veil", "dialog", "", 0, 90, 160, 70, "-", "-", 0, CANARY_PANEL, true, false,
-                                     false, false};
-static const canary_node_t g_edge = {"edge", "panel", "", 280, 200, 80, 30, "-", "-", 0, CANARY_PANEL, true, true,
-                                     false, false};
+static const canary_node_t g_cover = {"cover", "panel", "", 60, 90, 80, 70, "-", "-", 0, CANARY_PANEL, true, 255,
+                                      false, false, NULL};
+static const canary_node_t g_veil = {"veil", "dialog", "", 0, 90, 160, 70, "-", "-", 0, CANARY_PANEL, true, 40, false,
+                                     false, NULL};   /* a modal card that is not clickable: it shields nothing */
+static const canary_node_t g_edge = {"edge", "panel", "", 280, 200, 80, 30, "-", "-", 0, CANARY_PANEL, true, 255,
+                                     false, false, NULL};
 static const canary_node_t g_ghost = {"ghost", "button", "", 250, 170, 60, 60, "102:0", "-", T_BUTTON, CANARY_GHOST,
-                                      true, false, false, false};
-static const canary_node_t g_blocker = {"blocker", "panel", "", 0, 0, 320, 240, "-", "I", 0, CANARY_PANEL, false,
-                                        false, false, false};
+                                      true, 0, false, false, NULL};
+static const canary_node_t g_scrim = {"scrim", "scrim", "", 0, 0, 320, 240, "104:0", "-", 0, CANARY_PANEL, true, 82,
+                                      true, false, NULL};   /* dimmed and clickable: the background is inert (R7) */
 static const canary_node_t g_dialog = {"dialog", "dialog", "", 60, 60, 200, 120, "-", "-", 0, CANARY_PANEL, true,
-                                       true, true, false};
+                                       255, true, false, NULL};
 static const canary_node_t g_close = {"close", "button", "Close", 100, 120, 100, 50, "103:0", "-", T_BUTTON,
-                                      CANARY_BUTTON, true, false, false, true};
+                                      CANARY_BUTTON, true, 0, false, true, NULL};
+static const canary_node_t g_blocker = {"blocker", "panel", "", 0, 0, 320, 240, "-", "I", 0, CANARY_PANEL, false, 0,
+                                        false, false, NULL};   /* a bare inert panel: grants nothing */
+static const canary_node_t g_bscrim = {"bscrim", "scrim", "", 120, 170, 200, 60, "105:0", "-", 0, CANARY_PANEL, true,
+                                       0, true, false, NULL};
+static const canary_node_t g_bcard = {"bcard", "banner", "", 120, 170, 200, 60, "-", "-", 0, CANARY_PANEL, true, 255,
+                                      true, false, NULL};   /* the card has its scrim's rectangle: no tap reaches the scrim */
 
 static void add(canary_node_t node)
 {
@@ -82,6 +90,7 @@ static void add(canary_node_t node)
 static void body_of(unsigned v, canary_node_t *body)
 {
     body->y = v == V_OVERLAP ? 20 : body->y;
+    body->wrap = v == V_WRAP_CONTRA ? "single_line" : NULL;
     body->token = v == V_FONT ? T_SMALL : v == V_HIERARCHY ? T_BIG : v == V_WRAP ? T_CAPTION : body->token;
     body->text = v == V_RAW ? "" : v == V_DOTS ? "Body text that is long" : v == V_GLYPH ? "\xd0\x99"
                  : v == V_SHRUNK ? "xx" : body->text;
@@ -111,9 +120,15 @@ static void scene_of(unsigned v)
     } else if (v == V_UNMATCHED) {
         add(g_ghost);
     } else if (v == V_MODAL) {
-        add(g_blocker);
+        add(g_scrim);
         add(g_dialog);
         add(g_close);
+    } else if (v == V_FAKE_INERT) {
+        add(g_cover);
+        add(g_blocker);
+    } else if (v == V_UNREACHABLE) {
+        add(g_bscrim);
+        add(g_bcard);
     }
 }
 
@@ -163,9 +178,9 @@ static lv_obj_t *build_panel(lv_obj_t *screen, const canary_node_t *n)
     lv_obj_t *panel = lv_obj_create(screen);
     lv_obj_remove_style_all(panel);
     (void)place(panel, n, 0, 0);
-    if (n->opaque) {
+    if (n->opa > 0u) {
         lv_obj_set_style_bg_color(panel, lv_color_hex(0x404040u), 0);
-        lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_opa(panel, n->opa, 0);
     }
     lv_obj_set_clickable(panel, n->clickable);
     return panel;
@@ -189,7 +204,7 @@ static void build(void)
             build_button(inside ? card : screen, n, inside ? card_node->x : 0, inside ? card_node->y : 0);
         } else if (n->kind == CANARY_PANEL) {
             lv_obj_t *panel = build_panel(screen, n);
-            if (n->opaque && n->clickable) {
+            if (n->opa == LV_OPA_COVER && n->clickable) {
                 card = panel;
                 card_node = n;
             }

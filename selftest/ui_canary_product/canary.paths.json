@@ -84,6 +84,18 @@
   [
    "open 1000000000 7",
    "v-modal"
+  ],
+  [
+   "open 1000000000 7",
+   "v-fake-inert"
+  ],
+  [
+   "open 1000000000 7",
+   "v-unreachable"
+  ],
+  [
+   "open 1000000000 7",
+   "v-wrap-contra"
   ]
  ]
 }

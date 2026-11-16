@@ -145,7 +145,7 @@ class HierarchyTest(unittest.TestCase):
                      'touch_dp_min = 0\nprovenance = "spec:ui-look.md#4.1"\n[[role_wrap]]\nrole = "extra"\n'
                      'scope = "default"\nprovenance = "spec:ui-look.md#5"\n[[role_wrap]]\nrole = "caption"\n'
                      'scope = "default"\nprovenance = "spec:ui-look.md#5"\n'
-                     '[[style_line]]\nstyle = "extra"\nline_height_px = 16\nprovenance = "oracle:test"\n')
+                     '[[style_line]]\nstyle = "extra"\nline_height_px = 16\nprovenance = "product-baseline:abd8895"\n')
         semantic, tree = base()
         semantic += [sem("cap", "text", "c", (8, 70, 50, 16), style="caption"),
                      sem("x", "text", "x", (60, 70, 50, 16), style=12)]
@@ -191,25 +191,24 @@ class TextTest(unittest.TestCase):
         self.assertEqual(self.body("x"), [])
         self.assertEqual(self.body("", flags="H"), [])
 
-    def test_a_role_without_a_wrap_scope_is_wrap_policy_undeclared_once_per_role(self):
+    def test_a_role_without_a_wrap_scope_is_contract_incomplete_once_per_role(self):
         found = self.body("Body text", style="caption")
-        self.assertEqual(sorted(f["id"] for f in found), sorted([
-            expected_id("ui-scene", "wrap-policy-undeclared", ["role", "caption"], stateless=True),
-            expected_id("ui-fit", "contract-incomplete", ["role-wrap", "caption"], stateless=True)]))
+        self.assertEqual([(f["id"], f["state"]) for f in found],
+                         [(expected_id("ui-scene", "contract-incomplete", ["role-wrap", "caption"], stateless=True), None)])
         self.assertEqual(self.body("Body text", wrap="default"), [])
 
-    def test_a_scope_in_the_scene_that_is_not_the_contracts_contradicts(self):
-        self.assertEqual([f["id"] for f in self.body("Body text", wrap="single_line")],
-                         [expected_id("ui-scene", "wrap-policy-undeclared", ["body", "contradicts"])])
-
-    def test_a_pending_wrap_row_is_contract_pending_for_both_judges(self):
-        c = contract(lambda t: t.replace('role = "body"\nscope = "default"\nprovenance = "spec:ui-look.md#5"',
-                                         'role = "body"\npending = "7"\nprovenance = "spec:P004#11-q7"'))
+    def test_an_element_scope_wins_over_the_roles_and_gives_one_to_a_role_without_one(self):
+        c = contract(lambda t: t + '[[element]]\nid = "the_body"\nkey = "body"\nwrap = "single_line"\n'
+                     'provenance = "spec:ui-look.md#L296"\n')
         semantic, tree = base()
-        found = [f for f in run(semantic, tree, the_contract=c)]
-        self.assertEqual(sorted(f["id"] for f in found), sorted([
-            expected_id("ui-scene", "contract-pending", ["wrap-policy-undeclared", "role_wrap.body"], stateless=True),
-            expected_id("ui-fit", "contract-pending", ["text-overflow", "role_wrap.body"], stateless=True)]))
+        semantic[1] = sem("body", "text", "Body text", (8, 40, 200, 24), style="caption", wrap="single_line")
+        self.assertEqual(run(semantic, tree, the_contract=c), [])
+        semantic[1] = sem("body", "text", "Body text", (8, 40, 200, 24), style="body", wrap="default")
+        self.assertEqual([f["observed"]["contract"] for f in run(semantic, tree, the_contract=c)], ["single_line"])
+
+    def test_a_scope_in_the_scene_that_is_not_the_contracts_contradicts(self):
+        self.assertEqual([(f["id"], f["observed"]["part"]) for f in self.body("Body text", wrap="single_line")],
+                         [(expected_id("ui-scene", "wrap-policy-undeclared", ["body", "contradicts"]), "contradicts")])
 
 
 class ToggleTest(unittest.TestCase):

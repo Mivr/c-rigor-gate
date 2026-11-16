@@ -2,7 +2,7 @@
 # Self-test of the ui-scene and ui-fit judges (U06, docs/ui-judges.md), called by selftest/ui.sh: the canary app in
 # selftest/ui_canary_product (speaking the scene vocabulary of the real lockers kiosk) is built as a probe in release
 # and san; `rigor ui-explore --judges ui-scene,ui-fit --today` replays the clean state, one state per check and a
-# correct modal dialog (canary.paths.json). Per check: exactly its findings, the ids recomputed here from the identity,
+# correct modal dialog whose dimmed clickable scrim makes the background inert (canary.paths.json). Per check: exactly its findings, the ids recomputed here from the identity,
 # in its canary state, and nothing else there; nothing in the clean state nor under the modal dialog; every check
 # examined nodes (checks-examined) and none is check-vacuous; the summary counts the judges' findings; byte-identical
 # findings across two runs and across release and san; every finding replays to its id; the contract's exceptions
@@ -50,7 +50,7 @@ begin "c_ui_probe builds the probe of the canary app in release and in san"
 build_out probe_rel "$REL" "$P:probe"
 build_out probe_san "$SAN" "$P:probe"
 
-begin "the judges on the canary: per check exactly its finding, the id recomputed, in its canary state and nothing else there; nothing in the clean state nor in the correct modal dialog; every check examined nodes and none is vacuous"
+begin "the judges on the canary: per check exactly its finding, the id recomputed, in its canary state and nothing else there; nothing in the clean state nor under the correct modal dialog; every check examined nodes and none is vacuous"
 judge rel.1 1 "$probe_rel" "$CONTRACT" --evidence "$out/ev.rel.1" --summary "$out/j.rel.1.sum"
 python3 -I - "$out/j.rel.1.json" "$PATHS" "$out/j.rel.1.sum" <<'PY' || fail "$CUR: the canary findings" "$out/j.rel.1.txt"
 import hashlib, json, sys
@@ -68,9 +68,9 @@ WANT = {
     "v-font": [("ui-scene", "font-below-min", ["body"], False)],
     "v-hierarchy": [("ui-scene", "hierarchy-violated", ["rank"], False)],
     "v-raw": [("ui-scene", "raw-text", ["body", "empty"], False)],
-    # a role without a wrap scope: the contract's gap, once per role per run (and ui-fit cannot judge its overflow)
-    "v-wrap": [("ui-scene", "wrap-policy-undeclared", ["role", "caption"], True),
-               ("ui-fit", "contract-incomplete", ["role-wrap", "caption"], True)],
+    # a role the contract gives no wrap scope: the contract's gap, once per role per run (R9)
+    "v-wrap": [("ui-scene", "contract-incomplete", ["role-wrap", "caption"], True)],
+    "v-wrap-contra": [("ui-scene", "wrap-policy-undeclared", ["body", "contradicts"], False)],
     "v-overflow": [("ui-fit", "text-overflow", ["title"], False)],
     "v-clipped": [("ui-fit", "text-clipped", ["ok"], False)],
     "v-dots": [("ui-fit", "full-string-shown", ["body"], False)],
@@ -81,7 +81,12 @@ WANT = {
     "v-text": [("ui-scene", "stage-text-mismatch", ["scene", "body"], False)],
     "v-shrunk": [("ui-fit", "font-shrunk", ["body"], False)],
     "v-modal": [],
+    "v-fake-inert": [("ui-scene", "occluded-target", ["ok"], False)],
+    "v-unreachable": [("ui-scene", "occluded-target", ["bscrim"], False)],
 }
+# the part each canary finding must have (a flip of the part is a different defect)
+PARTS = {"v-occluded": "covered", "v-fake-inert": "covered", "v-unreachable": "layer-unreachable",
+         "v-overlay": "captures", "v-wrap-contra": "contradicts"}
 def fid(gate, check, identity, key, stateless):
     data = json.dumps([gate, check, identity if stateless else [identity, key]], sort_keys=True,
                       separators=(",", ":")).encode() + b"\n"
@@ -92,7 +97,7 @@ assert sorted((f["gate"], f["check"], f["severity"]) for f in run_level) == \
     [("ui-fit", "checks-examined", "info"), ("ui-scene", "checks-examined", "info")], run_level
 for f in run_level:
     assert all(n > 0 for n in f["observed"]["totals"].values()), f["observed"]["totals"]
-    assert f["observed"]["states"] == 21
+    assert f["observed"]["states"] == 24
 found = [f for f in found if f not in run_level]
 assert not [f for f in found if f["path"] == paths[0]], [f["id"] for f in found if f["path"] == paths[0]]
 keys = {}
@@ -109,6 +114,8 @@ for path in paths[1:]:
     got = sorted((f["gate"], f["check"], f["id"]) for f in here)
     expected = sorted((g, c, fid(g, c, i, key, st)) for g, c, i, st in WANT[event])
     assert got == expected, "%s: got %r, wanted %r" % (event, got, expected)
+    if event in PARTS:
+        assert [f["observed"]["part"] for f in here] == [PARTS[event]], (event, [f["observed"] for f in here])
 assert len(set(v for v in keys.values() if v)) == len([v for v in keys.values() if v]), "two canary states share a key"
 assert len(found) == sum(len(w) for w in WANT.values()), "%d findings" % len(found)
 assert {f["severity"] for f in found} == {"error"}
@@ -136,7 +143,7 @@ for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit
   grep -q "/$ident\"" "$out/rp.json" || fail "$CUR: the replay of $ident does not give $ident" "$out/rp.txt"
   n=$((n + 1))
 done
-[ "$n" = 22 ] || fail "$CUR: $n findings replayed, wanted 22"
+[ "$n" = 24 ] || fail "$CUR: $n findings replayed, wanted 24"
 echo "  $n findings replayed to their ids"
 
 begin "exceptions against --today: a live one turns exactly its finding into info with its expiry; an unused one is exception-unused, an error when its target was visited and info when not; an expired one is an error and changes nothing"

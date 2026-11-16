@@ -138,17 +138,20 @@ class RunLevelTest(unittest.TestCase):
         self.assertEqual(list(scene["observed"]["per_state"]), ["k" * 64])
         self.assertEqual(vacuous, [("ui-scene", "overlay-policy")])
 
-    def test_a_check_that_examined_nothing_and_applies_is_vacuous_one_whose_layers_were_pending_is_not(self):
+    def test_a_check_that_reached_no_verdict_and_applies_is_vacuous(self):
         _examined, vacuous = self.run_level(*base())
         self.assertEqual(vacuous, [("ui-scene", "overlay-policy"), ("ui-scene", "toggle-group-indistinct")])
         semantic, tree = base(lang=True)
-        tree.node(0, "lv_obj", (0, 180, 319, 239))
+        tree.node(0, "lv_obj", (0, 180, 319, 239), bg=255)
         semantic.append(sem("b", "banner", "", (0, 180, 320, 60)))
-        c = contract(lambda t: t.replace('id = "banner"\nrole = "banner"\npolicy = "pass-through"',
-                                         'id = "banner"\nrole = "banner"\npending = "7"'))
-        examined, vacuous = self.run_level(semantic, tree, the_contract=c)
+        examined, vacuous = self.run_level(semantic, tree)
         self.assertEqual((examined[("ui-scene", "checks-examined")]["observed"]["totals"]["overlay-policy"], vacuous),
                          (1, []))
+        # a layer whose sealed rows are missing reaches no verdict: the layer is contract-incomplete, the check vacuous
+        none = contract(lambda t: t.replace('layer = "banner"', 'layer = "notice"'))
+        examined, vacuous = self.run_level(semantic, tree, the_contract=none)
+        self.assertEqual((examined[("ui-scene", "checks-examined")]["observed"]["totals"]["overlay-policy"], vacuous),
+                         (0, [("ui-scene", "overlay-policy")]))
 
     def test_a_scene_without_any_target_leaves_the_target_checks_vacuous(self):
         semantic = [line.replace("\t1:0\t", "\t-\t") for line in base()[0]]
@@ -208,11 +211,13 @@ class CliTest(h.ExploreCase):
         self.assertEqual(first, (self.tmp / "b.json").read_bytes())
         found = [f for f in h.findings(self.tmp / "a.json") if f["gate"] in ("ui-scene", "ui-fit")
                  and f["check"] not in RUN_LEVEL]
-        self.assertEqual({f["check"] for f in found}, {"scene-vocabulary"})
-        self.assertEqual(sorted({f["observed"]["key"] for f in found}), ["button", "notice", "title"])
+        # its clickable button is in no scene node the judges can read: a control the scene does not know
+        self.assertEqual({f["check"] for f in found}, {"scene-vocabulary", "stage-unowned-target"})
+        self.assertEqual(sorted({f["observed"]["key"] for f in found if f["check"] == "scene-vocabulary"}),
+                         ["button", "notice", "title"])
         import json
         counts = json.loads((self.tmp / "s.json").read_text())["findings"]
-        self.assertEqual(counts["ui-scene.scene-vocabulary"], len(found))
+        self.assertEqual(counts["ui-scene.scene-vocabulary"], len([f for f in found if f["check"] == "scene-vocabulary"]))
         self.assertEqual(counts["ui-scene.checks-examined"], 1)
 
 

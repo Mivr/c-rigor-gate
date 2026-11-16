@@ -10,8 +10,8 @@ text, never by walk index or exploration order. `observed` holds gate text, numb
 Exceptions: a live `[[exception]]` row (its expiry compared with `--today`, never the wall clock) turns exactly the
 finding with its check and target into `info`. At the end of the run: `exception-unused` for an exception that turned
 nothing (error when its target was visited or it expired, info otherwise), one `checks-examined` (info) per judge with
-the nodes each check examined per state, and `check-vacuous` (error) for a check that applies to the contract and
-examined nothing in any state.
+the verdicts each check reached per state (a node skipped for a pending or missing contract value is no verdict), and
+`check-vacuous` (error) for a check that applies to the contract and reached no verdict in any state.
 """
 
 from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_scene
@@ -24,12 +24,12 @@ SCENE_NODE_CHECKS = ("occluded-target", "overlay-policy", "touch-target-small", 
                      "toggle-group-indistinct")
 FIT_NODE_CHECKS = ("text-overflow", "text-clipped", "full-string-shown", "fit-unmeasurable", "glyph-missing",
                    "font-shrunk")
-COMMON = ("stage-unmatched", "stage-text-mismatch", "scene-vocabulary", "contract-incomplete", "contract-pending",
+COMMON = ("stage-unmatched", "stage-text-mismatch", "stage-unowned-target", "scene-vocabulary", "contract-incomplete", "contract-pending",
           "exception-unused", "checks-examined", "check-vacuous")
 NODE_CHECKS = {"ui-scene": SCENE_NODE_CHECKS, "ui-fit": FIT_NODE_CHECKS}
 GATES = {gate: checks + COMMON for gate, checks in NODE_CHECKS.items()}
 ORDER = ("ui-scene", "ui-fit")          # the stage findings belong to the first selected gate in this order
-LAYERS = {"stage-unmatched": "L3", "stage-text-mismatch": "L3", "font-shrunk": "L3"}
+LAYERS = {"stage-unmatched": "L3", "stage-text-mismatch": "L3", "stage-unowned-target": "L3", "font-shrunk": "L3"}
 META = frozenset(("scene-vocabulary", "contract-incomplete", "contract-pending", "exception-unused", "checks-examined",
                   "check-vacuous"))
 
@@ -49,7 +49,7 @@ def applies(check, contract):
     if check in ("touch-target-small", "occluded-target", "target-spacing"):
         return any(row["touch_dp_min"] > 0 for row in contract.rows("role_min"))
     if check == "overlay-policy":
-        return bool(contract.rows("layer"))
+        return bool(contract.rows("input_layer"))
     if check == "toggle-group-indistinct":
         return bool(contract.rows("toggle_group"))
     return bool(contract.rows("role"))
@@ -114,10 +114,8 @@ class Reporter:
     def examined(self, check, count=1):
         self.counts[check] = self.counts.get(check, 0) + count
 
-    def pending(self, check, error, whole=True):
-        """`contract-pending` for one check and entry (identity [check, entry]); `whole`: the check did not run."""
-        if whole:
-            self.judges.pending_checks.add(check)
+    def pending(self, check, error):
+        """`contract-pending` for one check and entry (identity [check, entry]), once per step."""
         if (check, error.path) in self.pendings:
             return
         self.pendings.add((check, error.path))
@@ -144,7 +142,6 @@ class JudgeSet:
         self.contract, self.catalogue_key = contract, catalogue_key
         self.exceptions = Exceptions(contract, self.gates, today)
         self.examined = {gate: {} for gate in self.gates}       # gate -> state key -> check -> nodes
-        self.pending_checks = set()
 
     def step_judge(self, step, path, contract):
         del contract
@@ -179,8 +176,7 @@ class JudgeSet:
                              {"states": len(states), "totals": totals,
                               "per_state": {key: states[key] for key in sorted(states)}}))
             for check in NODE_CHECKS[gate]:
-                if states and totals[check] == 0 and check not in self.pending_checks \
-                        and applies(check, self.contract):
+                if states and totals[check] == 0 and applies(check, self.contract):
                     out.append(_item(gate, "check-vacuous", ["vacuous", check], "error", None, [open_word],
                                      {"check": check, "states": len(states)}))
         return out

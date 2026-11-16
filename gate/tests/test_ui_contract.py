@@ -20,10 +20,7 @@ EXPECTED_PENDING = [
     ("policy.target_population", "10"), ("reading.rate_wpm", "11"), ("table:importance", "7"),
     ("thresholds.button_floor_mm", "10"), ("thresholds.button_recommended_mm", "10"),
     ("thresholds.contrast_large", "15"), ("thresholds.contrast_text", "15"), ("thresholds.flicker_floor_ms", "5"),
-    ("thresholds.hierarchy_ratio_k", "5"), ("thresholds.keypad_key_min_mm", "10"),
-    # U06: rows the spec does not decide per role (P004 11 q7)
-    ("layer.banner", "7"), ("layer.banner-scrim", "7"), ("role_wrap.key_label", "7"),
-    ("role_wrap.screen_headline", "7"), ("role_wrap.small_button_label", "7"), ("role_wrap.staff_strong", "7")]
+    ("thresholds.hierarchy_ratio_k", "5"), ("thresholds.keypad_key_min_mm", "10")]
 # ui-look.md 4.2, token by token: (name, scale-px, weight). Written out here, not read from the contract.
 STYLES = {1: ("display", 200, 600), 2: ("headline", 48, 600), 3: ("title", 40, 600), 4: ("body", 32, 400),
           5: ("body_muted", 32, 400), 6: ("count_large", 40, 400), 7: ("staff", 24, 400),
@@ -443,42 +440,51 @@ class Incomplete(unittest.TestCase):
 
 
 class JudgeTablesTest(unittest.TestCase):
-    """U06: the tables the ui-scene and ui-fit judges read (style_role, role_wrap, layer, element, style_line, the
-    toggle group's marks)."""
+    """U06: the tables the ui-scene and ui-fit judges read (style_role, role_wrap, element, style_line, the toggle
+    group's marks), in their own module (ui_judge_contract), and the provenance form product-baseline."""
 
     def test_the_lockers_tables_resolve(self):
+        from rigor_lib import ui_judge_contract as jc
         contract = uc.load(LOCKERS)
-        self.assertEqual(contract.role_of_style(contract.style_by_token(15)["id"]), "key_label")
-        self.assertEqual(contract.role_of_style(contract.style_by_token(20)["id"]), "small_button_label")
-        self.assertIsNone(contract.style_by_token(0))
-        self.assertEqual(contract.row_value("role_wrap", "subtitle", "scope"), "default")
-        with self.assertRaises(uc.ContractPending) as caught:
-            contract.row_value("role_wrap", "key_label", "scope")
-        self.assertEqual((caught.exception.path, caught.exception.question), ("role_wrap.key_label", "7"))
-        self.assertEqual(contract.layer_row("scrim", "dialog")["policy"], "capture-modal-inert")
-        self.assertIsNone(contract.layer_row("scrim"))
-        self.assertEqual([r["key"] for r in contract.rows("element")], ["11", "12"])
+        self.assertEqual(jc.role_of_style(contract, jc.style_by_token(contract, 15)["id"]), "key_label")
+        self.assertEqual(jc.role_of_style(contract, jc.style_by_token(contract, 20)["id"]), "small_button_label")
+        self.assertIsNone(jc.style_by_token(contract, 0))
+        self.assertEqual(jc.scope_of(contract, "4", "subtitle")["scope"], "default")
+        self.assertEqual(jc.scope_of(contract, "32", "key_label")["scope"], "single_line")    # by element
+        self.assertIsNone(jc.scope_of(contract, "299", "key_label"))                         # the spec is silent
+        self.assertEqual(jc.element_of(contract, "13")["label"], "accessible")
+        self.assertEqual([r["layer"] for r in jc.layer_rows(contract, "banner")], ["banner_notice", "banner_persistent"])
         self.assertEqual(contract.row("style_line", "display")["line_height_px"], 229)
+        self.assertEqual({r["provenance"] for r in contract.rows("style_line")}, {"product-baseline:f1274bf"})
 
     def test_the_tables_are_strict(self):
         must_fail(self, edited('style = "btn_action"\nrole = "key_label"', 'style = "btn_key"\nrole = "key_label"'),
                   "already names this style")
         must_fail(self, edited('role = "subtitle"\nscope = "default"', 'role = "subtitle"\nscope = "nowhere"'),
                   "must be [[role]] and [[wrap]] ids")
-        must_fail(self, edited('role = "key_label"\npending = "7"', 'role = "key_label"\npending = "5"'),
-                  "pending must be exactly")
-        must_fail(self, edited('role = "key_label"\npending = "7"', 'role = "key_label"\nscope = "default"\npending = "7"'),
-                  "exactly one of `scope` and `pending`")
-        must_fail(self, edited('role = "scrim"\ncard = "dialog"\n', 'role = "scrim"\n'), "a scrim row needs `card`")
-        must_fail(self, edited('id = "snackbar"\nrole = "snackbar"', 'id = "snackbar"\nrole = "dialog"'),
-                  "a second row for the same role and card")
-        must_fail(self, edited('policy = "capture-modal-inert"', 'policy = "modal"'), "wrong type or range")
+        must_fail(self, edited('id = "lang_en"\nkey = "12"', 'id = "lang_en"\nkey = "11"'), "the same scene key")
+        must_fail(self, edited('key = "11"\nwrap = "single_line"', 'key = "11"\nwrap = "nowhere"'), "not a [[wrap]] scope")
+        must_fail(self, edited('label = "accessible"', 'label = "hidden"'), "wrong type or range")
         must_fail(self, edited('id = "lang_bg"\nkey = "11"', 'id = "lang_xx"\nkey = "11"'), "must be an [[element]] id")
         must_fail(self, edited('marks = ["bg", "style"]', 'marks = ["colour"]'), "wrong type or range")
         must_fail(self, edited('style = "display"\nline_height_px', 'style = "nonesuch"\nline_height_px'),
                   "is not a [[style]] id")
         must_fail(self, edited('id = "subtitle"\nstyle = "body_muted"', 'id = "subtitle"\nstyle = "body"'),
                   "two roles share a style")
+        must_fail(self, TEXT + '\n[[layer]]\nid = "x"\nrole = "dialog"\npolicy = "pass-through"\nprovenance = "owner:Q7"\n',
+                  "unknown top-level keys: layer")
+
+    def test_product_baseline_is_the_provenance_of_style_line_alone(self):
+        must_fail(self, edited('line_height_px = 229\nprovenance = "product-baseline:f1274bf"',
+                               'line_height_px = 229\nprovenance = "spec:ui-look.md#4.2"'), "of [[style_line]] alone")
+        must_fail(self, edited('role = "subtitle"\nscope = "default"\nprovenance = "spec:ui-look.md#L282"',
+                               'role = "subtitle"\nscope = "default"\nprovenance = "product-baseline:f1274bf"'),
+                  "of [[style_line]] alone")
+        must_fail(self, edited('tick_ms = { value = 250, provenance = "spec:P004#3.5" }',
+                               'tick_ms = { value = 250, provenance = "product-baseline:f1274bf" }'),
+                  "of [[style_line]] alone")
+        must_fail(self, edited('provenance = "product-baseline:f1274bf"', 'provenance = "product-baseline:xyz"'),
+                  "is not spec:")
 
 
 if __name__ == "__main__":

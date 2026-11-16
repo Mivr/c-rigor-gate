@@ -94,13 +94,11 @@ class OverflowTest(unittest.TestCase):
         self.assertEqual(body(rect=(8, 40, 100, 16), laid=(95, 32), lines=2, the_contract=scoped("elided")), [])
         self.assertEqual(body(rect=(8, 40, 100, 16), laid=(95, 32), lines=2, hidden=1), [])
 
-    def test_a_pending_scope_is_contract_pending_and_the_rest_still_judged(self):
-        c = contract(lambda t: t.replace('role = "body"\nscope = "default"\nprovenance = "spec:ui-look.md#5"',
-                                         'role = "body"\npending = "7"\nprovenance = "spec:P004#11-q7"'))
+    def test_a_role_without_a_scope_is_not_judged_for_overflow_and_the_rest_still_is(self):
+        c = contract(lambda t: t.replace('[[role_wrap]]\nrole = "body"\nscope = "default"\n'
+                                         'provenance = "spec:ui-look.md#5"\n', ""))
         found = body(rect=(8, 40, 100, 16), laid=(95, 32), lines=2, clipped=1, the_contract=c)
-        self.assertEqual(ids(found), sorted([
-            expected_id("ui-fit", "contract-pending", ["text-overflow", "role_wrap.body"], stateless=True),
-            expected_id("ui-fit", "text-clipped", ["body"])]))
+        self.assertEqual(ids(found), [expected_id("ui-fit", "text-clipped", ["body"])])
 
     def test_only_ui_scene_selected_runs_no_fit_check(self):
         semantic, tree = base()
@@ -114,12 +112,13 @@ class FontShrunkTest(unittest.TestCase):
         self.assertEqual(body(line_h=16), [])
         self.assertEqual(body(line_h=17), [])
         found = body(line_h=15)
-        self.assertEqual([(f["id"], f["observed"]["line_h"], f["observed"]["contract_line_h"]) for f in found],
-                         [(expected_id("ui-fit", "font-shrunk", ["body"]), 15, 16)])
+        self.assertEqual([(f["id"], f["observed"]["line_h"], f["observed"]["baseline_line_h"], f["observed"]["basis"])
+                          for f in found],
+                         [(expected_id("ui-fit", "font-shrunk", ["body"]), 15, 16, "product-baseline:abd8895")])
 
     def test_a_style_without_a_line_height_is_contract_incomplete(self):
         c = contract(lambda t: t.replace('[[style_line]]\nstyle = "body"\nline_height_px = 16\n'
-                                         'provenance = "oracle:the canary app, Montserrat 14"\n', ""))
+                                         'provenance = "product-baseline:abd8895"\n', ""))
         self.assertEqual(ids(body(line_h=10, the_contract=c)),
                          [expected_id("ui-fit", "contract-incomplete", ["style-line", "body"], stateless=True)])
 

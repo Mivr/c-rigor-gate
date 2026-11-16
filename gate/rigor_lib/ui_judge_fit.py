@@ -1,22 +1,19 @@
 """The `ui-fit` judge (U06, P004 3.2): text fit from the rendered facts of every label of the frame (O3, lvprobe's `label`
-and `fit` records), with the owner's rect (O2) and the wrap scope and line height the contract gives its typographic
-role and style, where a scene node owns the label (ui_judge_vocab).
+and `fit` records), with the owner's rect (O2) and the wrap scope (its element's, else its typographic role's) and the
+line-height baseline the contract gives its style, where a scene node owns the label (ui_judge_vocab).
 
 Per label, fail closed: a label lvprobe could not measure (`unsupported`, or no `fit` record) is `fit-unmeasurable`
 and nothing else is judged on it; placeholder glyphs are `glyph-missing`. Then `text-clipped` (lvprobe's `clipped`),
-`full-string-shown` (LVGL's dots), and, for an owned label, `text-overflow` (against the owner's rect and its role's
-scope) and `font-shrunk` (its line height against the contract's `[[style_line]]` for its style). A label no scene node
+`full-string-shown` (LVGL's dots), and, for an owned label, `text-overflow` (against the owner's rect and scope) and
+`font-shrunk` (its line height against the `[[style_line]]` regression baseline of its style). A label no scene node
 owns is judged by class, box and text hash, on everything but text-overflow and font-shrunk; it is `stage-unmatched`.
 """
 
-from rigor_lib.ui_contract import ContractPending
-
 
 def judge(ctx, report):
-    scopes = {row["scope"]: row for row in ctx.contract.rows("wrap")}
-    lines = {row["style"]: row["line_height_px"] for row in ctx.contract.rows("style_line")}
+    lines = {row["style"]: (row["line_height_px"], row["provenance"]) for row in ctx.contract.rows("style_line")}
     for index in sorted(ctx.frame.labels):
-        _label(ctx, report, index, scopes, lines)
+        _label(ctx, report, index, lines)
     return report.found
 
 
@@ -29,37 +26,22 @@ def _who(ctx, index):
     return ["label", name["target"]], {"label": name}, name["target"], None
 
 
-def _scope(ctx, report, owner, scopes):
-    """The wrap scope row of the owner's typographic role; None (reported) when it cannot be had."""
-    role = ctx.role_of(owner) if owner is not None else None
-    if role is None:
-        return None
-    rows = [row for row in ctx.contract.rows("role_wrap") if row["role"] == role]
-    if not rows:
-        report.incomplete("role-wrap", role)      # ui-scene reports it as wrap-policy-undeclared too
-        return None
-    try:
-        return scopes[ctx.contract.row_value("role_wrap", role, "scope")]
-    except ContractPending as error:
-        report.pending("text-overflow", error, whole=False)
-        return None
-
-
-def _label(ctx, report, index, scopes, lines):
+def _label(ctx, report, index, lines):
     frame = ctx.frame
     label, fit = frame.labels[index], frame.fits.get(index)
     if label.own_text == b"" or not frame.shown(index):
         return
     identity, who, target, owner = _who(ctx, index)
-    scope = _scope(ctx, report, owner, scopes)
+    scope = ctx.scope_of(owner) if owner is not None else None   # None: contract-incomplete (the stage's)
     records = ctx.records(index) + ([owner.raw] if owner is not None else [])
     base = dict(who, stage="O3" if owner is None else "O2+O3")
-    for check in ("fit-unmeasurable", "glyph-missing", "text-clipped", "full-string-shown"):
-        report.examined(check)
+    report.examined("fit-unmeasurable")
     if fit is None or fit.unsupported:
         report.add("fit-unmeasurable", identity + ["facts"], dict(base, reason="unsupported" if fit else "no-fit"),
                    target=target, records=records)
         return
+    for check in ("glyph-missing", "text-clipped", "full-string-shown"):
+        report.examined(check)
     if fit.missing > 0:
         report.add("glyph-missing", identity, dict(base, missing=fit.missing), target=target, records=records)
     if fit.clipped and not (scope is not None and scope["clip"]):
@@ -73,24 +55,26 @@ def _label(ctx, report, index, scopes, lines):
 
 
 def _font(ctx, report, identity, base, target, records, owner, label, lines):
-    """The label's line height below the contract's line height of the owner's style (`[[style_line]]`)."""
+    """The label's line height below the `[[style_line]]` line height of the owner's style: a REGRESSION BASELINE read
+    from the product (provenance `product-baseline:<commit>`), not a spec value; the finding says so."""
     style = ctx.style_of(owner)
     if style not in lines:
         report.incomplete("style-line", style)
         return
     report.examined("font-shrunk")
-    if label.line_h < lines[style]:
-        report.add("font-shrunk", identity, dict(base, line_h=label.line_h, contract_line_h=lines[style]),
-                   target=target, records=records)
+    height, provenance = lines[style]
+    if label.line_h < height:
+        report.add("font-shrunk", identity, dict(base, line_h=label.line_h, baseline_line_h=height,
+                                                 basis=provenance), target=target, records=records)
 
 
 def _overflow(report, identity, base, target, records, owner, scope, label):
     """At the font the label is rendered with: single-line scope (`wrap = none`): the natural width above the owner's
     width; a wrapping scope: the laid-out height above the owner's height, or more lines than `max_lines` (0: no cap).
     A scope that declares an ellipsis or a clip makes the excess intended."""
-    report.examined("text-overflow")
     if scope["ellipsis"] or scope["clip"]:
-        return
+        return                        # the excess is intended: no comparison, no verdict counted
+    report.examined("text-overflow")
     if scope["wrap"] == "none":
         if label.natural[0] > owner.w:
             report.add("text-overflow", identity, dict(base, part="width", natural_w=label.natural[0],

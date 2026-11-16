@@ -1,7 +1,7 @@
 /* The canary app of the U06 judges selftest (selftest/ui_judges.sh): one 320x240 screen whose scene is a table of nodes.
  * Variant 0 is the clean state; every other variant puts the scene into a state with exactly one defect that one check
- * of the ui-scene or ui-fit judge must find, or (V_MODAL) a correct modal dialog over an inert background that no check
- * may flag (docs/ui-judges.md, "Canaries"). The model adapter reports the table as the semantic records, in the scene
+ * of the ui-scene or ui-fit judge must find, or (V_MODAL) a correct modal dialog whose dimmed, clickable scrim makes
+ * the background inert, which no check may flag (docs/ui-judges.md, "Canaries"). The model adapter reports the table as the semantic records, in the scene
  * vocabulary of the real lockers kiosk: structural roles, numeric style tokens, flag letters, `-` for importance,
  * input and wrap policy. The LVGL objects are built from the same table.
  * Product rules apply: static memory, no libc allocation, LVGL from the gate. */
@@ -16,7 +16,7 @@
 #define CANARY_W 320
 #define CANARY_H 240
 #define CANARY_NODES 12u
-#define CANARY_VARIANTS 21u
+#define CANARY_VARIANTS 24u
 
 typedef enum { CANARY_LABEL, CANARY_BUTTON, CANARY_PANEL, CANARY_GHOST } canary_kind_t;
 
@@ -34,9 +34,10 @@ typedef struct {
     unsigned token;       /* the style token (canary.toml [[style]]) */
     canary_kind_t kind;
     bool enabled;
-    bool opaque;          /* a panel's background */
+    uint8_t opa;          /* a panel's background opacity (0: none) */
     bool clickable;       /* a panel takes taps */
-    bool in_card;         /* built inside the last opaque panel (a dialog's button) */
+    bool in_card;         /* built inside the last opaque, clickable panel (a dialog's button) */
+    const char *wrap;     /* the wrap_policy field: NULL is `-` (V_WRAP_CONTRA states one the contract does not give) */
 } canary_node_t;
 
 /* Cold start: a fresh LVGL and the clean scene drawn. False if LVGL cannot start. */

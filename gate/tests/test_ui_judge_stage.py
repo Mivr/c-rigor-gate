@@ -55,10 +55,10 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(frame.visible_box(edge), (300, 230, 319, 239))
 
 
-def associated(semantic, tree):
+def associated(semantic, tree, accessible=frozenset()):
     c = contract()
     nodes = [read(parse_record("semantic", line), c)[0] for line in semantic]
-    return associate(nodes, frame_of(tree.lines()))
+    return associate(nodes, frame_of(tree.lines()), accessible)
 
 
 class AssociationTest(unittest.TestCase):
@@ -87,14 +87,31 @@ class AssociationTest(unittest.TestCase):
         tree.node(0, "lv_obj", (10, 10, 109, 59))
         self.assertEqual(associated(pair, tree).unmatched, [("c", "ambiguous"), ("s", "ambiguous")])
 
-    def test_a_button_needs_exactly_one_carrier_and_a_panel_label_is_only_accessible(self):
+    def test_a_button_needs_exactly_one_carrier_and_a_panel_label_is_compared_unless_its_element_is_accessible(self):
         semantic, tree = base()
         tree.label(3, "OK", (48, 133, 67, 148))                 # a second "OK" label under the button
         self.assertEqual(associated(semantic, tree).mismatch, ["ok"])
         tree = Tree()
         echo = tree.label(0, "", (10, 10, 109, 59))            # the kiosk's echo panel: an empty label
-        found = associated([sem("echo", "panel", "Digits entered: 0", (10, 10, 100, 50))], tree)
+        scene = [sem("echo", "panel", "Digits entered: 0", (10, 10, 100, 50))]
+        self.assertEqual(associated(scene, tree).mismatch, ["echo"])
+        found = associated(scene, tree, accessible={"echo"})
         self.assertEqual((found.match, found.text, found.mismatch), ({"echo": echo}, {"echo": None}, []))
+
+    def test_an_incompatible_rank_pairing_is_ambiguous_never_a_silent_wrong_match(self):
+        tree = Tree()
+        scrim = tree.node(0, "lv_obj", (10, 10, 109, 59), clickable=1)
+        tree.node(scrim, "lv_obj", (10, 10, 109, 59), clickable=1, bg=255)
+        swapped = [sem("c", "banner", "", (10, 10, 100, 50)), sem("s", "scrim", "", (10, 10, 100, 50), intent="9:0")]
+        self.assertEqual(associated(swapped, tree).unmatched, [("c", "ambiguous"), ("s", "ambiguous")])
+        tree = Tree()
+        tree.node(0, "lv_obj", (10, 10, 109, 59), clickable=1)
+        for line in (sem("b", "button", "", (10, 10, 100, 50), style="btn"),
+                     sem("t", "text", "", (10, 10, 100, 50), style="body"),
+                     sem("i", "panel", "", (10, 10, 100, 50), intent="1:0")):
+            self.assertEqual(len(associated([line], tree).match), 1 if line.startswith("i\t") else 0, line)
+        tree.nodes[1]["clickable"] = 0
+        self.assertEqual(associated([sem("i", "panel", "", (10, 10, 100, 50), intent="1:0")], tree).match, {})
 
     def test_a_dotted_label_associates_by_its_own_full_text_and_the_root_is_not_associated(self):
         tree = Tree()
@@ -109,12 +126,26 @@ class StageFindingTest(unittest.TestCase):
         semantic, tree = base()
         semantic += [sem("ghost", "panel", "", (250, 8, 40, 40)), sem("gone", "button", "x", (250, 60, 60, 60),
                                                                      intent="2:0", style="btn"),
-                     sem("veil", "scrim", "", (0, 180, 320, 60))]
-        found = {f["id"]: f["severity"] for f in run(semantic, tree)}
+                     sem("veil", "dialog", "", (0, 180, 320, 60))]
+        found = {f["id"]: f["severity"] for f in run(semantic, tree) if f["check"] == "stage-unmatched"}
         self.assertEqual(found, {
             expected_id("ui-scene", "stage-unmatched", ["scene", "ghost", "absent"]): "info",
             expected_id("ui-scene", "stage-unmatched", ["scene", "gone", "absent"]): "error",
             expected_id("ui-scene", "stage-unmatched", ["scene", "veil", "absent"]): "error"})
+
+    def test_an_unmatched_node_names_its_candidates_and_an_unknown_control_is_an_unowned_target(self):
+        semantic, tree = base()
+        button = tree.node(0, "lv_button", (150, 150, 249, 199), clickable=1, bg=255)
+        tree.label(button, "Go", (190, 165, 209, 180))
+        semantic.append(sem("go", "button", "Go", (150, 140, 100, 50), intent="2:0", style="btn"))
+        found = run(semantic, tree)
+        scene = [f["observed"] for f in found if f["check"] == "stage-unmatched" and f["observed"]["side"] == "scene"]
+        self.assertEqual([(o["key"], o["scene_box"], o["candidates"]) for o in scene],
+                         [("go", [150, 140, 249, 189], [{"class": "lv_button", "box": [150, 150, 249, 199]}])])
+        target = "node/lv_button/150/150/249/199"
+        unowned = [f for f in found if f["check"] == "stage-unowned-target"]
+        self.assertEqual([(f["id"], f["severity"]) for f in unowned],
+                         [(expected_id("ui-scene", "stage-unowned-target", [target]), "error")])
 
     def test_an_unowned_label_is_named_by_class_box_and_text_hash_never_by_index(self):
         semantic, tree = base()
