@@ -27,14 +27,14 @@ import time
 
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_grammar import (BUF_MAX, DOMAIN_MAX, FRAME_FIELDS, INK_FIELDS, MAX_LINE, UNSIGNED,
-                                          GrammarError, pairs, parse_env_inputs, parse_frame_line, parse_record,
-                                          parse_typed_line, printable)
+                                          GrammarError, pairs, parse_env_inputs, parse_frame_line, parse_identity,
+                                          parse_record, parse_typed_line, printable)
 
 GREETING = "ui-probe/1 ready"
 # what a greeting may announce, in this order (docs/ui-model.md "The greeting"; the C probe announces the first six, and
 # `pointer` (U05c) when the product's taps go through its own pointer entry; no explorer behaviour depends on it, a
-# catalogue may require it)
-CAPABILITIES = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer")
+# catalogue may require it; `identity` (U24) when the product reports its scene identity, read for the ui-scene judge)
+CAPABILITIES = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer", "identity")
 TAP_CAPS = ("hit-test", "tap")          # catalogue taps (u2, u3) need both: every tap is preceded by its hit query
 FRAME_MS = 16
 ADVANCE_MAX_MS = 600000
@@ -42,7 +42,8 @@ TIME_MAX_MS = 1 << 52
 ORIGIN_MAX_MS = 1 << 48
 MAX_LINES = BUF_MAX                     # every line of a framed reply carries at least its LF
 # the commands whose model call may return false (docs/ui-model.md); a `fail` reply to any other is a protocol error
-FAILABLE = ("open", "env-inputs", "apply", "advance", "frame", "semantic", "patches", "trace", "domain-at", "tap")
+FAILABLE = ("open", "env-inputs", "apply", "advance", "frame", "semantic", "patches", "trace", "domain-at", "tap",
+            "identity")
 LIVE = set()
 _DUE = re.compile(r"0|[1-9][0-9]{0,19}")       # next-due: the full uint64 range the C probe can print
 _NODE = re.compile(r"none|0|[1-9][0-9]{0,4}")    # a walk index (lvprobe: at most 32767) or none
@@ -364,6 +365,15 @@ class Session:
     def records(self, name):
         self._need_open(name)
         return self._parse(name, lambda line: parse_record(name, line), self._lines(name))
+
+    def identity(self):
+        """The scene identity (U24): the `state` record, then the `node` records (parse_identity)."""
+        self._need_cap("identity", "identity")
+        lines = self._lines("identity")
+        try:
+            return parse_identity(lines)
+        except GrammarError as error:
+            raise ProbeError("protocol", "identity", str(error), "\n".join(lines)[:400])
 
     def domain_count(self):
         count = self._number("domain-count", "domain-count")

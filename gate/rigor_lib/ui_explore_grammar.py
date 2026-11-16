@@ -27,6 +27,8 @@ INK_FIELDS = {"ink": 8, "noink": 3}
 _TYPED_KINDS = {"lvprobe": {2: "u"}, "frame": {1: "u", 2: "u"},
                 "node": {1: "u", 2: "s", 3: "u", 5: "s", 6: "s", 7: "s", 8: "s"}}
 _FIELD_KINDS = {"semantic": {3: "s", 4: "s", 5: "s", 6: "s", 7: "f"}, "patches": {}, "trace": {0: "u", 2: "u"}}
+IDENTITY_ARGS_MAX = 16          # UIM_IDENTITY_ARGS_MAX (U24)
+_ARG_COUNT = re.compile(r"[0-9]|1[0-9]")
 UNSIGNED = re.compile(r"0|[1-9][0-9]{0,17}")
 _SIGNED = re.compile(r"0|-?[1-9][0-9]{0,17}")
 _ENV_ITEM = re.compile(r"1:(0|[1-9][0-9]{0,9}):(0|-?[1-9][0-9]{0,9}):(-|(?:[0-9a-f]{2}){1,%d})" % TEXT_MAX)
@@ -116,6 +118,42 @@ def parse_typed_line(types, line):
         if not (UNSIGNED if how == "u" else _SIGNED).fullmatch(fields[index]):
             raise GrammarError("a %s record whose field %d is not a number of its kind" % (fields[0], index))
     return Record(line, fields, values)
+
+
+def parse_identity(lines):
+    """The records of an `identity` reply (U24, model.h "scene identity"): exactly one `state` line first, then `node`
+    lines (key, element, msgid, n and n arguments `=...`), no empty field, `-` for none, some identity on every node
+    line, arguments only with a msgid. A repeated key, and a key the scene does not have, are the product's breach,
+    checked against the step's semantic records by the explorer (`check_identity_keys`)."""
+    out = []
+    for index, line in enumerate(lines):
+        fields, values = _split(line)
+        if "" in fields:
+            raise GrammarError("an identity record with an empty field")
+        if index == 0:
+            if fields[0] != "state" or len(fields) != 2 or fields[1] == "-":
+                raise GrammarError("an identity reply whose first record is not one `state` line with a class")
+        elif fields[0] != "node" or len(fields) < 5 or not _ARG_COUNT.fullmatch(fields[4]) \
+                or int(fields[4]) > IDENTITY_ARGS_MAX or len(fields) != 5 + int(fields[4]):
+            raise GrammarError("an identity record that is not a node line with its counted arguments")
+        elif any(not field.startswith("=") for field in fields[5:]) or fields[2:4] == ("-", "-") \
+                or (fields[3] == "-" and fields[4] != "0"):
+            raise GrammarError("an identity node line without identity, or with arguments but no msgid or `=`")
+        out.append(Record(line, fields, values))
+    if not out:
+        raise GrammarError("an identity reply without its state line")
+    return tuple(out)
+
+
+def check_identity_keys(identity, semantic):
+    """None, or why the identity's node keys break the model's contract: a key twice, or one no semantic record of the
+    same scene has (U24)."""
+    keys = [record.fields[1] for record in identity[1:]]
+    if len(set(keys)) != len(keys):
+        return "an identity reply that names a node key twice"
+    if not set(keys) <= {record.fields[0] for record in semantic}:
+        return "an identity node line names a key no semantic record of the scene has"
+    return None
 
 
 def parse_env_inputs(line):

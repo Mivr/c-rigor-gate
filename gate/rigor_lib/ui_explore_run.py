@@ -4,8 +4,8 @@ every path twice and compares the two runs reply by reply. Nothing is retried. W
 Path words (docs/ui-explore.md): `open <origin_ms> <seed>` (first, and only there), `domain-at <i>`, `settle` (fire
 the next deadline), `wait-change` (fire deadlines until the abstraction key changes), `at <offset_ms>` (advance to
 origin + offset), or a catalogue event id. After every word the explorer reads `frame`, `semantic`, `patches`, `trace`,
-`next-due`, `env-inputs` (the open step reads `domain-count` first); patches and trace fetched during the word (drains,
-snapshots) come first in the step's `patches` and `trace`.
+`next-due`, `env-inputs` and, for a judge that needs it (U24), `identity` (the open step reads `domain-count` first);
+patches and trace fetched during the word (drains, snapshots) come first in the step's `patches` and `trace`.
 """
 
 import re
@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from rigor_lib import jsonio
 from rigor_lib.errors import InternalError
 from rigor_lib import ui_explore_words as words_mod
+from rigor_lib.ui_explore_grammar import check_identity_keys
 from rigor_lib.ui_explore_key import key_hash, projection
 from rigor_lib.ui_explore_probe import FRAME_MS, NOT_A_REPLY, ORIGIN_MAX_MS, TAP_CAPS, ProbeError, Session
 
@@ -22,8 +23,8 @@ _DOMAIN = re.compile(r"domain-at (0|[1-9][0-9]{0,4})")
 _AT = re.compile(r"at (0|[1-9][0-9]{0,15})")
 SETTLE, WAIT_CHANGE = "settle", "wait-change"
 # the parts of a step in the order the explorer reads them: run-twice names the first that differs
-PARTS = ("domain", "outcome", "frame", "semantic", "patches", "trace", "due", "env", "ink", "ink_moved", "now", "error",
-         "missing")
+PARTS = ("domain", "outcome", "frame", "semantic", "patches", "trace", "due", "env", "identity", "ink", "ink_moved",
+         "now", "error", "missing")
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class Config:
     catalogue: object
     budget: object
     caps: object = None           # the capabilities of the first launch; every later launch must announce the same
+    identity: bool = False        # U24: read `identity` after every word (a selected judge needs it)
 
 
 @dataclass
@@ -168,14 +170,29 @@ def before_inputs(before):
     return None if before.obs.get("ink_moved") else words_mod.snapshot_of(before.obs)
 
 
-def _observe(session, step):
+def _observe(session, step, identity=False):
     step.obs["frame"] = session.frame()
     step.obs["semantic"] = session.records("semantic")
     step.obs["patches"] = tuple(step.acc_patches) + session.records("patches")
     step.obs["trace"] = tuple(step.acc_trace) + session.records("trace")
     step.obs["due"] = session.next_due()
     step.obs["env"] = session.env_inputs()
+    if identity:
+        _identity(session, step)
     step.now = session.now
+
+
+def _identity(session, step):
+    """U24: the step's scene identity, its keys checked against the step's semantic records; then `next-due` and
+    `semantic` again: identity is read only under judging, so a model that changed on it would be graded on another
+    behaviour than it has (fix-up 1: read-only verified, not only documented)."""
+    step.obs["identity"] = session.identity()
+    raw = "\n".join(record.raw for record in step.obs["identity"])[:400]
+    why = check_identity_keys(step.obs["identity"], step.obs["semantic"])
+    if why is not None:
+        raise ProbeError("contract", "identity", why, raw)
+    if session.next_due() != step.obs["due"] or session.records("semantic") != step.obs["semantic"]:
+        raise ProbeError("contract", "identity", "the model changed on `identity` (a read-only call)", raw)
 
 
 INK_CRC_CAP = 4        # U07: the frame checksums of one abstraction key the ink plan inks, in discovery order
@@ -250,7 +267,7 @@ def ink_step(session, run, step, plan):
     return True
 
 
-def _one(session, run, word, catalogue, plan=None):
+def _one(session, run, word, catalogue, plan=None, identity=False):
     before = run.steps[-1] if run.steps else None
     step = Step(len(run.steps), word, origin=session.origin or 0)
     if before is not None:
@@ -260,7 +277,7 @@ def _one(session, run, word, catalogue, plan=None):
     try:
         _do_word(session, step, run, catalogue, before)
         step.origin = session.origin
-        _observe(session, step)
+        _observe(session, step, identity)
     except ProbeError as error:
         step.error = error
         run.error = (step.index, error)
@@ -287,7 +304,7 @@ def _evidence(session, run, step):
     return True
 
 
-def _settle(session, run, catalogue, plan=None):
+def _settle(session, run, catalogue, plan=None, identity=False):
     """The starvation check after a path: fire deadlines for one starvation window of virtual time, until no deadline
     is left inside it, a wait is unreachable, or the run starves. At most `starve_firings` + 1 firings."""
     end = session.now + catalogue.starve_window_frames * FRAME_MS
@@ -295,7 +312,7 @@ def _settle(session, run, catalogue, plan=None):
         due = run.steps[-1].obs["due"]
         if due is None or due > end:
             return True
-        if not _one(session, run, SETTLE, catalogue, plan):
+        if not _one(session, run, SETTLE, catalogue, plan, identity):
             return False
         if run.steps[-1].unreachable:
             return True
@@ -312,9 +329,9 @@ def execute(config, words, settle=False, ink=None):
         return Run([words[0]], [Step(0, words[0], error=error)], (0, error))
     try:
         for word in words:
-            if not _one(session, run, word, config.catalogue, ink):
+            if not _one(session, run, word, config.catalogue, ink, config.identity):
                 return run
-        if settle and not _settle(session, run, config.catalogue, ink):
+        if settle and not _settle(session, run, config.catalogue, ink, config.identity):
             return run
         try:
             session.quit()

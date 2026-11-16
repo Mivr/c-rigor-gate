@@ -1,5 +1,5 @@
 # The event catalogue of the U06 canary app (ui-events/1, docs/ui-explore.md; docs/ui-judges.md and
-# docs/ui-judges-render.md "Canaries"). A selftest fixture: intent v (1..35) puts the scene into the state with exactly
+# docs/ui-judges-render.md "Canaries"). A selftest fixture: intent v (1..40) puts the scene into the state with exactly
 # one defect of one check (v-modal: a correct modal dialog that no check may flag); `open` is the clean state.
 schema = "ui-events/1"
 product = "selftest"
@@ -7,7 +7,7 @@ app = "canary"
 version = 1
 max_wait_ms = 1000
 drain_ms = 1024
-requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop"]
+requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "identity"]
 
 [key]
 fields = ["role", "label", "x", "y", "w", "h", "enabled", "intent", "flags", "style", "importance", "input_policy", "wrap_policy"]
@@ -54,6 +54,13 @@ events = [
   { id = "v-covered", intent = 33, arg = 0, expect = "accept" },
   { id = "v-btn-text", intent = 34, arg = 0, expect = "accept" },
   { id = "v-fill", intent = 35, arg = 0, expect = "accept" },
+  # U24: one variant per identity check of the ui-scene judge (docs/ui-judges.md, "Canaries").
+  { id = "v-missing", intent = 36, arg = 0, expect = "accept" },
+  { id = "v-split", intent = 37, arg = 0, expect = "accept" },
+  { id = "v-raw-msgid", intent = 38, arg = 0, expect = "accept" },
+  # U24 fix-up 1: the body of `detail` in the scene but hidden in LVGL; the title tagged as the body
+  { id = "v-undrawn", intent = 39, arg = 0, expect = "accept" },
+  { id = "v-tag", intent = 40, arg = 0, expect = "accept" },
 ]
 
 [u2]

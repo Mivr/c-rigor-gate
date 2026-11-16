@@ -63,7 +63,7 @@ exits with 128 + the signal.
 | `--budget-s` (1800) | the wall-clock budget of the whole run. When it is spent, the run stops with one `ui-explore-timeout` (`observed.kind` = `budget`), no criterion counts as evaluated, and the exit is 1, never a hang and never 2. Where it stops depends on the host, so such a findings file is not reproducible |
 | `--require` | criteria that must be evaluated; each one not evaluated becomes a `ui-coverage-gap` with `observed.evaluated` = false |
 | `--contract` | the UI contract (docs/ui-contract.md) handed to the judges; the built-in judges do not read it |
-| `--judges` | judges of other gates to run as well: distinct names of `ui-scene` and `ui-fit` (docs/ui-judges.md). They need `--contract`, `--today` and a probe that announces `frame-facts` (exit 2 otherwise, the capability right after the greeting) |
+| `--judges` | judges of other gates to run as well: distinct names of `ui-scene` and `ui-fit` (docs/ui-judges.md). They need `--contract`, `--today` and a probe that announces `frame-facts` (exit 2 otherwise, the capability right after the greeting). With `ui-scene` and a probe that announces `identity` the explorer also reads the scene identity of every step ("Scene identity"); without that capability ui-scene's identity checks are `check-blocked` |
 | `--today` | the date (`YYYY-MM-DD`) the contract's exceptions expire against; only with `--judges`. The judges never read the wall clock, so the same inputs give the same bytes on any day |
 
 Clock origins and seeds are arguments. Deriving them from the verdict's input hash (P004 6.3) belongs to the grade
@@ -94,8 +94,8 @@ A path is a list of words:
 | `at <offset_ms>` | advance to origin + offset |
 | a catalogue event id | send that event |
 
-After every word the explorer reads, in this order: `frame`, `semantic`, `patches`, `trace`, `next-due`, `env-inputs`.
-The `open` step reads `domain-count` first. Patches and trace fetched during the word (drains and snapshots) come first
+After every word the explorer reads, in this order: `frame`, `semantic`, `patches`, `trace`, `next-due`, `env-inputs`
+and (U24, only for a selected judge that needs it) `identity`. The `open` step reads `domain-count` first. Patches and trace fetched during the word (drains and snapshots) come first
 in the step's `patches` and `trace`, so nothing is lost and run-twice compares all of it. Frame lines are parsed by the
 record grammar (fields split and unescaped), and the verbatim text is kept alongside. From a probe that announces
 `frame-facts`, every line must be one of the record types of docs/ui-model.md ("Frame facts") with exactly its field
@@ -221,6 +221,16 @@ Worst virtual time, by strategy:
 The longest span of `fire-due`, `before-due`, `until-change`, `settle` and `wait-change` is `max_wait_ms`; of `advance`,
 its `ms`; of `at`, min(offset, `max_wait_ms`).
 
+**Scene identity (U24).** With `--judges` naming `ui-scene` and a probe that announces `identity`, the explorer sends
+one `identity` command per completed step of BOTH runs of a path (read last in the step's observation, after
+`env-inputs`; never during a wait, never for the pseudo steps `ink`, `evidence` and `quit`), so the cost is one round
+trip per judged step, plus (fix-up 1) a `next-due` and a `semantic` read again right after it, which verify that the
+call left the model as it was: three round trips per judged step in all. Measured on the canary probe (release build, 6 identity lines, this 4-CPU host under load): 2000
+`identity` commands in one session took 10 ms of probe time over the 6 ms of an `open` alone, about 5 us each, the
+same as 2000 `semantic` commands (10 ms); in the canary selftest it is one more line exchange beside the seven of
+every step. Without `ui-scene` (`--judges ui-fit,ui-render`) no `identity` is sent (selftest/ui_judges.sh checks the
+command log).
+
 ## The event catalogue (`ui-events/1`)
 
 One sealed, versioned TOML file per app (P004 4.3 item 2, 8.5): `products/<product>/ui/<app>.events.toml`. The selftest
@@ -233,7 +243,7 @@ Top level, all required unless marked otherwise, nothing else:
 - `schema = "ui-events/1"`;
 - `product`, `app`, `version`;
 - `max_wait_ms` (1 to 3 600 000);
-- optional `requires`: probe capabilities the catalogue needs, distinct names of the seven known ones (any order; kept
+- optional `requires`: probe capabilities the catalogue needs, distinct names of the eight known ones (any order; kept
   in the greeting's order). A probe whose
   greeting lacks one is the gate's input error (exit 2: "the catalogue requires the probe capabilities ..., which the
   probe does not announce"). The toy catalogue requires all six; an older probe's greeting (no capabilities) only serves
@@ -263,9 +273,11 @@ The `u4` boundary classes are `empty`, `one-digit`, `max-minus-1`, `max`, `max-p
 `unknown`, `expired` and `non-digit`.
 
 **Capabilities.** A probe's greeting is `ui-probe/1 ready[ <cap>...]` (docs/ui-model.md, "The greeting"). The known
-capabilities, in this order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop`, `pointer`; the C probe
-announces the first six, and `pointer` last when the product's taps go through its own pointer entry (U05c); a probe
-without any is an older probe of the same protocol. The probe picks the tap path; a catalogue that `requires`
+capabilities, in this order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop`, `pointer`, `identity`;
+the C probe announces the first six, `pointer` when the product's taps go through its own pointer entry (U05c) and
+`identity` last when the product reports its scene identity (U24); a probe without any is an older probe of the same
+protocol. A catalogue may `require` `identity` (the canary's does: a probe without it is refused, exit 2), so a run
+whose identity checks would be blocked cannot start. The probe picks the tap path; a catalogue that `requires`
 `pointer` refuses a build whose taps would be injected at LVGL's indev (`selftest/ui_product/toy_pointer.events.toml`),
 and only such a catalogue may declare `[ambient]` ("Ambient events"). The path is also a frame fact (the `taps` line of
 a session's first frame, docs/ui-model.md): the summary records it as `taps` (`entry`, `indev`, `probe`, or null from a
@@ -485,11 +497,12 @@ like its own:
 | step judge | `judge(step, path, contract)` | once per completed step of every first run |
 | run judge | `judge(first, second, contract)` | once per path, with both runs |
 | exploration judge | `judge(exploration, contract) -> (evaluated, findings)` | once at the end; registered by criterion in `ui_explore_coverage.CRITERIA` |
-| end-of-run hook | `finish(open_word) -> findings` | once at the end of a run whose budget was not spent, after the exploration judges; the `--judges` set's (run-level findings: `exception-unused`, `checks-examined`, `check-vacuous`; `path` the open word, `state` null) |
+| end-of-run hook | `finish(open_word) -> findings` | once at the end of a run whose budget was not spent, after the exploration judges; the `--judges` set's (run-level findings: `exception-unused`, `checks-examined`, `check-vacuous`, `check-blocked`; `path` the open word, `state` null) |
 
 What a step judge receives:
 - `step` is a `ui_explore_run.Step`: `index`, `word`, `outcome`, `applies`, `result` (the last input's outcome), `obs`
-  (the replies; `frame` holds parsed `Record`s with `raw`, `fields` and `values`), `now`, `origin`, `key`, `proj`,
+  (the replies; `frame` holds parsed `Record`s with `raw`, `fields` and `values`; `identity` (U24) the parsed identity
+  records when the explorer read them, absent otherwise), `now`, `origin`, `key`, `proj`,
   `key_before`, `proj_before`, `unreachable`, `starved`, `error`.
 - `path` is a non-copying view of the earlier steps, so a judge that does not walk it costs O(1) per step.
 
@@ -518,6 +531,16 @@ evidence stays `{"<name>.json": data}`. Images are evidence only: run-twice does
 
 ## Deviations and limits
 
+- **U24: the abstraction key cannot name the state class.** States are keyed as before; the identity is in the step's
+  observation (`identity`, compared by run-twice as the part `identity`, after `env`) and read by the judges only. A
+  `[key]` fact naming the state class is NOT a small, exact addition, so it is left out: the key is computed for every
+  step of every run, judges or not, and also from the fresh observations the waits take (`wait-change`, a t1
+  until-change and `base_key` read `semantic`, `next-due` and `env-inputs` between deadlines), so a key fact would make
+  `identity` a read of every step and of every wait, need `requires = ["identity"]` in every catalogue that uses it, and
+  change the waits' observation; a later engine task may add it.
+- **U24: an identity node line that names a key the step's semantic records do not have, a key twice, or a model that
+  `identity` changed** (a `next-due` or `semantic` read again after it that differs from the step's) ends the run as
+  `probe-internal-error` (kind `contract`, command `identity`), like any other breach the gate sees.
 - **P004 3.7's finding names are used where the task contract named others:**
   - `probe-internal-error`, with `observed.kind` `protocol`, `fail`, `contract` or `crash`, for the contract's
     `probe-protocol` and `probe-crash`;
