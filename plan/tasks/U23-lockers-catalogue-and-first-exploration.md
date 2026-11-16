@@ -42,6 +42,20 @@ adapter is still wrong.
      and a second, smaller bfs to show the count is stable; a walk with at least 3 walk seeds; replay of one found
      path (same finding id).
    - Record for each: command line, exit code, wall time, states, steps, findings by id and severity.
+3a. The countdown-restart rule end to end (U05d was proven on a real LVGL frame but never through the explorer on a
+   real product). On the end-of-shift report state, by replay paths you write, show and record in the doc:
+   - with the declaration: a complement tap and a root tap are refused/no-op with no `noop-tap-effect`; exactly one
+     `ambient-restart` whose id is ["restart", the report's key, the countdown's node key] with the measured old and
+     new values; a u2 tap on a non-intent node there is `intent-missed`;
+   - the same paths with a copy of the catalogue WITHOUT `countdown_restart_role` (a scratch copy under
+     `/var/tmp/cache/U23/`, not committed) give `noop-tap-effect` on those taps (the rule is load-bearing);
+   - a second tap at the same instant (no patch) is refused with no extra finding;
+   - from the two report frames: the regions that differ, that the countdown's walk index is unique, that no ancestor
+     or sibling `node` record changed, and that the LVGL label text equals the semantic label byte for byte;
+   - the run is identical when run twice and the finding replays to its id.
+   If the rule rejects the real restart, report the rejection reason and the two frames' differing records exactly;
+   that is a gate defect to report, not to fix here.
+   Key design note: if `[key]` includes a countdown node's label, every countdown value is its own state; it must not.
 4. Triage EVERY distinct finding (group by id + target): one of
    - product defect (say which of the known ones it is: licences line clipped; dead banner tap-outside; `?40`
      storage-fault label; snackbar position and capturing scrim; stacked banners over BG/EN; or NEW, with the path,
