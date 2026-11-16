@@ -95,8 +95,9 @@ class InkStepTest(unittest.TestCase):
         self.assertTrue(InkPlan.again(run).wants(item))
 
     def test_after_a_moved_ink_an_input_compares_against_a_fresh_snapshot(self):
-        """The step before moved under its ink: the probe's frame is the re-taken one (B, not the step's A). A complement
-        tap that changes nothing is `refused`; compared with the stale A it would be a false noop-tap-effect."""
+        """The step before moved under its ink: the probe's frame is the re-taken one (B, not the step's A). A
+        complement tap that changes nothing is `refused`; compared with the stale A it would be a false
+        noop-tap-effect."""
         class TapSession(FakeSession):
             now = 0
 
