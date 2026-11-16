@@ -15,7 +15,8 @@ aside, the residual change of the step counts as "changed nothing" iff ALL of:
 - where frame records are compared (`frame_reason`): no `life` line, the same frame lines in the same order, the
   `lvprobe` line unchanged, the `frame` line changed in its crc only; each restarted key matches exactly ONE walk index
   (its `label` record shows the old label before and the new one after, its node of the same class); of that index the
-  `node` record may differ only in its box, the `label` record only in dotted, lines, natural and laid size, text and
+  `node` record may differ only in its box, and the box only as the text's laid size did (`_box_follows_text`), the
+  `label` record only in dotted, lines, natural and laid size, text and
   full text, `fit` and `region` freely; of any other index only the `region` record may differ, and only when that
   index's `node` record is unchanged and its box intersects the countdown's box before or after (a region is the hash
   of the pixels inside a node's box, so every node that covers the label repaints with it);
@@ -38,6 +39,7 @@ _LABEL = 2                                        # the semantic `label` field (
 _LABEL_TEXT = 13                                  # the frame `label` record's `=`text field (docs/ui-model.md)
 _LABEL_FIXED = (2, 3, 4, 5, 6)                    # its font id, line_h, align, align_drawn and long
 _BOX = slice(5, 9)                                # the `node` record's x1, y1, x2, y2
+_LAID = (11, 12)                                  # the `label` record's laid_w and laid_h
 
 
 def forward(old, new):
@@ -131,6 +133,16 @@ def _meets(a, b):
     return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
 
 
+def _box_follows_text(old_node, new_node, old_label, new_label):
+    """The countdown's own box changed only as its text's laid size did: its width and height change by exactly the
+    `label` record's laid_w and laid_h change, and x1 / y1 each move by at most that width / height change (the label's
+    alignment). So a product cannot grow the box on a tap to let every node meeting it change its region."""
+    (x1, y1, x2, y2), (u1, v1, u2, v2) = _box(old_node), _box(new_node)
+    dw, dh = (u2 - u1) - (x2 - x1), (v2 - v1) - (y2 - y1)
+    laid = [int(new_label[i]) - int(old_label[i]) for i in _LAID]
+    return [dw, dh] == laid and abs(u1 - x1) <= abs(dw) and abs(v1 - y1) <= abs(dh)
+
+
 def _record_allowed(a, b, own, covers):
     """Whether one differing indexed record may differ: `own` the countdown's index, `covers` (another index) whether
     its node is unchanged and its box meets the countdown's."""
@@ -153,6 +165,11 @@ def frame_reason(before, after, life, labels):
     if why:
         return why
     old_node, new_node = _indexed(before, "node"), _indexed(after, "node")
+    old_label, new_label = _indexed(before, "label"), _indexed(after, "label")
+    for i in indexes:
+        if _box(old_node[i]) != _box(new_node[i]) and \
+                not _box_follows_text(old_node[i], new_node[i], old_label[i], new_label[i]):
+            return "frame record node %s" % i
     boxes = [_box(nodes[i]) for i in indexes for nodes in (old_node, new_node)]
     for old, new in zip(before, after):
         if old == new:

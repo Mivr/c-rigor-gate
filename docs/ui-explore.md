@@ -334,9 +334,11 @@ residual change of the step is a DECLARED RESTART, and then counts as "changed n
   line, the same frame lines in the same order and no change of the `lvprobe` line (the node count); each restarted key
   matches exactly ONE walk index, whose `label` record shows the key's old label before and its new label after and
   whose node keeps its class (an ambiguous or missing match, a decoy label showing the same texts included, rejects);
-  of that index the `node` record may differ only in x1, y1, x2, y2, the `label` record only in dotted, lines,
-  natural_w/h, laid_w/h, text and full_text (font id, line_h, align, align_drawn and long identical), `fit` and `region`
-  freely; of any other index only the `region` record may differ, and only when that index's `node` record is unchanged
+  of that index the `node` record may differ only in x1, y1, x2, y2, and its box only as its text's laid size does: when
+  the box changes, its width and height change by exactly the `label` record's laid_w and laid_h change, and x1 and y1
+  each move by at most the absolute width and height change (the label's alignment; a box that only moves, or grows
+  more than its text, rejects); the `label` record may differ only in dotted, lines, natural_w/h, laid_w/h, text and
+  full_text (font id, line_h, align, align_drawn and long identical); `fit` and `region` freely; of any other index only the `region` record may differ, and only when that index's `node` record is unchanged
   and its box intersects the countdown's box before or after; the `frame` line may differ in its crc only. (A `region`
   is the hash of the pixels inside a node's box and the crc the same hash over the display, docs/ui-lvprobe.md, so when
   the label repaints, the region of every node whose box covers it, the screen, the layers and any container, changes
@@ -371,9 +373,11 @@ the notice `intent-missed`), `pdouble` (two countdowns, two findings), its broke
 each of these, each rejection with the part of the rule that rejects it (gate/tests/test_ui_explore_restart.py; the
 rule's parts one at a time on snapshots, and the frame clause on a real LVGL repaint of the frame toy's title, in
 gate/tests/test_ui_explore_restart_rule.py). selftest/ui_restart.sh (run by selftest/ui.sh) runs `pcount` and `pskip`
-through `rigor ui-explore`, and the frame clause on the frame toy's probe run live. Limit: what a covering node's
-region may hide is a pixel change inside the box of a node that intersects the countdown, which no other node's box
-covers and no record field describes (another node's own records, the scene and the patches must all be unchanged).
+through `rigor ui-explore`, and the frame clause on the frame toy's probe run live (its title's box shrinks from 47 to
+40 pixels as its laid_w does, 47 to 40). Limit: what a covering node's region may hide is a pixel change inside the box
+of a node that intersects the countdown's box, before or after, which no other node's box covers and no record field
+describes (another node's own records, the scene and the patches must all be unchanged). The countdown's box cannot be
+grown on the tap to widen that set: it may change only by its text's own laid size change.
 The end-to-end proof on a real LVGL build (an LVGL toy whose countdown a tap restarts) is not in this selftest: no
 gate selftest product has such a countdown.
 

@@ -18,11 +18,12 @@ TRANSCRIPT = h.REPO / "selftest" / "ui_frame_product" / "session.out"
 SCENE = ("patches", "semantic", "frame")
 
 
-def frame(text, crc="1", box="10,10,40,20", screen="a", bg="ffffff", font="-", far="f", node8=FAR):
-    """A frame of a screen, the countdown's lv_label (node 2) inside it and a node far from it (node 8)."""
+def frame(text, crc="1", box="10,10,40,20", screen="a", bg="ffffff", font="-", far="f", node8=FAR, laid="31,11"):
+    """A frame of a screen, the countdown's lv_label (node 2, its box 31 x 11 as its laid size) inside it and a node far
+    from it (node 8)."""
     return ["lvprobe\t1\t3", "frame\t100\t100\t" + crc, SCREEN, "region\t0\t" + screen,
             LABEL_NODE % (box.replace(",", "\t"), bg),
-            "label\t2\t%s\t16\t0\t1\t0\t0\t1\t40\t16\t40\t16\t=%s\t-" % (font, text),
+            "label\t2\t%s\t16\t0\t1\t0\t0\t1\t40\t16\t%s\t=%s\t-" % (font, laid.replace(",", "\t"), text),
             "fit\t2\t1\t0\t1,1,2,2\t1,1,2,2\t0\t0", "region\t2\t" + text.replace(" ", "_"), node8, "region\t8\t" + far]
 
 
@@ -72,7 +73,8 @@ class RuleTest(unittest.TestCase):
 
     def test_the_restart_and_its_repaint_are_accepted(self):
         restart = ([{"node": "count", "old": 298, "new": 300}], None)
-        self.assertEqual(self.verdict([patch()], snapshot("300 s", crc="2", screen="b", box="10,10,42,20")), restart)
+        self.assertEqual(self.verdict([patch()], snapshot("300 s", crc="2", screen="b", box="10,10,42,20",
+                                                                  laid="33,11")), restart)
         self.assertEqual(self.verdict([patch("298 s", "299 s"), patch("299 s", "300 s")], snapshot("300 s")), restart)
         self.assertEqual(self.verdict([patch()], snapshot("300 s", font="9"), frame_compared=False), restart)
 
@@ -121,6 +123,53 @@ class RuleTest(unittest.TestCase):
             after["frame"][index] = line
             self.assertEqual(self.verdict([patch()], after), (None, why))
 
+    def edited(self, line, field, value, **frame_args):
+        """The restarted snapshot with one field of one frame line (4: the countdown's node, 5: its label) set."""
+        after = snapshot("300 s", **frame_args)
+        fields = after["frame"][line].split("\t")
+        fields[field] = value
+        after["frame"][line] = "\t".join(fields)
+        return after
+
+    def test_every_field_of_the_countdowns_label_record(self):
+        """font id, line_h, align, align_drawn and long are fixed; dotted, lines, natural_w/h, laid_w/h and full_text
+        may change (field 13, the text, is the restart itself)."""
+        for field in range(2, 15):
+            if field == 13:
+                continue
+            with self.subTest(field=field):
+                why = (None, "frame record label 2") if field <= 6 else ([{"node": "count", "old": 298, "new": 300}],
+                                                                         None)
+                self.assertEqual(self.verdict([patch()], self.edited(5, field, "7")), why)
+
+    def test_every_field_of_the_countdowns_node_record(self):
+        """Its box only as its laid size changes (x1 / y1 moving by at most that change); every other field fixed."""
+        accepted = ([{"node": "count", "old": 298, "new": 300}], None)
+        for name, field, value, laid, why in (
+                ("x2 grows with laid_w", 7, "43", "34,11", accepted), ("y2 grows with laid_h", 8, "22", "31,13", accepted),
+                ("x1 moves with laid_w", 5, "8", "33,11", accepted), ("y1 moves with laid_h", 6, "9", "31,12", accepted),
+                ("x2 grows more than laid_w", 7, "45", "33,11", (None, "frame record node 2")),
+                ("y2 grows without laid_h", 8, "21", "31,11", (None, "frame record node 2")),
+                ("parent", 2, "5", "31,11", (None, "frame record node 2")),
+                ("depth", 3, "4", "31,11", (None, "frame record node 2")),
+                ("class", 4, "lv_obj", "31,11", (None, "frame label match")),
+                ("hidden", 9, "1", "31,11", (None, "frame record node 2")),
+                ("clickable", 10, "1", "31,11", (None, "frame record node 2")),
+                ("bg", 15, "ff0000", "31,11", (None, "frame record node 2"))):
+            with self.subTest(name=name):
+                self.assertEqual(self.verdict([patch()], self.edited(4, field, value, laid=laid)), why)
+        moved = snapshot("300 s", box="13,10,43,20")   # the same size, three pixels to the right
+        self.assertEqual(self.verdict([patch()], moved), (None, "frame record node 2"))
+        shifted = snapshot("300 s", box="13,10,44,20", laid="32,11")   # one pixel wider, moved by three
+        self.assertEqual(self.verdict([patch()], shifted), (None, "frame record node 2"))
+
+    def test_two_keys_matching_the_same_walk_index_reject(self):
+        second = COUNT.replace("count\t", "count2\t", 1)
+        before = dict(self.BEFORE, semantic=self.BEFORE["semantic"] + [second % "298 s"])
+        after = snapshot("300 s", extra=[second % "300 s"])
+        self.assertEqual(r.verdict([patch(), patch(key="count2")], before, after, list(SCENE), True, "countdown"),
+                         (None, "frame label match"))
+
     def test_a_decoy_label_with_the_same_texts_rejects(self):
         def two(text):
             return frame(text) + [LABEL_NODE.replace("\t2\t", "\t5\t", 1) % ("50\t50\t60\t60", "ffffff"),
@@ -135,11 +184,16 @@ class RuleTest(unittest.TestCase):
         regions of the screen, the layers and the full-screen overlay that cover it, and the crc. Accepted; a change of
         a node that does not cover the label, or of a covering node's own record, is not."""
         before, after = real_repaint(TRANSCRIPT.read_text(), "Frame", "Done")
+        node = [line.split("\t") for line in before + after if line.startswith("node\t2\t")]
+        label = [line.split("\t") for line in before + after if line.startswith("label\t2\t")]
+        self.assertEqual([(n[5:9], lab[11:13]) for n, lab in zip(node, label)],
+                         [(["8", "4", "54", "19"], ["47", "16"]), (["8", "4", "47", "19"], ["40", "16"])])
         self.assertGreater(sum(1 for a, b in zip(before, after) if a != b and a.startswith("region\t")), 3)
         labels = {"title": ("Frame", "Done")}
         self.assertIsNone(r.frame_reason(before, after, [], labels))
         for prefix, old, new, why in (("region\t8\t", None, "region\t8\t00000000", "frame record region 8"),
-                                      ("node\t12\t", "\tffffff\t", "\tff0000\t", "frame record node 12")):
+                                      ("node\t12\t", "\tffffff\t", "\tff0000\t", "frame record node 12"),
+                                      ("node\t2\t", "\t47\t19\t", "\t49\t19\t", "frame record node 2")):
             index = [i for i, line in enumerate(after) if line.startswith(prefix)][0]
             bad = list(after)
             bad[index] = new if old is None else after[index].replace(old, new)

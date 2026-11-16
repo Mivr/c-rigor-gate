@@ -20,6 +20,7 @@ trap 'rm -rf "$out"' EXIT
 step=0
 fail() { echo "FAIL [restart $step]: $1" >&2; [ -n "${2:-}" ] && { echo "---- output ----" >&2; tail -n 40 "$2" >&2; }; exit 1; }
 begin() { step=$((step + 1)); echo "[restart $step] $1"; CUR="$1"; }
+strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
 
 # countdown <name> <stub mode> <wanted exit> <python check of the findings F>: replays a complement tap and a root tap of
 # the open state against the stub in that mode, with the catalogue that declares the countdown role
@@ -46,7 +47,8 @@ echo "  pcount: one ambient-restart (info), exit 0; pskip: two noop-tap-effect, 
 
 begin "the rule's frame clause on a real LVGL frame: the frame toy's probe, run live on its session, repaints its title (Frame -> Done) with the regions of the nodes that cover it: accepted; with a far node's region changed: rejected"
 log="$out/frame_build.log"
-"${B[@]}" build --target-platforms "$REL" //selftest/ui_frame_product:probe --show-output > "$log" 2>&1 || fail "$CUR: build of the frame toy's probe" "$log"
+"${B[@]}" build --target-platforms "$REL" //selftest/ui_frame_product:probe --show-output 2>&1 | strip_ansi > "$log"
+[ "${PIPESTATUS[0]}" = 0 ] || fail "$CUR: build of the frame toy's probe" "$log"
 probe="$(awk '/buck-out/ {print $2}' "$log" | tail -1)"
 [ -f "$probe" ] || fail "$CUR: no probe binary" "$log"
 "$probe" < selftest/ui_frame_product/session.in > "$out/frame.out" 2> "$out/frame.err" || fail "$CUR: the frame toy's session failed" "$out/frame.err"
