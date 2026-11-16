@@ -466,11 +466,20 @@ The parts rule alone would not decide either: the dismiss posts `dismiss` and `n
 tick always leaves a next deadline. Sibling cost: 2 sibling runs, 102 probe commands, 8 300 virtual ms, against the
 replay's own 880 commands and 45 400 virtual ms (about 12 % more commands).
 
+**Fix-up 4** (gate after `36b7008`): the replay gives 38 findings (28 errors), byte-identical twice. One id is new:
+`ui-explore.scene-controls-untapped/0cc3d3ffb92a` on the snackbar state (`... size-small > at 4300`), `nodes`
+`[{"key": "323", "why": "unassociated"}]`: the snackbar's Dismiss is a tap target the scene publishes, but its scene
+rect is not where it is drawn (the known misplaced-snackbar defect), so no u2 word taps it; until fix-up 4 a state
+with other u2 words reported nothing. Every other id is unchanged, and both notice dismissals are still judged by
+sibling: the snackbar's bound dismiss passes the new check that the sibling's own change is only the layer leaving
+(its extras are the `dismiss` and `notice_cleared` trace and the tick deadline, compared tap against sibling).
+
 The ids of the documented command now:
 
 ```sh
-# exit 1; 37 findings:
-# ui-explore.key-too-coarse/75b3512d986f, ui-explore.key-too-coarse/7cff7b31c6af, ui-fit.checks-examined/4e0d1448cc93,
+# exit 1; 38 findings:
+# ui-explore.key-too-coarse/75b3512d986f, ui-explore.key-too-coarse/7cff7b31c6af,
+# ui-explore.scene-controls-untapped/0cc3d3ffb92a, ui-fit.checks-examined/4e0d1448cc93,
 # ui-fit.text-clipped/971c4b3a0575, ui-fit.text-overflow/6117603b8ff9, ui-render.check-vacuous/56bd3907d221,
 # ui-render.checks-examined/c50bebeacf21, ui-render.contract-pending/0249d3836b00,
 # ui-render.contract-pending/2e2f515fff9b, ui-scene.checks-examined/c4c4df33ffbd,

@@ -41,7 +41,6 @@ class Verdict:
     aimed: object = None   # covered: the key of the inert node the tap aimed at
     bound: object = None   # dismiss: the key of the node that is the layer's `dismiss` element, or None
     card_role: object = None   # the role of the layer's card (`taps` `dismiss_trace` is per card role)
-    scrim_intent: object = None   # dismiss: the scrim's own intent
 
 
 def context(contract, snapshot, identity=None):
@@ -76,12 +75,12 @@ def _layer_records(ctx, scrim):
 
 
 def bound_dismiss(ctx, scrim):
-    """The node inside the scrim's card that IS its layer's `dismiss` element by scene identity (exactly one), or None
-    without identity, without a card or without exactly one such node."""
+    """The interactive node (an intent, enabled, neither I nor D) inside the scrim's card that IS its layer's `dismiss`
+    element by scene identity (exactly one), or None without identity, without a card or without exactly one."""
     card = ctx.card_of(scrim)
     if ctx.identity is None or card is None:
         return None
-    found = [n for n in ctx.scene[ctx.order[card.key] + 1:] if stage.inside(n.rect, card.rect)
+    found = [n for n in ctx.scene[ctx.order[card.key] + 1:] if stage.inside(n.rect, card.rect) and n.interactive
              and ui_judge_identity.carries(ctx, n, "dismiss")]
     return found[0] if len(found) == 1 else None
 
@@ -139,8 +138,7 @@ def verdict(contract, snapshot, x, y, aim, pressed=None, identity=None):
         if outside:      # first: a layer that dismisses on a tap outside expects that, blocking or not
             bound = bound_dismiss(ctx, top[0])
             return Verdict("dismiss", top[0].key, None, bound.intent if bound else None, _layer_records(ctx, top[0]),
-                           bound=bound.key if bound else None, card_role=ctx.card_of(top[0]).role,
-                           scrim_intent=top[0].intent)
+                           bound=bound.key if bound else None, card_role=ctx.card_of(top[0]).role)
         found = _inert(ctx, aim, x, y, pressed)
         if found is not None or top is None:
             return found
@@ -217,3 +215,15 @@ def like_sibling(sibling, before, after, patches, trace, role=None, restart=None
     if after["due"] != sibling["due"] and after["due"] != restart:
         bad.append("due")
     return bad
+
+
+class _Patch:
+    def __init__(self, raw):
+        self.raw, self.fields = raw, raw.split("\t")
+
+
+def sibling_more(verdict, before, sibling, role=None):
+    """For a dismiss: the parts of the SIBLING's own change that are more than the layer leaving (semantic, env and
+    patches of the parts rule; its trace and deadline are compared with the tap's instead)."""
+    bad = layer_left(verdict, before, sibling, [_Patch(raw) for raw in sibling["patches"]], [], role)
+    return [part for part in bad if part in ("semantic", "env", "patches")]

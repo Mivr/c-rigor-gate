@@ -270,6 +270,8 @@ def _judge_change(step, verdict, judged):
     parts = (before, after, step.acc_patches[marks[0]:], residual, role, ambient[1] if ambient is not None else None)
     if verdict.kind in ("dismiss", "covered") and scene is not None:
         sibling, failed = scene.sibling(verdict)
+        if sibling is not None and verdict.kind == "dismiss" and layers.sibling_more(verdict, before, sibling, role):
+            sibling, failed = None, "more-than-dismiss"     # its own intent does more than make the layer leave
         if failed:
             step.outcome.append("sibling failed %s" % failed)
         if sibling is not None:

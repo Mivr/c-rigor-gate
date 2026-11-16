@@ -52,7 +52,7 @@ class View:
         read = [(vocab.read(r, contract or _NO_CONTRACT)[0], keys.count(r.fields[0]) == 1) for r in records]
         self.scene = [n for n, unique in read if n is not None and unique]
         # fix-up 3: an interactive node dropped for a duplicate key is reported (scene-controls-untapped), not silent
-        self.dropped = [(n.key, "duplicate key") for n, unique in read if n is not None and not unique and n.interactive]
+        self.dropped = [(n.key, "duplicate key") for n, unique in read if n is not None and not unique and target(n)]
         self.assoc = vocab.associate(self.scene, self.frame)
         self.records, self.ok = records, True
 
@@ -69,7 +69,7 @@ def u2_points(view, grid, radius=None):
     contract's ppi and disc radius) the disc points of P004 3.10 that the R7 check uses (Probe.inert_points)."""
     per_node = []
     for node in view.scene:
-        box = view.box(node) if node.interactive else None
+        box = view.box(node) if target(node) else None
         if box is None:
             continue
         mid = centre(box)
@@ -81,17 +81,23 @@ def u2_points(view, grid, radius=None):
 
 
 def untapped(view, u2):
-    """[(key, why)] of the enabled interactive scene nodes the state's u2 words do not tap: unassociated (no rendered
-    node has its rect), hidden (its rendered node is not shown), no box (its visible box is empty), duplicate key."""
+    """[(key, why)] of the tap targets (enabled interactive scene nodes without the scene flag H) with no u2 word:
+    unassociated (no rendered node has its rect), hidden (its rendered node is not shown), no box (its visible box is
+    empty), duplicate key (once per key)."""
     tapped = {word.rsplit("#", 1)[0][4:] for word, _, _ in u2}
     out = []
     for node in view.scene:
-        if not node.interactive or node.key in tapped:
+        if not target(node) or node.key in tapped:
             continue
         index = view.assoc.match.get(node.key)
         why = "unassociated" if index is None else "hidden" if not view.frame.shown(index) else "no box"
         out.append((node.key, why))
-    return out + view.dropped
+    return out + sorted(set(view.dropped))
+
+
+def target(node):
+    """A tap target: interactive (an intent, enabled, neither I nor D) and not flagged H by the scene."""
+    return node.interactive and not node.hidden
 
 
 def _scrim_points(view, grid):
@@ -159,14 +165,14 @@ class Scene:
         return u2[:cap], u3[:cap], (len(u2), len(u3)), untapped(view, u2)
 
     def state_words(self, step):
-        """(the words of a step's state, [(class, uncapped count)] of each class the cap cut, the untapped interactive
-        nodes when the state has no u2 word at all), or None when the state cannot be read."""
+        """(the words of a step's state, [(class, uncapped count)] of each class the cap cut, the tap targets with no
+        u2 word), or None when the state cannot be read."""
         found = self.points(snapshot_of(step.obs))
         if found is None:
             return None
         u2, u3, counts, missed = found
         capped = [(cls, count) for cls, count in zip(("u2", "u3"), counts) if count > self.spec.max_per_state]
-        return [word for word, _, _ in u2 + u3], capped, (missed if not u2 else [])
+        return [word for word, _, _ in u2 + u3], capped, missed
 
     def resolve(self, word, snapshot):
         """(the tap Event of a scene word in the state of `snapshot`, the rendered index it aims at); None when the

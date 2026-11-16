@@ -461,10 +461,12 @@ is replayable: in a replay it is resolved in the state it is sent in. Fixed u2 a
 Never vacuous in silence (fix-up 2):
 - a state whose frame facts cannot be read as a tree gets no words and the error `scene-unreadable` (identity: the
   state's key), never an empty list;
-- a readable state with at least one enabled interactive scene node and NO u2 word is the error
-  `scene-controls-untapped` (fix-up 3; identity: the state's key; `observed.nodes`: each such node and why it was not
-  tapped: `unassociated`, `hidden`, `no box`, or `duplicate key`: a node dropped from the derivation for a key the
-  scene repeats is reported here, never silently);
+- every readable state in which a tap target (an enabled interactive scene node: an intent, enabled, neither `I`
+  nor `D`, and not flagged `H`, which the scene says is no tap target) has no u2 word is the error
+  `scene-controls-untapped` (fix-up 4: in every such state, not only one with no u2 word at all; one finding per state,
+  identity the state's key; `observed.nodes`: each node with no u2 word and why: `unassociated`, `hidden`, `no box`,
+  or `duplicate key`, a key the scene repeats, listed once). A product that hides some of its controls from taps is
+  reported, whatever else the state taps;
 - a scene-scoped bfs that completes without sending one u2 scene tap (blank taps do not count) is the error
   `scene-taps-vacuous` (identity: the catalogue). Walks, replays and sweeps derive no scene taps by design and are not
   judged by it; a run the budget cut is not either (nothing is reported as complete);
@@ -521,8 +523,9 @@ on a tap outside is judged by its dismiss first: a correct dismiss there is `dis
   (the parts that failed). A tap outside after which the layer is still there is never `dismissed`.
 
   **The layer's dismiss intent is bound by the gate** (fix-up 3 ruling), never taken from wherever the product put an
-  intent: it is the intent of the one node after the layer's card and inside its rect that IS the `dismiss` element by
-  scene identity (`ui_judge_identity.carries`: a button; with an `[[element]]` row, the node at its key). The scrim's own
+  intent: it is the intent of the one INTERACTIVE node (an intent, enabled, neither `I` nor `D`) after the layer's card
+  and inside its rect that IS the `dismiss` element by scene identity (`ui_judge_identity.carries`: a button; with an
+  `[[element]]` row, the node at its key); a disabled or intent-less dismiss button binds nothing. The scrim's own
   tap-outside intent counts as the dismiss only when it equals that intent; a scrim with another intent is judged
   against the bound dismiss (and its tap is then `tap-misrouted`). Without identity (a probe that does not announce
   it), or without exactly one such node, there is no bound intent.
@@ -531,11 +534,15 @@ on a tap outside is judged by its dismiss first: a correct dismiss there is `dis
   - **by sibling**, first, when the dismiss intent is bound and the catalogue has the u1/u5 event that applies it (by
     `taps` `intent_node`; for `covered`, the control's own intent): the path to this state and that event run in a fresh
     probe without the layer policy, memoised per (path, event) within the run, its probe commands counted in the
-    summary's `sibling_cost`. Its verdict counts only when the event was ACCEPTED (`apply ok`) and, for a dismiss, none
-    of the layer's records is left after it; then the tap must change exactly what that event changes: semantic, env
+    summary's `sibling_cost`. Its verdict counts only when the event was ACCEPTED (`apply ok`) and, for a dismiss, the
+    SIBLING's own change passes the semantic, env and patches parts of the parts rule below (the layer's records gone,
+    every other record byte-equal, env unchanged, patches only on the layer's keys; else `sibling failed
+    more-than-dismiss`: a "dismiss" element whose intent does more is no dismiss); then the tap must change exactly what
+    that event changes: semantic, env
     inputs, next deadline (or the declared restart), patches and the trace records' type and time
     (`ui_explore_layers.like_sibling`). The outcome records `judged by sibling`; a sibling that could not decide records
-    `sibling failed <why>` (`error`, `refused`, `missed`, `layer-stays`) and the parts rule decides;
+    `sibling failed <why>` (`error`, `refused`, `missed`, `layer-stays`, `more-than-dismiss`) and the parts rule
+    decides. Of stacked layers the topmost at the point is judged, and it is the one that must leave;
   - **by parts** otherwise (`judged by parts`), strictly (`ui_explore_layers.layer_left`):
     - semantic: the layer's records (the scrim, its card, the scene nodes after the card inside the card's rect) leave,
       every other record stays byte for byte, but for the label of a node of the declared `countdown_restart_role`;
@@ -649,7 +656,7 @@ nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` 
 | `taps-capped` (info) | U05e: a state had more scene taps of a class than `max_per_state` | `["taps-capped", key, class]` | `class`, `count`, `cap` |
 | `scene-unreadable` | U05e: a state of a scene-scoped run whose frame facts are not a tree (no scene taps derivable) | `["scene-unreadable", key]` | `reason` |
 | `scene-taps-vacuous` | U05e: a scene-scoped bfs that completed without sending one u2 scene tap | `["scene-taps-vacuous", sha]` | `sent`, `unbound` |
-| `scene-controls-untapped` | U05e: a readable state with interactive scene nodes and no u2 word | `["scene-controls-untapped", key]` | `nodes` (key, why) |
+| `scene-controls-untapped` | U05e: a readable state in which a tap target (interactive, not `H`) has no u2 word | `["scene-controls-untapped", key]` | `nodes` (key, why) |
 | `scene-word-unbound` (error; info with `--lenient-paths`) | U05e: a scene word that names no point of its state | `[check, key before, word]` | `word` |
 | `key-too-coarse` | equal keys, different normalised records (every semantic field but justified ignores, plus every model and derived fact) | key | `witness_path`, `differs_in`; both records in `records.json` |
 

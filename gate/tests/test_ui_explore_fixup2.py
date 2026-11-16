@@ -69,13 +69,15 @@ class DismissTest(SceneCase):
     def test_a_dismiss_that_does_what_its_own_intent_does_is_dismissed_by_the_sibling_replay(self):
         catalogue = self.catalogue('  { id = "go", intent = 1', '  { id = "snack-dismiss", intent = 3, arg = 0, '
                                    'expect = "accept" },\n  { id = "go", intent = 1', base=SCENE)
-        _, found, summary = self.scene_replay("snackfull", self.PATHS, "--judges", "ui-scene", "--today",
+        # fix-up 4: the mode is snackcleared (two trace events, only the layer leaves); snackfull's own intent does
+        # more than make the layer leave, and is test_ui_explore_fixup4's
+        _, found, summary = self.scene_replay("snackcleared", self.PATHS, "--judges", "ui-scene", "--today",
                                               "2026-11-16", contract=True, catalogue=catalogue)
         self.assertEqual([f for f in found if f["gate"] == "ui-explore"], [])
         self.assertEqual(summary["outcomes"]["blank-right"]["judged by sibling"], 1)
         # without the intent's event in the catalogue there is no sibling: the parts rule calls it misrouted
-        _, found, _ = self.scene_replay("snackfull", self.PATHS, contract=True, code=1)
-        self.assertEqual(found[0]["observed"]["not_the_dismiss"], ["semantic", "patches", "trace"])
+        _, found, _ = self.scene_replay("snackcleared", self.PATHS, contract=True, code=1)
+        self.assertEqual(found[0]["observed"]["not_the_dismiss"], ["trace"])
 
     def test_a_layer_that_blocks_and_dismisses_dismisses_before_r7(self):
         contract = self.tmp / "modal.toml"

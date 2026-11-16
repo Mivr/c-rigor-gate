@@ -48,6 +48,7 @@ class Explorer:
         self.runs = self.commands = self.virtual_ms = 0
         self.taps = None    # the `taps` frame fact of the first frame of the first run (U05c): entry, indev or probe
         self.scene_sent = self.scene_unbound = 0     # U05e: scene tap words sent, and those that named no point
+        self.scene_checked = set()                   # the states whose scene taps were checked (untapped, unreadable)
 
     def run(self, words, settle=True, explore=True):
         """Run `words` twice; returns the steps of the first run."""
@@ -69,15 +70,20 @@ class Explorer:
             self.exploration.domain_count = first.steps[0].obs["domain"]
         if explore:
             self.exploration.record(words, first.steps)
+        if self.config.scene is not None and self.config.scene.scoped:
+            for step in first.steps[:len(words)]:     # fix-up 4: every visited state of any strategy, once per key
+                if step.key is not None and step.key not in self.scene_checked:
+                    self.scene_checked.add(step.key)
+                    self.state_words(step, words[:step.index + 1], capped_too=False)
         if self.config.scene is not None:
             scene = [s for s in first.steps[:len(words)] if is_scene_word(s.word)]
             self.scene_unbound += sum(1 for s in scene if "unbound" in s.outcome)
             self.scene_sent += sum(1 for s in scene if s.word.startswith("tap@") and s.applies)   # u2 words only
         return first.steps
 
-    def state_words(self, step, path):
+    def state_words(self, step, path, capped_too=True):
         """The words of one state's own scene taps (U05e, `taps` scope scene), else none; a class the per-state cap
-        cut is the info finding `taps-capped` (identity: the state's key and the class)."""
+        cut is the info finding `taps-capped` (identity: the state's key and the class; the bfs's states only)."""
         scene = self.config.scene
         if scene is None or not scene.scoped:
             return []
@@ -88,11 +94,11 @@ class Explorer:
                                       {"reason": "the frame facts are not a tree"}))
             return []
         words, capped, missed = found
-        if missed:            # a readable state with interactive nodes and no u2 word: its controls went untapped
+        if missed:            # a readable state with a tap target that derived no u2 word (fix-up 4: any)
             self.findings.append(make("scene-controls-untapped", ["scene-controls-untapped", step.key],
                                       state_of(step.key, step.proj, catalogue.key, step.origin), list(path),
                                       {"nodes": [{"key": key, "why": why} for key, why in missed]}))
-        for cls, count in capped:
+        for cls, count in (capped if capped_too else ()):
             self.findings.append(make("taps-capped", ["taps-capped", step.key, cls],
                                       state_of(step.key, step.proj, catalogue.key, step.origin), list(path),
                                       {"class": cls, "count": count, "cap": catalogue.taps.max_per_state}))

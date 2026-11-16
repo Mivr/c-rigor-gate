@@ -47,7 +47,7 @@ class BoundDismissTest(SceneCase):
         self.assertEqual(summary["outcomes"]["blank-right"]["judged by sibling"], 1)
 
     def test_the_sibling_is_memoised_and_its_cost_counted(self):
-        _, found, summary = self.run_bound("snackfull", code=None)
+        _, found, summary = self.run_bound("snackcleared", code=None)
         self.assertEqual(own(found), [])
         self.assertEqual(summary["sibling_cost"]["runs"], 1)       # one state, one event: both paths, both runs
         self.assertGreater(summary["sibling_cost"]["probe_commands"], 0)
@@ -82,14 +82,15 @@ class UntappedTest(SceneCase):
         untapped = h.by_check(found, "scene-controls-untapped")
         self.assertTrue(untapped)
         self.assertEqual(sorted((n["key"], n["why"]) for n in untapped[0]["observed"]["nodes"]),
-                         [("51", "unassociated"), ("dup", "duplicate key"), ("dup", "duplicate key"),
-                          ("go", "unassociated"), ("k2", "unassociated"), ("ok", "unassociated")])
+                         [("51", "unassociated"), ("dup", "duplicate key"), ("go", "unassociated"),
+                          ("k2", "unassociated"), ("ok", "unassociated")])
         self.assertEqual(len(h.by_check(found, "scene-taps-vacuous")), 1)    # blank taps alone do not count
         self.assertEqual(summary["scene_taps"]["sent"], 0)
 
     def test_a_replayed_scene_word_in_an_unreadable_state_is_scene_unreadable(self):
         _, found, summary = self.scene_replay("badtree", [[OPEN, "tap@go#0"]], code=1)
-        self.assertEqual(own(found), [("scene-unreadable", "tap@go#0")])
+        # fix-up 4: every visited state is checked, so the open state's own finding (same id) keeps the shortest path
+        self.assertEqual(own(found), [("scene-unreadable", OPEN)])
         self.assertEqual(summary["outcomes"]["tap@go#0"], {"unreadable": 1})
 
 

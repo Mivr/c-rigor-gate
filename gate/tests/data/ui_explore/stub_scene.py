@@ -26,11 +26,23 @@ an overlay patches `delete <its scrim key>` and posts `close` (its own button, i
                  targets under it are inert, and a tap outside the card that dismisses is `dismissed`
     snackfull    as snack (with identity), but closing the snackbar, by its scrim or by `apply 3 3 0`, posts `close` and also adds 1 (more
                  than the layer leaving, and exactly what its own intent does)
+    snackcleared as snack (with identity), but closing it, by its scrim or by `apply 3 3 0`, posts `close` and
+                 `cleared` (two trace events: only the layer leaves, as on the kiosk)
     snacknoop    as snack, with scene identity (`identity`: its OK button `sok` is the `dismiss` element): a tap on the
                  scrim does nothing and the bound dismiss intent 3:0 is refused (no sibling)
     snackstay    as snacknoop, but `apply 3 3 0` is accepted and changes nothing (the sibling leaves the layer)
     snackopen    as snack, with identity, but the scrim carries an unrelated intent 7:0 ("open"): a tap on the scrim,
                  and `apply 3 7 0`, add 100 and keep the snackbar; `apply 3 3 0` (the bound dismiss) closes it
+    snacktag     as snack, with identity, but its OK button (the `dismiss` element) and the scrim carry 7:0, which closes
+                 the snackbar AND adds 100: a "dismiss" that does more than the layer leaving
+    snackkeys    as snack, with identity, its scrim, card and OK keyed 60, 61, 62 (intent_node "key"): `apply 3 60 0`
+                 adds 100 and keeps the snackbar, `apply 3 62 0` (the bound dismiss) and a tap on the scrim close it
+                 (trace `close`)
+    snackdead    as snack, with identity, but its OK button (the `dismiss` element) is disabled (D, enabled 0; it still
+                 publishes 3:0, which `apply 3 3 0` would close with trace `close`)
+    stack        as snack, with identity, over a pass-through banner (both shown at open); a tap on the snackbar's scrim
+                 closes the snackbar only
+    stackwrong   as stack, but a tap on the snackbar's scrim closes the banner instead
     snackcount   as snack, and the product's pointer entry (`pointer`): every tap posts `touch`, and the first tap
                  restarts a countdown `cd` ("298 s" -> "300 s"); the dismiss is still exactly the snackbar's
     banner       a pass-through banner: scrim 0,0 320x240 (clickable, opacity 0, intent 4:0), card 0,200 320x40; a tap
@@ -40,6 +52,8 @@ an overlay patches `delete <its scrim key>` and posts `close` (its own button, i
                  digit map), and `apply 3 5 <d>` for another digit is refused
     seeded       no overlay; the seed of `open` is shown as the count (boot seeds)
     badtree      no overlay; the frame's node 2 claims depth 5 (its records parse, its tree does not)
+    half         no overlay; `ok`'s scene rect is one pixel right of its box (no association), a button `dup` (8:0) is
+                 published twice and a button `hid` (8:1) is flagged H: some controls are tapped, `ok` and `dup` not
     unassoc      no overlay; the scene rects of go, 51, k2 and ok are one pixel right of their rendered boxes (no
                  association), and a button `dup` (8:0) is published twice: no control can be tapped
 
@@ -54,11 +68,13 @@ import sys
 import time
 
 MODE = sys.argv[1]
-IDENTITY = ("snackfull", "snacknoop", "snackstay", "snackopen")
+IDENTITY = ("snackfull", "snackcleared", "snacknoop", "snackstay", "snackopen", "snacktag", "snackkeys", "snackdead", "stack",
+            "stackwrong")
+KEYS = ("60", "61", "62") if MODE == "snackkeys" else ("sscrim", "scard", "sok")
 SNACKS = ("snack", "snackbad", "snackmore", "snacktwice", "snackdue", "snackmodal", "snackcount") + IDENTITY
 OVERLAY = dict([(m, "snack") for m in SNACKS], dialog="dialog", dialoglive="dialog", dialogdup="dialog",
                banner="banner", bannerok="banner").get(MODE)
-SCRIMS = {"dialog": "dscrim", "snack": "sscrim", "banner": "bscrim"}
+SCRIMS = {"dialog": "dscrim", "snack": KEYS[0], "banner": "bscrim"}
 W, H = 320, 240
 
 
@@ -67,6 +83,7 @@ class Model:
         self.now, self.count, self.entry, self.overlay = origin, seed if MODE == "seeded" else 0, "", OVERLAY
         self.trace, self.patches, self.seq, self.due = [], [], 0, None
         self.cd = 298 if MODE == "snackcount" else None
+        self.banner = MODE in ("stack", "stackwrong")      # a second layer under the snackbar
         self.event("boot")
 
     def event(self, kind):
@@ -116,6 +133,10 @@ def scene(model):
     if model.cd is not None:
         nodes.append((0, "lv_label", (200, 100, 299, 119), 0, 0, "%d s" % model.cd))
     overlay(model, records, nodes)
+    if MODE == "half":
+        records = [line.replace("ok\tkey\tOK\t110\t", "ok\tkey\tOK\t111\t") for line in records]
+        records += [sem("dup", "button", "Dup", (200, 60, 40, 30), "8:0", style=5)] * 2
+        records += [sem("hid", "button", "Hid", (200, 120, 40, 30), "8:1", "H", style=5)]
     if MODE == "unassoc":
         moved = []
         for line in records:
@@ -136,10 +157,15 @@ def overlay(model, records, nodes):
                                                                          255, None)]
         nodes += [(len(nodes) - 1, "lv_button", (110, 60, 209, 89), 1, 255, None),
                   (len(nodes), "lv_label", (130, 65, 189, 84), 0, 0, "Close")]
-    elif model.overlay == "snack":
-        records += [sem("sscrim", "scrim", "", (0, 0, W, H), "7:0" if MODE == "snackopen" else "3:0"),
-                    sem("scard", "snackbar", "", (20, 180, 280, 50)),
-                    sem("sok", "button", "OK", (200, 190, 80, 30), "3:0", style=5)]
+    if model.banner:
+        records += [sem("bscrim", "scrim", "", (0, 0, W, H), "4:0"), sem("bcard", "banner", "", (0, 200, W, 40))]
+        nodes += [(0, "lv_obj", (0, 0, W - 1, H - 1), 1, 0, None), (len(nodes), "lv_obj", (0, 200, W - 1, 239), 0,
+                                                                        255, None)]
+    if model.overlay == "snack":
+        ok = ("3:0", "D", 0) if MODE == "snackdead" else ("7:0" if MODE == "snacktag" else "3:0", "-", 1)
+        records += [sem(KEYS[0], "scrim", "", (0, 0, W, H), "7:0" if MODE in ("snackopen", "snacktag") else "3:0"),
+                    sem(KEYS[1], "snackbar", "", (20, 180, 280, 50)),
+                    sem(KEYS[2], "button", "OK", (200, 190, 80, 30), ok[0], ok[1], 5, ok[2])]
         nodes += [(0, "lv_obj", (0, 0, W - 1, H - 1), 1, 82 if MODE == "snackmodal" else 0, None),
                   (len(nodes), "lv_obj", (20, 180, 299, 229), 0, 255, None)]
         nodes += [(len(nodes) - 1, "lv_button", (200, 190, 279, 219), 1, 255, None),
@@ -210,8 +236,20 @@ def scrim(model, on_go):
     elif MODE == "snackfull":
         model.close("close")
         model.change("go", 1)
+    elif MODE == "snackcleared":
+        model.close("close")
+        model.event("cleared")
     elif MODE == "snackopen":
         model.change("open", 100)
+    elif MODE == "snacktag":
+        model.close("close")
+        model.change("open", 100)
+    elif MODE == "snackkeys":
+        model.close("close")
+    elif MODE == "stackwrong":
+        model.banner = False
+        model.patches.append("delete\tbscrim\t-\t-\t-")
+        model.event("dismiss")
     elif MODE in ("snacknoop", "snackstay"):
         pass
     elif MODE in SNACKS + ("banner", "bannerok") and MODE != "snackbad":
@@ -234,6 +272,13 @@ def apply(model, kind, ident, arg):
         return "ok apply refused"
     if ident == 3 and MODE == "snackstay":
         return "ok apply"
+    if ident == 7 and MODE == "snacktag" and model.overlay == "snack":
+        model.close("close")
+        model.change("open", 100)
+        return "ok apply"
+    if ident in (60, 62) and MODE == "snackkeys" and model.overlay == "snack":
+        model.change("open", 100) if ident == 60 else model.close("close")
+        return "ok apply"
     if ident == 7 and MODE == "snackopen":
         model.change("open", 100)
         return "ok apply"
@@ -249,6 +294,8 @@ def apply(model, kind, ident, arg):
         model.close("close")
         if MODE == "snackfull":
             model.change("go", 1)
+        if MODE == "snackcleared":
+            model.event("cleared")
     elif ident == 9 and model.overlay is None and OVERLAY is not None:
         model.overlay = OVERLAY
         model.patches.append("create\t%s\t-\t-\t-" % OVERLAY)
@@ -294,7 +341,7 @@ def handle(words, model):
     if cmd == "crop":
         return model, ["ok crop lines %d" % int(words[4])] + ["ffffffff" * int(words[3])] * int(words[4])
     if cmd == "identity":
-        dismiss = ["node\tsok\tdismiss\t-\t0"] if model.overlay == "snack" else []
+        dismiss = ["node\t%s\tdismiss\t-\t0" % KEYS[2]] if model.overlay == "snack" else []
         return model, ["ok identity lines %d" % (1 + len(dismiss)), "state\tmain"] + dismiss
     replies = {"domain-count": lambda: ["ok domain-count 0"],
                "next-due": lambda: ["ok next-due " + ("none" if model.due is None else str(model.due))],
