@@ -76,13 +76,16 @@ class Budget:
         return time.monotonic() >= self.end
 
 
-def kill_all(reap=True):
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+
+
+def kill_all(reap=True, timeout=None):
     """Kill every live probe's process group and reap it. `reap=False` (the signal handler, U05e): only SIGKILL the
     groups, never wait: the interrupted code may be inside `Popen.wait`, whose lock is not reentrant (a wait here
     deadlocked); the main flow reaps them (`kill_all()` in `handle`'s finally, `Session.close`)."""
     for session in list(LIVE):
         if reap:
-            session.kill()
+            session.kill(timeout)
         else:
             session.signal_group()
 
@@ -100,12 +103,19 @@ class Session:
         self.now = self.origin = None
         self.commands = self.virtual_ms = 0
         self._buf, self._eof, self._reaped = b"", False, False
+        # the explorer's signals are blocked from the start of the probe until it is in LIVE, so a signal in between
+        # cannot leak a probe the handler does not know; the probe itself starts with the old mask (U05e fix-up 3)
+        old = signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
         try:
-            self._proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                          stderr=subprocess.DEVNULL, start_new_session=True)
-        except OSError as error:
-            raise InternalError("cannot execute the probe %s: %s" % (argv[0], error.strerror))
-        LIVE.add(self)
+            try:
+                self._proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                              stderr=subprocess.DEVNULL, start_new_session=True,
+                                              preexec_fn=lambda: signal.pthread_sigmask(signal.SIG_SETMASK, old))
+            except OSError as error:
+                raise InternalError("cannot execute the probe %s: %s" % (argv[0], error.strerror))
+            LIVE.add(self)
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, old)
         self._fd = self._proc.stdout.fileno()
         os.set_blocking(self._fd, False)
         try:
@@ -414,7 +424,7 @@ class Session:
         if code != 0:
             raise ProbeError("crash", "quit", "exit status %d after quit" % code)
 
-    def kill(self):
+    def kill(self, timeout=None):
         """Kill the probe's whole process group (a grandchild holding stdout included), then reap the probe. The probe is
         never reaped before (waits use WNOWAIT), so its pid still names its group; after reaping, killpg is not called
         again. Idempotent."""
@@ -424,7 +434,10 @@ class Session:
             os.killpg(self._proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
-        self._proc.wait()
+        try:
+            self._proc.wait(timeout)
+        except subprocess.TimeoutExpired:     # a signalled teardown never waits without bound (fix-up 3)
+            return
         self._reaped = True
 
     def signal_group(self):

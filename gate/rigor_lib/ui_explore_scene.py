@@ -49,8 +49,10 @@ class View:
         except (InternalError, ValueError):
             return
         keys = [r.fields[0] for r in records]
-        nodes = [vocab.read(r, contract or _NO_CONTRACT)[0] for r in records if keys.count(r.fields[0]) == 1]
-        self.scene = [n for n in nodes if n is not None]
+        read = [(vocab.read(r, contract or _NO_CONTRACT)[0], keys.count(r.fields[0]) == 1) for r in records]
+        self.scene = [n for n, unique in read if n is not None and unique]
+        # fix-up 3: an interactive node dropped for a duplicate key is reported (scene-controls-untapped), not silent
+        self.dropped = [(n.key, "duplicate key") for n, unique in read if n is not None and not unique and n.interactive]
         self.assoc = vocab.associate(self.scene, self.frame)
         self.records, self.ok = records, True
 
@@ -76,6 +78,20 @@ def u2_points(view, grid, radius=None):
         per_node.append([("tap@%s#%d" % (node.key, i), p, view.assoc.match[node.key]) for i, p in enumerate(points)])
     # point i of every node before point i + 1 of any: a cap keeps every node's centre first
     return [items[i] for i in range(max((len(x) for x in per_node), default=0)) for items in per_node if i < len(items)]
+
+
+def untapped(view, u2):
+    """[(key, why)] of the enabled interactive scene nodes the state's u2 words do not tap: unassociated (no rendered
+    node has its rect), hidden (its rendered node is not shown), no box (its visible box is empty), duplicate key."""
+    tapped = {word.rsplit("#", 1)[0][4:] for word, _, _ in u2}
+    out = []
+    for node in view.scene:
+        if not node.interactive or node.key in tapped:
+            continue
+        index = view.assoc.match.get(node.key)
+        why = "unassociated" if index is None else "hidden" if not view.frame.shown(index) else "no box"
+        out.append((node.key, why))
+    return out + view.dropped
 
 
 def _scrim_points(view, grid):
@@ -111,6 +127,8 @@ class Scene:
     def __init__(self, catalogue, contract):
         self.catalogue, self.contract, self.spec = catalogue, contract, catalogue.taps
         self.judging, self.config, self.path = True, None, None    # the sibling replay's (sibling below)
+        self.identity = None        # the identity records of the state before the current input (with ui-scene)
+        self.memo, self.cost = {}, {"runs": 0, "probe_commands": 0, "virtual_ms": 0}
         self.grid = self.spec.grid_pct if self.spec is not None else None
         self.radius = None
         if contract is not None:
@@ -128,33 +146,35 @@ class Scene:
         return self.spec is not None and self.spec.scope == "scene"
 
     def points(self, snapshot):
-        """(u2 points, u3 points, the uncapped counts) of the state of a snapshot; ([], [], (0, 0)) without scene
-        scope; None when the state's frame facts cannot be read as a tree (an error finding, never an empty list)."""
+        """(u2 points, u3 points, the uncapped counts, the untapped interactive nodes) of the state of a snapshot;
+        ([], [], (0, 0), []) without scene scope; None when the state's frame facts cannot be read as a tree (an error
+        finding, never an empty list)."""
         if not self.scoped:
-            return [], [], (0, 0)
+            return [], [], (0, 0), []
         view = View(snapshot, self.contract)
         if not view.ok:
             return None
         u2, u3 = u2_points(view, self.grid, self.radius), u3_points(view, self.grid)
         cap = self.spec.max_per_state
-        return u2[:cap], u3[:cap], (len(u2), len(u3))
+        return u2[:cap], u3[:cap], (len(u2), len(u3)), untapped(view, u2)
 
     def state_words(self, step):
-        """(the words of a step's state, [(class, uncapped count)] of each class the cap cut), or None when the state
-        cannot be read."""
+        """(the words of a step's state, [(class, uncapped count)] of each class the cap cut, the untapped interactive
+        nodes when the state has no u2 word at all), or None when the state cannot be read."""
         found = self.points(snapshot_of(step.obs))
         if found is None:
             return None
-        u2, u3, counts = found
+        u2, u3, counts, missed = found
         capped = [(cls, count) for cls, count in zip(("u2", "u3"), counts) if count > self.spec.max_per_state]
-        return [word for word, _, _ in u2 + u3], capped
+        return [word for word, _, _ in u2 + u3], capped, (missed if not u2 else [])
 
     def resolve(self, word, snapshot):
-        """(the tap Event of a scene word in the state of `snapshot`, the rendered index it aims at), or None."""
+        """(the tap Event of a scene word in the state of `snapshot`, the rendered index it aims at); None when the
+        state has no such point; "unreadable" when its frame facts are not a tree."""
         found = self.points(snapshot)
         if found is None:
-            return None
-        u2, u3, _ = found
+            return "unreadable"
+        u2, u3, _, _ = found
         for cls, items in (("u2", u2), ("u3", u3)):
             for name, (x, y), aim in items:
                 if name == word:
@@ -200,23 +220,45 @@ class Scene:
                 return event.id
         return None
 
+    def dismiss_trace(self, card_role):
+        """The trace types the catalogue declares a dismiss of a layer of this card role posts, or None."""
+        table = dict(self.spec.dismiss_trace) if self.spec is not None and self.spec.dismiss_trace else {}
+        return table.get(card_role)
+
     def sibling(self, verdict):
-        """What applying the layer's own intent (a dismiss's scrim, a covering control) from the same state does: the
-        path to this state and that intent's catalogue event, run in a fresh probe without the layer policy (so no
-        sibling nests); the step's semantic, env, due, patches and trace, or None when the catalogue has no event for
-        the intent, or the sibling run failed."""
+        """(what applying the layer's own BOUND intent from the same state does, None) or (None, why it failed) or
+        (None, None) when there is no sibling (no bound intent, no catalogue event for it, no path). The intent: a
+        dismiss's bound `dismiss` element's (the ruling: never a scrim's own intent unless it equals it), a covering
+        control's own. The path to this state and that event run in a fresh probe without the layer policy (no
+        sibling nests), memoised per (path, event); accepted only when the event was accepted (`apply ok`) and, for a
+        dismiss, none of the layer's records is left after it. Their probe commands go to `self.cost`."""
+        key = verdict.target if verdict.kind == "covered" else verdict.bound
+        event = self.intent_event(key, verdict.intent) if key is not None and verdict.intent else None
+        if event is None or self.config is None or not self.path:
+            return None, None
+        memo = (tuple(self.path), event)
+        if memo not in self.memo:
+            self.memo[memo] = self._sibling_run(event)
+        data, failed = self.memo[memo]
+        keys = {line.split("\t", 1)[0] for line in verdict.removed}
+        if data is not None and verdict.kind == "dismiss" and any(l.split("\t", 1)[0] in keys for l in data["semantic"]):
+            return None, "layer-stays"
+        return data, failed
+
+    def _sibling_run(self, event):
         from dataclasses import replace
         from rigor_lib.ui_explore_run import execute
-        key = verdict.target if verdict.kind == "covered" else verdict.layer
-        event = self.intent_event(key, verdict.intent)
-        if event is None or self.config is None or not self.path:
-            return None
         plain = Scene(self.catalogue, self.contract)
         plain.judging = False
         run = execute(replace(self.config, scene=plain, identity=False), self.path + [event])
+        self.cost["runs"] += 1
+        self.cost["probe_commands"] += run.commands
+        self.cost["virtual_ms"] += run.virtual_ms
         last = run.steps[-1] if run.steps else None
         if run.error is not None or last is None or last.word != event or last.key is None:
-            return None
+            return None, "error"
+        if last.result != "ok":
+            return None, last.result or "no-input"
         obs, trace, seen = last.obs, [], set()
         for record in obs["trace"]:     # an input through the product's pointer entry posts its ambient events too:
             kind = record.fields[1]     # the first of each declared type is set aside, as on the tap
@@ -225,4 +267,4 @@ class Scene:
                 continue
             trace.append((kind, record.fields[2]))
         return {"semantic": [r.raw for r in obs["semantic"]], "env": [list(i) for i in obs["env"]], "due": obs["due"],
-                "patches": [r.raw for r in obs["patches"]], "trace": trace}
+                "patches": [r.raw for r in obs["patches"]], "trace": trace}, None

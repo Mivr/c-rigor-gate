@@ -7,7 +7,7 @@ version = 1
 max_wait_ms = 10000
 drain_ms = 1024
 requires = ["frame-facts", "hit-test", "tap"]
-taps = { scope = "scene", max_per_state = 64, grid_pct = [20, 50, 80], intent_node = "intent", provenance = "design:P004#4.3" }
+taps = { scope = "scene", max_per_state = 64, grid_pct = [20, 50, 80], intent_node = "intent", provenance = "design:P004#4.3", dismiss_trace = { snackbar = ["dismiss"], banner = ["dismiss"] }, dismiss_trace_provenance = "design:P004#4.3" }
 
 [boot]
 seeds = [7, 8]

@@ -43,10 +43,11 @@ class LockersCatalogueTest(unittest.TestCase):
         self.assertIn("DRAFT by the U23 agent, unsigned, for the owner's review", self.data.decode("utf-8"))
 
     def test_requires_every_capability(self):
-        # the seven capabilities the kiosk's probe announces; `identity` (U24) joins when its adapter reports it
-        seven = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer")
-        self.assertEqual(self.cat.requires, seven)
-        self.assertEqual(CAPABILITIES, seven + ("identity",))
+        # the eight capabilities the kiosk's probe announces since business-apps 3e8c46e (U04g: scene identity); the
+        # layer policy binds a notice's dismiss intent by it (U05e fix-up 3)
+        eight = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer", "identity")
+        self.assertEqual(self.cat.requires, eight)
+        self.assertEqual(CAPABILITIES, eight)
 
     def test_drain_and_longest_timer(self):
         self.assertLessEqual(self.cat.drain_ms, 60000)

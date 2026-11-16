@@ -24,8 +24,13 @@ an overlay patches `delete <its scrim key>` and posts `close` (its own button, i
     snackdue     as snack, but the dismiss also arms a deadline 500 ms later (tap-misrouted)
     snackmodal   as snack, with its scrim dimmed (opacity 82): with a contract whose snackbar blocks input below, the
                  targets under it are inert, and a tap outside the card that dismisses is `dismissed`
-    snackfull    as snack, but closing the snackbar, by its scrim or by `apply 3 3 0`, posts `close` and also adds 1 (more
+    snackfull    as snack (with identity), but closing the snackbar, by its scrim or by `apply 3 3 0`, posts `close` and also adds 1 (more
                  than the layer leaving, and exactly what its own intent does)
+    snacknoop    as snack, with scene identity (`identity`: its OK button `sok` is the `dismiss` element): a tap on the
+                 scrim does nothing and the bound dismiss intent 3:0 is refused (no sibling)
+    snackstay    as snacknoop, but `apply 3 3 0` is accepted and changes nothing (the sibling leaves the layer)
+    snackopen    as snack, with identity, but the scrim carries an unrelated intent 7:0 ("open"): a tap on the scrim,
+                 and `apply 3 7 0`, add 100 and keep the snackbar; `apply 3 3 0` (the bound dismiss) closes it
     snackcount   as snack, and the product's pointer entry (`pointer`): every tap posts `touch`, and the first tap
                  restarts a countdown `cd` ("298 s" -> "300 s"); the dismiss is still exactly the snackbar's
     banner       a pass-through banner: scrim 0,0 320x240 (clickable, opacity 0, intent 4:0), card 0,200 320x40; a tap
@@ -35,6 +40,8 @@ an overlay patches `delete <its scrim key>` and posts `close` (its own button, i
                  digit map), and `apply 3 5 <d>` for another digit is refused
     seeded       no overlay; the seed of `open` is shown as the count (boot seeds)
     badtree      no overlay; the frame's node 2 claims depth 5 (its records parse, its tree does not)
+    unassoc      no overlay; the scene rects of go, 51, k2 and ok are one pixel right of their rendered boxes (no
+                 association), and a button `dup` (8:0) is published twice: no control can be tapped
 
 With UI_STUB_READY set, the stub creates that file at its first `open` (a test's "the run is underway").
 
@@ -47,7 +54,8 @@ import sys
 import time
 
 MODE = sys.argv[1]
-SNACKS = ("snack", "snackbad", "snackmore", "snacktwice", "snackdue", "snackmodal", "snackcount", "snackfull")
+IDENTITY = ("snackfull", "snacknoop", "snackstay", "snackopen")
+SNACKS = ("snack", "snackbad", "snackmore", "snacktwice", "snackdue", "snackmodal", "snackcount") + IDENTITY
 OVERLAY = dict([(m, "snack") for m in SNACKS], dialog="dialog", dialoglive="dialog", dialogdup="dialog",
                banner="banner", bannerok="banner").get(MODE)
 SCRIMS = {"dialog": "dscrim", "snack": "sscrim", "banner": "bscrim"}
@@ -108,6 +116,14 @@ def scene(model):
     if model.cd is not None:
         nodes.append((0, "lv_label", (200, 100, 299, 119), 0, 0, "%d s" % model.cd))
     overlay(model, records, nodes)
+    if MODE == "unassoc":
+        moved = []
+        for line in records:
+            fields = line.split("\t")
+            if fields[0] in ("go", "51", "k2", "ok"):
+                fields[3] = str(int(fields[3]) + 1)
+            moved.append("\t".join(fields))
+        records = moved + [sem("dup", "button", "Dup", (200, 60, 40, 30), "8:0", style=5)] * 2
     return records, nodes
 
 
@@ -121,7 +137,8 @@ def overlay(model, records, nodes):
         nodes += [(len(nodes) - 1, "lv_button", (110, 60, 209, 89), 1, 255, None),
                   (len(nodes), "lv_label", (130, 65, 189, 84), 0, 0, "Close")]
     elif model.overlay == "snack":
-        records += [sem("sscrim", "scrim", "", (0, 0, W, H), "3:0"), sem("scard", "snackbar", "", (20, 180, 280, 50)),
+        records += [sem("sscrim", "scrim", "", (0, 0, W, H), "7:0" if MODE == "snackopen" else "3:0"),
+                    sem("scard", "snackbar", "", (20, 180, 280, 50)),
                     sem("sok", "button", "OK", (200, 190, 80, 30), "3:0", style=5)]
         nodes += [(0, "lv_obj", (0, 0, W - 1, H - 1), 1, 82 if MODE == "snackmodal" else 0, None),
                   (len(nodes), "lv_obj", (20, 180, 299, 229), 0, 255, None)]
@@ -193,6 +210,10 @@ def scrim(model, on_go):
     elif MODE == "snackfull":
         model.close("close")
         model.change("go", 1)
+    elif MODE == "snackopen":
+        model.change("open", 100)
+    elif MODE in ("snacknoop", "snackstay"):
+        pass
     elif MODE in SNACKS + ("banner", "bannerok") and MODE != "snackbad":
         model.close("dismiss")
         if MODE == "snackmore" or MODE == "bannerok" and on_go:
@@ -209,6 +230,13 @@ def apply(model, kind, ident, arg):
         return "ok apply refused"
     if ident in (1, 5, 6, 51) and blocked and not (MODE == "dialoglive" and ident == 1):
         return "ok apply missed"
+    if ident == 3 and MODE == "snacknoop":
+        return "ok apply refused"
+    if ident == 3 and MODE == "snackstay":
+        return "ok apply"
+    if ident == 7 and MODE == "snackopen":
+        model.change("open", 100)
+        return "ok apply"
     if ident == 51 and arg == 0:
         model.change("digit", entry=model.entry + "1")
     elif ident == 1:
@@ -265,6 +293,9 @@ def handle(words, model):
         return model, ["ok tap %d %d" % (index, index)]
     if cmd == "crop":
         return model, ["ok crop lines %d" % int(words[4])] + ["ffffffff" * int(words[3])] * int(words[4])
+    if cmd == "identity":
+        dismiss = ["node\tsok\tdismiss\t-\t0"] if model.overlay == "snack" else []
+        return model, ["ok identity lines %d" % (1 + len(dismiss)), "state\tmain"] + dismiss
     replies = {"domain-count": lambda: ["ok domain-count 0"],
                "next-due": lambda: ["ok next-due " + ("none" if model.due is None else str(model.due))],
                "env-inputs": lambda: ["ok env-inputs 0"],
@@ -275,7 +306,8 @@ def handle(words, model):
 
 
 def main():
-    say(["ui-probe/1 ready frame-facts hit-test tap apply-missed crop" + (" pointer" if MODE == "snackcount" else "")])
+    say(["ui-probe/1 ready frame-facts hit-test tap apply-missed crop" + (" pointer" if MODE == "snackcount" else "")
+         + (" identity" if MODE in IDENTITY else "")])
     model = None
     for raw in sys.stdin:
         words = raw.rstrip("\n").split(" ")

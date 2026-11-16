@@ -36,9 +36,11 @@ max_wait_ms = 300256
 # The adapter's trace must be fetched at least every 60 s of virtual time (model:L414-L416); the explorer's spans are
 # at most 64 frames anyway (docs/ui-explore.md "Paths and time").
 drain_ms = 60000
-# All seven capabilities: the probe announces them (probe:U23 greeting; model:L303), and `pointer` makes every tap
-# go through the kiosk's own entry `uil_pointer` (model:L272-L278).
-requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer"]
+# All eight capabilities: the probe announces them (probe:U23 greeting; model:L303; `identity` since business-apps
+# 3e8c46e, U04g, probe:U05e greeting), and `pointer` makes every tap go through the kiosk's own entry `uil_pointer`
+# (model:L272-L278). U05e: `identity` binds a notice's dismiss intent (its `dismiss` element), which the layer policy
+# needs to judge a tap outside by a sibling replay (docs/ui-explore.md "Taps under a layer").
+requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer", "identity"]
 # The kiosk posts `touch` once on every press, at the press's instant, whatever it hits (model:L347-L351, the ambient
 # table model:L370-L384). `next-due` moves by 0 on all 13 screens, so `due_restart_ms` is NOT declared
 # (model:L352-L353). A touch restarts the end-of-shift report's visible countdown (rules:L42, "5 min, countdown on the

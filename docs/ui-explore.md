@@ -44,7 +44,7 @@ rigor ui-explore --probe BIN --catalogue FILE.events.toml --strategy sweep|bfs|w
   replay: --paths FILE (ui-explore-paths/1)
   sweep, bfs, walk: --boot-seeds catalogue in place of --seed (U05e: once per seed of the catalogue's [boot])
   bfs: --prefix NAME (U05e: start after the words of the catalogue's [[prefix]] row NAME)
-  --strict-paths (U05e: a scene word that names no point of its state is an error, not info)
+  --lenient-paths (U05e: a scene word that names no point of its state is info, not an error: hand-written paths)
 ```
 
 Exit 0: no finding of severity error. 1: at least one. 2: the gate could not decide. That covers:
@@ -68,7 +68,10 @@ budget spent during the first launch are all findings.
 survives an exit 2 or a signal. On SIGTERM, SIGINT or SIGHUP the explorer kills every live probe's process group and
 exits with 128 + the signal. The handler only sends SIGKILL to each live probe's group and never waits (U05e fix-up:
 waiting there deadlocked when the signal arrived while the main flow was inside `Popen.wait`, whose lock is not
-reentrant); the main flow's `finally` reaps them (gate/tests/test_ui_explore_fixup.py `SignalTest`).
+reentrant); the main flow's `finally` reaps them (gate/tests/test_ui_explore_fixup.py `SignalTest`). From the first
+signal on, the three signals are ignored, and a signalled run reaps each probe for at most 5 s and then leaves with
+`os._exit(128 + signal)`: never an unbounded wait. The signals are blocked from a probe's start until it is in the live
+set (`Session.__init__`), so one arriving in between cannot leak a probe; the probe starts with the caller's mask.
 
 | Option | Meaning |
 |---|---|
@@ -303,7 +306,8 @@ contract's forms is exit 2); a catalogue without them loads and runs exactly as 
   `scene`) caps each class per state; `grid_pct` (1 to 9 increasing integers 0..100, only with `scene`) is the probe grid
   without `--contract` (with one, its `probe_grid_pct` is used); `intent_node` (`"key"` or `"intent"`, optional) says how
   a u1 intent names its scene node (its node key, or its `intent:arg`), which puts u1, u5 and pad-enter inputs under the
-  layer policy ("Taps under a layer"). Scope `scene` needs `requires` to name `frame-facts`, `hit-test` and `tap` (exit
+  layer policy ("Taps under a layer"); `dismiss_trace` (with `dismiss_trace_provenance`) the trace types a dismiss of a
+  layer of each card role may post (the parts rule, ibid.). Scope `scene` needs `requires` to name `frame-facts`, `hit-test` and `tap` (exit
   2 otherwise), so a probe that cannot give the frame facts or take the taps is refused, never run without scene taps;
 - `[boot]` with `seeds` (1 to 256 distinct integers) and `provenance`: the seeds `--boot-seeds catalogue` runs the
   strategy with, once each, in file order, into one exploration; the findings merge by id (a finding's id does not
@@ -457,13 +461,19 @@ is replayable: in a replay it is resolved in the state it is sent in. Fixed u2 a
 Never vacuous in silence (fix-up 2):
 - a state whose frame facts cannot be read as a tree gets no words and the error `scene-unreadable` (identity: the
   state's key), never an empty list;
-- a scene-scoped bfs that completes without sending one scene tap is the error `scene-taps-vacuous` (identity: the
-  catalogue). Walks, replays and sweeps derive no scene taps by design and are not judged by it; a run the budget cut is
-  not either (nothing is reported as complete);
+- a readable state with at least one enabled interactive scene node and NO u2 word is the error
+  `scene-controls-untapped` (fix-up 3; identity: the state's key; `observed.nodes`: each such node and why it was not
+  tapped: `unassociated`, `hidden`, `no box`, or `duplicate key`: a node dropped from the derivation for a key the
+  scene repeats is reported here, never silently);
+- a scene-scoped bfs that completes without sending one u2 scene tap (blank taps do not count) is the error
+  `scene-taps-vacuous` (identity: the catalogue). Walks, replays and sweeps derive no scene taps by design and are not
+  judged by it; a run the budget cut is not either (nothing is reported as complete);
 - a scene word that names no point of the state it is sent in is the outcome `unbound` (no input is sent) and the
-  finding `scene-word-unbound`: info for a hand-written path, an error with `--strict-paths` (for replaying a finding's
-  `paths.json` to its id, which must not run a shorter path);
-- the summary of a run with `taps` or a contract has `scene_taps`: `sent` and `unbound`.
+  ERROR `scene-word-unbound` (a replayed path must never run shorter); `--lenient-paths` makes it info, for hand-written
+  paths. A scene word sent in a state whose frame facts are not a tree is the outcome `unreadable` and
+  `scene-unreadable`;
+- the summary of a run with `taps` or a contract has `scene_taps` (`sent`: u2 words; `unbound`) and `sibling_cost`
+  (`runs`, `probe_commands`, `virtual_ms` of the sibling replays, below).
 
 Deviations from P004 that remain: u3 uses the contract's grid over the display (3 x 3 with the lockers grid) where
 P004 4.3 names an 8 x 6 grid; and the effect of a tap on a live control is judged "something changed", not "exactly
@@ -483,8 +493,9 @@ steps (a step judge's, as U24's `state-class-unstable`) are kept: each describes
 **With scene identity (U24).** Boot seeds and prefix words run through the same step path as every other word, so
 under ui-scene with a probe that announces `identity` they read identity after every step and are compared by
 run-twice (`IdentityTest`). Identity is read only in a step's observation; a tap's "changed nothing" compares the
-snapshot (frame, semantic, deadline, env inputs, patches and trace), never identity. The lockers draft catalogue
-requires exactly the seven capabilities its probe announces, not `identity`.
+snapshot (frame, semantic, deadline, env inputs, patches and trace), never identity. A run with a contract and a `taps`
+table also reads identity when the probe announces it (the layer policy binds a dismiss intent by it, below). The
+lockers draft catalogue requires all eight capabilities since its adapter reports identity (business-apps U04g).
 
 **Taps under a layer** (U05e; with `--contract` only; gate/rigor_lib/ui_explore_layers.py). The tap judges read the
 layer context the ui-scene judge reads, shared, not copied (ui_judge_context.Context: the association, every layer's
@@ -506,26 +517,40 @@ on a tap outside is judged by its dismiss first: a correct dismiss there is `dis
 - **dismiss**: the point lies under a scrim (outside its card's visible box), the topmost layer there, and the sealed
   rows of its card's role say `tap_outside_dismisses = true`. The tap must do exactly that layer's dismiss: the outcome
   `dismissed` (counted as accepted). Anything else (nothing, or more, or another change) is `tap-misrouted` with
-  `observed` `expected` (the layer and its intent), `pressed`, `changed` and `not_the_dismiss` (the parts below that
-  failed). It is judged on the full change set (the declared ambient events and countdown restart exempt), in two
-  ways. First "exactly the layer leaving" (ui_explore_layers.layer_left), part by part (below). When that fails and the
-  catalogue has the u1/u5 event that applies the layer's own intent (by `taps` `intent_node`: the scrim's key, or its
-  `intent:arg`; for `covered`, the control's), a SIBLING REPLAY decides: the path to this state and that event, in a
-  fresh probe without the layer policy (deterministic, so in both runs alike), and the tap must change exactly what
-  that event changes: semantic, env inputs, next deadline, patches and the trace records' type and time, the declared
-  ambient events set aside on both sides (the lockers adapter posts `touch` for an intent input too) and a
-  countdown-role node's restart exempt (`ui_explore_layers.like_sibling`; the outcome records `judged by sibling`). The
-  parts rule:
-  - semantic: the layer's records (the scrim, its card, the scene nodes after the card inside the card's rect) leave,
-    every other record stays byte for byte, but for the label of a node of the declared `countdown_restart_role` (the
-    tap's own restart);
-  - env inputs: unchanged;
-  - patches: each names a key of the layer, or is `update <key> text` of a countdown-role node;
-  - trace: at most one record besides the declared ambient ones (the dismiss's own event);
-  - next deadline: gone, later than before (the layer's timer cancelled), or the declared `due_restart_ms`;
+  `observed` `expected` (the layer and its bound dismiss intent, or null), `pressed`, `changed` and `not_the_dismiss`
+  (the parts that failed). A tap outside after which the layer is still there is never `dismissed`.
+
+  **The layer's dismiss intent is bound by the gate** (fix-up 3 ruling), never taken from wherever the product put an
+  intent: it is the intent of the one node after the layer's card and inside its rect that IS the `dismiss` element by
+  scene identity (`ui_judge_identity.carries`: a button; with an `[[element]]` row, the node at its key). The scrim's own
+  tap-outside intent counts as the dismiss only when it equals that intent; a scrim with another intent is judged
+  against the bound dismiss (and its tap is then `tap-misrouted`). Without identity (a probe that does not announce
+  it), or without exactly one such node, there is no bound intent.
+
+  It is judged on the full change set (the declared ambient events and the countdown restart exempt on both sides):
+  - **by sibling**, first, when the dismiss intent is bound and the catalogue has the u1/u5 event that applies it (by
+    `taps` `intent_node`; for `covered`, the control's own intent): the path to this state and that event run in a fresh
+    probe without the layer policy, memoised per (path, event) within the run, its probe commands counted in the
+    summary's `sibling_cost`. Its verdict counts only when the event was ACCEPTED (`apply ok`) and, for a dismiss, none
+    of the layer's records is left after it; then the tap must change exactly what that event changes: semantic, env
+    inputs, next deadline (or the declared restart), patches and the trace records' type and time
+    (`ui_explore_layers.like_sibling`). The outcome records `judged by sibling`; a sibling that could not decide records
+    `sibling failed <why>` (`error`, `refused`, `missed`, `layer-stays`) and the parts rule decides;
+  - **by parts** otherwise (`judged by parts`), strictly (`ui_explore_layers.layer_left`):
+    - semantic: the layer's records (the scrim, its card, the scene nodes after the card inside the card's rect) leave,
+      every other record stays byte for byte, but for the label of a node of the declared `countdown_restart_role`;
+    - env inputs: unchanged;
+    - patches: each names a key of the layer, or is `update <key> text` of a countdown-role node;
+    - trace: no record besides the declared ambient ones, unless `taps` declares the dismiss's trace types for the
+      layer's card role (`dismiss_trace = { <role> = [<type>, ...] }` with `dismiss_trace_provenance`): then only those,
+      each at most once;
+    - next deadline: none, or exactly the declared `due_restart_ms`. Any other deadline cannot be told from the layer's
+      own timer by parts, so such a dismiss needs the sibling (the lockers kiosk's 250 ms tick always leaves one).
 - **pass**: the point lies under such a scrim whose layer neither blocks nor dismisses, over an interactive, not inert
-  node below it. A tap that only removed the layer (the same parts as a dismiss) is `tap-swallowed-first` (`observed` the layer and the node below):
-  the layer took the tap the control below should have had. Any other outcome is judged as without a contract.
+  node below it. A tap whose change is exactly the layer leaving (the parts rule) is `tap-swallowed-first` (`observed`
+  the layer and the node below): the layer took the tap the control below should have had. Any other outcome is judged
+  as without a contract: a swallow that also posts a trace record the catalogue does not declare for the layer is
+  reported as `tap-misrouted` or `noop-tap-effect`, not as `tap-swallowed-first`.
 
 With `taps` `intent_node`, an intent input (u1, u5, and a pad macro's enter) is judged the same way against its scene
 node: inert, an `ok apply missed` is the result `inert` (counted as refused, no `intent-missed`; outcome
@@ -623,8 +648,9 @@ nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` 
 | `tap-swallowed-first` | U05e, `--contract`: a tap under a pass-through layer over a control only removed the layer | `[check, key before, word]` | `word`, `layer`, `below` |
 | `taps-capped` (info) | U05e: a state had more scene taps of a class than `max_per_state` | `["taps-capped", key, class]` | `class`, `count`, `cap` |
 | `scene-unreadable` | U05e: a state of a scene-scoped run whose frame facts are not a tree (no scene taps derivable) | `["scene-unreadable", key]` | `reason` |
-| `scene-taps-vacuous` | U05e: a scene-scoped bfs that completed without sending one scene tap | `["scene-taps-vacuous", sha]` | `sent`, `unbound` |
-| `scene-word-unbound` (info; error with `--strict-paths`) | U05e: a scene word that names no point of its state | `[check, key before, word]` | `word` |
+| `scene-taps-vacuous` | U05e: a scene-scoped bfs that completed without sending one u2 scene tap | `["scene-taps-vacuous", sha]` | `sent`, `unbound` |
+| `scene-controls-untapped` | U05e: a readable state with interactive scene nodes and no u2 word | `["scene-controls-untapped", key]` | `nodes` (key, why) |
+| `scene-word-unbound` (error; info with `--lenient-paths`) | U05e: a scene word that names no point of its state | `[check, key before, word]` | `word` |
 | `key-too-coarse` | equal keys, different normalised records (every semantic field but justified ignores, plus every model and derived fact) | key | `witness_path`, `differs_in`; both records in `records.json` |
 
 **Output nobody asked for.** Timing decides whether a stray line is caught before a command or read as that command's

@@ -16,8 +16,8 @@ from rigor_lib import ui_explore_catalogue as catalogue_mod
 from rigor_lib import ui_explore_strategies as strategies
 from rigor_lib.ui_explore_coverage import CRITERIA, not_evaluated
 from rigor_lib.ui_explore_judges import CHECKS, PRIVATE, SCENE_CHECKS, make
-from rigor_lib.ui_explore_scene import Scene
-from rigor_lib.ui_explore_probe import CAPABILITIES, TAP_CAPS, Budget, BudgetSpent, ProbeError, Session, kill_all
+from rigor_lib.ui_explore_probe import (CAPABILITIES, STOP_SIGNALS, TAP_CAPS, Budget, BudgetSpent, ProbeError,
+                                        Session, kill_all)
 from rigor_lib.ui_explore_judges import probe_error_judge
 from rigor_lib.ui_explore_run import Config, Run, Step, check_words
 from rigor_lib.ui_judge_findings import JudgeSet
@@ -80,9 +80,8 @@ def add_parser(subparsers):
     parser.add_argument("--boot-seeds", choices=("catalogue",),
                         help="sweep, bfs, walk: run once per seed of the catalogue's [boot] instead of --seed (U05e)")
     parser.add_argument("--prefix", help="bfs: start after the words of the catalogue's [[prefix]] row of this name")
-    parser.add_argument("--strict-paths", action="store_true",
-                        help="a scene word that names no point of its state is an error, not info (U05e: replaying "
-                             "a finding's paths.json to its id)")
+    parser.add_argument("--lenient-paths", action="store_true",
+                        help="a scene word that names no point of its state is info, not an error (hand-written paths)")
     parser.add_argument("--deadline-ms", type=_uint, default=10000, help="deadline of every probe reply (10000)")
     parser.add_argument("--budget-s", type=_uint, default=1800, help="wall-clock budget of the whole run (1800)")
     parser.add_argument("--require", type=_list(r"C[0-9]{1,2}"), help="criteria that must be evaluated, e.g. C1,C8")
@@ -270,8 +269,9 @@ def _launch(args, config, contract, judges, paths, word):
         _check_taps(catalogue, caps, paths)
         prefix = _prefix(args, catalogue, caps)
         strategies.check_cost(catalogue, args, paths, caps, prefix)
-        config = _config(config.probe, config.deadline_s, catalogue, config.budget, caps, _identity(judges, caps),
-                         _scene(catalogue, contract))
+        scene = strategies.run_scene(catalogue, contract)
+        config = _config(config.probe, config.deadline_s, catalogue, config.budget, caps,
+                         _identity(judges, caps) or strategies.identity_for(scene, caps), scene)
         if config.scene is not None:
             config.scene.config = config        # the sibling replays of the layer policy run with this config
     return config, caps, greeting, prefix
@@ -309,41 +309,20 @@ def explore(args):
                 evaluated.append(criterion)
         if judges is not None:
             extra.extend(judges.finish(word, explorer.ink.capped if explorer.ink else ()))
-    extra.extend(_scene_run(args, explorer, catalogue, word, spent))
+    extra.extend(strategies.scene_vacuity(args, explorer, catalogue, word, spent))
     extra.extend(not_evaluated(c, explorer.exploration) for c in (args.require or ()) if c not in evaluated)
     if explorer.taps == "indev" and "pointer" not in (caps or ()):
         extra.append(make("taps-injected", ["taps-injected", catalogue.sha256], None, [word],
                           {"taps": "indev", "pointer": False}))
     found = _dedupe(explorer.all_findings() + extra)
-    for item in found:          # U05e: a replay that must reproduce its paths word for word (`--strict-paths`)
-        if args.strict_paths and item["check"] == "scene-word-unbound":
-            item["severity"] = "error"
+    for item in found:          # U05e: hand-written paths may name points a state does not have (`--lenient-paths`)
+        if args.lenient_paths and item["check"] == "scene-word-unbound":
+            item["severity"] = "info"
     if args.evidence:
         _evidence(found, args.evidence, criteria)
     for item in found:
         item.pop(PRIVATE, None)
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
-
-
-def _scene_run(args, explorer, catalogue, word, spent):
-    """U05e: a scene-scoped bfs that completed without sending one scene tap is `scene-taps-vacuous` (error): its taps
-    went missing, not its controls (walk, replay and sweep derive no scene taps by design)."""
-    scene = explorer.config.scene
-    if scene is None or not scene.scoped or spent or args.strategy != "bfs" or explorer.scene_sent:
-        return []
-    return [make("scene-taps-vacuous", ["scene-taps-vacuous", catalogue.sha256], None, [word],
-                 {"sent": 0, "unbound": explorer.scene_unbound})]
-
-
-def _scene(catalogue, contract):
-    """The scene taps and the layer policy of a run (U05e), or None for a run with neither a `taps` table nor a
-    contract, which then runs exactly as before."""
-    if catalogue.taps is None and contract is None:
-        return None
-    scene = Scene(catalogue, contract)
-    if scene.scoped and scene.grid is None:
-        raise InternalError("taps scope \"scene\" needs the catalogue's grid_pct or a --contract with probe_grid_pct")
-    return scene
 
 
 def _config(probe, deadline_s, catalogue, budget, caps=None, identity=False, scene=None):
@@ -397,8 +376,8 @@ def _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, foun
             "domain_count": exploration.domain_count, "domain_visited": sorted(exploration.domain_visited),
             "events": events, "outcomes": exploration.outcomes, "taps": explorer.taps,
             "cost": {"probe_commands": explorer.commands, "virtual_ms": explorer.virtual_ms},
-            **({"scene_taps": {"sent": explorer.scene_sent, "unbound": explorer.scene_unbound}}
-               if explorer.config.scene is not None else {}),
+            **({"scene_taps": {"sent": explorer.scene_sent, "unbound": explorer.scene_unbound},
+                "sibling_cost": dict(explorer.config.scene.cost)} if explorer.config.scene is not None else {}),
             "findings": _counts(found, explorer.config.scene is not None),
             "detail": detail}
 
@@ -420,7 +399,7 @@ def _remove(path):
         os.unlink(path)
 
 
-_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+_SIGNALS = STOP_SIGNALS
 _STOPPED = []          # the signal that is ending the run, once one arrived
 
 
@@ -466,10 +445,12 @@ def handle(args):
     try:
         found, summary = explore(args)
     finally:
+        if _STOPPED:            # a signalled run: reap each probe for at most 5 s, then exit at once
+            kill_all(timeout=5)
+            os._exit(128 + _STOPPED[0])
         kill_all()
-        if not _STOPPED:        # a run a signal ends keeps ignoring signals until it has exited
-            for sig, handler in previous.items():
-                signal.signal(sig, handler)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
     jsonio.write_atomic(args.out, b"".join(jsonio.canonical_dumps(item) for item in found))
     if args.summary:
         jsonio.write_atomic(args.summary, jsonio.canonical_dumps(summary))

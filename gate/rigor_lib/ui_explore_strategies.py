@@ -13,7 +13,7 @@ from rigor_lib.ui_explore_judges import (CoarseTable, ambient_judge, layer_judge
                                          run_twice_judge, starvation_judge, state_of, unreachable_judge)
 from rigor_lib.ui_explore_probe import ORIGIN_MAX_MS, TAP_CAPS, BudgetSpent
 from rigor_lib.ui_explore_run import InkPlan, run_twice
-from rigor_lib.ui_explore_scene import is_scene_word
+from rigor_lib.ui_explore_scene import Scene, is_scene_word
 
 STRATEGIES = ("sweep", "bfs", "walk", "replay")
 REQUIRED = {"sweep": ("C1",), "bfs": ("C8",), "walk": ()}   # replay: the criteria of its paths file
@@ -72,7 +72,7 @@ class Explorer:
         if self.config.scene is not None:
             scene = [s for s in first.steps[:len(words)] if is_scene_word(s.word)]
             self.scene_unbound += sum(1 for s in scene if "unbound" in s.outcome)
-            self.scene_sent += sum(1 for s in scene if "unbound" not in s.outcome and s.applies)
+            self.scene_sent += sum(1 for s in scene if s.word.startswith("tap@") and s.applies)   # u2 words only
         return first.steps
 
     def state_words(self, step, path):
@@ -87,7 +87,11 @@ class Explorer:
                                       state_of(step.key, step.proj, catalogue.key, step.origin), list(path),
                                       {"reason": "the frame facts are not a tree"}))
             return []
-        words, capped = found
+        words, capped, missed = found
+        if missed:            # a readable state with interactive nodes and no u2 word: its controls went untapped
+            self.findings.append(make("scene-controls-untapped", ["scene-controls-untapped", step.key],
+                                      state_of(step.key, step.proj, catalogue.key, step.origin), list(path),
+                                      {"nodes": [{"key": key, "why": why} for key, why in missed]}))
         for cls, count in capped:
             self.findings.append(make("taps-capped", ["taps-capped", step.key, cls],
                                       state_of(step.key, step.proj, catalogue.key, step.origin), list(path),
@@ -266,11 +270,40 @@ def merge_bounds(seeded):
             out.append(item)
             continue
         part = dict(item["observed"], seed=seed)
-        if item["id"] not in bounds:
-            bounds[item["id"]] = dict(item, observed=dict(item["observed"], per_seed=[]))
+        if item["id"] not in bounds:      # per seed only: no seed's depths at the top level
+            top = {k: v for k, v in item["observed"].items() if k not in ("states_per_depth", "dropped_states")}
+            bounds[item["id"]] = dict(item, observed=dict(top, per_seed=[]))
             out.append(bounds[item["id"]])
         merged = bounds[item["id"]]["observed"]
         merged["per_seed"].append({k: part[k] for k in ("seed", "reasons", "states_per_depth", "dropped_states")})
         merged["reasons"] = [r for r in ("last-depth-adds-states", "state-bound", "budget")
                              if any(r in p["reasons"] for p in merged["per_seed"])]
     return out
+
+
+# ---- U05e: the scene taps of a run (moved here from ui_explore.py, which stays under 500 lines) ----
+def scene_vacuity(args, explorer, catalogue, word, spent):
+    """U05e: a scene-scoped bfs that completed without sending one scene tap is `scene-taps-vacuous` (error): its taps
+    went missing, not its controls (walk, replay and sweep derive no scene taps by design)."""
+    scene = explorer.config.scene
+    if scene is None or not scene.scoped or spent or args.strategy != "bfs" or explorer.scene_sent:
+        return []
+    return [make("scene-taps-vacuous", ["scene-taps-vacuous", catalogue.sha256], None, [word],
+                 {"sent": 0, "unbound": explorer.scene_unbound})]
+
+
+def run_scene(catalogue, contract):
+    """The scene taps and the layer policy of a run (U05e), or None for a run with neither a `taps` table nor a
+    contract, which then runs exactly as before."""
+    if catalogue.taps is None and contract is None:
+        return None
+    scene = Scene(catalogue, contract)
+    if scene.scoped and scene.grid is None:
+        raise InternalError("taps scope \"scene\" needs the catalogue's grid_pct or a --contract with probe_grid_pct")
+    return scene
+
+
+def identity_for(scene, caps):
+    """U05e fix-up 3: the layer policy binds a layer's dismiss intent by scene identity, so a run with a contract and
+    a `taps` table reads identity when the probe announces it, with or without ui-scene."""
+    return scene is not None and scene.contract is not None and scene.spec is not None and "identity" in (caps or ())

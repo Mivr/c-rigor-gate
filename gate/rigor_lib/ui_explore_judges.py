@@ -29,10 +29,9 @@ CHECKS = ("ui-coverage-gap", "model-nondeterministic", "run-twice-mismatch", "ti
 # U05e: counted in the summary only by a run with scene taps or a contract (a run without them keeps its bytes).
 # `taps-capped` (info) records that a state had more scene taps than the per-state cap: a fact about the run.
 SCENE_CHECKS = ("blocked-target-live", "tap-swallowed-first", "taps-capped", "scene-unreadable", "scene-taps-vacuous",
-                "scene-word-unbound")
-# `scene-word-unbound` is info for a hand-written replay path; `--strict-paths` makes it an error (ui_explore.py).
-SEVERITY = {"key-too-coarse": "info", "taps-injected": "info", "ambient-restart": "info", "taps-capped": "info",
-            "scene-word-unbound": "info"}
+                "scene-word-unbound", "scene-controls-untapped")
+# `scene-word-unbound` is an error; `--lenient-paths` (hand-written paths) makes it info (ui_explore.py).
+SEVERITY = {"key-too-coarse": "info", "taps-injected": "info", "ambient-restart": "info", "taps-capped": "info"}
 PRIVATE = "_evidence"
 
 
@@ -165,10 +164,13 @@ def layer_judge(catalogue_key):
         words = [view.word for view in path] + [step.word]
         found = []
         unbound = {"word": step.word} if "unbound" in step.outcome else None
+        unread = {"reason": "the frame facts are not a tree"} if "unreadable" in step.outcome else None
         for check, part in (("blocked-target-live", step.blocked), ("tap-swallowed-first", step.swallowed),
-                            ("scene-word-unbound", unbound)):
+                            ("scene-word-unbound", unbound), ("scene-unreadable", unread)):
             if part is not None:
-                found.append(make(check, [check, step.key_before, step.word],
+                ident = ["scene-unreadable", step.key_before] if check == "scene-unreadable" else \
+                    [check, step.key_before, step.word]
+                found.append(make(check, ident,
                                   state_of(step.key_before, step.proj_before, catalogue_key, step.origin), words,
                                   dict(part, word=step.word)))
         return found

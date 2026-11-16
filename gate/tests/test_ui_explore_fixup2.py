@@ -69,8 +69,9 @@ class DismissTest(SceneCase):
     def test_a_dismiss_that_does_what_its_own_intent_does_is_dismissed_by_the_sibling_replay(self):
         catalogue = self.catalogue('  { id = "go", intent = 1', '  { id = "snack-dismiss", intent = 3, arg = 0, '
                                    'expect = "accept" },\n  { id = "go", intent = 1', base=SCENE)
-        _, found, summary = self.scene_replay("snackfull", self.PATHS, contract=True, catalogue=catalogue, code=0)
-        self.assertEqual(found, [])
+        _, found, summary = self.scene_replay("snackfull", self.PATHS, "--judges", "ui-scene", "--today",
+                                              "2026-11-16", contract=True, catalogue=catalogue)
+        self.assertEqual([f for f in found if f["gate"] == "ui-explore"], [])
         self.assertEqual(summary["outcomes"]["blank-right"]["judged by sibling"], 1)
         # without the intent's event in the catalogue there is no sibling: the parts rule calls it misrouted
         _, found, _ = self.scene_replay("snackfull", self.PATHS, contract=True, code=1)
@@ -122,7 +123,7 @@ class DiscTest(SceneCase):
     def test_with_the_ppi_and_radius_the_disc_points_follow_the_grid(self):
         _, found, summary = self.scene_replay("plain", [[OPEN, "tap@go#9"]], contract=True, code=0)
         self.assertEqual((found, summary["scene_taps"]), ([], {"sent": 1, "unbound": 0}))
-        _, found, _ = self.scene_replay("plain", [[OPEN, "tap@go#9"]], code=0)     # no contract: grid only
+        _, found, _ = self.scene_replay("plain", [[OPEN, "tap@go#9"]], code=1)     # no contract: grid only
         self.assertEqual(self.checks(found), [("scene-word-unbound", "tap@go#9")])
 
 
@@ -135,3 +136,4 @@ class BoundsTest(SceneCase):
         self.assertEqual([item["id"] for item in merged], ["x", "y"])
         self.assertEqual(merged[0]["observed"]["reasons"], ["state-bound", "budget"])
         self.assertEqual([p["seed"] for p in merged[0]["observed"]["per_seed"]], [7, 8])
+        self.assertNotIn("states_per_depth", merged[0]["observed"])     # fix-up 3: per seed only

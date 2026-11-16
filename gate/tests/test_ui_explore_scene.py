@@ -70,13 +70,13 @@ class SceneTapsTest(SceneCase):
 
     def test_scene_words_replay_and_an_unknown_point_is_unbound(self):
         paths = [[OPEN, "tap@go#4", "tap@go#9", "tap@nope#0", "blank#0"]]
-        _, found, summary = self.scene_replay("plain", paths, code=0)
-        # U05e fix-up 2: an unbound word is a finding (info; an error with --strict-paths), and counted
+        _, found, summary = self.scene_replay("plain", paths, code=1)
+        # fix-up 3: an unbound word is an error finding (info with --lenient-paths); `sent` counts u2 words only
         self.assertEqual(sorted((f["check"], f["severity"], f["path"][-1]) for f in found),
-                         [("scene-word-unbound", "info", "tap@go#9"), ("scene-word-unbound", "info", "tap@nope#0")])
-        self.assertEqual(summary["scene_taps"], {"sent": 2, "unbound": 2})
-        _, strict, _ = self.scene_replay("plain", paths, "--strict-paths", code=1)
-        self.assertEqual({f["severity"] for f in strict}, {"error"})
+                         [("scene-word-unbound", "error", "tap@go#9"), ("scene-word-unbound", "error", "tap@nope#0")])
+        self.assertEqual(summary["scene_taps"], {"sent": 1, "unbound": 2})
+        _, lenient, _ = self.scene_replay("plain", paths, "--lenient-paths", code=0)
+        self.assertEqual({f["severity"] for f in lenient}, {"info"})
         self.assertEqual(summary["outcomes"]["tap@go#9"], {"unbound": 1})
         self.assertEqual(summary["outcomes"]["tap@go#4"], {"pressed lv_button 10,10,109,49 aimed": 1, "tap ok": 1})
 
@@ -137,7 +137,8 @@ class LayerPolicyTest(SceneCase):
             _, found, _ = self.scene_replay(mode, self.PATHS, contract=True, code=1)
             self.assertEqual(self.checks(found), [("tap-misrouted", "blank-right"), ("tap-misrouted", "tap-go"),
                                                   ("tap-misrouted", "tap@go#0")], mode)
-            self.assertEqual(found[0]["observed"]["expected"], {"layer": "sscrim", "intent": "3:0"})
+            # fix-up 3: no scene identity, so no bound dismiss intent (judged by parts)
+            self.assertEqual(found[0]["observed"]["expected"], {"layer": "sscrim", "intent": None})
 
     def test_a_tap_that_only_removes_a_pass_through_layer_is_swallowed(self):
         _, found, _ = self.scene_replay("banner", self.PATHS, contract=True, code=1)

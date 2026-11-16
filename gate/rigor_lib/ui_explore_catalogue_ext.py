@@ -12,7 +12,9 @@ from rigor_lib.errors import InternalError
 TAP_SCOPES = ("fixed", "scene")
 INTENT_NODES = ("key", "intent")      # how a u1 intent names its scene node: by node key, or by its `intent:arg`
 _TAPS_KEYS = ("scope", "provenance")
-_TAPS_OPTIONAL = ("max_per_state", "grid_pct", "intent_node")
+_TAPS_OPTIONAL = ("max_per_state", "grid_pct", "intent_node", "dismiss_trace", "dismiss_trace_provenance")
+_CARD_ROLES = ("dialog", "banner", "snackbar")
+_TRACE_TYPE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 MAX_PER_STATE = 4096
 _NAME = re.compile(r"[a-z][a-z0-9-]{0,63}")
 PREFIX_WORDS = 256
@@ -27,6 +29,7 @@ class Taps:
     max_per_state: object
     grid_pct: object
     intent_node: object
+    dismiss_trace: tuple = ()   # ((card role, (trace type, ...)), ...): what a dismiss of such a layer posts
 
 
 def _fail(where, why):
@@ -74,7 +77,28 @@ def taps(raw):
     node = raw.get("intent_node")
     if node is not None and (type(node) is not str or node not in INTENT_NODES):
         _fail("taps.intent_node", "must be one of %s" % ", ".join(INTENT_NODES))
-    return Taps(scope, cap, grid, node)
+    return Taps(scope, cap, grid, node, _dismiss_trace(raw))
+
+
+def _dismiss_trace(raw):
+    """`dismiss_trace = { <card role> = [<trace type>, ...] }` with `dismiss_trace_provenance` (together): the trace
+    types the parts rule allows a dismiss of a layer of that card role to post, each at most once."""
+    if ("dismiss_trace" in raw) != ("dismiss_trace_provenance" in raw):
+        _fail("taps", "dismiss_trace and dismiss_trace_provenance go together")
+    if "dismiss_trace" not in raw:
+        return ()
+    ui_contract.check_provenance("taps.dismiss_trace_provenance", raw["dismiss_trace_provenance"])
+    table = raw["dismiss_trace"]
+    if type(table) is not dict or not table or any(role not in _CARD_ROLES for role in table):
+        _fail("taps.dismiss_trace", "must be a table of card roles (%s)" % ", ".join(_CARD_ROLES))
+    out = []
+    for role in sorted(table):
+        types = table[role]
+        if type(types) is not list or not types or len(set(types)) != len(types) \
+                or any(type(t) is not str or not _TRACE_TYPE.fullmatch(t) for t in types):
+            _fail("taps.dismiss_trace.%s" % role, "must be a non-empty list of distinct trace types")
+        out.append((role, tuple(types)))
+    return tuple(out)
 
 
 SCENE_CAPS = ("frame-facts", "hit-test", "tap")      # what scene-scoped taps read and send

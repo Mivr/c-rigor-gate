@@ -154,6 +154,7 @@ def _do_word(session, step, run, catalogue, before):
         event = catalogue.by_id(word)
         if run.scene is not None:
             run.scene.path = list(run.words[:step.index])     # U05e: the words to this state, for a sibling replay
+            run.scene.identity = before.obs.get("identity")    # and its identity records (with ui-scene), or None
         if event is None:
             _scene_tap(session, step, run, catalogue, before)
         elif event.cls == "t1":
@@ -171,8 +172,8 @@ def _scene_tap(session, step, run, catalogue, before):
     """A state-scoped tap word (U05e): its point in the state before (resolved from that step's own observation, as
     the bfs derived it), or the outcome `unbound` when that state has no such point."""
     resolved = run.scene.resolve(step.word, words_mod.snapshot_of(before.obs)) if run.scene is not None else None
-    if resolved is None:
-        step.outcome.append("unbound")
+    if resolved is None or resolved == "unreadable":
+        step.outcome.append("unbound" if resolved is None else "unreadable")    # each a finding (ui_explore_judges)
         return
     event, aim = resolved
     words_mod.inputs(session, step, before_inputs(before), [("tap", event)], catalogue, run.scene, aim)
