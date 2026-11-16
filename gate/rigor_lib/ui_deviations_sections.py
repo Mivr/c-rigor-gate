@@ -58,7 +58,7 @@ _CHAIN = (
     ("a)", re.compile(r"(?<![\w(])([a-z])\)"), lambda m: ord(m.group(1)) - 96),
     ("(r)", re.compile(r"\(" + _ROM + r"\)", re.IGNORECASE), lambda m: _ROMAN[m.group(1).lower()]),
 )
-_BEFORE_ENTRY = re.compile(r"(?:[.;:!?]\s+|\n\s*)$")
+_BEFORE_ENTRY = re.compile(r"[.;:!?]\s+$")
 
 
 @dataclass(frozen=True)
@@ -134,8 +134,8 @@ def _run(ordinals):
 
 
 def _chain_items(text):
-    """(style, k, 0) for every in-order chain from 1 whose items stand where an entry starts: at the start of the text or of
-    a line, or after a sentence end. A label inside the text of an entry (`(A1)`, `D1` in `see D1`) is a cross-reference."""
+    """(style, k, 0) for every in-order chain from 1 whose items stand where an entry starts: at the start of the text or
+    after a sentence end (a label at a line start is a labelled line, counted as such). A label inside the text of an entry (`(A1)`, `D1` in `see D1`) is a cross-reference."""
     out = set()
     for style, regex, read in _CHAIN:
         found = [(read(m), m.start()) for m in regex.finditer(text)

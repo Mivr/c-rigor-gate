@@ -409,6 +409,10 @@ class Sections(unittest.TestCase):
         self.assertEqual(entries("Disagreements:", "D1-D4 closed", "D5 x", "D6 y", "D7 z"), ((2, 4),))
         self.assertEqual(entries("Disagreements:", "gap-v1 a"), ((2, 0),))
 
+    def test_a_range_label_counts_once_from_its_first_label(self):
+        self.assertEqual(entries("Disagreements:", "D2-D4 closed", "D5 x"), ((2, 2),))
+        self.assertEqual(entries("Disagreements: GAP-V1 a. GAP-V2 b. GAP-V3 c."), ((2, 3),))      # an inline chain with a letter after the dash
+
     def test_a_tag_on_an_entry_line_leaves_the_entry_and_a_tag_on_the_heading_leaves_the_section(self):
         t = tag("UI-A1")
         got = scan("/*\n * Deviations:\n * 1. a %s\n * 2. b\n */\n" % t)

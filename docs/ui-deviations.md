@@ -146,7 +146,7 @@ line that ends in a tag is still an entry).
 ### Entry count
 
 An entry is **at an entry-start position**: the left-stripped start of a line at the indent of the first label (or less), or inside
-text right after a sentence end (`. ; : ! ?`) or a line break. A label inside the text of an entry (a cross-reference such as
+text right after a sentence end (`. ; : ! ?`). A label inside the text of an entry (a cross-reference such as
 `(A1)`, `(P1)`, `see D1`) is not an entry. Entries are the union of
 
 1. the **labelled lines at the indent of the first label**, so sub-bullets and numbered steps inside an entry are not counted. A
