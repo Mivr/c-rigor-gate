@@ -8,7 +8,7 @@ The third judge, `ui-render` (U07, P004 3.3: what is painted, from lvprobe's ink
 scrims no tap can reach (frames 1-4, 15-18), the snackbar's clickable full-window scrim over BG, EN and Done and the
 snackbar drawn away from its scene rect (frames 13, 14), the fourth stacked banner's scrim over BG/EN (17, 18), the
 clipped Bulgarian licences line (19) and the storage-fault detail drawn as `?40` (22). The contract rows in the block
-"ADDED BY THE U06 AGENT" of `products/business-apps/ui/lockers.toml` are unsigned and need the owner's review, row by
+"ADDED BY THE U06 AGENT" of `products/business-apps/ui/lockers.toml` are not accepted yet and need the owner's review, row by
 row (the list is under "Rows this task added to the lockers contract").
 
 Two judges of `rigor ui-explore` (docs/ui-explore.md) that turn the escaped defect classes "a button under an overlay",
@@ -245,7 +245,7 @@ Every shown label with a text, in walk order:
   scope makes the excess intended (no verdict). Measured at the font the label is rendered with.
 - **`font-shrunk`** (owned): the label's line height below the `[[style_line]]` line height of the owner's style. That
   table is a REGRESSION BASELINE read from the product under test (`product-baseline:<commit>`), not a spec value: the
-  finding carries `basis` (the provenance) and `baseline_line_h`, and the table needs the owner's signature. A style
+  finding carries `basis` (the provenance) and `baseline_line_h`, and the table needs the owner's review. A style
   without a row is `contract-incomplete` (`style-line`).
 
 ## The real kiosk (`gate/tests/test_ui_judge_lockers.py`)
@@ -305,7 +305,7 @@ What a reviewer saw in the real records that no check of these judges covers (re
 | `text-overflow` | implemented at the **rendered** font | the declared font is not measured: lvprobe maps no font; `font-shrunk` reports a rendered font smaller than the style's |
 | `text-clipped`, `glyph-missing`, `fit-unmeasurable` | implemented | lvprobe's `clipped` does not model occlusion, corner masks or transforms |
 | `full-string-shown` | implemented: dots; the comparison with the formatted string is `stage-text-mismatch` | |
-| `font-shrunk` | implemented as a REGRESSION check | `[[style_line]]` is read from the product under test (`product-baseline:f1274bf`) and needs the owner's signature: it catches a font that becomes smaller than at that commit, not one that is already wrong (no spec value exists to compare with: the spec gives sizes, not line heights; font ids are not mapped). It compares line heights, so a smaller font with the same line height is not seen |
+| `font-shrunk` | implemented as a REGRESSION check | `[[style_line]]` is read from the product under test (`product-baseline:f1274bf`) and needs the owner's review: it catches a font that becomes smaller than at that commit, not one that is already wrong (no spec value exists to compare with: the spec gives sizes, not line heights; font ids are not mapped). It compares line heights, so a smaller font with the same line height is not seen |
 | `value-split` | implemented (U24) with the probe's identity; `check-blocked` without it | counts the DRAWN nodes that are one element (by the gate's role for a role id, else the product's tag); whether nodes of another element id are the digits of the same value is the product's claim. The lockers kiosk has no `[[value]]` row yet (the owner's) and its adapter no identity yet (a product task) |
 | `required-element-missing` | implemented (U24) with the probe's identity; `check-blocked` without it | presence is gate-observed (fix-up 1: associated, shown, a non-empty visible box, a drawn non-empty label); which node IS the element is the gate's role for a role id, the row's key for an `[[element]]` id, and the product's tag plus a fixed scene role for the extra elements (fix-up 2: `dismiss`/`done`/`cancel` a button, `numpad`/`language_switch`/`size_buttons` a panel over a drawn button or key; a product could still tag a wrong but drawn node of that role, which no check sees). `drawn` does not consider occlusion or opacity: an element covered by another layer or painted transparent counts as drawn (that is ui-render's, `invisible-node`, `covered`). "Every report section under the all-sections fixture" (P004 3.1) needs that fixture (a later task) |
 | state class (`state` of identity) | **the product's claim** | the gate cannot derive the class of a screen; what binds it today: the class must be a `[[state_class]]` row (else `contract-incomplete`), one abstraction key has one class in a run (`state-class-unstable`), and the class's `required` elements must be drawn, the role ids among them by the gate's own role. A product that names a class with fewer requirements than its screen has is not caught (a later oracle task: `ui-parity`'s screen inventory) |
@@ -400,7 +400,7 @@ checks are `check-blocked` errors and none of them reaches a verdict; no canary 
 
 ## What the lockers adapter must emit (U24): see [docs/ui-judges-identity.md](ui-judges-identity.md)
 
-## Rows this task added to the lockers contract (for the owner to sign or reject, row by row)
+## Rows this task added to the lockers contract (for the owner to accept or reject, row by row)
 
 In `products/business-apps/ui/lockers.toml`, all after the comment "ADDED BY THE U06 AGENT". Provenance cites ui-look.md
 by line (`#L<n>`, `/` joins two lines); nothing is decided where the spec is silent:

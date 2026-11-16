@@ -22,6 +22,7 @@ closed). The unpatched base is graded too, as the control, and must PASS. Withou
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import os
 import shutil
@@ -40,7 +41,6 @@ UNCACHED_DEFAULT = "weak-test"
 DEFAULT_JOBS = 8
 EXPECT_KEYS = {"description", "bypass", "fail", "not_run", "exit", "pending", "control", "absent", "contains", "verify"}
 TIERS = ("merge", "nightly")
-VERIFY_NAMESPACE = "c-rigor-gate-verdict"
 # Gates no product can make fail: they judge the grader, not the product, so no canary can expect them to
 # fail. They are exempt from the coverage check only because a selftest proves each one fails:
 #   toolchain: the last step of selftest/grade.sh (a scratch gate clone with one manifest sha256 flipped,
@@ -243,35 +243,29 @@ def oracle_dir(canary_id):
     return None
 
 
-def signing_files(work):
-    """(private key, allowed_signers file) of a throwaway key, for a canary whose verdict `rigor verify` must judge."""
-    key = os.path.join(work, "key")
-    run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "canary", "-f", key], work)
-    with open(key + ".pub", encoding="utf-8") as handle:
-        kind, blob = handle.read().split()[:2]
-    signers = os.path.join(work, "allowed_signers")
-    with open(signers, "w", encoding="utf-8") as handle:
-        handle.write('canary namespaces="%s" %s %s\n' % (VERIFY_NAMESPACE, kind, blob))
-    return key, signers
-
-
-def verify_verdict(verdict, signers, tier, head):
-    """(exit code, output) of `rigor verify --require-tier TIER` on a verdict."""
+def verify_verdict(verdict, tier, head, canary_id):
+    """(exit code, output) of `rigor verify --require-tier TIER` on a verdict (U30: nothing is signed; the gate order and
+    toolchain pins are recomputed from this checkout's gate commit, which must be the one that graded it)."""
+    gate = git(ROOT, "rev-parse", "HEAD")   # the gate commit this pack graded with (a clean checkout)
+    product_dir = os.path.relpath(os.path.join(CANARIES, canary_id), ROOT).replace(os.sep, "/")
+    with open(os.path.join(CANARIES, canary_id, "policy.toml"), "rb") as handle:
+        policy_sha = hashlib.sha256(handle.read()).hexdigest()
     result = run(["python3", "-I", "-B", os.path.join(ROOT, "gate", "rigor"), "verify", "--verdict", verdict,
-                  "--allowed-signers", signers, "--expect-head", head, "--require-tier", tier], ROOT, check=False)
+                  "--gate-repo", ROOT, "--expect-head", head, "--expect-gate", gate, "--expect-policy-sha", policy_sha,
+                  "--expect-product-dir", product_dir, "--require-tier", tier], ROOT, check=False)
     return result.returncode, result.stdout + result.stderr
 
 
-def judge_verify(expect, verdict, signers, head):
-    """Reasons a `verify` canary failed. The verdict is a signed PASS of the grade tier the canary names; it must be
+def judge_verify(expect, verdict, head, canary_id):
+    """Reasons a `verify` canary failed. The verdict is a PASS of the grade tier the canary names; it must be
     accepted with that tier required (so it is refused for its tier alone) and refused with the other one."""
     want = expect["verify"]
     own = [t for t in TIERS if t != want["require_tier"]][0]
     why = []
-    code, out = verify_verdict(verdict, signers, own, head)
+    code, out = verify_verdict(verdict, own, head, canary_id)
     if code != 0 or "tier %s" % own not in out:
         why.append("the verdict is not accepted at its own tier %s (exit %d): %s" % (own, code, out.strip()[-300:]))
-    code, out = verify_verdict(verdict, signers, want["require_tier"], head)
+    code, out = verify_verdict(verdict, want["require_tier"], head, canary_id)
     if code != 1 or want["refused"] not in out:
         why.append("verify --require-tier %s was not refused as %r (exit %d): %s"
                    % (want["require_tier"], want["refused"], code, out.strip()[-300:]))
@@ -319,11 +313,8 @@ def grade_one(canary_id, scratch, uncached, keep=True, tier=None):
         only = pin.get("gates", []) if pin else []
         command = grade_command(canary_id, repo, base, head, task, work, "grade", only)
         verdict = os.path.join(work, OUT_NAMES["grade"])
-        signers = None
-        if "verify" in expect:   # graded at the tier the canary names, signed with a throwaway key
-            key, signers = signing_files(work)
+        if "verify" in expect:   # graded at the tier the canary names; `rigor verify` judges the verdict afterwards
             tier = [t for t in TIERS if t != expect["verify"]["require_tier"]][0]
-            command += ["--sign-key", key]
         if tier is not None:
             command += ["--tier", tier]
         if uncached:
@@ -332,8 +323,8 @@ def grade_one(canary_id, scratch, uncached, keep=True, tier=None):
         with open(os.path.join(work, "grade.log"), "w", encoding="utf-8") as log:
             log.write(result.stdout + result.stderr)
         outcome.update(judge(expect, result.returncode, os.path.join(work, "grade"), verdict, work, canary_id, tier))
-        if signers is not None and os.path.isfile(verdict):
-            why = judge_verify(expect, verdict, signers, head)
+        if "verify" in expect and os.path.isfile(verdict):
+            why = judge_verify(expect, verdict, head, canary_id)
             outcome["why"] = outcome.get("why", []) + why
             outcome["ok"] = outcome["ok"] and not why
         if control:

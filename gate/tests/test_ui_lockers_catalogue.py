@@ -40,7 +40,7 @@ class LockersCatalogueTest(unittest.TestCase):
         self.assertEqual(self.raw["schema"], "ui-events/1")
         self.assertEqual((self.cat.product, self.cat.app), ("business-apps", "lockers"))
         self.assertEqual(self.contract.product, "business-apps/lockers")
-        self.assertIn("DRAFT by the U23 agent, unsigned, for the owner's review", self.data.decode("utf-8"))
+        self.assertIn("DRAFT by the U23 agent, not accepted yet, for the owner's review", self.data.decode("utf-8"))
 
     def test_requires_every_capability(self):
         # the eight capabilities the kiosk's probe announces since business-apps 3e8c46e (U04g: scene identity); the

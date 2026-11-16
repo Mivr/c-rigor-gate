@@ -38,7 +38,7 @@ class Fixture(TempDirTestCase):
         task = self.tmp / "task.toml"
         task.write_text('id = "t"\nallowed = ["**"]\n', encoding="utf-8")
         args = SimpleNamespace(task=str(task), product=str(self.product / "product.toml"), approvals=None,
-                               allowed_signers="signers", uncached=False)
+                               uncached=False)
         self.g = SimpleNamespace(args=args, built={"release": str(self.release), "san": str(self.san)},
                                  src="", head="h", work=str(self.work), tree=str(self.tmp / "tree"),
                                  test_results=str(self.work / "test-results"))

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from tests.helpers import Repo, Signer, TempDirTestCase, read_json, run_rigor
+from tests.helpers import Repo, TempDirTestCase, read_json, run_rigor
 
 
 def test_line(test_id, status="pass", asserts=1):
@@ -318,19 +318,16 @@ class TestsGateRatchetTests(ResultsCase):
         self.first = self.repo.commit("first")
         self.repo.write("a.txt", "2\n")
         self.head = self.repo.commit("second")
-        self.signer = Signer(self.tmp / "keys")
-        self.allowed = self.signer.write_allowed_signers(self.tmp / "allowed_signers")
         self.dir = self.sub("approvals")
 
-    def approve(self, scope, kind="test-removal", signer=None, repo_sha=None):
+    def approve(self, scope, kind="test-removal", repo_sha=None):
         outcome = run_rigor(["approve", "--kind", kind, "--scope", scope, "--reason", "ok",
-                             "--repo-sha", repo_sha or self.first, "--key",
-                             (signer or self.signer).key, "--out", self.dir])
+                             "--repo-sha", repo_sha or self.first, "--out", self.dir])
         self.assertExit(outcome, 0)
+        return outcome.stdout.strip()
 
     def approval_args(self):
-        return ["--approvals", self.dir, "--allowed-signers", self.allowed,
-                "--repo", self.repo.root, "--head", self.head]
+        return ["--approvals", self.dir, "--repo", self.repo.root, "--head", self.head]
 
     def test_removed_test_without_approval_fails(self):
         self.assertRules(self.expected, [("test-removed", "s/old")],
@@ -366,8 +363,10 @@ class TestsGateRatchetTests(ResultsCase):
         self.assertExit(outcome, 1)
         self.assertEqual(self.rules(result), [("forged-approval", "junk.txt")])
 
-    def test_unlisted_signer_does_not_cover_and_is_forged(self):
-        self.approve("s/old", signer=Signer(self.tmp / "evil", name="evil"))
+    def test_a_signature_file_left_in_the_approvals_is_forged_and_fails(self):
+        path = self.approve("s/other")
+        with open(path + ".sig", "wb") as handle:
+            handle.write(b"old signature\n")
         outcome, result = self.grade(self.expected, ["--previous", self.previous]
                                      + self.approval_args())
         self.assertExit(outcome, 1)
@@ -375,15 +374,14 @@ class TestsGateRatchetTests(ResultsCase):
                          ["forged-approval", "test-removed"])
 
     def test_approvals_without_repo_and_head_is_exit_2(self):
-        outcome, _ = self.grade(self.expected, ["--approvals", self.dir,
-                                                "--allowed-signers", self.allowed])
+        outcome, _ = self.grade(self.expected, ["--approvals", self.dir])
         self.assertExit(outcome, 2)
 
-    def test_missing_ssh_keygen_with_approvals_is_exit_2(self):
+    def test_a_signers_file_option_is_refused(self):
         self.approve("s/old")
         outcome = run_rigor(["tests", "--results", self.results, "--expected", self.expected,
-                             "--previous", self.previous] + self.approval_args(),
-                            path=str(self.sub("nobin")))
+                             "--previous", self.previous, "--allowed-signers", self.tmp / "signers"]
+                            + self.approval_args())
         self.assertExit(outcome, 2)
 
 
@@ -502,4 +500,4 @@ class TestsGatePresenceOnlyTests(ResultsCase):
             with self.subTest(value=value), self.assertRaises(InternalError):
                 tests_gate.run(Namespace(results=str(self.results), expected=str(self.write_expected(["s/one"])),
                                          previous=None, approvals=None, repo=None, head=None,
-                                         allowed_signers=None, presence_only=value))
+                                         presence_only=value))

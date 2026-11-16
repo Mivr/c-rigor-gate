@@ -1,5 +1,5 @@
 """The L3 (stage conformance) checks of the `ui-render` judge (U07, P004 3.3) that read the rendered tree (O3: lvprobe's
-`node` and `label` records) against the scene (O2) and the sealed contract; no ink. docs/ui-judges-render.md.
+`node` and `label` records) against the scene (O2) and the contract; no ink. docs/ui-judges-render.md.
 
 - `flag-mismatch`: LVGL's `hidden` against the scene's H (parts `hidden`, `shown`); `clickable` against what the scene
   says the node is: a disabled node (`enabled` 0 or D) or an inert one (I) that is clickable (`disabled-clickable`,

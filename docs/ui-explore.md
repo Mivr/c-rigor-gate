@@ -30,7 +30,7 @@ unit tests `gate/tests/test_ui_explore_scene.py` and `test_ui_explore_boot.py`).
 nondeterministic one, a starving one and one with a perpetual tick. The last step checks that no probe process is left.
 Unit tests: `gate/tests/test_ui_explore*.py`, with a stub probe (`gate/tests/data/ui_explore/stub_probe.py`, one mode
 per misbehaviour, and frame-facts modes that speak the protocol as the C probe does) and its catalogue
-(`gate/tests/data/ui_explore/stub.events.toml`, the toy catalogue as U05 sealed it, without taps). Each test module's `tearDownModule` fails if a stub it started is still alive. A stub that would sleep
+(`gate/tests/data/ui_explore/stub.events.toml`, the toy catalogue as U05 wrote it, without taps). Each test module's `tearDownModule` fails if a stub it started is still alive. A stub that would sleep
 exits as soon as its parent is gone.
 
 ## The CLI
@@ -264,7 +264,7 @@ command log).
 
 ## The event catalogue (`ui-events/1`)
 
-One sealed, versioned TOML file per app (P004 4.3 item 2, 8.5): `products/<product>/ui/<app>.events.toml`. The selftest
+One gate-owned, versioned contract TOML file per app (P004 4.3 item 2; nothing is signed since U30, `docs/trust.md`): `products/<product>/ui/<app>.events.toml`. The selftest
 has three:
 - `selftest/ui_product/toy.events.toml`;
 - `toy_coarse.events.toml`, a deliberately coarse key;
@@ -420,7 +420,7 @@ rule applied, a `u3` or root tap is judged `refused` and a `u2` tap on a non-roo
 (`intent-missed`), as on any other screen.
 
 Why this cannot hide an effect: the rule can hide only a text change of a node of the declared role whose number does
-not decrease, on a tap, in a catalogue whose sealed `[ambient]` declares it with provenance. A navigation (a node added
+not decrease, on a tap, in a catalogue whose contract `[ambient]` declares it with provenance. A navigation (a node added
 or removed, another node's field), a new node, a style or flag change of the countdown itself (in the scene, or in its
 `node` or `label` record), a patch of any other kind or node, a patch that disagrees with the tree, a countdown that
 jumps forward, a changed text around the number, a second number, a trace record, a deadline or env change, any record
@@ -506,7 +506,7 @@ lockers draft catalogue requires all eight capabilities since its adapter report
 
 **Taps under a layer** (U05e; with `--contract` only; gate/rigor_lib/ui_explore_layers.py). The tap judges read the
 layer context the ui-scene judge reads, shared, not copied (ui_judge_context.Context: the association, every layer's
-sealed `[[input_layer]]` policy, inertness R7 through `inert_target`, the same probe points as `occluded-target`), built
+contract `[[input_layer]]` policy, inertness R7 through `inert_target`, the same probe points as `occluded-target`), built
 from the state before the tap. One verdict per tap, in this order (a layer that both blocks input below and dismisses
 on a tap outside is judged by its dismiss first: a correct dismiss there is `dismissed`, never `blocked-target-live`):
 - **dismiss**: see below;
@@ -521,7 +521,7 @@ on a tap outside is judged by its dismiss first: a correct dismiss there is `dis
   control, its intent, the aimed node and the parts that were not the layer leaving or its own intent's effect (the
   sibling replay below, when the catalogue has the control's intent). Without that event, a card control that
   legitimately does more than dismiss (a "Retry" that navigates) would be flagged;
-- **dismiss**: the point lies under a scrim (outside its card's visible box), the topmost layer there, and the sealed
+- **dismiss**: the point lies under a scrim (outside its card's visible box), the topmost layer there, and the contract
   rows of its card's role say `tap_outside_dismisses = true`. The tap must do exactly that layer's dismiss: the outcome
   `dismissed` (counted as accepted). Anything else (nothing, or more, or another change) is `tap-misrouted` with
   `observed` `expected` (the layer and its bound dismiss intent, or null), `pressed`, `changed` and `not_the_dismiss`

@@ -1,12 +1,12 @@
 # UI deviations: tags, baseline, sections and ratchet (U13, P004 T1xx.13)
 
 Every place where the C kiosk knowingly differs from its Rust oracle is a **tag** in a C comment of a product header.
-`rigor ui-deviations` reads the tags, checks them strictly, counts them against an owner-sealed baseline, finds header prose
-that records deviations and compares it with an owner-sealed list of acknowledged entries. Code:
+`rigor ui-deviations` reads the tags, checks them strictly, counts them against a gate-owned baseline, finds header prose
+that records deviations and compares it with a gate-owned list of acknowledged entries. Code:
 `gate/rigor_lib/ui_deviations.py` (analysis, tree walk, command) with `ui_deviations_lex.py` (comments),
 `ui_deviations_tags.py` (grammar), `ui_deviations_sections.py` (deviation sections) and `ui_deviations_baseline.py` (the two
-sealed files); tests `gate/tests/test_ui_deviations*.py`. Not in this task: tagging the product's headers, the parity judge,
-the signature check of the two sealed files and the wiring into `rigor grade`.
+contract files); tests `gate/tests/test_ui_deviations*.py`. Not in this task: tagging the product's headers, the parity judge
+and the wiring into `rigor grade`.
 
 ## Command
 
@@ -14,8 +14,8 @@ the signature check of the two sealed files and the wiring into `rigor grade`.
 
 Exit 0 = no error finding, 1 = an error finding, 2 = the gate could not decide (the house error: one line on stderr, no
 traceback; with no arguments it prints one line; `--today`, `--root` or `--product` missing or given twice, `--today` not an ISO calendar date, root or
-product.toml unreadable, a sealed file missing or malformed). `--today` is the only date the check knows; the wall clock is
-never read. The two sealed files are read from `<directory of product.toml>/ui/deviations.toml` and
+product.toml unreadable, a contract file missing or malformed). `--today` is the only date the check knows; the wall clock is
+never read. The two contract files are read from `<directory of product.toml>/ui/deviations.toml` and
 `.../ui/deviation-sections.toml`. The output is the house result shape (findings sorted by their canonical JSON) and is
 byte-identical for identical inputs, whatever the order of the files.
 
@@ -74,7 +74,7 @@ tag: it is not counted and does not count towards `deviation-untagged`. `why` co
 `empty-or-padded-value:<key>`, `bad-state`, `bad-reason`, `bad-link`, `reference-bug-link-not-an-oracle-issue`, `bad-until`,
 `bad-until-date`, `until-too-far`, `duplicate-id` (every occurrence after the first, with `first` = `path:line`).
 
-## The baseline: `products/<name>/ui/deviations.toml` (owner-sealed)
+## The baseline: `products/<name>/ui/deviations.toml` (a contract file)
 
 Strict loader; any defect is exit 2. Exactly these keys:
 
@@ -91,12 +91,13 @@ trailing newline, as `jsonio.canonical_dumps`) of the object `{"id", "link", "or
 written order), "until"}`, where `path` is the header the tag stands in, so a tag cannot move to another header unnoticed. It
 does not depend on key order, spacing or comment layout. The reference-bug link is a fixed grammar (the prefix and 1 to 7
 digits), so the product config loader (`product_layout`, strict and outside this task's paths) is not involved and no regular
-expression is read from a sealed file (no ReDoS).
+expression is read from a contract file (no ReDoS).
 
-The baseline is **owner-sealed**: a new accepted id, a changed tag or a higher cap needs the owner's signature (P004 8.5).
-Sealing and its signature check are a later task; until then nothing in the gate verifies the seal. The ratchet only goes down.
+The baseline is a **contract file**: a new accepted id, a changed tag or a higher cap is a loosening that only a task whose
+contract names it may make, with its reason (nothing is signed since U30, `docs/trust.md`); no grade verdict counts it yet,
+as `rigor ui-deviations` is not wired into `rigor grade`. The ratchet only goes down.
 **A task-id `until` never expires** in the gate (only an ISO date can be `deviation-expired`); it is controlled only by the
-sealed baseline: the hash pins it, so changing it is `deviation-changed`.
+contract baseline: the hash pins it, so changing it is `deviation-changed`.
 
 | Finding | Severity | Meaning |
 |---|---|---|
@@ -117,7 +118,7 @@ deviation that no longer exists that could later be filled with something else. 
 
 ## Untagged prose is debt
 
-The **sealed expectation file is the primary control**: it is completed by reading the headers. The heading heuristic exists to
+The **contract expectation file is the primary control**: it is completed by reading the headers. The heading heuristic exists to
 catch NEW sections and errs on the side of reporting.
 
 ### Heading rule (heuristic)
@@ -168,7 +169,7 @@ whose first lines carry a label of that style) it is `deviation-section-split` (
 A section with **no** recognised entry is `deviation-unlabelled` (error, `path`, `line`): the author must label its entries. It is
 never counted as one entry.
 
-### The sealed expectation: `products/<name>/ui/deviation-sections.toml` (owner-sealed)
+### The contract expectation: `products/<name>/ui/deviation-sections.toml` (a contract file)
 
     schema = "ui-deviation-sections/2"
     product = "<name>"

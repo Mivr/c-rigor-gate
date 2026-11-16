@@ -98,7 +98,7 @@ def sealed_env(work):
 
 
 def seal_process_environment(work):
-    """Replace this process's environment (in-process git and ssh-keygen calls inherit it)."""
+    """Replace this process's environment (in-process git calls inherit it)."""
     env = sealed_env(work)
     os.environ.clear()
     os.environ.update(env)

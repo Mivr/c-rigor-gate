@@ -6,8 +6,8 @@ A place where the kiosk knowingly differs from its oracle is written in a C comm
 
     @deviation(<id>, oracle="..", state="..", reason="intentional|substrate|reference-bug", link="..", until="..")
 
-The tags are checked strictly and counted against the owner-sealed baseline (`products/<product>/ui/deviations.toml`);
-prose that records deviations without tags is debt (`deviation-untagged`), checked against the owner-sealed
+The tags are checked strictly and counted against the gate-owned baseline (`products/<product>/ui/deviations.toml`);
+prose that records deviations without tags is debt (`deviation-untagged`), checked against the gate-owned
 `deviation-sections.toml`. Pure functions of the file bytes, the two files and the date passed in: no clock, no locale, no
 absolute path, independent of the order the files are read in. Python 3 stdlib only. A defect of an input file is a finding;
 only an input the gate cannot read at all (baseline, product.toml, root, date) is an InternalError (exit 2).

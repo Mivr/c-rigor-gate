@@ -4,7 +4,7 @@
 # plus the witness (T039) and test-author (T041) steps;
 # the red changes are canaries now (T053), and
 # the pack checks that each fails in exactly the gates that should catch it.
-# Needs bash, git, python3 (stdlib), ssh-keygen and tools/buck2. Scratch lives under $TMPDIR
+# Needs bash, git, python3 (stdlib) and tools/buck2. Scratch lives under $TMPDIR
 # (default /var/tmp) and is removed on exit (set RIGOR_GRADE_KEEP=1 to keep it).
 set -uo pipefail
 
@@ -165,7 +165,7 @@ red cases (formerly steps of this script) now live in the canary pack, `selftest
   stale-include        stale-include
   third-party-copy     third-party-copy
   case-collision       case-collision
-this script keeps the property steps: cold, warm (+ signature), hostile environment, --uncached, internal error,
+this script keeps the property steps: cold, warm (+ rigor verify), hostile environment, --uncached, internal error,
 the witness steps (T039) and the test-author steps (T041; the canaries stub-passes-test and stub-green also cover them)
 MAP
 
@@ -382,12 +382,11 @@ grade_witness() {
 # Steps that depend on nothing but the cold run run in parallel, each in its own work subdir (and so its
 # own Buck2 daemon). Each writes its transcript to $work/<name>.out; they are printed in order afterwards.
 
-step_warm() {  # same head in a fresh work dir: nothing executes; the verdict is signed
+step_warm() {  # same head in a fresh work dir: nothing executes; `rigor verify` accepts the verdict for this head only
   local started code gate n
-  ssh-keygen -q -t ed25519 -N "" -C selftest -f "$work/key" >/dev/null || fail "warm: ssh-keygen"
   started="$(now)"
   "${rigor[@]}" grade --product-repo "$repo" --base "$base" --head "$last_head" --task "$work/task.toml" \
-      --product "$product" --work "$work/warm" --out "$work/warm.verdict.json" --sign-key "$work/key" \
+      --product "$product" --work "$work/warm" --out "$work/warm.verdict.json" \
       > "$work/warm.log" 2>&1
   code=$?
   echo "  exit $code, $(elapsed "$started")s"
@@ -403,11 +402,20 @@ step_warm() {  # same head in a fresh work dir: nothing executes; the verdict is
   echo "  tests-msan executed 0 actions, tests-tsan none"
   [ "$sha_cold" = "$(jget "$work/warm.verdict.json" core_sha256)" ] || fail "core_sha256 differs between two runs of the same inputs"
   echo "  core_sha256 identical: $sha_cold"
-  ssh-keygen -Y check-novalidate -n c-rigor-gate-verdict -s "$work/warm.verdict.json.sig" < "$work/warm.verdict.json" >/dev/null 2>&1 \
-    || fail "verdict.json.sig does not verify"
-  ssh-keygen -Y check-novalidate -n c-rigor-gate -s "$work/warm.verdict.json.sig" < "$work/warm.verdict.json" >/dev/null 2>&1 \
-    && fail "verdict signature verifies under the wrong namespace"
-  echo "  signature verifies (namespace c-rigor-gate-verdict only)"
+  # U30: nothing is signed. The verdict's bindings match this head, this gate commit and its products/selftest (order,
+  # toolchain pins, .buckconfig and product files recomputed from the gate commit), and it is refused for another head.
+  "${rigor[@]}" verify --verdict "$work/warm.verdict.json" --expect-head "$last_head" --expect-gate "$(git rev-parse HEAD)" \
+      --expect-policy-sha "$(sha256sum products/selftest/policy.toml | cut -d" " -f1)" --expect-product-dir products/selftest \
+      > "$work/warm.verify.log" 2>&1 \
+    || { cat "$work/warm.verify.log" >&2; fail "rigor verify refused the warm verdict"; }
+  [ -e "$work/warm.verdict.json.sig" ] && fail "a .sig was written beside the verdict"
+  "${rigor[@]}" verify --verdict "$work/warm.verdict.json" --expect-head "$base" --expect-gate "$(git rev-parse HEAD)" \
+      --expect-policy-sha "$(sha256sum products/selftest/policy.toml | cut -d" " -f1)" --expect-product-dir products/selftest \
+      > "$work/warm.verify-other.log" 2>&1 \
+    && fail "rigor verify accepted the warm verdict for another head"
+  grep -q "REJECTED: head is $last_head, expected $base" "$work/warm.verify-other.log" \
+    || { cat "$work/warm.verify-other.log" >&2; fail "rigor verify did not name the head mismatch"; }
+  echo "  rigor verify: OK for the graded head, REJECTED for another"
 }
 
 step_tier() {  # T137: tier merge defers the L2 module's mutation (the checks run after the parallel steps)
@@ -758,7 +766,7 @@ EOF14
 
 names=(warm hostile uncached tier internal witness_na witness_strong witness_equal extra_export fuzz fuzz_corpus
        ta_green ta_release_pass ta_san_pass ta_timeout ta_no_new ta_a018 ta_no_previous)
-labels=("clean, same head again in a fresh work dir (warm), signed" "hostile inherited environment" "clean, --uncached" "clean, --tier merge (the L2 module is deferred)" "internal-error"
+labels=("clean, same head again in a fresh work dir (warm), verified" "hostile inherited environment" "clean, --uncached" "clean, --tier merge (the L2 module is deferred)" "internal-error"
         "pure impl change with a witness bundle (witness gates not applicable)" "test-surface change with a strong witness" "test-surface change with a witness identical to the head (cold, warm)"
         "clean module plus an unlisted exported function (unexpected-export)"
         "a clean c_fuzz target (the fuzz gate runs it), the same head again (no fuzz action)"

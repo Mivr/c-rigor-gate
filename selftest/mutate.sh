@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Self-test of mutation testing (T006): `c_mutants` on RE, the mutant generator, and `rigor mutants`.
 # Red cases come first: a known survivor must be reported as a survivor, and a generator that goes
-# blind must fail the gate. Needs bash, python3 (stdlib), git, ssh-keygen, tools/buck2.
+# blind must fail the gate. Needs bash, python3 (stdlib), git, tools/buck2.
 # MUTATE_COLD=1 stamps the sources with a fresh nonce so that nothing can come from the RE cache.
 set -uo pipefail
 
@@ -1030,7 +1030,7 @@ PY
   echo "    $case -> $(rules)"
 done
 
-begin "equivalent-mutant approvals: unsigned survivor fails, signed approval of its id passes, other ids do not"
+begin "equivalent-mutant approvals: an unapproved survivor fails, an approval of its id passes, other ids do not"
 mkdir -p "$out/only_equiv"; cp "$RES/equiv.json" "$out/only_equiv/"
 printf '[module."%s:equiv_mutants"]\nlevel = "L3"\n' "$pkg" > "$out/policy.toml"
 gate "$out/only_equiv"
@@ -1038,20 +1038,18 @@ gate "$out/only_equiv"
 id="$(json '[f["id"] for f in r["findings"] if f["rule"] == "survived-mutant"][0]')"
 old_line="$(json '[f["line"] for f in r["findings"] if f["rule"] == "survived-mutant"][0]')"
 [ "$(json 'len([f for f in r["findings"] if f["rule"] == "survived-mutant"])')" = 1 ] || fail "$CUR: expected one survivor" "$out/gate.log"
-ssh-keygen -q -t ed25519 -N "" -C owner -f "$out/key" >/dev/null || fail "$CUR: ssh-keygen"
-printf 'owner namespaces="c-rigor-gate" %s\n' "$(cat "$out/key.pub")" > "$out/allowed_signers"
 head_sha="$(git rev-parse HEAD)"
 mkdir -p "$out/approvals" "$out/approvals_wrong"
 "${RIGOR[@]}" approve --kind equivalent-mutant --scope "$id" --reason "n <= 0 and n < 0 agree at 0" \
-  --repo-sha "$head_sha" --key "$out/key" --out "$out/approvals" >/dev/null || fail "$CUR: approve"
+  --repo-sha "$head_sha" --out "$out/approvals" >/dev/null || fail "$CUR: approve"
 "${RIGOR[@]}" approve --kind equivalent-mutant --scope "0000000000000000" --reason "wrong id" \
-  --repo-sha "$head_sha" --key "$out/key" --out "$out/approvals_wrong" >/dev/null || fail "$CUR: approve"
-AP=(--allowed-signers "$out/allowed_signers" --repo . --head "$head_sha")
+  --repo-sha "$head_sha" --out "$out/approvals_wrong" >/dev/null || fail "$CUR: approve"
+AP=(--repo . --head "$head_sha")
 gate "$out/only_equiv" --approvals "$out/approvals" "${AP[@]}"
-[ "$GATE_CODE" = 0 ] || fail "$CUR: a signed approval of the id did not pass (exit $GATE_CODE)" "$out/gate.log"
+[ "$GATE_CODE" = 0 ] || fail "$CUR: an approval of the id did not pass (exit $GATE_CODE)" "$out/gate.log"
 gate "$out/only_equiv" --approvals "$out/approvals_wrong" "${AP[@]}"
 [ "$GATE_CODE" = 1 ] || fail "$CUR: an approval of another id passed" "$out/gate.log"
-echo "    survivor $id: fails alone, passes with its signed approval, fails with another id's"
+echo "    survivor $id: fails alone, passes with its approval, fails with another id's"
 
 begin "mutant ids do not depend on line numbers (a comment line is inserted at the top of equiv.c)"
 sed -i '1i /* an unrelated first line */' "$scratch/m/equiv.c"
@@ -1067,7 +1065,7 @@ sed -i '1d' "$scratch/m/equiv.c"
 # T058 / B18 (R001 R6): ids are bound to the mutated token and to the body of the function. The approved `<=` -> `<`
 # of twice_pos is rewritten so that the same group and ordinal now names a mutation that changes the result for
 # n = 100 and that no test checks. The old approval must not cover it. (This is a step here and not a canary because
-# the canary pack carries no signed approvals.)
+# the canary pack carries no approvals.)
 begin "approval drift: after the function body changes, the old equivalent-mutant approval covers nothing"
 cp "$scratch/m/equiv.c" "$out/equiv.c.orig"
 cat > "$scratch/m/equiv.c" <<'EOF'

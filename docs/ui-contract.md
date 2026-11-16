@@ -1,8 +1,9 @@
 # The UI contract (P004 section 6.2, task U10)
 
-One owner-sealed TOML file per product holds everything a UI judge needs as a threshold, timer, policy or exception:
+One gate-owned contract TOML file per product holds everything a UI judge needs as a threshold, timer, policy or exception:
 `products/business-apps/ui/lockers.toml` for the lockers kiosk. A product-owned contract would be the first thing an
-agent edits, so the file is gate-owned and sealed (the signature check is U18, not this task). The loader is
+agent edits, so the file is gate-owned: a reviewed contract file that only a task whose contract names the change may
+loosen or tighten (nothing is signed since U30, `docs/trust.md`). The loader is
 `gate/rigor_lib/ui_contract.py`; it is strict: an unknown key, a missing key, a wrong type, a duplicate row or a
 dangling reference is an `InternalError` (exit 2), never a default.
 
@@ -95,7 +96,7 @@ style is named by at most one role (a `[[style_role]]` style is not a `[[role]]`
 so a style token has one typographic role; `[[role_wrap]]` names roles and scopes; `[[element]]` keys are unique and
 their `wrap` names a scope; toggle group members are `[[element]]` ids; `[[style_line]]` names styles. No row of these
 tables may be pending: where the spec does not decide, the row is absent and the judges report `contract-incomplete`.
-A layer's input policy is the sealed `[[input_layer]]` table's, by the structural role; there is no other policy table.
+A layer's input policy is the contract's `[[input_layer]]` table's, by the structural role; there is no other policy table.
 
 **The input-layer naming rule (a gate rule, U06).** An `[[input_layer]]` row is the policy of a layer role of the scene
 vocabulary (`scrim`, `dialog`, `banner`, `snackbar`) when it is named the role or `<role>_<kind>` (lockers: `dialog`,
@@ -103,7 +104,7 @@ vocabulary (`scrim`, `dialog`, `banner`, `snackbar`) when it is named the role o
 `contract-incomplete`). Any other row is a screen-level layer and must be named `screen` (the base layer, the scene's
 root) or a `[[state_class]]` id (lockers: `splash`, `lockout`). A row named otherwise is a LOADER ERROR (exit 2), not a
 finding: a typo (`dialgo`, `bnner_notice`) would detach the row from every judge without any check noticing, and the
-loader refuses every other malformation of a sealed file the same way.
+loader refuses every other malformation of a contract file the same way.
 
 **Accepted, not judged (U07).** Of the names the rule accepts, only the layer-role rows (the role or `<role>_<kind>`)
 are read by a judge (ui-scene's layers, R8). A `screen` row and a row named a `[[state_class]]` id are accepted and read

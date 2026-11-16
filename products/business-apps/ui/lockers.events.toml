@@ -1,7 +1,7 @@
 # The event catalogue and abstraction key of the lockers kiosk (schema ui-events/1, docs/ui-explore.md).
 #
-# DRAFT by the U23 agent, unsigned, for the owner's review. This file is OWNER-SEALED (P004 4.3 item 2, 8.5): nothing
-# here is in force until the owner signs it, row by row. Every row carries its provenance in the comment above or
+# DRAFT by the U23 agent, not accepted yet, for the owner's review. This file is a CONTRACT FILE (P004 4.3 item 2): nothing
+# here is in force until the owner accepts it, row by row. Every row carries its provenance in the comment above or
 # beside it, in these forms:
 #   rules:L<n>   business-apps docs/lockers/ui-rules.md, line n (the product spec of the messages and timers)
 #   model:L<n>   business-apps docs/lockers/ui-model.md, line n (the adapter doc: inputs, fixtures, environment rows)
@@ -10,7 +10,7 @@
 #   probe:U23    measured by the U23 agent on the release probe (lockers_ui_probe at business-apps 1acc1cb), recorded
 #                in docs/ui-lockers-first-run.md
 #   U05e         rows added or changed by the U05e agent (scene taps, the pad's digit map, the boot seeds, the Welcome
-#                prefix); still DRAFT and unsigned, measured in docs/ui-lockers-first-run.md "The second run"
+#                prefix); still DRAFT and not accepted, measured in docs/ui-lockers-first-run.md "The second run"
 # The machine-checked provenances (`[ambient]`, `[key] ignore`, `taps`, `[boot]`, `[[prefix]]`) take the UI contract's
 # forms (oracle:, spec:, design:).
 #

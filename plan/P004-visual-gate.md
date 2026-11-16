@@ -748,6 +748,8 @@ Alégroth 2018]
 
 ### 8.5 Sealed artefacts, the same-change rule and the budget [E: Fujita 2023; Thorve 2018; Bauer 2011] [I]
 
+> **Superseded in part by U30 (owner decision 2026-11-16):** nothing is signed or sealed any more; these files are ordinary reviewed contract files, see `docs/trust.md`.
+
 - **Sealed** (owner signature required, held in the gate repo): UI contract incl. thresholds, timers, input policies,
   importance levels; event catalogue; abstraction key; property instances (named Dwyer/Konrad pattern instances); no-op
   list; normalisation table and divergence allowlist; golden set; tolerances.

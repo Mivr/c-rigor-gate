@@ -9,7 +9,7 @@
                           optional `label = "accessible"` (its label is an accessible label only, never drawn) |
 | `[[style_line]]` | `style` | `line_height_px`, provenance `product-baseline:<commit>` (and only this table may use it) |
 
-The input policy of a layer is the sealed `[[input_layer]]` table's (orchestrator ruling R8), see `layer_rows`.
+The input policy of a layer is the contract's `[[input_layer]]` table's (orchestrator ruling R8), see `layer_rows`.
 """
 
 from rigor_lib.errors import InternalError
@@ -42,7 +42,7 @@ LAYER_ROLES = ("scrim", "dialog", "banner", "snackbar")     # the scene vocabula
 
 
 def check_input_layer_names(tables):
-    """The naming rule of the sealed `[[input_layer]]` rows (docs/ui-contract.md): a row is the policy of a layer role
+    """The naming rule of the contract's `[[input_layer]]` rows (docs/ui-contract.md): a row is the policy of a layer role
     when it is named the role or `<role>_<kind>`; any other row is a screen-level layer and must be named `screen`
     (the base layer, the scene's root) or a `[[state_class]]` id. A name that is none of these (a typo) would detach
     the row from every judge silently, so it is the loader's error."""
@@ -119,7 +119,7 @@ def scope_of(contract, key, role):
 
 
 def layer_rows(contract, role):
-    """The sealed [[input_layer]] rows of a layer role: the row named the role, and the rows named `<role>_...` (its
+    """The contract's [[input_layer]] rows of a layer role: the row named the role, and the rows named `<role>_...` (its
     kinds: lockers' banner_notice and banner_persistent)."""
     return [row for row in contract.tables["input_layer"]
             if row["layer"] == role or row["layer"].startswith(role + "_")]

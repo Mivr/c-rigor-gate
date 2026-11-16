@@ -86,7 +86,7 @@ otherwise); rows may be removed without sign-off, never added. The product's wor
 
 `oracle-excluded.toml`: Rust outcomes with no honest C injection, `[[exclude]]` tables of `trace_id`, `reason`, `decision`. A ratchet: the
 number of entries may not exceed `excluded_max` of the policy (`oracle-excluded-grew`), so growing it takes a change to two gate files,
-which only the owner's signature gets onto the gate. An excluded trace is not replayed (the package does not hold it), does not count
+which only a task whose contract names that loosening may make (`docs/trust.md`). An excluded trace is not replayed (the package does not hold it), does not count
 for `oracle-count-short`, and must be in the bundle (a ghost entry is exit 2).
 
 ## Findings

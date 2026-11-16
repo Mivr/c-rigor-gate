@@ -8,7 +8,7 @@ order of the order file; a gate with no result file is NOT_RUN, which is a failu
 import os
 import re
 
-from rigor_lib import jsonio, verdict_inputs
+from rigor_lib import jsonio
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, finding
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
@@ -117,6 +117,16 @@ def unused_approval_findings(valid, documents):
             for approval in sorted(valid, key=lambda item: item.stem) if approval.stem not in used]
 
 
+def approvals_in_force(valid):
+    """The verdict's count and list of approvals in force (U30): every loosening the grade honoured or could have.
+
+    Nobody signs an approval, so the verdict shows each one: kind, exact scope, reason, repo_sha and stem, sorted by stem.
+    `count` is what a reader compares between grades; a change that adds an approval raises it."""
+    listed = [{"kind": a.kind, "scope": a.scope, "reason": a.reason, "repo_sha": a.repo_sha, "stem": a.stem}
+              for a in sorted(valid, key=lambda item: item.stem)]
+    return {"count": len(listed), "in_force": listed}
+
+
 def build_core(order, documents):
     gates = [gate_entry(gate_id, documents[gate_id]) for gate_id in order]
     passed = bool(gates) and all(entry["status"] == STATUS_PASS for entry in gates)
@@ -155,4 +165,3 @@ def add_parser(subparsers):
     parser.add_argument("--results", required=True)
     parser.add_argument("--out", required=True)
     parser.set_defaults(handler=run, gate_id=None)
-    verdict_inputs.add_verify_parser(subparsers)

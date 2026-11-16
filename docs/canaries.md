@@ -291,7 +291,7 @@ and `corpus/`). `fuzz` is the last gate, so no `not_run` list changes.
 ## Canary added by T137 (grade tiers)
 | canary | bypass | fails | NOT_RUN |
 |---|---|---|---|
-| `tier-forged` | a verdict graded at tier `merge` presented as a nightly one: the control product graded `--tier merge`, signed with a throwaway key, then `rigor verify --require-tier nightly` | none at grade time; `verify` must exit 1 with `tier is merge, expected nightly` (and exit 0 with `--require-tier merge`, so it is refused for its tier alone) | none |
+| `tier-forged` | a verdict graded at tier `merge` presented as a nightly one: the control product graded `--tier merge`, then `rigor verify --require-tier nightly` | none at grade time; `verify` must exit 1 with `tier is merge, expected nightly` (and exit 0 with `--require-tier merge`, so it is refused for its tier alone) | none |
 
 Its `expect.json` has `verify` instead of `fail`: `require_tier` is the tier that must be refused, `refused` the text of the
 refusal; the runner grades at the other tier, whatever `--tier` says.
@@ -324,7 +324,7 @@ Every canary without a `decoupling.toml` (all the others) gets `decoupling` PASS
 
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
-part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
+part of `rigor grade`. The environment-hostility and `rigor verify` checks stay in `selftest/grade.sh`.
 
 ## Canaries added by T138 (`tests-msan`, `tests-tsan`)
 Every expectation that lists `tests-san` in `not_run` now lists `tests-msan` and `tests-tsan` too (they need the same

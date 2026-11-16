@@ -2,7 +2,7 @@
 
 import json
 
-from tests.helpers import Repo, Signer, TempDirTestCase, read_json, run_rigor
+from tests.helpers import Repo, TempDirTestCase, read_json, run_rigor
 
 LABEL = "//m:mod_mutants"
 H = ["%064x" % n for n in range(1, 40)]  # distinct object hashes
@@ -651,23 +651,21 @@ class ApprovalTest(TempDirTestCase):
         self.first = self.repo.commit("first")
         self.repo.write("a.txt", "2\n")
         self.head = self.repo.commit("second")
-        self.signer = Signer(self.tmp / "keys")
-        self.allowed = self.signer.write_allowed_signers(self.tmp / "allowed_signers")
         self.dir = self.sub("approvals")
 
     def approve(self, scope, kind="equivalent-mutant", repo_sha=None):
         outcome = run_rigor(["approve", "--kind", kind, "--scope", scope, "--reason", "same behaviour",
-                             "--repo-sha", repo_sha or self.first, "--key", self.signer.key, "--out", self.dir])
+                             "--repo-sha", repo_sha or self.first, "--out", self.dir])
         self.assertExit(outcome, 0)
 
     def grade(self):
         out = self.tmp / "out.json"
         outcome = run_rigor(["mutants", "--results", self.results, "--policy", self.tmp / "policy.toml",
-                             "--out", out, "--approvals", self.dir, "--allowed-signers", self.allowed,
+                             "--out", out, "--approvals", self.dir,
                              "--repo", self.repo.root, "--head", self.head])
         return outcome, read_json(out)
 
-    def test_a_signed_approval_of_the_mutant_id_covers_the_survivor(self):
+    def test_an_approval_of_the_mutant_id_covers_the_survivor(self):
         self.approve("%016x" % 2)
         outcome, result = self.grade()
         self.assertExit(outcome, 0)
@@ -710,7 +708,7 @@ class HeadKindForOneModuleTest(ApprovalTest):
         from rigor_lib import mutants_gate
         result = mutants_gate.run(Namespace(
             results=str(self.results), policy=str(self.tmp / "policy.toml"), perf_results=None, approvals=str(self.dir),
-            repo=str(self.repo.root), head=self.head, allowed_signers=str(self.allowed)), self.WITNESS, extra_kinds)
+            repo=str(self.repo.root), head=self.head), self.WITNESS, extra_kinds)
         survivors = sorted(f["module"] for f in result.findings if f["rule"] == "survived-mutant")
         self.assertEqual([f for f in result.findings if f["rule"] not in ("survived-mutant",)], [])
         return survivors, result.metadata

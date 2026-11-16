@@ -6,17 +6,13 @@ grade_pipeline.GATES. See docs/grade.md.
 """
 
 import os
-import subprocess
 import sys
 import time
 
-from rigor_lib import approvals, grade_context, grade_pipeline, grade_policy, grade_tier, jsonio, product_layout, runner, verdict
+from rigor_lib import approval_args, approvals, grade_context, grade_pipeline, grade_policy, grade_tier, jsonio, product_layout, runner, verdict
 from rigor_lib import verdict_inputs
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
-
-SIGN_NAMESPACE = "c-rigor-gate-verdict"
-SIGN_TIMEOUT_SECONDS = 60
 
 
 def run_gates(g):
@@ -49,17 +45,6 @@ def write_result(g, result, started):
     jsonio.write_atomic(os.path.join(g.results, result.gate + ".json"), result.to_json_bytes())
 
 
-def sign_verdict(path, key):
-    command = ["ssh-keygen", "-Y", "sign", "-n", SIGN_NAMESPACE, "-f", key, path]
-    try:
-        done = subprocess.run(command, capture_output=True, stdin=subprocess.DEVNULL,
-                              timeout=SIGN_TIMEOUT_SECONDS)
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise InternalError("cannot run ssh-keygen: %s" % exc) from exc
-    if done.returncode != 0 or not os.path.isfile(path + ".sig"):
-        raise InternalError("signing failed: %s" % done.stderr.decode("utf-8", "replace").strip())
-
-
 def discard(path):
     try:
         os.unlink(path)
@@ -68,7 +53,7 @@ def discard(path):
 
 
 def absolute_arguments(args):
-    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "oracle", "sim_salt", "sign_key", "work",
+    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "oracle", "sim_salt", "work",
                  "verdict_out"):
         value = getattr(args, name, None)
         if value is not None:
@@ -77,11 +62,11 @@ def absolute_arguments(args):
 
 def start_grading(args):
     absolute_arguments(args)
+    approval_args.refuse_planted_approvals(args)
     discard(args.verdict_out)  # no stale verdict, and none if we die before writing a new one
-    discard(args.verdict_out + ".sig")
     gate_sha, gate_clean = grade_context.gate_checkout_state(args.allow_dirty_gate)
     grade_context.prepare_work(args.work)
-    # From here on every subprocess (git, ssh-keygen, Buck2) inherits only the sealed environment.
+    # From here on every subprocess (git, Buck2) inherits only the sealed environment.
     grade_context.seal_process_environment(args.work)
     work = args.work
     # Read every input file once. The grade uses the copies; the verdict hashes the same bytes.
@@ -91,9 +76,8 @@ def start_grading(args):
     witness, inputs["witness_sha256"] = verdict_inputs.snapshot_witness(
         args.witness, os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.WITNESS_NAME))
     selected = None
-    if getattr(args, "only", None) is not None:   # a partial grade: its order file lists only what runs (and is hashed so)
-        if args.sign_key is not None:
-            raise InternalError("--only grades are never signed: --sign-key is refused")
+    if getattr(args, "only", None) is not None:   # a partial grade: its order file lists only what runs (and is hashed so;
+        # `rigor verify` refuses it: its order is not the gate revision's order)
         ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
         selected = grade_pipeline.selection(args.only, ids)
         order_bytes = "".join(i + "\n" for i in ids if i in selected).encode("ascii")
@@ -126,14 +110,14 @@ def file_sha256(path):
     return jsonio.sha256_hex(jsonio.read_bytes(path))
 
 
-def unused_approvals(g, documents):
-    """Verdict-level `unused-approval` info findings (docs/grade.md). Approvals that failed validation
-    are reported by their gates already and are not in `valid`. Without a graded head (the clone gate
-    did not finish) validity cannot be judged and the list is empty; that grade is a FAIL anyway."""
+def approvals_in_force(g):
+    """The approvals valid for the graded head (U30: no signature; schema, name and ancestry checked).
+    Approvals that failed validation are reported by their gates already and are not in `valid`. Without
+    a graded head (the clone gate did not finish) validity cannot be judged and the list is empty; that
+    grade is a FAIL anyway."""
     if g.args.approvals is None or not g.head:
         return []
-    loaded = approvals.load_approvals(g.args.approvals, g.src, g.head, g.args.allowed_signers)
-    return verdict.unused_approval_findings(loaded.valid, documents)
+    return approvals.load_approvals(g.args.approvals, g.src, g.head).valid
 
 
 def write_verdict(g):
@@ -142,7 +126,9 @@ def write_verdict(g):
     documents = verdict.load_results(g.results, order)
     core = verdict.build_core(order, documents)
     core["uncached"] = bool(g.args.uncached)
-    core["unused_approvals"] = unused_approvals(g, documents)
+    valid = approvals_in_force(g)
+    core["unused_approvals"] = verdict.unused_approval_findings(valid, documents)
+    core["approvals"] = verdict.approvals_in_force(valid)
     core["inputs"] = verdict_inputs.build_inputs(g, documents)
     if core["overall"] == verdict.STATUS_PASS and verdict_inputs.missing_inputs(core["inputs"]):
         raise InternalError("a PASS without every input bound: %s"
@@ -151,6 +137,7 @@ def write_verdict(g):
     jsonio.write_atomic(g.args.verdict_out, jsonio.canonical_dumps(document))
     for entry in core["gates"]:
         print("  %-14s %s" % (entry["id"], entry["status"]))
+    print("approvals in force (loosenings): %d" % core["approvals"]["count"])
     print("verdict: %s%s" % (core["overall"], " (uncached)" if core["uncached"] else ""))
     return runner.EXIT_PASS if core["overall"] == verdict.STATUS_PASS else runner.EXIT_FAIL
 
@@ -165,14 +152,6 @@ def run(args):
     code = write_verdict(g)
     if failure is not None:
         raise InternalError("grading stopped by an internal error: %s" % (failure,))
-    if args.sign_key is not None and not g.gate_clean:
-        print("rigor grade: dirty gate: the verdict is left unsigned", file=sys.stderr)
-    elif args.sign_key is not None:
-        try:
-            sign_verdict(args.verdict_out, args.sign_key)
-        except InternalError:
-            discard(args.verdict_out)
-            raise
     return code
 
 
@@ -204,12 +183,11 @@ def add_parser(subparsers):
                              "sim-salt.public is used, else no salt")
     parser.add_argument("--only", type=_gate_list, metavar="A,B",
                         help="a partial grade: run these gates and what they need (grade_pipeline.selection); the others "
-                             "are left out of the order, so the verdict can PASS. Never signed (historical canaries, docs/canaries.md)")
-    parser.add_argument("--sign-key")
+                             "are left out of the order, so the verdict can PASS; `rigor verify` never accepts it (historical canaries, docs/canaries.md)")
     parser.add_argument("--work", required=True)
     parser.add_argument("--allow-dirty-gate", action="store_true",
                         help="grade although tracked gate files differ from HEAD; the verdict records "
-                             "gate_clean=false, is never signed and never verifies")
+                             "gate_clean=false and never verifies")
     parser.add_argument("--tier", choices=grade_tier.TIERS, default=grade_tier.DEFAULT,
                         help="nightly (default): the whole grade; merge: report-only mutation is deferred "
                              "(docs/grade.md); bound into the verdict")

@@ -1,4 +1,4 @@
-# The deviation entries the owner has acknowledged, per header (docs/ui-deviations.md). OWNER-SEALED: the owner must review
+# The deviation entries the owner has acknowledged, per header (docs/ui-deviations.md). A CONTRACT FILE: the owner must review
 # it. First version: made by READING each header of /home/user/business-apps (see the report of U13 fix-up 2 for the table).
 # `labels` are the entry labels counted, `count` must equal their number. A label that is not written in the header (the
 # header has bullets or prose) is a short name chosen here. The file records the expected count and does NOT excuse it:

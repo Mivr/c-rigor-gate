@@ -672,8 +672,7 @@ class Gate(TempDirTestCase):
         (self.sub("product") / "policy.toml").write_text("[global]\ndeny = []\n", encoding="utf-8")   # no perf entries
         task = self.tmp / "task.toml"
         task.write_text('id = "t"\nallowed = ["**"]\nrole = "%s"\n' % role, encoding="utf-8")
-        args = SimpleNamespace(product=str(product), uncached=False, approvals=None, task=str(task),
-                               allowed_signers="signers")
+        args = SimpleNamespace(product=str(product), uncached=False, approvals=None, task=str(task))
         done = {k: "PASS" for k in ("assemble", "buckfiles", "build", "tests-release", "tests-san")}
         done.update(status or {})
         return SimpleNamespace(args=args, work=str(work), tree=str(tree), src=str(work / "src"), head="",
@@ -766,7 +765,7 @@ class Judging(TempDirTestCase):
 
     def judged(self, **more):
         modules = [grade_mutants.Module("//a:a", "L3", ("//a:t",), ()), grade_mutants.Module("//b:b", "L3", ("//b:t",), ())]
-        g = SimpleNamespace(src="repo", head="h", args=SimpleNamespace(approvals=None, allowed_signers="s"))
+        g = SimpleNamespace(src="repo", head="h", args=SimpleNamespace(approvals=None))
         run = SimpleNamespace(work=str(self.sub("work")), mutants_reports=str(self.tmp / "reports"))
         result = SimpleNamespace(findings=[], metadata={"modules": {}, "approvals_used": ["x"],
                                                         "approvals_used_by_kind": {"equivalent-mutant": ["x"]}})
