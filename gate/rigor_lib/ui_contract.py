@@ -59,7 +59,7 @@ EXCEPTION_RULES = frozenset((
     # U06: the ui-scene and ui-fit judges' own findings that an owner may except (docs/ui-judges.md)
     'fit-unmeasurable', 'glyph-missing', 'stage-unmatched', 'stage-text-mismatch', 'stage-unowned-target',
     # U07: the ui-render judge's own findings (docs/ui-judges-render.md)
-    'ink-unmeasurable', 'line-height-mismatch', 'ink-plan-capped',
+    'ink-unmeasurable', 'line-height-mismatch',
 ))
 TOGGLE_MARKS = ("bg", "bg_opa", "style")   # U06: what tells a toggle group's selected member apart
 STYLE_TOKENS = 21

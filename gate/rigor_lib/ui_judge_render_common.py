@@ -32,17 +32,9 @@ def cover_of(ctx, index):
 
 
 def exempt(ctx, node, index):
-    """R7 for what is painted: the scene marks the node inert, or a capture-modal-inert layer's rendered scrim (or card
-    without one), painted later, clickable and drawn with a background opacity above 0, contains its visible box."""
-    if "I" in node.flags:
-        return True
-    frame, box = ctx.frame, ctx.frame.visible_box(index)
-    for _layer, shield, _parts, policy in ctx.layers():
-        rendered = frame.nodes[shield]
-        if policy != "capture-modal-inert" or shield <= index or frame.related(index, shield) \
-                or not rendered.clickable or rendered.bg_opa_drawn <= 0 or not frame.shown(shield):
-            continue
-        cover = frame.visible_box(shield)
-        if box is not None and cover is not None and inside(box, cover):
-            return True
-    return False
+    """R7 for what is painted: the context's own inertness predicate (ui_judge_context.Context.inert) at the four
+    corners of the node's visible box. Exact for a box: a rectangle contains a box exactly when it contains its four
+    corners. A node with no visible box is exempt only when the scene marks it inert (I)."""
+    box = ctx.frame.visible_box(index)
+    corners = [] if box is None else [(x, y) for x in (box[0], box[2]) for y in (box[1], box[3])]
+    return ctx.inert(node, index, corners)

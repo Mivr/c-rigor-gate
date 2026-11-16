@@ -247,7 +247,7 @@ def _one(session, run, word, catalogue, plan=None):
         return False
     step.proj = projection(step.obs, step.now, catalogue.key)
     step.key = key_hash(step.proj)
-    return ink_step(session, run, step, plan) and _evidence(session, run, step)
+    return _evidence(session, run, step) and ink_step(session, run, step, plan)   # the image first
 
 
 def _evidence(session, run, step):

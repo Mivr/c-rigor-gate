@@ -129,10 +129,30 @@ class InkChecksTest(unittest.TestCase):
         found = judged(semantic, tree, {4: (0, BLACK_ON_WHITE)})
         self.assertEqual(render(found), [("invisible-node", "ok", "text", "error")])
 
-    def test_a_clipped_label_that_paints_nothing_is_text_clipped_not_invisible(self):
+    def test_a_clipped_label_that_paints_nothing_is_ui_fits_only_when_ui_fit_reports_it(self):
+        def clipped(index, gates, the_contract=None):
+            semantic, tree = base()
+            tree.nodes[index]["fit"]["clipped"] = 1
+            found = judged(semantic, tree, {index: (0, BLACK_ON_WHITE)}, gates=gates, the_contract=the_contract,
+                           finish=True)
+            mine = [(f["observed"]["key"], f["observed"]["part"], f["observed"].get("clipped")) for f in found
+                    if f["check"] == "invisible-node"]
+            na = next(f for f in found if f["gate"] == "ui-render" and f["check"] == "checks-examined")["observed"]
+            return mine, sorted(f["observed"].get("key") for f in found if f["check"] == "text-clipped"), \
+                na.get("not_applicable", {}).get("invisible-node", 0)
+        both = ("ui-fit", "ui-render")
+        self.assertEqual(clipped(4, ("ui-render",)), ([("ok", "text", True)], [], 0))       # ui-render alone
+        self.assertEqual(clipped(4, both), ([], ["ok"], 1))                                 # ui-fit's text-clipped
+        clip_scope = contract(lambda t: t + '[[element]]\nid = "ok_el"\nkey = "ok"\nwrap = "clipped"\n'
+                                           'provenance = "spec:ui-look.md#4.1"\n')
+        self.assertEqual(clipped(4, both, clip_scope), ([("ok", "text", True)], [], 0))   # clip scope: no text-clipped
+        self.assertEqual(clipped(2, ("ui-render",)), ([("body", "node", True)], [], 0))     # a pure text node
+        self.assertEqual(clipped(2, both), ([], ["body"], 1))
+
+    def test_a_cover_that_does_not_hide_the_ink_is_no_finding(self):
         semantic, tree = base()
-        tree.nodes[4]["fit"]["clipped"] = 1
-        self.assertEqual(render(judged(semantic, tree, {4: (0, BLACK_ON_WHITE)}), "invisible-node"), [])
+        tree.node(0, "lv_obj", (0, 30, 230, 70), bg=255)                      # opaque, but the body's ink is 100
+        self.assertEqual(render(judged(semantic, tree), "invisible-node"), [])
 
     def test_a_covered_node_is_invisible_and_names_its_cover(self):
         semantic, tree = base()
@@ -346,7 +366,8 @@ class ExceptionRulesTest(unittest.TestCase):
         own = set(GATES["ui-render"]) - META - {"stage-unmatched", "stage-text-mismatch", "stage-unowned-target"}
         row = ('\n[[exception]]\nid = "e1"\nrule = "%s"\ntarget = "body"\nreason = "r"\nexpires = 2099-01-31\n'
                'provenance = "owner:D99"\n')
-        for rule in sorted(own | {"ink-plan-capped"}):
+        self.assertNotIn("ink-plan-capped", ui_contract.EXCEPTION_RULES)     # info, never passes an exception
+        for rule in sorted(own):
             self.assertIn(rule, ui_contract.EXCEPTION_RULES)
             loaded = ui_contract.loads(CANARY_CONTRACT.read_text() + row % rule)
             self.assertEqual(loaded.tables["exception"][0]["rule"], rule)

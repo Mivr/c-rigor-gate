@@ -61,7 +61,8 @@ lifecycle judge (N6, the ui-time task).
 ## The checks
 
 Every check keys its target by the scene key (never by walk index); identities are `[key]` or `[key, part]`. **R7 for
-what is painted** (`ui_judge_render_common.exempt`): a node the scene marks inert (`I`), or whose visible box lies under
+what is painted** (`ui_judge_render_common.exempt`, fix-up 2: the context's own `Context.inert` at the four corners
+of the node's visible box, exact for a box): a node the scene marks inert (`I`), or whose visible box lies under
 a capture-modal-inert layer's rendered scrim (or card without one) painted later, clickable and drawn with a background
 opacity above 0 (docs/ui-judges.md, "Inertness"), is NOT APPLICABLE to `invisible-node` and `contrast-low`: counted in
 `checks-examined` under `not_applicable`, never a finding (the background of a correct modal is dimmed and covered by
@@ -78,15 +79,18 @@ design).
 
 - **`invisible-node`** (P004: "changes no pixel"). A shown scene node that must paint (a `text` or `countdown` with a
   non-empty label, a `button` or `key`, a card: `dialog`, `banner`, `snackbar`) whose associated rendered node is shown
-  and has a visible box, unless R7 exempts it. Parts, in this order, first the node, then (a button or key) the label
-  that carries its text:
-  - `covered`: a later-painted, shown, unrelated node with an exact background opacity of 255 contains the whole
-    visible box (no pixel can change; `observed.by` names the cover, a scene key or class, box and text hash;
-    `observed.covered` is `node` or `text`). Corner radii are not in the facts: such a cover is taken whole;
-  - `node`: the node's ink count is 0;
-  - `text`: the button's or key's text carrier, shown, with a visible box and a non-empty drawn text, has ink count 0
-    while the button's subtree ink is its fill. A carrier lvprobe reports `clipped` is ui-fit's `text-clipped` (one
-    cause, one finding: the canary's `v-clipped` label, pushed out of its button, paints nothing).
+  and has a visible box (a label: also one without, a fully clipped text), unless R7 exempts it. The INK decides,
+  first for the node, then (a button or key) for the label that carries its text: a count above 0 is no finding,
+  whatever covers it (a rounded or transformed cover may not hide it); a count of 0 is
+  - `covered` when a later-painted, shown, unrelated node with an exact background opacity of 255 contains the whole
+    visible box: the cover is named as the cause (`observed.by`: a scene key, or class, box and text hash;
+    `observed.covered` is `node` or `text`);
+  - `node` (the node itself) or `text` (the button's or key's text carrier, shown, with a non-empty drawn text, while
+    the button's subtree ink is its fill) otherwise.
+  A label lvprobe reports `clipped` carries `observed.clipped`. One cause, one finding: when ui-fit is SELECTED and
+  reports that label's `text-clipped` (its scope does not declare `clip`), the clipped label is ui-fit's and a counted
+  not-applicable here; with ui-render alone, or under a `clip` scope, it is reported here (the canary's `v-clipped`
+  label, pushed out of its button, is ui-fit's in the three-judge run).
   Excluded: scene-hidden (`H`) and rendered-hidden nodes (`flag-mismatch` when the two disagree); panels (below).
 - **`contrast-low`** (part `below-large`). For a shown text-bearing node with a typographic role and a non-empty drawn
   text, the ink of the label that carries its text (the label itself, or a button's or key's label child), unless R7
@@ -153,9 +157,10 @@ Schema, ids, `observed` and evidence as docs/ui-judges.md ("Findings"); `gate` i
 `flag-mismatch`, `align-mismatch` and `line-height-mismatch`, L4 for the ink checks, `meta` for `ink-plan-capped`.
 Every finding is an error but `ink-plan-capped` (info: a fact about the run). `checks-examined` lists the six checks
 and, when any, `not_applicable` per check; `check-vacuous` applies to each of them when `[[role]]` has a row (the
-default rule of docs/ui-judges.md). An exception may name every ui-render id: `invisible-node`, `contrast-low`,
+default rule of docs/ui-judges.md). An exception may name every ui-render finding id but `ink-plan-capped`: `invisible-node`, `contrast-low`,
 `flag-mismatch`, `align-mismatch` were in the loader's closed list `EXCEPTION_RULES`; U07 fix-up 1 adds
-`ink-unmeasurable`, `line-height-mismatch` and `ink-plan-capped` (`gate/rigor_lib/ui_contract.py`; a test in
+`ink-unmeasurable` and `line-height-mismatch` (`ink-plan-capped` is info and never passes through an exception, so it
+is not in the list; `gate/rigor_lib/ui_contract.py`; a test in
 `test_ui_judge_render.py` loads an exception for each: `test_ui_contract.py` would pass the 500-line limit).
 
 ## Honesty table (P004 3.3)
@@ -185,12 +190,14 @@ centred in dialogs), `line-height-mismatch` 350; `invisible-node`, `contrast-low
 are `check-vacuous` (error), because the transcript has no `ink` or `noink` line (the test checks that too). Nothing was
 invented and nothing under business-apps was touched. Seen by a reader: the kiosk's disabled buttons (`enabled` 0, `D`)
 are not clickable, its banner, dialog and snackbar cards are clickable without an intent (layers: not a mismatch), and
-its scrims are clickable (overlay-policy's). What `invisible-node` part `covered` would say once these frames are
-inked (the cover is an O3 fact; computed from the recorded frames with the judge's own `cover_of` and `exempt`, not
-asserted by a test because the judge runs it only on inked steps): under the rejection dialog (frames 5, 6, 11, 12) the
+its scrims are clickable (overlay-policy's). What `invisible-node` part `covered` could say once these frames are
+inked (the cover is an O3 fact, computed from the recorded frames with the judge's own `cover_of` and `exempt`; not
+asserted by a test, the judge runs only on inked steps; and each of these is a finding only if the node's ink count
+is then 0, since a count above 0 is no finding whatever covers it): under the rejection dialog (frames 5, 6, 11, 12) the
 dialog card 321 wholly covers BG (12) and keys 35, 38, all EXEMPT by R7 (the dimmed, clickable scrim); in frames 15,
 17 and 18 the opaque banner cards wholly cover text 3 (card 297, 273) and 4 (card 289) and, in 17, BG and EN (11, 12,
-card 289), not exempt (banners are pass-through): six findings of the class docs/ui-judges.md noted by reading.
+card 289), not exempt (banners are pass-through): up to six findings of the class docs/ui-judges.md noted by
+reading.
 
 ## Canaries (`selftest/ui_canary_product/`)
 
@@ -314,8 +321,10 @@ the selftest sees every implemented check fire in its own variant.
 - **`flag-mismatch` exempts layers from `clickable`** and leaves the intent -> not clickable half to `stage-unmatched`.
 - **`v-dots` gives two findings** (ui-fit's `full-string-shown` and ui-render's `long-mode`): the DOTS mode is the
   label's long mode against a wrapping scope (L3) and the dots are a cut text (L4).
-- **`invisible-node` part `text` leaves a carrier lvprobe reports `clipped` to ui-fit's `text-clipped`**, even when
-  ui-fit is not selected.
+- **A clipped label that paints nothing is left to ui-fit only when ui-fit is selected and reports its
+  `text-clipped`** (fix-up 2; fix-up 1 left it to ui-fit unconditionally, which failed open).
+- **`gate/rigor_lib/ui_contract.py` was changed** (a sanctioned deviation of fix-up 1, the orchestrator's extension of
+  the paths): `EXCEPTION_RULES` gains `ink-unmeasurable` and `line-height-mismatch`, nothing else.
 - **`crop` is not required**: no implemented check reads pixels.
 - **`box-covered-node` is not implemented** (feasible; its threshold is not sealed): honest row above.
 - **The canary's drawing changed** (centred labels, a darker button fill) and `session.out` was regenerated; no U06
