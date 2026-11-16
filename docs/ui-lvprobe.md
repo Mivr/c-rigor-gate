@@ -24,6 +24,7 @@ The probe takes its facts from LVGL's own code wherever LVGL exposes it (H6):
 | natural size | `lv_text_get_size_attributes` of the label's own text, no width limit |
 | glyph boxes, visible box, `drawn`, `align_drawn` | `lv_obj_redraw` of the label into a probe-owned layer that is never rendered or flushed (`opa` = the layer opacity `lv_obj_refr` would hand it); LVGL's `draw_main` creates the draw task; `lv_draw_label_iterate_characters` on it, clip opened, places every glyph; the task's `clip_area` is the visible box; the tasks are freed with `lv_draw_cleanup_task` and the label's `rendered` mark is restored |
 | hit (injection) | the pointer indev: `lv_indev_read` press and release, LVGL's own search and events |
+| hit (observation, U05c) | the product's own reads of its pointer indev; LVGL's `LV_EVENT_PRESSED` and `LV_EVENT_CLICKED` on that indev |
 | hit (query) | `lv_indev_search_obj` (it sends LVGL's own `LV_EVENT_HIT_TEST` to objects with `LV_OBJ_FLAG_ADV_HITTEST`) |
 | ink | a real refresh with the node not drawn (its own `hidden` bit), a real refresh with it, the pixel diff |
 | pixels | the display's single full-size buffer the real flush wrote |
@@ -57,6 +58,7 @@ against real pixels or real events, so an LVGL upgrade that changes the logic fa
 | `lvprobe_ink(p, i)` | 2 (ink), 4 (luminance samples) | two refreshes (nodes LVGL does not draw: none) |
 | `lvprobe_hit(p, x, y, &hit)` | 3, input injection | one press and release; product handlers run |
 | `lvprobe_hit_test(p, x, y, &node, &obj)` | 3, query: what LVGL's search finds, no event sent | |
+| `lvprobe_observe_begin(p, x, y)`, `lvprobe_observe_end(p, &hit)` | 3, observation of a tap the product delivers to its own indev (U05c) | nothing: no event sent, nothing allocated |
 | `lvprobe_frame(p)`, `lvprobe_frame_crc(p)` | 4 (CRC, region hashes); needs a settled display | no redraw |
 | `lvprobe_crop(p, box, rgba, cap, &len)` | 4 (RGBA crop) | |
 | `lvprobe_life(p, out, cap, &n, &lost)`, `lvprobe_life_pending(p)` | 5; **call it every frame** | |
@@ -77,6 +79,34 @@ one full-size XRGB8888 buffer in DIRECT mode, no refresh timer, or a rotated dis
 `LVPROBE_ERR_ARG` (also the ink of a screen or layer root, which is refused), and `LVPROBE_ERR_GONE` from every call
 after `lv_display_delete` (the probe hears the display's `LV_EVENT_DELETE` and touches it no more). **Data lost**:
 `LVPROBE_ERR_OVERFLOW` (lifecycle events did not fit the ring).
+
+### Observing a tap (U05c)
+
+A product with a pointer entry (docs/ui-model.md, "The pointer entry") feeds its own pointer indev; the probe must see
+what LVGL made of those samples without injecting anything. `lvprobe_observe_begin(p, x, y)` checks what `lvprobe_hit`
+checks (the point inside the display, a current walk; not the walk when a press would be blocked now, since a screen
+load changes the tree) and records whether LVGL would process a press now (`blocked`: no display, the indev disabled,
+`prev_scr`, `wait_until_release`). The product then delivers its samples and processes them. `lvprobe_observe_end(p,
+&hit)` returns what LVGL's own events on the indev named: the object of `LV_EVENT_PRESSED` and of `LV_EVENT_CLICKED`
+(each the event's parameter, alive while LVGL sends it, mapped to its walk index at once by `lvprobe_find`; the probe
+keeps the pointer for comparison only and never dereferences it). Statuses of the end: `LVPROBE_ERR_BLOCKED` when
+nothing was pressed or clicked and a press would have been blocked at the begin, or when the indev is left pressed
+(`act_obj`, `state` or `wait_until_release`: LVGL did not process the release); `LVPROBE_ERR_UNSTABLE` for more than one
+press or click (not one tap: the probe never picks one); `LVPROBE_ERR_GONE` when the indev is no longer in LVGL's list
+(found by traversal; the probe then forgets it and touches it no more, close included); `LVPROBE_ERR_LVGL` when the
+probe's listener is no longer on the indev (also at the begin). `LVPROBE_ERR_FORMAT` at the begin: the probe opened
+with its own indev, so there is no product indev to observe. `lvprobe_hit` is refused while an observation is open.
+
+The listener is the probe's one event callback on the indev, added at `lvprobe_open` (now with the filter
+`LV_EVENT_ALL`, so it also hears `LV_EVENT_PRESSED`; outside a tap or an observation it ignores every event) and removed
+at `lvprobe_close`: an observation adds, allocates and removes nothing (adding and removing a callback per tap would
+leave LVGL's event array grown, a pool change the tests catch), and an observation left open is closed with the probe.
+LVGL sends `LV_EVENT_PRESSED` only for an enabled object, so a disabled target observed reads as nothing pressed,
+where an injected tap names LVGL's pressed object (`act_obj`). The probe leaves the indev as LVGL left it, also a
+pressed one: on this path the indev state is the product's, made by its own samples. Tests:
+`ui/lvprobe/tests/lvprobe_observe_test.c` (the product's tap observed with nothing left behind, the F3b overlay, a
+disabled target, the indev disabled, a screen-load animation, a release LVGL did not process, two taps, every
+precondition, a removed listener, close during an observation, an indev deleted during one).
 
 ## Configuration and storage
 
@@ -172,7 +202,8 @@ leaves every style list as it was (`lvprobe_ink/ink_leaves_styles_and_the_pool_a
 
 ## What the probe changes in the product
 
-One event descriptor per object and on the display (and on the product's indev); extra refreshes and flushes
+One event descriptor per object and on the display (and on the product's indev: the listener, filter `LV_EVENT_ALL`;
+an observation adds none); extra refreshes and flushes
 (`lvprobe_settle`, two per `lvprobe_ink`); the dry redraw runs each label's draw events once more per walk (tasks a
 product handler adds there are freed, never drawn; an object it creates makes the walk `LVPROBE_ERR_STALE`); taps run
 the product's input handlers. Nothing else: no style, flag, focus or layout change survives a call.
@@ -221,7 +252,7 @@ callback (restored) and reset fields, and the layout mark of a parent after an u
 
 ## Tests (`ui/lvprobe/tests/`)
 
-`tools/buck2 test //ui/lvprobe/...` in release and san: six binaries over `testkit` (320x240 memory display, an open
+`tools/buck2 test //ui/lvprobe/...` in release and san: the test binaries over `testkit` (U05c added `lvprobe_observe_test`) (320x240 memory display, an open
 probe, a monospace font of solid glyphs so pixel facts are exact, helpers that read LVGL's pool and layer list). Each
 item of the review was seen failing against its own broken build (the report lists them).
 

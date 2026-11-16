@@ -11,8 +11,8 @@ c_library(
 # It reads the rendered frame through gate//ui/lvprobe (probe.h includes its header, hence an exported dep).
 c_library(
     name = "probe",
-    srcs = ["probe_main.c", "probe_frame.c", "probe_input.c", "probe_parse.c", "probe_pixels.c", "probe_records.c",
-            "probe_seam.c", "probe_time.c"],
+    srcs = ["probe_main.c", "probe_frame.c", "probe_input.c", "probe_logs.c", "probe_parse.c", "probe_pixels.c",
+            "probe_records.c", "probe_seam.c", "probe_time.c"],
     headers = ["probe.h"],
     exported_deps = [":model", "gate//ui/lvprobe:lvprobe"],
     visibility = ["PUBLIC"],

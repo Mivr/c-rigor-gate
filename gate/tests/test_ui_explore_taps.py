@@ -6,6 +6,7 @@ frame-facts modes (gate/tests/data/ui_explore/stub_probe.py)."""
 import struct
 import zlib
 
+from rigor_lib import ui_explore_catalogue as catalogue_mod
 from rigor_lib import ui_explore_probe as up
 from tests import test_ui_explore_helpers as h
 from tests.helpers import TempDirTestCase
@@ -162,6 +163,19 @@ class TapExploreTest(h.ExploreCase):
                 broken = self.catalogue('drain_ms = 1024', 'drain_ms = 1024\nrequires = %s' % bad)
                 outcome, _ = self.replay("facts", [[h.OPEN]], catalogue=broken, code=2)
                 self.assertIn("requires: must be a list of distinct probe capabilities", outcome.stderr)
+
+    def test_a_catalogue_can_require_the_pointer_capability(self):
+        """U05c: `requires` accepts `pointer` (in any position: it is normalised to the greeting's order); the stub probe,
+        like a probe of a product without a pointer entry, does not announce it: the house message, exit 2."""
+        catalogue = self.catalogue('drain_ms = 1024', 'drain_ms = 1024\nrequires = ["pointer", "tap"]')
+        self.assertEqual(catalogue_mod.loads(catalogue.read_bytes()).requires, ("tap", "pointer"))
+        outcome, _ = self.replay("facts", [[h.OPEN]], catalogue=catalogue, code=2)
+        self.assertIn("the catalogue requires the probe capabilities pointer, which the probe does not announce",
+                      outcome.stderr)
+        twice = self.catalogue('drain_ms = 1024', 'drain_ms = 1024\nrequires = ["pointer", "pointer"]')
+        outcome, _ = self.replay("facts", [[h.OPEN]], catalogue=twice, code=2)
+        self.assertIn("requires: must be a list of distinct probe capabilities (frame-facts, ink, hit-test, tap, "
+                      "apply-missed, crop, pointer)", outcome.stderr)
 
     def test_a_tap_that_presses_another_node_than_the_hit_query(self):
         self.probe_error("tapdisagree", [h.OPEN, BUTTON], {"kind": "contract", "command": "tap", "step": 1,

@@ -357,3 +357,18 @@ bool uim_domain_at(uim_t *m, uint16_t i)
     (void)i;
     return false;
 }
+
+/* No pointer entry (U05c): the probe injects its taps at the app's pointer indev, as before. */
+bool uim_pointer_supported(void)
+{
+    return false;
+}
+
+bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down)
+{
+    (void)m;
+    (void)x;
+    (void)y;
+    (void)down;
+    return false;
+}

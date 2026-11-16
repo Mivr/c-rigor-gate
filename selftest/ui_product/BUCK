@@ -10,12 +10,21 @@ c_library(
     visibility = ["PUBLIC"],
 )
 
-# Its model adapter: implements ui/model/model.h.
+# Its model adapter: implements ui/model/model.h. This build has no pointer entry (pointer_off.c): the probe injects
+# its taps at the app's indev.
 c_library(
     name = "model",
-    srcs = ["model.c"],
+    srcs = ["model.c", "pointer_off.c"],
     deps = [":toy", "gate//ui/model:model"],
     visibility = ["PUBLIC"],
+)
+
+# U05c: the same adapter WITH the toy's pointer entry (pointer_on.c): taps go through `uim_pointer`, the app's queue
+# above LVGL, and post `touch`.
+c_library(
+    name = "model_pointer",
+    srcs = ["model.c", "pointer_on.c"],
+    deps = [":toy", "gate//ui/model:model"],
 )
 
 # The probe binary of that model.
@@ -23,6 +32,14 @@ c_ui_probe(name = "probe", model = ":model")
 
 # U05c: the scripted session's transcript as a Buck2 test in release and san, besides selftest/ui.sh's own comparison.
 c_ui_probe_session(name = "session_test", probe = ":probe", session = "session.in", expected = "session.out")
+
+# U05c: the probe of the build with the pointer entry, and the taps session on both builds (selftest/ui.sh checks the
+# facts of the two transcripts: `touch` only through the entry, the click's work at the tap's instant, a blocked tap).
+c_ui_probe(name = "probe_pointer", model = ":model_pointer")
+
+c_ui_probe_session(name = "pointer_test", probe = ":probe_pointer", session = "pointer.in", expected = "pointer.out")
+
+c_ui_probe_session(name = "pointer_noentry_test", probe = ":probe", session = "pointer.in", expected = "pointer_noentry.out")
 
 # Ordinary product code that calls a `uim_*` symbol: flagged by the symbols gate.
 c_library(

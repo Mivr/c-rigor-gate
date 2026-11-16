@@ -45,6 +45,39 @@ virtual clock and the seed of `uim_open` influence output), and:
 | `uim_frame(m, &disp)` | adopt and render the scene; `disp` must not be NULL. **Display lifetime:** one display from the first `uim_frame` after `uim_open` until the next `uim_open`, always in LVGL's display list |
 | `uim_semantic`, `uim_patches`, `uim_trace` | text records (below); patches and trace clear their log |
 | `uim_domain_count()`, `uim_domain_at(m, i)` | the optional view-domain sweep (the gate only asks for `i < count`) |
+| `uim_pointer_supported()`, `uim_pointer(m, x, y, down)` | the optional pointer entry (U05c, below): a constant of the build, and one pointer sample delivered exactly as the product's real input source would, the clock still, processed by the next `uim_settle`; false poisons |
+
+### The pointer entry (U05c)
+
+A real kiosk handles a pointer event above LVGL first: its input hook queues the sample, posts an event (a `touch` that
+restarts idle deadlines) and tracks the held state, and only its loop feeds LVGL's indev. A tap the probe injects at
+LVGL's indev skips all of that, so it is not the production input path. A product therefore says whether it has a
+pointer entry, and the probe then taps through it.
+
+**The mechanism: two required functions.** `bool uim_pointer_supported(void)` returns a constant of the build, and
+`bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down)` must exist in every adapter and return false when it is not
+supported (and whenever the sample could not be delivered). Both are ordinary required symbols: the probe main
+references them, so an adapter without them does not link, and no weak symbol is needed in product code. Both carry the
+`uim_` prefix, so the symbols gate confines them like the rest of the interface with no change to it (only the `model`
+of a `c_ui_probe` may define or reference them; `gate/rigor_lib/facts_symbols.py` is unchanged). A constant function is
+simpler than a capability record or a weak `uim_pointer`, which the symbols gate could not check (a weak undefined
+reference links to NULL) and which the C rules exclude. The probe reads `uim_pointer_supported()` once, before its
+greeting.
+
+What a product adapter needs, in the build without an entry:
+
+    bool uim_pointer_supported(void) { return false; }
+    bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down) { (void)m; (void)x; (void)y; (void)down; return false; }
+
+and with one (the host's input hook does the real work: here a queue the next `uim_settle` feeds to LVGL's indev):
+
+    bool uim_pointer_supported(void) { return true; }
+    bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down)
+    {
+        return m->open && host_pointer_sample(&m->host, x, y, down);   /* queue it, post `touch`, track the held state */
+    }
+    /* uim_settle: run the host loop at the current virtual time: it drains the queue into the pointer indev
+     * (lv_indev_read) and then the work the click queued, as it does for any other queued input. */
 
 Deviations from P004's sketch: `uim_instance()` (the gate needs the one static model object and `uim_t` must not be a
 product type in a gate header), `uim_frame` takes `struct _lv_display_t **` so the header includes no LVGL, and
@@ -74,13 +107,15 @@ leading zeros, no overflow; `arg` may carry a `-` (never `-0`) and must fit `int
 
 **The greeting.** `ui-probe/1 ready` followed by the capabilities, each a single space and a token, each at most once
 and in this fixed order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop` (a capability added later is
-appended to the list). This probe announces all six: `ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop`.
+appended to the list). This probe announces those six, and `pointer` (U05c) last when the product has a pointer
+entry (`uim_pointer_supported()`): `ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop pointer`.
 A greeting with no capability is an older probe of the same protocol. The protocol name stays `ui-probe/1`: a capability
 only adds commands or replies, it never changes an existing one. The explorer refuses an unknown, repeated or unordered
 capability (a protocol finding) and a catalogue that needs one the probe does not announce (taps need `hit-test` and
 `tap`).
 `frame-facts`: `frame` carries the lvprobe records below; `ink`, `hit-test`, `tap`, `crop`: those commands;
-`apply-missed`: `apply` can reply `ok apply missed`.
+`apply-missed`: `apply` can reply `ok apply missed`; `pointer`: `tap` goes through the product's pointer entry ("Hit
+query and tap"), so a catalogue can require that its taps take the production input path.
 
 | Command | Reply |
 |---|---|
@@ -92,7 +127,7 @@ capability (a protocol finding) and a catalogue that needs one the probe does no
 | `frame` | `ok frame lines <n>` and the n frame-fact lines ("Frame facts"), `fail frame` (poisons), or an `err frame` (poisons) |
 | `ink` / `ink <i>` | `ok ink lines <n>`: one `ink` or `noink` record per node of the current frame's walk that is not a root (or of node i). Never run implicitly; costs two refreshes per drawn node. `i` out of range or a root: `bad-arguments` |
 | `hit-test <x> <y>` | `ok hit-test <i>`, `ok hit-test none` or `ok hit-test blocked`: what LVGL's own pointer search finds at the point. No input event is sent, so no product handler runs, EXCEPT LVGL's own `LV_EVENT_HIT_TEST`, which the search sends to objects with `LV_OBJ_FLAG_ADV_HITTEST` (advanced hit-testing) and which a product may handle. Read-only: an `err` does not poison |
-| `tap <x> <y>` | `ok tap <pressed> <clicked>` (node indexes or `none`) or `ok tap blocked`: a press and release through the production pointer path, then `uim_settle` (so an intent the click queued runs at the tap's time: `trace`, `semantic` and `next-due` right after the tap show it), then refreshes to a quiet frame. An input: an `err` or `fail tap` (the settle failed) poisons, `blocked` does not |
+| `tap <x> <y>` | `ok tap <pressed> <clicked>` (node indexes or `none`) or `ok tap blocked`: a press and release through the production pointer path (the product's pointer entry with `pointer`, else LVGL's pointer indev), then `uim_settle` (so an intent the click queued runs at the tap's time: `trace`, `semantic` and `next-due` right after the tap show it), then refreshes to a quiet frame. An input: an `err` or `fail tap` (the settle failed) poisons, `blocked` does not |
 | `crop <x> <y> <w> <h>` | `ok crop lines <h>`: one line per row, 8 lowercase hex digits (`rrggbbaa`) per pixel. The region must lie inside the display and `h x (8 w + 1) <= 65535` (160x51 fits, 160x52 does not); otherwise `bad-arguments`. Read-only |
 | `semantic`, `patches`, `trace` | `ok <name> lines <n>` followed by exactly n record lines, verbatim; `fail <name>` (patches and trace poison) |
 | `domain-count` | `ok domain-count <n>` (allowed before `open`) |
@@ -202,8 +237,32 @@ compares the model's display pointer with LVGL's list by address only and refuse
 
 **Hit query and tap.** `hit-test` is `lvprobe_hit_test` (LVGL's `lv_indev_search_obj` over sys, top, active and bottom
 roots): no input event is sent; only LVGL's own `LV_EVENT_HIT_TEST` reaches objects with `LV_OBJ_FLAG_ADV_HITTEST`.
-`tap` is `lvprobe_hit` (the product's handlers run), then `uim_settle`, then refreshes to a quiet frame. The reply names
-the walk index of the pressed and of the clicked object; an object outside the walk is `err tap internal`.
+`tap` takes one of two paths, fixed for the probe by `uim_pointer_supported()`; the reply grammar is the same.
+
+* **Through the product's pointer entry** (capability `pointer`): `lvprobe_observe_begin` (the point, a current walk
+  unless a press would be blocked now, the product's pointer indev; docs/ui-lvprobe.md "Observing a tap"), then
+  `uim_pointer(x, y, true)`, `uim_pointer(x, y, false)`, then `uim_settle` (the product processes its samples and the
+  work the click queues, at the tap's time), then `lvprobe_observe_end`, then refreshes to a quiet frame. The probe injects
+  nothing and swaps no callback: pressed and clicked are OBSERVED from LVGL's own events on the product's indev
+  (`LV_EVENT_PRESSED` and `LV_EVENT_CLICKED`, each mapped to its walk index when LVGL sends it). **Blocked** on this path:
+  nothing was pressed or clicked and LVGL would not have processed a press when the tap began (no display, the indev
+  disabled, a screen-load animation running, waiting for a release: the same cases as the injected path and the hit
+  query), or LVGL left the indev pressed (it did not process the release). A failing `uim_pointer` or `uim_settle` is
+  `fail tap` (poisons); a product that announces `pointer` and has no pointer indev on its display at the session's
+  first frame, deletes its indev during the tap, removes the probe's listener or produces more than one press or click
+  is `err tap model-contract`. A disabled target receives no `LV_EVENT_PRESSED` from LVGL, so on this path it reads
+  `pressed none` (the injected path reads LVGL's pressed object directly and names it).
+* **Injected at the pointer indev** (no `pointer`): `lvprobe_hit` (the product's handlers run, its read callback is
+  replaced for the two reads), then `uim_settle`, then refreshes to a quiet frame.
+
+The reply names the walk index of the pressed and of the clicked object; an object outside the walk is `err tap
+internal`. The toy of `selftest/ui.sh` has both builds: `probe_pointer` (a queue above LVGL that the settle feeds to the
+app's indev, and a press posts `touch`) and `probe` (no entry). The session `pointer.in` shows on the first the `touch`
+and the click's `press` at the tap's instant, the scrim's tap posting `touch` only, a blocked tap with its `touch`
+(delivered, then dropped by LVGL); on the second the same nodes and blocked tap without any `touch`
+(`selftest/ui_product/pointer_check.py`). `pointer_bad.in` drives the path's failures on the first build: a failing
+`uim_pointer` (`fail tap`, poisoned), a product that delivers a second whole tap (`err tap model-contract`, poisoned)
+and every malformed `tap` (`err tap bad-arguments`, transcript `pointer_bad.out`).
 
 ## `c_ui_probe` (`rules/ui.bzl`)
 

@@ -1,7 +1,10 @@
-/* gate//ui/lvprobe: hit injection and the hit query (3). Injection goes through a real LVGL pointer indev: the
- * product's own when it gave one (only its read callback is replaced, for the two reads of a tap), else the probe's.
- * LVGL's indev processing finds the object and sends the events; the probe reads the pressed object right after the
- * press and listens on the indev for LV_EVENT_CLICKED. The query calls LVGL's lv_indev_search_obj and nothing else. */
+/* gate//ui/lvprobe: hit injection, the hit query and the observation of a product's tap (3). Injection goes through a
+ * real LVGL pointer indev: the product's own when it gave one (only its read callback is replaced, for the two reads of
+ * a tap), else the probe's. LVGL's indev processing finds the object and sends the events; the probe reads the pressed
+ * object right after the press and listens on the indev for LV_EVENT_CLICKED. The query calls LVGL's
+ * lv_indev_search_obj and nothing else. The observation (U05c) injects nothing: while the product feeds its own indev,
+ * the same listener (added at open, removed at close) records the objects of LVGL's LV_EVENT_PRESSED and
+ * LV_EVENT_CLICKED; an observation adds and allocates nothing. */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -45,12 +48,48 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     data->state = p->pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 
-/* LV_EVENT_CLICKED on the indev: its parameter is the object LVGL sends the click to. */
+static uint8_t count_up(uint8_t n)
+{
+    return n < UINT8_MAX ? (uint8_t)(n + 1u) : n;
+}
+
+/* During an observation: the object of LVGL's LV_EVENT_PRESSED and LV_EVENT_CLICKED, mapped to its walk index at once;
+ * only the first of each is kept, all are counted. */
+static void observe(lvprobe_t *p, lv_event_code_t code, lv_obj_t *obj)
+{
+    if (obj == NULL) {
+        return;
+    }
+    if (code == LV_EVENT_PRESSED) {
+        if (p->obs_presses == 0u) {
+            p->hit.pressed = true;
+            p->hit.pressed_obj = obj;
+            p->hit.pressed_node = lvprobe_find(p, obj);
+        }
+        p->obs_presses = count_up(p->obs_presses);
+    } else if (code == LV_EVENT_CLICKED) {
+        if (p->obs_clicks == 0u) {
+            p->hit.clicked = true;
+            p->hit.obj = obj;
+            p->hit.node = lvprobe_find(p, obj);
+        }
+        p->obs_clicks = count_up(p->obs_clicks);
+    }
+}
+
+/* The probe's listener on the indev (every event code; added at open, removed at close). Its parameter is the object
+ * LVGL sends the event to, alive while it is sent. An injected tap records LV_EVENT_CLICKED, an observation (U05c)
+ * LV_EVENT_PRESSED and LV_EVENT_CLICKED; any other event, and every event outside a tap, is ignored. */
 static void clicked_cb(lv_event_t *e)
 {
     lvprobe_t *p = lv_event_get_user_data(e);
     lv_obj_t *obj = lv_event_get_param(e);
-    if (p == NULL || !p->tapping || lv_event_get_code(e) != LV_EVENT_CLICKED) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (p != NULL && p->open && p->observing) {
+        observe(p, code, obj);
+        return;
+    }
+    if (p == NULL || !p->tapping || code != LV_EVENT_CLICKED) {
         return;
     }
     p->hit.clicked = obj != NULL;
@@ -76,8 +115,7 @@ lvprobe_status_t lvp_indev_open(lvprobe_t *p, lv_indev_t *indev)
         lv_indev_set_display(p->cfg.indev, p->disp);
         lv_indev_set_mode(p->cfg.indev, LV_INDEV_MODE_EVENT); /* read only when the probe taps */
     }
-    return lv_indev_add_event_cb(p->cfg.indev, clicked_cb, LV_EVENT_CLICKED, p) != NULL ? LVPROBE_OK
-                                                                                        : LVPROBE_ERR_LVGL;
+    return lv_indev_add_event_cb(p->cfg.indev, clicked_cb, LV_EVENT_ALL, p) != NULL ? LVPROBE_OK : LVPROBE_ERR_LVGL;
 }
 
 /* The indev is still one of LVGL's (compared by address only). */
@@ -106,6 +144,7 @@ void lvp_indev_close(lvprobe_t *p)
             (void)lv_indev_remove_event_cb_with_user_data(p->cfg.indev, clicked_cb, p);
         }
     }
+    p->observing = false;
     p->cfg.indev = NULL;
 }
 
@@ -186,7 +225,8 @@ static bool point_ok(const lvprobe_t *p, int32_t x, int32_t y)
 lvprobe_status_t lvprobe_hit(lvprobe_t *p, int32_t x, int32_t y, lvprobe_hit_t *out)
 {
     lvprobe_status_t st;
-    if (p == NULL || !p->open || out == NULL || p->cfg.indev == NULL || p->disp_gone || !point_ok(p, x, y)) {
+    if (p == NULL || !p->open || out == NULL || p->cfg.indev == NULL || p->disp_gone || p->observing ||
+        !point_ok(p, x, y)) {
         return p != NULL && p->disp_gone ? LVPROBE_ERR_GONE : LVPROBE_ERR_ARG;
     }
     if (p->disp_gone) {
@@ -249,5 +289,94 @@ lvprobe_status_t lvprobe_hit_test(lvprobe_t *p, int32_t x, int32_t y, int32_t *n
     }
     *obj = found;
     *node = lvprobe_find(p, found);
+    return LVPROBE_OK;
+}
+
+/* ---- observing a tap the product delivers (U05c) ------------------------------------------------------------ */
+
+static void hit_clear(lvprobe_t *p)
+{
+    p->hit.pressed = false;
+    p->hit.pressed_obj = NULL;
+    p->hit.pressed_node = LVPROBE_NONE;
+    p->hit.clicked = false;
+    p->hit.obj = NULL;
+    p->hit.node = LVPROBE_NONE;
+    p->obs_presses = 0;
+    p->obs_clicks = 0;
+}
+
+/* The probe's listener is still on the indev (a product could remove every callback of its indev). */
+static bool listening(lv_indev_t *indev, const lvprobe_t *p)
+{
+    uint32_t n = lv_indev_get_event_count(indev);
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        lv_event_dsc_t *dsc = lv_indev_get_event_dsc(indev, i);
+        if (dsc != NULL && lv_event_dsc_get_cb(dsc) == clicked_cb && lv_event_dsc_get_user_data(dsc) == p) {
+            return true;
+        }
+    }
+    return false;
+}
+
+lvprobe_status_t lvprobe_observe_begin(lvprobe_t *p, int32_t x, int32_t y)
+{
+    lvprobe_status_t st = LVPROBE_OK;
+    if (p == NULL || !p->open || p->observing || p->cfg.indev == NULL || p->disp_gone || !point_ok(p, x, y)) {
+        return p != NULL && p->disp_gone ? LVPROBE_ERR_GONE : LVPROBE_ERR_ARG;
+    }
+    if (p->own_indev) {
+        return LVPROBE_ERR_FORMAT; /* no product indev: nothing of the product's to observe */
+    }
+    if (!indev_alive(p->cfg.indev)) {
+        p->cfg.indev = NULL; /* never touched again */
+        return LVPROBE_ERR_GONE;
+    }
+    if (!listening(p->cfg.indev, p)) {
+        return LVPROBE_ERR_LVGL; /* the listener of open was removed: the events would go unseen */
+    }
+    p->obs_blocked = blocked(p->cfg.indev);
+    if (!p->obs_blocked) { /* a blocked press changes no tree; a screen load does, so no walk check then */
+        st = lvp_current(p, false);
+        st = st == LVPROBE_OK ? lvp_tree_current(p) : st;
+    }
+    if (st != LVPROBE_OK) {
+        return st;
+    }
+    hit_clear(p);
+    p->observing = true;
+    return LVPROBE_OK;
+}
+
+/* The indev is left pressed: LVGL did not process the release (a screen-load animation started by a press handler),
+ * or a press is pending a release. */
+static bool release_pending(const lv_indev_t *i)
+{
+    return i->pointer.act_obj != NULL || i->state != LV_INDEV_STATE_RELEASED || i->wait_until_release;
+}
+
+lvprobe_status_t lvprobe_observe_end(lvprobe_t *p, lvprobe_hit_t *out)
+{
+    lv_indev_t *i = NULL;
+    if (p == NULL || !p->open || !p->observing || out == NULL) {
+        return LVPROBE_ERR_ARG;
+    }
+    p->observing = false;
+    *out = p->hit;
+    i = p->cfg.indev;
+    if (!indev_alive(i)) {
+        p->cfg.indev = NULL; /* the product deleted its indev during the tap: never touched again */
+        return LVPROBE_ERR_GONE;
+    }
+    if (!listening(i, p)) {
+        return LVPROBE_ERR_LVGL; /* removed during the tap: what it did not see is unknown */
+    }
+    if (p->obs_presses > 1u || p->obs_clicks > 1u) {
+        return LVPROBE_ERR_UNSTABLE;
+    }
+    if ((p->obs_blocked && !out->pressed && !out->clicked) || release_pending(i)) {
+        return LVPROBE_ERR_BLOCKED;
+    }
     return LVPROBE_OK;
 }

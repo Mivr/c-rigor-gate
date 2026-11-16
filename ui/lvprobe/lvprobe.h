@@ -162,6 +162,10 @@ typedef struct {
     bool pressed;
     bool tapping;
     lvprobe_hit_t hit;
+    bool observing;            /* between lvprobe_observe_begin and lvprobe_observe_end (its indev callback records) */
+    bool obs_blocked;          /* LVGL would not have processed a press when the observation began */
+    uint8_t obs_presses;       /* LV_EVENT_PRESSED seen on the indev while observing (saturates at 255) */
+    uint8_t obs_clicks;        /* LV_EVENT_CLICKED seen on the indev while observing (saturates at 255) */
     uint32_t flushes;
     uint32_t gen;              /* structural changes seen */
     uint32_t walk_gen;
@@ -228,6 +232,22 @@ lvprobe_status_t lvprobe_hit(lvprobe_t *p, int32_t x, int32_t y, lvprobe_hit_t *
  * LV_EVENT_HIT_TEST to objects with LV_OBJ_FLAG_ADV_HITTEST) and changes nothing; LVPROBE_ERR_BLOCKED when a tap
  * would be blocked. */
 lvprobe_status_t lvprobe_hit_test(lvprobe_t *p, int32_t x, int32_t y, int32_t *node, lv_obj_t **obj);
+
+/* 3, observation (U05c): a tap the PRODUCT delivers to its own pointer indev (`cfg.indev` of open), observed from
+ * LVGL's own events on that indev; the probe injects nothing, replaces no callback and changes no indev state.
+ * Begin: the point (inside the display) and, unless a press would be blocked now, a current walk are checked as for
+ * lvprobe_hit; whether LVGL would process a press now is recorded (the cases of LVPROBE_ERR_BLOCKED). Nothing is added
+ * or allocated: the probe's listener on the indev (added at open, removed at close) records while observing.
+ * LVPROBE_ERR_FORMAT: the probe has no product indev to observe (it created its own).
+ * End (after the product processed its samples): `*out` holds what the indev's events named, each mapped to its walk
+ * index when LVGL sent it: `pressed` the object of LV_EVENT_PRESSED (LVGL sends it for an enabled object only, so a
+ * disabled target reads as nothing pressed), `clicked` the object of LV_EVENT_CLICKED. LVPROBE_ERR_BLOCKED: nothing
+ * was pressed or clicked and a press would have been blocked at the begin, or the indev is left pressed (LVGL did not
+ * process the release; the probe leaves it as LVGL left it). LVPROBE_ERR_UNSTABLE: more than one press or one click
+ * (not one tap). LVPROBE_ERR_GONE: the indev is no longer one of LVGL's (the probe forgets it). LVPROBE_ERR_LVGL: the
+ * probe's listener is no longer on the indev (begin or end). End without a begin is LVPROBE_ERR_ARG. */
+lvprobe_status_t lvprobe_observe_begin(lvprobe_t *p, int32_t x, int32_t y);
+lvprobe_status_t lvprobe_observe_end(lvprobe_t *p, lvprobe_hit_t *out);
 
 /* 4: frame CRC (FNV-1a over the B, G, R bytes of every pixel, row-major) and every node's region hash. No redraw;
  * needs a settled display and a current walk. */

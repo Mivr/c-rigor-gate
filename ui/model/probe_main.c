@@ -20,7 +20,6 @@ enum {
 };
 
 typedef bool (*handler_t)(probe_t *p, char **arg);
-typedef bool (*buffer_fn_t)(uim_t *, uim_buf_t *);
 
 typedef struct {
     const char *name;
@@ -38,7 +37,8 @@ static size_t g_tail_len;   /* bytes of g_payload written after the reply header
 static uim_input_t g_inputs[UIM_ENV_MAX];
 static lvprobe_t g_lv;      /* the lvprobe of the session; its storage is probe_frame.c's */
 
-/* The greeting: the protocol name, `ready` and the capabilities (docs/ui-model.md, "The greeting"). */
+/* The greeting: the protocol name, `ready` and the capabilities (docs/ui-model.md, "The greeting"); `pointer` last, when
+ * the product delivers taps through its own pointer entry (`uim_pointer_supported`). */
 static const char GREETING[] = "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop";
 
 /* ---- replies ------------------------------------------------------------------------------------------------- */
@@ -209,45 +209,6 @@ static bool cmd_advance(probe_t *p, char **arg)
     return reply_number("advance", p->now);
 }
 
-/* `semantic`, `patches` and `trace`: `ok <name> lines <n>` and the n records verbatim. */
-static bool buffer_reply(probe_t *p, const char *name, buffer_fn_t fn, const probe_spec_t *spec, bool poisons)
-{
-    uim_buf_t buf;
-    long lines = 0;
-    buf.data = g_payload;
-    buf.cap = sizeof g_payload;
-    buf.len = 0;
-    if (!fn(p->model, &buf)) {
-        p->opened = p->opened && !poisons;
-        return probe_reply_plain(name, false);
-    }
-    lines = (buf.data == g_payload && buf.cap == sizeof g_payload && buf.len <= buf.cap)
-                ? probe_check_records(spec, g_payload, buf.len) : -1;
-    if (lines < 0) {
-        p->opened = p->opened && !poisons;   /* the read-only call leaves the model as it was */
-        return probe_reply_err(name, "model-contract");
-    }
-    return probe_reply_lines(name, (size_t)lines, buf.len);
-}
-
-static bool cmd_semantic(probe_t *p, char **arg)
-{
-    (void)arg;
-    return buffer_reply(p, "semantic", uim_semantic, &PROBE_SPEC_SEMANTIC, false);
-}
-
-static bool cmd_patches(probe_t *p, char **arg)
-{
-    (void)arg;
-    return buffer_reply(p, "patches", uim_patches, &PROBE_SPEC_PATCHES, true);
-}
-
-static bool cmd_trace(probe_t *p, char **arg)
-{
-    (void)arg;
-    return buffer_reply(p, "trace", uim_trace, &PROBE_SPEC_TRACE, true);
-}
-
 static bool cmd_domain_count(probe_t *p, char **arg)
 {
     (void)p;
@@ -287,11 +248,11 @@ static const command_t g_commands[] = {
     {"hit-test", 2, 2, true, probe_cmd_hit_test},
     {"tap", 2, 2, true, probe_cmd_tap},
     {"crop", 4, 4, true, probe_cmd_crop},
-    {"semantic", 0, 0, true, cmd_semantic},
-    {"patches", 0, 0, true, cmd_patches},
+    {"semantic", 0, 0, true, probe_cmd_semantic},
+    {"patches", 0, 0, true, probe_cmd_patches},
     {"domain-count", 0, 0, false, cmd_domain_count},
     {"domain-at", 1, 1, true, cmd_domain_at},
-    {"trace", 0, 0, true, cmd_trace},
+    {"trace", 0, 0, true, probe_cmd_trace},
     {"quit", 0, 0, false, cmd_quit},
 };
 
@@ -485,8 +446,10 @@ int main(void)
     p.framed = false;
     p.tick_set = false;
     p.tick_offset = 0;
+    p.pointer = uim_pointer_supported();   /* a constant of the build: read once */
     g_tail_len = 0;
-    if (p.model == NULL || !fits(snprintf(g_reply, sizeof g_reply, "%s", GREETING)) || !emit()) {
+    if (p.model == NULL || !fits(snprintf(g_reply, sizeof g_reply, "%s%s", GREETING, p.pointer ? " pointer" : "")) ||
+        !emit()) {
         return 2;
     }
     served = serve(&p);

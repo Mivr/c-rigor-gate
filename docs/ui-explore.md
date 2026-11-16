@@ -229,7 +229,8 @@ Top level, all required unless marked otherwise, nothing else:
 - `schema = "ui-events/1"`;
 - `product`, `app`, `version`;
 - `max_wait_ms` (1 to 3 600 000);
-- optional `requires`: probe capabilities the catalogue needs, distinct names of the six known ones. A probe whose
+- optional `requires`: probe capabilities the catalogue needs, distinct names of the seven known ones (any order; kept
+  in the greeting's order). A probe whose
   greeting lacks one is the gate's input error (exit 2: "the catalogue requires the probe capabilities ..., which the
   probe does not announce"). The toy catalogue requires all six; an older probe's greeting (no capabilities) only serves
   a catalogue that requires none;
@@ -258,8 +259,15 @@ The `u4` boundary classes are `empty`, `one-digit`, `max-minus-1`, `max`, `max-p
 `unknown`, `expired` and `non-digit`.
 
 **Capabilities.** A probe's greeting is `ui-probe/1 ready[ <cap>...]` (docs/ui-model.md, "The greeting"). The known
-capabilities, in this order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop`; the C probe announces all
-six, a probe without any is an older probe of the same protocol. An unknown, repeated or unordered capability is a
+capabilities, in this order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop`, `pointer`; the C probe
+announces the first six, and `pointer` last when the product's taps go through its own pointer entry (U05c); a probe
+without any is an older probe of the same protocol. The explorer does nothing differently for `pointer` (the probe
+picks the tap path); a catalogue that `requires` it refuses a build whose taps would be injected at LVGL's indev
+(`selftest/ui_product/toy_pointer.events.toml`). On such a build every probe tap goes through the product's input
+hook, so whatever that hook posts (the toy's `touch`, a kiosk's idle restart) is a change of the model: a `u2` tap
+under an overlay is then `ok` (and still `tap-misrouted`), not `missed`, and a `u3` complement tap is
+`noop-tap-effect`. That is what the selftest's run on the toy's pointer build shows (KNOWN GAP, a later explorer task:
+discount the product's own acknowledgement of an input). An unknown, repeated or unordered capability is a
 protocol error. The first launch fixes the capabilities, and a later launch that announces others is a protocol finding.
 Catalogue taps need `hit-test` and `tap`. A probe that cannot greet is reported as such, not as missing
 capabilities.

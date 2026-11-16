@@ -1,0 +1,140 @@
+ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop pointer
+ok open
+ok frame lines 26
+lvprobe	1	9
+frame	160	120	fc2f3b12
+node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	0	fc2f3b12
+node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	1	fc2f3b12
+node	2	1	1	lv_label	8	8	31	23	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	16	0	1	0	0	1	24	16	24	16	=Toy	-
+fit	2	1	0	8,11,31,23	4,4,35,23	0	0
+region	2	e8b36374
+node	3	1	1	lv_button	8	40	107	75	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
+region	3	dd23e40b
+node	4	3	2	lv_label	39	50	77	65	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	16	0	1	0	0	1	39	16	39	16	=Press	-
+fit	4	1	0	40,53,77,62	35,46,81,65	0	0
+region	4	7739b585
+node	5	1	1	lv_label	8	90	7	105	1	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	16	0	0	0	0	1	0	16	0	16	=	-
+fit	5	0	0	-	-	0	0
+region	5	811c9dc5
+node	6	1	1	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	6	fc2f3b12
+node	7	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	7	fc2f3b12
+node	8	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	8	fc2f3b12
+ok trace lines 1
+0	boot	1000
+ok hit-test 3
+ok tap 3 3
+ok trace lines 2
+1	touch	1000
+2	press	1000
+ok semantic lines 3
+title	label	Toy	8	8	24	16	1	-	-	body	normal	none	none
+button	button	Press	8	40	100	36	1	1:0	-	body	normal	tap	none
+notice	label	Pressed	8	90	58	16	1	-	-	body	normal	none	none
+ok next-due 4000
+ok frame lines 26
+lvprobe	1	9
+frame	160	120	495aa2c7
+node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	0	495aa2c7
+node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	1	495aa2c7
+node	2	1	1	lv_label	8	8	31	23	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	16	0	1	0	0	1	24	16	24	16	=Toy	-
+fit	2	1	0	8,11,31,23	4,4,35,23	0	0
+region	2	e8b36374
+node	3	1	1	lv_button	8	40	107	75	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
+region	3	dd23e40b
+node	4	3	2	lv_label	39	50	77	65	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	16	0	1	0	0	1	39	16	39	16	=Press	-
+fit	4	1	0	40,53,77,62	35,46,81,65	0	0
+region	4	7739b585
+node	5	1	1	lv_label	8	90	65	105	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	16	0	1	0	0	1	58	16	58	16	=Pressed	-
+fit	5	1	0	9,92,64,102	4,86,69,105	0	0
+region	5	8a6bebf0
+node	6	1	1	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	6	495aa2c7
+node	7	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	7	495aa2c7
+node	8	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	8	495aa2c7
+ok hit-test 6
+ok tap 6 6
+ok trace lines 1
+3	touch	1000
+ok apply
+ok frame lines 26
+lvprobe	1	9
+frame	160	120	495aa2c7
+node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	0	495aa2c7
+node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	1	495aa2c7
+node	2	1	1	lv_label	8	8	31	23	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	16	0	1	0	0	1	24	16	24	16	=Toy	-
+fit	2	1	0	8,11,31,23	4,4,35,23	0	0
+region	2	e8b36374
+node	3	1	1	lv_button	8	40	107	75	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
+region	3	dd23e40b
+node	4	3	2	lv_label	39	50	77	65	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	16	0	1	0	0	1	39	16	39	16	=Press	-
+fit	4	1	0	40,53,77,62	35,46,81,65	0	0
+region	4	7739b585
+node	5	1	1	lv_label	8	90	65	105	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	16	0	1	0	0	1	58	16	58	16	=Pressed	-
+fit	5	1	0	9,92,64,102	4,86,69,105	0	0
+region	5	8a6bebf0
+node	6	1	1	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	6	495aa2c7
+node	7	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	7	495aa2c7
+node	8	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	8	495aa2c7
+ok hit-test blocked
+ok tap blocked
+ok trace lines 1
+4	touch	1000
+ok apply
+ok advance 4000
+ok trace lines 1
+5	notice_timeout	4000
+ok frame lines 26
+lvprobe	1	9
+frame	160	120	fc2f3b12
+node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	0	fc2f3b12
+node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	1	fc2f3b12
+node	2	1	1	lv_label	8	8	31	23	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	16	0	1	0	0	1	24	16	24	16	=Toy	-
+fit	2	1	0	8,11,31,23	4,4,35,23	0	0
+region	2	e8b36374
+node	3	1	1	lv_button	8	40	107	75	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
+region	3	dd23e40b
+node	4	3	2	lv_label	39	50	77	65	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	16	0	1	0	0	1	39	16	39	16	=Press	-
+fit	4	1	0	40,53,77,62	35,46,81,65	0	0
+region	4	7739b585
+node	5	1	1	lv_label	8	90	65	105	1	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	16	0	0	0	0	1	58	16	58	16	=Pressed	-
+fit	5	0	0	-	-	0	0
+region	5	e4049c65
+node	6	1	1	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	6	fc2f3b12
+node	7	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	7	fc2f3b12
+node	8	-1	0	lv_obj	0	0	159	119	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	8	fc2f3b12
+ok tap 3 3
+ok trace lines 2
+6	touch	4000
+7	press	4000
+ok quit
