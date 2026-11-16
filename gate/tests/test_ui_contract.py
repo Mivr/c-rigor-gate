@@ -82,7 +82,7 @@ class Checked(unittest.TestCase):
         self.assertEqual((contract.get("window", "width_px"), contract.get("window", "height_px")), (1280, 800))
 
     def test_the_exact_pending_set(self):
-        self.assertEqual(uc.load(LOCKERS).pending_entries(), EXPECTED_PENDING)
+        self.assertEqual(uc.load(LOCKERS).pending_entries(), sorted(EXPECTED_PENDING))
 
     def test_removing_each_provenance_in_turn_is_an_error(self):
         contract = uc.load(LOCKERS)
@@ -437,6 +437,60 @@ class Incomplete(unittest.TestCase):
         self.assertEqual([(f["what"], f["name"]) for f in found],
                          [("timer-kind", "toast"), ("state-class", "admin"), ("state-class", "settings"),
                           ("role", "tooltip")])
+
+
+class JudgeTablesTest(unittest.TestCase):
+    """U06: the tables the ui-scene and ui-fit judges read (style_role, role_wrap, element, style_line, the toggle
+    group's marks), in their own module (ui_judge_contract), and the provenance form product-baseline."""
+
+    def test_the_lockers_tables_resolve(self):
+        from rigor_lib import ui_judge_contract as jc
+        contract = uc.load(LOCKERS)
+        self.assertEqual(jc.role_of_style(contract, jc.style_by_token(contract, 15)["id"]), "key_label")
+        self.assertEqual(jc.role_of_style(contract, jc.style_by_token(contract, 20)["id"]), "small_button_label")
+        self.assertIsNone(jc.style_by_token(contract, 0))
+        self.assertEqual(jc.scope_of(contract, "4", "subtitle")["scope"], "default")
+        self.assertEqual(jc.scope_of(contract, "32", "key_label")["scope"], "single_line")    # by element
+        self.assertIsNone(jc.scope_of(contract, "299", "key_label"))                         # the spec is silent
+        self.assertEqual(jc.element_of(contract, "13")["label"], "accessible")
+        self.assertEqual([r["layer"] for r in jc.layer_rows(contract, "banner")], ["banner_notice", "banner_persistent"])
+        self.assertEqual(contract.row("style_line", "display")["line_height_px"], 229)
+        self.assertEqual({r["provenance"] for r in contract.rows("style_line")}, {"product-baseline:f1274bf"})
+
+    def test_the_tables_are_strict(self):
+        must_fail(self, edited('style = "btn_action"\nrole = "key_label"', 'style = "btn_key"\nrole = "key_label"'),
+                  "already names this style")
+        must_fail(self, edited('role = "subtitle"\nscope = "default"', 'role = "subtitle"\nscope = "nowhere"'),
+                  "must be [[role]] and [[wrap]] ids")
+        must_fail(self, edited('id = "lang_en"\nkey = "12"', 'id = "lang_en"\nkey = "11"'), "the same scene key")
+        must_fail(self, edited('key = "11"\nwrap = "single_line"', 'key = "11"\nwrap = "nowhere"'), "not a [[wrap]] scope")
+        must_fail(self, edited('label = "accessible"', 'label = "hidden"'), "wrong type or range")
+        must_fail(self, edited('id = "lang_bg"\nkey = "11"', 'id = "lang_xx"\nkey = "11"'), "must be an [[element]] id")
+        must_fail(self, edited('marks = ["bg", "style"]', 'marks = ["colour"]'), "wrong type or range")
+        must_fail(self, edited('style = "display"\nline_height_px', 'style = "nonesuch"\nline_height_px'),
+                  "is not a [[style]] id")
+        must_fail(self, edited('id = "subtitle"\nstyle = "body_muted"', 'id = "subtitle"\nstyle = "body"'),
+                  "two roles share a style")
+        must_fail(self, TEXT + '\n[[layer]]\nid = "x"\nrole = "dialog"\npolicy = "pass-through"\nprovenance = "owner:Q7"\n',
+                  "unknown top-level keys: layer")
+
+    def test_an_input_layer_row_must_name_a_layer_role_a_kind_of_one_screen_or_a_state_class(self):
+        self.assertEqual(sorted(r["layer"] for r in uc.load(LOCKERS).rows("input_layer")),
+                         ["banner_notice", "banner_persistent", "dialog", "lockout", "screen", "snackbar", "splash"])
+        for typo in ("dialgo", "bnner_notice", "banner_", "popup"):
+            must_fail(self, edited('layer = "dialog"', 'layer = "%s"' % typo), "names no layer role")
+
+    def test_product_baseline_is_the_provenance_of_style_line_alone(self):
+        must_fail(self, edited('line_height_px = 229\nprovenance = "product-baseline:f1274bf"',
+                               'line_height_px = 229\nprovenance = "spec:ui-look.md#4.2"'), "of [[style_line]] alone")
+        must_fail(self, edited('role = "subtitle"\nscope = "default"\nprovenance = "spec:ui-look.md#L282"',
+                               'role = "subtitle"\nscope = "default"\nprovenance = "product-baseline:f1274bf"'),
+                  "of [[style_line]] alone")
+        must_fail(self, edited('tick_ms = { value = 250, provenance = "spec:P004#3.5" }',
+                               'tick_ms = { value = 250, provenance = "product-baseline:f1274bf" }'),
+                  "of [[style_line]] alone")
+        must_fail(self, edited('provenance = "product-baseline:f1274bf"', 'provenance = "product-baseline:xyz"'),
+                  "is not spec:")
 
 
 if __name__ == "__main__":

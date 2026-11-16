@@ -12,12 +12,11 @@ import datetime
 import math
 import re
 import tomllib
-import unicodedata
 from dataclasses import dataclass
-from fractions import Fraction
 from types import MappingProxyType
 
-from rigor_lib import findings, jsonio
+from rigor_lib import findings, jsonio, ui_judge_contract
+from rigor_lib.ui_contract_checks import EXTRA_ELEMENTS, ORDER, check_consistency  # noqa: F401 (re-exported)
 from rigor_lib.errors import InternalError
 
 SCHEMA = "ui-contract/1"
@@ -37,7 +36,7 @@ PENDING_TABLES = {"importance": "7"}
 DESIGN_THRESHOLDS = frozenset(("probe_grid_pct", "feedback_target_frames", "frame_hz", "dwell_base_ms",
                                "dwell_floor_ms", "dwell_chars_per_word", "flicker_floor_ms",
                                "relational_geometry_tol_px", "hierarchy_ratio_k"))
-# The finding ids of P004 3.1 to 3.9; an exception may name one of them (a later task extends the list).
+# The finding ids of P004 3.1 to 3.9 and of the judges that add their own; an exception may name one of them.
 EXCEPTION_RULES = frozenset((
     'a11y-stage-mismatch', 'align-mismatch', 'blocked-target-live', 'busy-indicator-late',
     'clock-origin-divergence', 'contrast-low', 'countdown-wrong', 'covered-node',
@@ -57,13 +56,13 @@ EXCEPTION_RULES = frozenset((
     'text-overflow', 'text-overlap', 'text-scale-2x', 'toggle-group-indistinct',
     'toggle-state-invisible', 'touch-target-small', 'unresponsive-intent', 'value-split',
     'wrap-policy-undeclared',
+    # U06: the ui-scene and ui-fit judges' own findings that an owner may except (docs/ui-judges.md)
+    'fit-unmeasurable', 'glyph-missing', 'stage-unmatched', 'stage-text-mismatch', 'stage-unowned-target',
 ))
-EXTRA_ELEMENTS = frozenset(("countdown", "dismiss", "done", "cancel", "numpad", "language_switch",
-                            "size_buttons"))
+TOGGLE_MARKS = ("bg", "bg_opa", "style")   # U06: what tells a toggle group's selected member apart
 STYLE_TOKENS = 21
 _PROVENANCE = re.compile(r"(?:spec:([A-Za-z0-9._-]+)#[A-Za-z0-9._/-]+|oracle:\S(?:[^\n]*\S)?|literature:\S+"
-                         r"|design:P004#[A-Za-z0-9._/-]+|owner:[A-Z][A-Z0-9]*-?[0-9]+)")
-_PLACEHOLDER = re.compile(r"\{[^{}]*\}")
+                         r"|design:P004#[A-Za-z0-9._/-]+|owner:[A-Z][A-Z0-9]*-?[0-9]+|product-baseline:[0-9a-f]{7,40})")
 _IDENT = re.compile(r"[a-z][a-z0-9_-]*")
 _TARGET = re.compile(r"[a-z][a-z0-9_.:/-]*")
 _PRODUCT = re.compile(r"[a-z0-9][a-z0-9/_-]*")
@@ -182,12 +181,6 @@ SCALARS = {
         "relational_geometry_tol_px": _int(0, 100), "pixel_tolerance": _int(0, 100), "hierarchy_ratio_k": _num(1, 100),
     },
 }
-# Orderings P004 3.10 implies: the first value may not exceed the second (checked unless one is pending).
-ORDER = (("touch_min_mm", "button_floor_mm"), ("button_floor_mm", "button_recommended_mm"),
-         ("button_recommended_mm", "keypad_key_min_mm"), ("spacing_hard_mm", "spacing_recommended_mm"),
-         ("feedback_target_frames", "feedback_rendered_frames_max"),
-         ("busy_indicator_ms", "busy_progress_cancel_ms"), ("dwell_base_ms", "dwell_floor_ms"),
-         ("contrast_large", "contrast_text"))
 # Table sections (arrays of tables): name -> (id key, {key: checker}, optional keys). Every row needs `provenance`.
 TABLES = {
     "style": ("id", {"id": _ident, "token": _int(1, STYLE_TOKENS), "scale": _ident, "weight": _weight,
@@ -200,7 +193,7 @@ TABLES = {
     "state_class": ("id", {"id": _ident, "required": _list_of(_ident)}, ()),
     "importance": ("level", {"level": _int(1, 9), "roles": _list_of(_ident)}, ()),
     "toggle_group": ("id", {"id": _ident, "members": _list_of(_ident, minimum=2), "exactly_one": _is_bool,
-                            "shown_on": _list_of(_ident)}, ()),
+                            "shown_on": _list_of(_ident), "marks": _list_of(_enum(*TOGGLE_MARKS))}, ()),
     "input_layer": ("layer", {"layer": _ident, "blocks_input_below": _is_bool, "tap_outside_dismisses": _is_bool,
                               "accepts_input": _is_bool}, ()),
     "wrap": ("scope", {"scope": _ident, "wrap": _enum("word", "char", "none"), "max_lines": _int(0, 1000),
@@ -208,15 +201,18 @@ TABLES = {
     "exception": ("id", {"id": _ident, "rule": _enum(*sorted(EXCEPTION_RULES)), "target": _concrete_target,
                          "reason": _is_str, "expires": _is_date}, ()),
 }
+TABLES.update(ui_judge_contract.table_specs(_ident, _is_str, _int, _enum))   # U06: the judges' tables
 OPTIONAL_TABLES = ("exception",)
 _TOP = ("schema", "product", "pending_tables")
 
 
-def check_provenance(where, text):
+def check_provenance(where, text, table=None):
+    """A provenance of one of the forms; `product-baseline:<commit>` only in the table `style_line` (U06)."""
     found = _PROVENANCE.fullmatch(text) if isinstance(text, str) else None
     if found is None or (found.group(1) is not None and found.group(1) not in SPEC_DOCS):
         _fail("%s: provenance %r is not spec:<doc>#<anchor> (doc one of %s), oracle:<what>, literature:<key>, "
               "design:P004#<section> or owner:<decision id>" % (where, text, ", ".join(sorted(SPEC_DOCS))))
+    ui_judge_contract.check_provenance_form(table, text, where)
     return text
 
 
@@ -292,7 +288,7 @@ def _row(name, index, raw, id_key, keys, optional):
     shown = raw.get(id_key) if isinstance(raw.get(id_key), str) else "?"
     if "provenance" not in raw:
         _fail("%s (%s=%r) has no provenance" % (where, id_key, shown))
-    check_provenance("%s %r" % (where, shown), raw["provenance"])
+    check_provenance("%s %r" % (where, shown), raw["provenance"], name)
     for key, check in keys.items():
         if key in raw and not check(raw[key]):
             _fail("%s: key %r has the wrong type or range: %r" % (where, key, raw[key]))
@@ -392,85 +388,6 @@ class Contract:
         return tuple(live)
 
 
-def _check_thresholds(scalars):
-    values = {k: e.value for k, e in scalars["thresholds"].items()}
-    for low, high in ORDER:
-        if not isinstance(values[low], Pending) and not isinstance(values[high], Pending) and values[low] > values[high]:
-            _fail("thresholds: %s (%s) may not exceed %s (%s)" % (low, values[low], high, values[high]))
-    window = scalars["window"]
-    if window["pad_px"].value * 2 >= window["width_px"].value:
-        _fail("window: pad_px is too large for width_px")
-
-
-def _check_refs(tables, scalars):
-    styles = {r["id"]: r for r in tables["style"]}
-    roles = {r["id"]: r for r in tables["role"]}
-    states = {r["id"] for r in tables["state_class"]}
-    for row in tables["style"]:
-        if row["scale"] not in scalars["type_scale"]:
-            _fail("[[style]] %r: scale %r is not a type_scale entry" % (row["id"], row["scale"]))
-    tokens = [r["token"] for r in tables["style"]]
-    if len(set(tokens)) != len(tokens):
-        _fail("[[style]] tokens are not unique")
-    for row in tables["role"]:
-        if row["style"] not in styles:
-            _fail("[[role]] %r: style %r is not a [[style]] id" % (row["id"], row["style"]))
-        _check_alignment(row, styles[row["style"]])
-    for row in tables["role_min"]:
-        _check_role_min(row, roles, styles, scalars)
-    levels = [role for row in tables["importance"] for role in row["roles"]]
-    if len(set(levels)) != len(levels):
-        _fail("[[importance]]: a role is in more than one level (or twice in one)")
-    for role in levels:
-        if role not in roles:
-            _fail("[[importance]]: role %r is not a [[role]] id" % role)
-    for row in tables["state_class"]:
-        for element in row["required"]:
-            if element not in roles and element not in EXTRA_ELEMENTS:
-                _fail("[[state_class]] %r: required element %r is unknown" % (row["id"], element))
-    for row in tables["toggle_group"]:
-        for state in row["shown_on"]:
-            if state not in states:
-                _fail("[[toggle_group]] %r: shown_on %r is not a [[state_class]] id" % (row["id"], state))
-
-
-def _check_alignment(role, style):
-    notice = style["id"].startswith("notice_")
-    if "align_banner" in role and not notice:
-        _fail("[[role]] %r: align_banner is only valid for a notice role" % role["id"])
-    if not notice and role["align"] != "centre":
-        _fail("[[role]] %r: only a notice role may be left-aligned" % role["id"])
-    if style["usage"] == "button" and role["align"] != "centre":
-        _fail("[[role]] %r: a button label is centred" % role["id"])
-
-
-def _check_role_min(row, roles, styles, scalars):
-    if row["role"] not in roles:
-        _fail("[[role_min]]: role %r is not a [[role]] id" % row["role"])
-    style = styles.get(roles[row["role"]]["style"])
-    px = scalars["type_scale"][style["scale"]].value
-    if row["font_px_min"] > px:
-        _fail("[[role_min]] %r: font_px_min %d exceeds the role's style size %d" % (row["role"], row["font_px_min"], px))
-    touch = scalars["thresholds"]["touch_min_dp"].value
-    if style["usage"] == "button" and row["touch_dp_min"] < touch:
-        _fail("[[role_min]] %r: a button needs touch_dp_min of at least %d" % (row["role"], touch))
-    if 0 < row["touch_dp_min"] < touch:
-        _fail("[[role_min]] %r: touch_dp_min is 0 or at least %d" % (row["role"], touch))
-
-
-def _check_rows(tables):
-    for row in tables["timer"]:
-        if row["countdown_shown"] and row["lifetime_ms"] == 0:
-            _fail("[[timer]] %r: a countdown needs lifetime_ms above 0" % row["kind"])
-        if row["class"] == "message" and not row["dismiss"]:
-            _fail("[[timer]] %r: every message can be dismissed (ui-rules.md): dismiss may not be empty" % row["kind"])
-    for row in tables["wrap"]:
-        if row["wrap"] == "none" and row["max_lines"] != 1:
-            _fail("[[wrap]] %r: wrap none means max_lines 1" % row["scope"])
-        if row["ellipsis"] and row["max_lines"] == 0:
-            _fail("[[wrap]] %r: an ellipsis needs a line cap" % row["scope"])
-
-
 def loads(text):
     try:
         return _loads(text)
@@ -494,9 +411,8 @@ def _loads(text):
     pending = _pending_tables(document.get("pending_tables"))
     scalars = {name: _scalar_section(name, document.get(name), keys) for name, keys in SCALARS.items()}
     tables = {name: _table(name, document.get(name), pending) for name in TABLES}
-    _check_thresholds(scalars)
-    _check_refs(tables, scalars)
-    _check_rows(tables)
+    check_consistency(tables, scalars, Pending)
+    ui_judge_contract.check(tables)
     return Contract(product, scalars, tables, pending)
 
 
@@ -534,77 +450,6 @@ def incomplete(contract, timer_kinds=(), state_classes=(), roles=()):
     return found
 
 
-def displayed_text(text, max_expansion=None):
-    """The text as displayed: every `{placeholder}` replaced by its longest expansion. A placeholder without an
-    expansion, or an expansion for a placeholder the text does not have, is an error."""
-    expansion = {} if max_expansion is None else max_expansion
-    if not isinstance(expansion, dict) or not all(_is_str(k) and _is_str(v) and not _PLACEHOLDER.search(v)
-                                                  for k, v in expansion.items()):
-        _fail("max_expansion must map each placeholder to a plain, non-empty text")
-    names = set(_PLACEHOLDER.findall(text))
-    if names - set(expansion):
-        _fail("dwell: placeholder(s) %s have no max_expansion" % ", ".join(sorted(names - set(expansion))))
-    if set(expansion) - names:
-        _fail("dwell: max_expansion names %s, which the text does not contain" % ", ".join(sorted(set(expansion) - names)))
-    return _PLACEHOLDER.sub(lambda found: expansion[found.group(0)], text)
-
-
-def char_count(text):
-    return len(unicodedata.normalize("NFC", text))
-
-
-def reading_ms(chars, rate_wpm, chars_per_word):
-    """chars / (rate * chars_per_word / 60) seconds, in whole ms rounded up, exactly (P004 3.10)."""
-    per_minute = Fraction(str(rate_wpm)) * Fraction(str(chars_per_word))
-    return -((-chars * 60000 * per_minute.denominator) // per_minute.numerator)
-
-
-def _message(item):
-    if not isinstance(item, dict) or not {"msgid", "lang", "kind", "text"} <= set(item) \
-            or not set(item) <= {"msgid", "lang", "kind", "text", "max_expansion"}:
-        _fail("dwell: a message is {msgid, lang, kind, text[, max_expansion]}, got %r" % (item,))
-    for key in ("msgid", "lang", "kind", "text"):
-        if not isinstance(item[key], str) or item[key].strip() == "":
-            _fail("dwell: message %r has no usable %s" % (item.get("msgid"), key))
-    return item
-
-
-def dwell_table(contract, messages):
-    """One row per (msgid, lang): characters as displayed, reading time, minimum dwell and the contract's timer.
-
-    `messages` is an iterable of dicts {msgid, lang, kind, text, max_expansion}. Raises ContractPending while the
-    reading rate is pending. A kind the contract has no timer for gets `lifetime_ms = None`.
-    """
-    rate = contract.get("reading", "rate_wpm")
-    per_word = contract.get("thresholds", "dwell_chars_per_word")
-    base = contract.get("thresholds", "dwell_base_ms")
-    floor = contract.get("thresholds", "dwell_floor_ms")
-    timers = {r["kind"]: r for r in contract.tables["timer"]}
-    rows, seen = [], set()
-    for item in sorted((_message(m) for m in messages), key=lambda m: (m["msgid"], m["lang"])):
-        if (item["msgid"], item["lang"]) in seen:
-            _fail("dwell: duplicate message %r in language %r" % (item["msgid"], item["lang"]))
-        seen.add((item["msgid"], item["lang"]))
-        chars = char_count(displayed_text(item["text"], item.get("max_expansion")))
-        reading = reading_ms(chars, rate, per_word)
-        timer = timers.get(item["kind"])
-        rows.append(MappingProxyType({
-            "msgid": item["msgid"], "lang": item["lang"], "kind": item["kind"], "chars": chars,
-            "reading_ms": reading, "min_dwell_ms": max(floor, base + reading),
-            "lifetime_ms": None if timer is None else timer["lifetime_ms"]}))
-    return tuple(rows)
-
-
-def dwell_findings(rows):
-    """`dwell-below-reading-time` for a timed message shorter than its minimum (0 means untimed), and one
-    `contract-incomplete` per timer kind the contract lacks."""
-    found, missing = [], set()
-    for row in rows:
-        if row["lifetime_ms"] is None:
-            missing.add(row["kind"])
-        elif 0 < row["lifetime_ms"] < row["min_dwell_ms"]:
-            found.append(findings.finding("dwell-below-reading-time", msgid=row["msgid"], lang=row["lang"],
-                                          kind=row["kind"], lifetime_ms=row["lifetime_ms"],
-                                          min_dwell_ms=row["min_dwell_ms"]))
-    found.extend(findings.finding("contract-incomplete", what="timer-kind", name=kind) for kind in sorted(missing))
-    return found
+# The dwell table and its findings (P004 3.10) live in ui_contract_dwell; their names stay importable from here.
+from rigor_lib.ui_contract_dwell import (char_count, displayed_text, dwell_findings, dwell_table,  # noqa: E402,F401
+                                         reading_ms)

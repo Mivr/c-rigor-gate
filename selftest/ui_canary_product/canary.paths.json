@@ -1,0 +1,101 @@
+{
+ "schema": "ui-explore-paths/1",
+ "criteria": [],
+ "paths": [
+  [
+   "open 1000000000 7"
+  ],
+  [
+   "open 1000000000 7",
+   "v-occluded"
+  ],
+  [
+   "open 1000000000 7",
+   "v-overlay"
+  ],
+  [
+   "open 1000000000 7",
+   "v-small"
+  ],
+  [
+   "open 1000000000 7",
+   "v-spacing"
+  ],
+  [
+   "open 1000000000 7",
+   "v-bounds"
+  ],
+  [
+   "open 1000000000 7",
+   "v-overlap"
+  ],
+  [
+   "open 1000000000 7",
+   "v-font"
+  ],
+  [
+   "open 1000000000 7",
+   "v-hierarchy"
+  ],
+  [
+   "open 1000000000 7",
+   "v-raw"
+  ],
+  [
+   "open 1000000000 7",
+   "v-wrap"
+  ],
+  [
+   "open 1000000000 7",
+   "v-overflow"
+  ],
+  [
+   "open 1000000000 7",
+   "v-clipped"
+  ],
+  [
+   "open 1000000000 7",
+   "v-dots"
+  ],
+  [
+   "open 1000000000 7",
+   "v-unmeasurable"
+  ],
+  [
+   "open 1000000000 7",
+   "v-glyph"
+  ],
+  [
+   "open 1000000000 7",
+   "v-unmatched"
+  ],
+  [
+   "open 1000000000 7",
+   "v-toggle"
+  ],
+  [
+   "open 1000000000 7",
+   "v-text"
+  ],
+  [
+   "open 1000000000 7",
+   "v-shrunk"
+  ],
+  [
+   "open 1000000000 7",
+   "v-modal"
+  ],
+  [
+   "open 1000000000 7",
+   "v-fake-inert"
+  ],
+  [
+   "open 1000000000 7",
+   "v-unreachable"
+  ],
+  [
+   "open 1000000000 7",
+   "v-wrap-contra"
+  ]
+ ]
+}

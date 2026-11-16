@@ -35,10 +35,14 @@ table `{ value = ..., provenance = "..." }` or `{ pending = "<n>", provenance = 
 | `[[timer]]` | `kind` | `class` (`screen`/`message`), `lifetime_ms` (0 means no limit), `countdown_shown`, `dismiss` (list) |
 | `[[state_class]]` | `id` | `required` (element ids that must be present) |
 | `[[importance]]` | `level` | `roles` |
-| `[[toggle_group]]` | `id` | `members`, `exactly_one`, `shown_on` (state class ids) |
+| `[[toggle_group]]` | `id` | `members` (`[[element]]` ids), `exactly_one`, `shown_on` (state class ids), `marks` (U06: what tells the selected member apart: `bg`, `bg_opa`, `style`) |
 | `[[input_layer]]` | `layer` | `blocks_input_below`, `tap_outside_dismisses`, `accepts_input` |
 | `[[wrap]]` | `scope` | `wrap` (`word`/`char`/`none`), `max_lines` (0 means no cap), `ellipsis`, `clip` |
 | `[[exception]]` | `id` | `rule` (a finding id of P004 3.1 to 3.9, closed list in the loader), `target` (a concrete node id, no wildcard), `reason`, `expires` (a date); the provenance must be `owner:` |
+| `[[style_role]]` (U06) | `style` | `role`: the typographic role of a style no `[[role]]` row names (a colour variant: lockers' action, cancel and language buttons) |
+| `[[role_wrap]]` (U06) | `role` | `scope` (a `[[wrap]]` scope): the wrap scope of EVERY node of the role, only where the spec decides it for all of them |
+| `[[element]]` (U06) | `id` | `key` (a scene key, unique in the table), optional `wrap` (the scope of that node, where the spec decides it per node), optional `label = "accessible"` (the label is an accessible label only, never drawn) |
+| `[[style_line]]` (U06) | `style` | `line_height_px`: a regression baseline of the style's font line height, read from the product; its provenance must be `product-baseline:<commit>` |
 
 References are checked: a style's `scale`, a role's `style`, `role_min.role`, `importance.roles` and
 `toggle_group.shown_on` must name existing entries.
@@ -54,7 +58,9 @@ Every entry and every row carries `provenance`, matched whole (a trailing newlin
   `literature:3.10/<threshold key>`;
 - `design:P004#<section>`: a value P004 marks [I] or [P] (its own design or draft value, no source). The
   thresholds that are design values are `design:P004#3.10-<key>`, and the loader fixes which keys they are;
-- `owner:<decision id>`: an owner decision (`owner:D17`, `owner:Q9`).
+- `owner:<decision id>`: an owner decision (`owner:D17`, `owner:Q9`);
+- `product-baseline:<commit>` (U06): a value read from the product under test at that commit (7 to 40 hex digits): a
+  regression baseline, not a decision. Only `[[style_line]]` may use it, and that table no other form.
 
 An entry without a provenance, or with one of another shape, is an error. A pending entry has one too (the question,
 e.g. `spec:P004#11-q9`).
@@ -80,13 +86,24 @@ ratio (Q5); contrast ratios (Q15); the whole importance table (Q7).
 
 ## Consistency the loader enforces
 
-Types and ranges of every value; unique ids; references (style to type scale, role to style, role_min and importance
-to roles, toggle groups to state classes, state class elements to roles or the closed element list); unique style
-tokens 1 to 21; a role in at most one importance level; `role_min.font_px_min` not above the role's style size and
-buttons with a touch minimum of at least `touch_min_dp`; left alignment only for notice roles, `align_banner` only
-there, buttons centred; `wrap = none` means one line and an ellipsis needs a line cap; a countdown needs a lifetime
-above 0; every message timer has a dismiss control (UI rule 1). What the loader returns is immutable (tuples and
-read-only mappings).
+U06 adds (`gate/rigor_lib/ui_judge_contract.py`, which holds these tables, their checks and the judges' lookups): a
+style is named by at most one role (a `[[style_role]]` style is not a `[[role]]` style, and no two roles share a style),
+so a style token has one typographic role; `[[role_wrap]]` names roles and scopes; `[[element]]` keys are unique and
+their `wrap` names a scope; toggle group members are `[[element]]` ids; `[[style_line]]` names styles. No row of these
+tables may be pending: where the spec does not decide, the row is absent and the judges report `contract-incomplete`.
+A layer's input policy is the sealed `[[input_layer]]` table's, by the structural role; there is no other policy table.
+
+**The input-layer naming rule (a gate rule, U06).** An `[[input_layer]]` row is the policy of a layer role of the scene
+vocabulary (`scrim`, `dialog`, `banner`, `snackbar`) when it is named the role or `<role>_<kind>` (lockers: `dialog`,
+`snackbar`, `banner_notice`, `banner_persistent`; the kinds of one role must agree, or the judges report
+`contract-incomplete`). Any other row is a screen-level layer and must be named `screen` (the base layer, the scene's
+root) or a `[[state_class]]` id (lockers: `splash`, `lockout`). A row named otherwise is a LOADER ERROR (exit 2), not a
+finding: a typo (`dialgo`, `bnner_notice`) would detach the row from every judge without any check noticing, and the
+loader refuses every other malformation of a sealed file the same way.
+
+The loader is split across modules (fix-up 3, the series' 500-line limit): `ui_contract.py` (schema, entries, tables,
+the Contract), `ui_contract_checks.py` (the consistency checks), `ui_contract_dwell.py` (the dwell table) and
+`ui_judge_contract.py` (the judges' tables); `ui_contract` re-exports every public name.
 
 ## Checks
 

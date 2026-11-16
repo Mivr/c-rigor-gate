@@ -1,0 +1,19 @@
+load("@gate//rules:c.bzl", "c_library")
+load("@gate//rules:ui.bzl", "c_ui_probe", "c_ui_probe_session")
+
+# The canary app of selftest/ui_judges.sh (U06) and its model adapter: implements ui/model/model.h.
+c_library(
+    name = "model",
+    srcs = ["canary.c", "model.c"],
+    headers = ["canary.h"],
+    deps = ["gate//ui/model:model"],
+    exported_deps = ["gate//third_party/lvgl:lvgl"],
+    visibility = ["PUBLIC"],
+)
+
+# The probe binary of that model.
+c_ui_probe(name = "probe", model = ":model")
+
+# U06 fix-up 3: one canary session checked under `buck2 test` in release and san (c_ui_probe_session): the clean
+# scene, the occluded variant and the correct modal dialog, with a hit query and a tap on the dimmed scrim.
+c_ui_probe_session(name = "session_test", probe = ":probe", session = "session.in", expected = "session.out")

@@ -31,6 +31,7 @@ exits as soon as its parent is gone.
 ```
 rigor ui-explore --probe BIN --catalogue FILE.events.toml --strategy sweep|bfs|walk|replay --out FINDINGS
                  [--contract FILE] [--deadline-ms N] [--budget-s N] [--require C1,C8] [--evidence DIR] [--summary FILE]
+                 [--judges ui-scene,ui-fit --contract FILE --today YYYY-MM-DD]
   sweep:  --origin-ms N --seed N
   bfs:    --origin-ms N --seed N --depth D (1..64) --max-states M (1..1000000)
   walk:   --origin-ms N --seed N --walk-seeds S1,S2,... --walk-length L (1..10000) --extra-origins K (0..16)
@@ -62,6 +63,8 @@ exits with 128 + the signal.
 | `--budget-s` (1800) | the wall-clock budget of the whole run. When it is spent, the run stops with one `ui-explore-timeout` (`observed.kind` = `budget`), no criterion counts as evaluated, and the exit is 1, never a hang and never 2. Where it stops depends on the host, so such a findings file is not reproducible |
 | `--require` | criteria that must be evaluated; each one not evaluated becomes a `ui-coverage-gap` with `observed.evaluated` = false |
 | `--contract` | the UI contract (docs/ui-contract.md) handed to the judges; the built-in judges do not read it |
+| `--judges` | judges of other gates to run as well: distinct names of `ui-scene` and `ui-fit` (docs/ui-judges.md). They need `--contract`, `--today` and a probe that announces `frame-facts` (exit 2 otherwise, the capability right after the greeting) |
+| `--today` | the date (`YYYY-MM-DD`) the contract's exceptions expire against; only with `--judges`. The judges never read the wall clock, so the same inputs give the same bytes on any day |
 
 Clock origins and seeds are arguments. Deriving them from the verdict's input hash (P004 6.3) belongs to the grade
 wiring (U14).
@@ -75,7 +78,8 @@ wiring (U14).
   `no-change`, `changed`, `starving`, `unreachable`, `apply ok|refused|missed`, `tap ok|refused|missed`, ...) with counts. No time outcome is
   silent;
 - `cost`: `probe_commands` and `virtual_ms` over both runs of every path;
-- the finding counts and the strategy detail.
+- the finding counts (`findings`: every check of this gate by name, 0 included; a finding of another gate's judge as
+  `<gate>.<check>`) and the strategy detail.
 
 ## Paths and time
 
@@ -396,14 +400,17 @@ timeout, which describe a run; a `not-evaluated` finding replays only with the s
 
 ## The judge interface
 
-There are three kinds of judge. Each returns findings built with `ui_explore_judges.make(check, identity, state, path,
-observed, evidence=None)`:
+There are four kinds of judge. The explorer's own build their findings with `ui_explore_judges.make(check, identity,
+state, path, observed, evidence=None)`; a judge of another gate (`--judges`) builds findings of the same schema with its
+own `gate` and id prefix (`<gate>.<check>/<12 hex>`), and the explorer writes, de-duplicates, counts and replays them
+like its own:
 
 | Kind | Signature | Called |
 |---|---|---|
 | step judge | `judge(step, path, contract)` | once per completed step of every first run |
 | run judge | `judge(first, second, contract)` | once per path, with both runs |
 | exploration judge | `judge(exploration, contract) -> (evaluated, findings)` | once at the end; registered by criterion in `ui_explore_coverage.CRITERIA` |
+| end-of-run hook | `finish(open_word) -> findings` | once at the end of a run whose budget was not spent, after the exploration judges; the `--judges` set's (run-level findings: `exception-unused`, `checks-examined`, `check-vacuous`; `path` the open word, `state` null) |
 
 What a step judge receives:
 - `step` is a `ui_explore_run.Step`: `index`, `word`, `outcome`, `applies`, `result` (the last input's outcome), `obs`
@@ -415,6 +422,8 @@ What a step judge receives:
 
 To attach evidence, a judge passes `evidence={"<name>.json": data}`, where the name matches `[a-z0-9][a-z0-9_-]*.json`
 and is not `paths.json`.
+
+The `--judges` set registers one step judge (`ui_judge_findings.JudgeSet.step_judge`) and the end-of-run hook.
 
 Built-in judges:
 - step judges: `timer-starvation`, `timer-unreachable`, `intent-missed`;
