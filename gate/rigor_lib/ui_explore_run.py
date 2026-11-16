@@ -22,7 +22,8 @@ _DOMAIN = re.compile(r"domain-at (0|[1-9][0-9]{0,4})")
 _AT = re.compile(r"at (0|[1-9][0-9]{0,15})")
 SETTLE, WAIT_CHANGE = "settle", "wait-change"
 # the parts of a step in the order the explorer reads them: run-twice names the first that differs
-PARTS = ("domain", "outcome", "frame", "semantic", "patches", "trace", "due", "env", "now", "error", "missing")
+PARTS = ("domain", "outcome", "frame", "semantic", "patches", "trace", "due", "env", "ink", "ink_moved", "now", "error",
+         "missing")
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,7 @@ class Run:
     starved: bool = False
     commands: int = 0
     virtual_ms: int = 0
+    inked: list = field(default_factory=list)      # U07: the indexes of the steps that tried `ink`
 
 
 def _plain(value):
@@ -132,7 +134,7 @@ def _do_word(session, step, run, catalogue, before):
     elif word == SETTLE:
         words_mod.fire_due(session, step, run, catalogue, False)
     elif word == WAIT_CHANGE:
-        words_mod.until_change(session, step, run, catalogue, step.key_before)
+        words_mod.until_change(session, step, run, catalogue, base_key(session, step, before, catalogue))
     elif _DOMAIN.fullmatch(word):
         session.domain_at(int(word.split(" ")[1]))
         step.outcome.append("domain-at")
@@ -141,10 +143,29 @@ def _do_word(session, step, run, catalogue, before):
     else:
         event = catalogue.by_id(word)
         if event.cls == "t1":
-            words_mod.time_event(session, step, run, event, catalogue, step.key_before)
+            waits = event.get("kind") not in ("fire-due", "before-due", "advance", "at")     # until-change
+            base = base_key(session, step, before, catalogue) if waits else step.key_before
+            words_mod.time_event(session, step, run, event, catalogue, base)
         else:
-            words_mod.inputs(session, step, words_mod.snapshot_of(before.obs), words_mod.input_sends(session, event),
-                             catalogue)
+            words_mod.inputs(session, step, before_inputs(before), words_mod.input_sends(session, event), catalogue)
+
+
+def base_key(session, step, before, catalogue):
+    """The abstraction key a wait-change word (or a t1 until-change) waits to leave: the step before's own key, or,
+    when that step's frame moved under its ink (U07), the key of a fresh observation (semantic, deadline, env inputs,
+    as until_change reads them), since the step's observation is then stale."""
+    if before is None or not before.obs.get("ink_moved"):
+        return step.key_before
+    obs = {"semantic": session.records("semantic"), "due": session.next_due(), "env": session.env_inputs()}
+    return key_hash(projection(obs, session.now, catalogue.key))
+
+
+def before_inputs(before):
+    """What an input's change verdicts (noop, missed, the restart rule's frame clause) compare against: the step
+    before's own observation, or None, so that `inputs` takes a fresh snapshot first, when that step's frame moved
+    under its ink (U07): its observation is then stale, the probe's current frame is the one re-taken after the ink,
+    and the input must not be blamed for what moved during the ink."""
+    return None if before.obs.get("ink_moved") else words_mod.snapshot_of(before.obs)
 
 
 def _observe(session, step):
@@ -157,7 +178,79 @@ def _observe(session, step):
     step.now = session.now
 
 
-def _one(session, run, word, catalogue):
+INK_CRC_CAP = 4        # U07: the frame checksums of one abstraction key the ink plan inks, in discovery order
+INK_TRIES = 2          # the first ink of a (key, checksum) and one retry when it was not usable
+
+
+def frame_crc(frame):
+    return next(record.fields[3] for record in frame if record.fields[0] == "frame")
+
+
+class InkPlan:
+    """Which steps of a run take `ink` (U07, the ui-render judge). The first run of a path inks a step whose
+    (abstraction key, frame checksum) has no usable ink yet in the exploration (state shared by every path), at most
+    INK_TRIES times, and at most INK_CRC_CAP checksums per key (`capped`: the keys that had more, in discovery order).
+    Usable: the frame did not move under the ink and at least one node was measured. The second run inks exactly the
+    steps the first one tried (`steps`, from `Run.inked`), so run-twice compares the ink and its errors too."""
+
+    def __init__(self, steps=None):
+        self.steps = steps
+        self.done, self.tries, self.crcs, self.capped = set(), {}, {}, []
+
+    def wants(self, step):
+        if self.steps is not None:
+            return step.index in self.steps
+        crc = frame_crc(step.obs["frame"])
+        slot = (step.key, crc)
+        if slot in self.done or self.tries.get(slot, 0) >= INK_TRIES:
+            return False
+        crcs = self.crcs.setdefault(step.key, [])
+        if crc not in crcs:
+            if len(crcs) >= INK_CRC_CAP:
+                if step.key not in self.capped:
+                    self.capped.append(step.key)
+                return False
+            crcs.append(crc)
+        self.tries[slot] = self.tries.get(slot, 0) + 1
+        return True
+
+    def record(self, step):
+        """After the ink of a step of a first run: mark its (key, checksum) done when the ink is usable."""
+        usable = not step.obs.get("ink_moved", True) and any(r.fields[0] == "ink" for r in step.obs.get("ink", ()))
+        if self.steps is None and usable:
+            self.done.add((step.key, frame_crc(step.obs["frame"])))
+
+    @staticmethod
+    def again(run):
+        return InkPlan(steps=set(run.inked))
+
+
+def _comparable(frame):
+    return [r.raw for r in frame if not r.raw.startswith(("life\t", "taps\t"))]
+
+
+def ink_step(session, run, step, plan):
+    """`ink` of every node of the step's frame, then `frame` again: an ink whose retry settle flushed drops the probe's
+    frame (docs/ui-model.md, "Statuses"), and the next word may need one. `ink_moved`: that frame is not the step's,
+    so the ink does not describe it (the judge reads no ink of the step). The step is recorded in `run.inked` before
+    the ink, so the second run tries the same steps. An error ends the run in a pseudo step `ink`."""
+    if plan is None or not plan.wants(step):
+        return True
+    run.inked.append(step.index)
+    try:
+        step.obs["ink"] = session.ink()
+        step.obs["ink_moved"] = _comparable(session.frame()) != _comparable(step.obs["frame"])
+    except ProbeError as error:
+        step.obs.pop("ink", None)
+        run.steps.append(Step(len(run.steps), "ink", error=error, key_before=step.key, proj_before=step.proj,
+                              origin=step.origin))
+        run.error = (len(run.steps) - 1, error)
+        return False
+    plan.record(step)
+    return True
+
+
+def _one(session, run, word, catalogue, plan=None):
     before = run.steps[-1] if run.steps else None
     step = Step(len(run.steps), word, origin=session.origin or 0)
     if before is not None:
@@ -174,7 +267,7 @@ def _one(session, run, word, catalogue):
         return False
     step.proj = projection(step.obs, step.now, catalogue.key)
     step.key = key_hash(step.proj)
-    return _evidence(session, run, step)
+    return _evidence(session, run, step) and ink_step(session, run, step, plan)   # the image first
 
 
 def _evidence(session, run, step):
@@ -194,7 +287,7 @@ def _evidence(session, run, step):
     return True
 
 
-def _settle(session, run, catalogue):
+def _settle(session, run, catalogue, plan=None):
     """The starvation check after a path: fire deadlines for one starvation window of virtual time, until no deadline
     is left inside it, a wait is unreachable, or the run starves. At most `starve_firings` + 1 firings."""
     end = session.now + catalogue.starve_window_frames * FRAME_MS
@@ -202,15 +295,16 @@ def _settle(session, run, catalogue):
         due = run.steps[-1].obs["due"]
         if due is None or due > end:
             return True
-        if not _one(session, run, SETTLE, catalogue):
+        if not _one(session, run, SETTLE, catalogue, plan):
             return False
         if run.steps[-1].unreachable:
             return True
     return True
 
 
-def execute(config, words, settle=False):
-    """One run of `words` in a fresh probe; with `settle`, the starvation check (`_settle`) follows the path."""
+def execute(config, words, settle=False, ink=None):
+    """One run of `words` in a fresh probe; with `settle`, the starvation check (`_settle`) follows the path; `ink`: the
+    InkPlan of the steps that take ink, or None."""
     run = Run([], [])
     try:
         session = Session([config.probe], config.deadline_s, config.budget, config.caps)
@@ -218,9 +312,9 @@ def execute(config, words, settle=False):
         return Run([words[0]], [Step(0, words[0], error=error)], (0, error))
     try:
         for word in words:
-            if not _one(session, run, word, config.catalogue):
+            if not _one(session, run, word, config.catalogue, ink):
                 return run
-        if settle and not _settle(session, run, config.catalogue):
+        if settle and not _settle(session, run, config.catalogue, ink):
             return run
         try:
             session.quit()
@@ -253,8 +347,9 @@ def first_difference(first, second):
     return trace_at, other
 
 
-def run_twice(config, words, settle=False):
-    """Both runs of a path: the first may append `settle` words, the second runs exactly the words of the first."""
-    first = execute(config, words, settle)
-    second = execute(config, list(first.words), False)
+def run_twice(config, words, settle=False, ink=None):
+    """Both runs of a path: the first may append `settle` words, the second runs exactly the words of the first (and
+    inks exactly the steps the first inked)."""
+    first = execute(config, words, settle, ink)
+    second = execute(config, list(first.words), False, InkPlan.again(first) if ink is not None else None)
     return first, second

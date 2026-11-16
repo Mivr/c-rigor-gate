@@ -2,48 +2,48 @@ ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop
 ok open
 ok frame lines 43
 lvprobe	1	14
-frame	320	240	f39c438d
+frame	320	240	772e21ea
 taps	probe
 node	0	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
-region	0	f39c438d
+region	0	772e21ea
 node	1	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
-region	1	f39c438d
+region	1	772e21ea
 node	2	1	1	lv_label	8	8	207	31	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	2	-	16	0	1	0	0	1	50	16	50	16	=Canary	-
-fit	2	1	0	8,11,57,23	4,4,211,31	0	0
-region	2	8cd18dfb
+label	2	-	16	2	2	0	0	1	50	16	50	16	=Canary	-
+fit	2	1	0	83,11,132,23	4,4,211,31	0	0
+region	2	79d65f67
 node	3	1	1	lv_label	8	40	207	63	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	3	-	16	0	1	0	0	1	56	16	56	16	=All clear	-
-fit	3	1	0	7,42,63,52	4,36,211,63	0	0
-region	3	8f48385c
-node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
-region	4	d4855654
+label	3	-	16	2	2	0	0	1	56	16	56	16	=All clear	-
+fit	3	1	0	79,42,135,52	4,36,211,63	0	0
+region	3	af4e05ec
+node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	4	77cf7be2
 node	5	4	2	lv_label	47	117	68	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	5	-	16	0	1	0	0	1	22	16	22	16	=OK	-
+label	5	-	16	2	2	0	0	1	22	16	22	16	=OK	-
 fit	5	1	0	47,120,69,129	43,113,72,132	0	0
-region	5	d3da441c
-node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
-region	6	50101751
+region	5	289fd3a6
+node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	6	092d20b4
 node	7	6	2	lv_label	232	117	267	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	7	-	16	0	1	0	0	1	36	16	36	16	=Back	-
+label	7	-	16	2	2	0	0	1	36	16	36	16	=Back	-
 fit	7	1	0	233,119,267,129	228,113,271,132	0	0
-region	7	b8236597
+region	7	66725856
 node	8	1	1	lv_button	216	8	263	55	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
 region	8	1a9fb16d
 node	9	8	2	lv_label	229	24	250	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	9	-	16	0	1	0	0	1	22	16	22	16	=BG	-
+label	9	-	16	2	2	0	0	1	22	16	22	16	=BG	-
 fit	9	1	0	230,27,249,36	225,20,254,39	0	0
 region	9	2a1a15bd
 node	10	1	1	lv_button	272	8	319	55	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
 region	10	1e9ccb7b
 node	11	10	2	lv_label	286	24	305	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	11	-	16	0	1	0	0	1	20	16	20	16	=EN	-
+label	11	-	16	2	2	0	0	1	20	16	20	16	=EN	-
 fit	11	1	0	287,27,304,36	282,20,309,39	0	0
 region	11	363a5cf3
 node	12	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-region	12	f39c438d
+region	12	772e21ea
 node	13	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-region	13	f39c438d
+region	13	772e21ea
 ok semantic lines 6
 title	text	Canary	8	8	200	24	1	-	-	1	-	-	-
 body	text	All clear	8	40	200	24	1	-	-	2	-	-	-
@@ -54,49 +54,49 @@ lang_en	button	EN	272	8	48	48	1	8:1	-	7	-	-	-
 ok apply
 ok frame lines 65
 lvprobe	1	15
-frame	320	240	5eba0893
+frame	320	240	974dcc06
 node	0	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
-region	0	5eba0893
+region	0	974dcc06
 node	1	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
-region	1	5eba0893
+region	1	974dcc06
 node	2	1	1	lv_label	8	8	207	31	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	2	-	16	0	1	0	0	1	59	16	59	16	=Canary 1	-
-fit	2	1	0	8,11,65,23	4,4,211,31	0	0
-region	2	dc565509
+label	2	-	16	2	2	0	0	1	59	16	59	16	=Canary 1	-
+fit	2	1	0	78,11,135,23	4,4,211,31	0	0
+region	2	55e44cd9
 node	3	1	1	lv_label	8	40	207	63	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	3	-	16	0	1	0	0	1	56	16	56	16	=All clear	-
-fit	3	1	0	7,42,63,52	4,36,211,63	0	0
-region	3	8f48385c
-node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
-region	4	f56a6ea0
+label	3	-	16	2	2	0	0	1	56	16	56	16	=All clear	-
+fit	3	1	0	79,42,135,52	4,36,211,63	0	0
+region	3	af4e05ec
+node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	4	6c6f49f8
 node	5	4	2	lv_label	47	117	68	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	5	-	16	0	1	0	0	1	22	16	22	16	=OK	-
+label	5	-	16	2	2	0	0	1	22	16	22	16	=OK	-
 fit	5	1	0	47,120,69,129	43,113,72,132	0	0
-region	5	1a7e9d4d
-node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
-region	6	50101751
+region	5	bcc47c01
+node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	6	092d20b4
 node	7	6	2	lv_label	232	117	267	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	7	-	16	0	1	0	0	1	36	16	36	16	=Back	-
+label	7	-	16	2	2	0	0	1	36	16	36	16	=Back	-
 fit	7	1	0	233,119,267,129	228,113,271,132	0	0
-region	7	b8236597
+region	7	66725856
 node	8	1	1	lv_button	216	8	263	55	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
 region	8	1a9fb16d
 node	9	8	2	lv_label	229	24	250	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	9	-	16	0	1	0	0	1	22	16	22	16	=BG	-
+label	9	-	16	2	2	0	0	1	22	16	22	16	=BG	-
 fit	9	1	0	230,27,249,36	225,20,254,39	0	0
 region	9	2a1a15bd
 node	10	1	1	lv_button	272	8	319	55	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
 region	10	1e9ccb7b
 node	11	10	2	lv_label	286	24	305	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	11	-	16	0	1	0	0	1	20	16	20	16	=EN	-
+label	11	-	16	2	2	0	0	1	20	16	20	16	=EN	-
 fit	11	1	0	287,27,304,36	282,20,309,39	0	0
 region	11	363a5cf3
 node	12	1	1	lv_obj	60	90	139	159	0	0	-1	-1	0	0	404040	255	255	1	0	0
 region	12	ed96f245
 node	13	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-region	13	5eba0893
+region	13	974dcc06
 node	14	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-region	14	5eba0893
+region	14	974dcc06
 life	1	deleted	0	2	1	=lv_label
 life	2	deleted	0	3	1	=lv_label
 life	3	deleted	0	4	1	=lv_button
@@ -129,57 +129,57 @@ cover	panel		60	90	80	70	1	-	-	0	-	-	-
 ok apply
 ok frame lines 77
 lvprobe	1	18
-frame	320	240	1ea0e8e7
+frame	320	240	bf72513a
 node	0	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
-region	0	1ea0e8e7
+region	0	bf72513a
 node	1	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
-region	1	1ea0e8e7
+region	1	bf72513a
 node	2	1	1	lv_label	8	8	207	31	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	2	-	16	0	1	0	0	1	71	16	71	16	=Canary 20	-
-fit	2	1	0	8,11,78,23	4,4,211,31	0	0
-region	2	d1ff35f8
+label	2	-	16	2	2	0	0	1	71	16	71	16	=Canary 20	-
+fit	2	1	0	72,11,142,23	4,4,211,31	0	0
+region	2	f2ebb4f8
 node	3	1	1	lv_label	8	40	207	63	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	3	-	16	0	1	0	0	1	56	16	56	16	=All clear	-
-fit	3	1	0	7,42,63,52	4,36,211,63	0	0
-region	3	301f5042
-node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
-region	4	be67b21e
+label	3	-	16	2	2	0	0	1	56	16	56	16	=All clear	-
+fit	3	1	0	79,42,135,52	4,36,211,63	0	0
+region	3	ae81a322
+node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	4	f83289c6
 node	5	4	2	lv_label	47	117	68	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	5	-	16	0	1	0	0	1	22	16	22	16	=OK	-
+label	5	-	16	2	2	0	0	1	22	16	22	16	=OK	-
 fit	5	1	0	47,120,69,129	43,113,72,132	0	0
-region	5	253e1d40
-node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
-region	6	9a16e1f5
+region	5	9adc7e6e
+node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	6	edd19e0e
 node	7	6	2	lv_label	232	117	267	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	7	-	16	0	1	0	0	1	36	16	36	16	=Back	-
+label	7	-	16	2	2	0	0	1	36	16	36	16	=Back	-
 fit	7	1	0	233,119,267,129	228,113,271,132	0	0
-region	7	df258774
+region	7	7fb57db8
 node	8	1	1	lv_button	216	8	263	55	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
 region	8	fb9485f0
 node	9	8	2	lv_label	229	24	250	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	9	-	16	0	1	0	0	1	22	16	22	16	=BG	-
+label	9	-	16	2	2	0	0	1	22	16	22	16	=BG	-
 fit	9	1	0	230,27,249,36	225,20,254,39	0	0
 region	9	ee777e38
 node	10	1	1	lv_button	272	8	319	55	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
 region	10	156ef86f
 node	11	10	2	lv_label	286	24	305	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	11	-	16	0	1	0	0	1	20	16	20	16	=EN	-
+label	11	-	16	2	2	0	0	1	20	16	20	16	=EN	-
 fit	11	1	0	287,27,304,36	282,20,309,39	0	0
 region	11	a0b2a117
 node	12	1	1	lv_obj	0	0	319	239	0	1	-1	-1	0	0	404040	82	82	1	0	0
-region	12	1ea0e8e7
+region	12	bf72513a
 node	13	1	1	lv_obj	60	60	259	179	0	1	-1	-1	0	0	404040	255	255	1	0	0
-region	13	9c9ecd80
-node	14	13	2	lv_button	100	120	199	169	0	1	-1	-1	0	0	2196f3	255	255	1	0	0
-region	14	5dd97f86
+region	13	295501a1
+node	14	13	2	lv_button	100	120	199	169	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	14	054b80fb
 node	15	14	3	lv_label	131	137	169	152	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-label	15	-	16	0	1	0	0	1	39	16	39	16	=Close	-
+label	15	-	16	2	2	0	0	1	39	16	39	16	=Close	-
 fit	15	1	0	131,139,168,149	127,133,173,152	0	0
-region	15	46f90a6a
+region	15	2f91a3ad
 node	16	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-region	16	1ea0e8e7
+region	16	bf72513a
 node	17	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
-region	17	1ea0e8e7
+region	17	bf72513a
 life	22	deleted	0	2	1	=lv_label
 life	23	deleted	0	3	1	=lv_label
 life	24	deleted	0	4	1	=lv_button

@@ -1,6 +1,6 @@
-# The event catalogue of the U06 canary app (ui-events/1, docs/ui-explore.md; docs/ui-judges.md "Canaries"). A selftest
-# fixture: intent v (1..23) puts the scene into the state with exactly one defect of one check (v-modal: a correct
-# modal dialog that no check may flag); `open` is the clean state.
+# The event catalogue of the U06 canary app (ui-events/1, docs/ui-explore.md; docs/ui-judges.md and
+# docs/ui-judges-render.md "Canaries"). A selftest fixture: intent v (1..35) puts the scene into the state with exactly
+# one defect of one check (v-modal: a correct modal dialog that no check may flag); `open` is the clean state.
 schema = "ui-events/1"
 product = "selftest"
 app = "canary"
@@ -41,6 +41,19 @@ events = [
   { id = "v-fake-inert", intent = 21, arg = 0, expect = "accept" },
   { id = "v-unreachable", intent = 22, arg = 0, expect = "accept" },
   { id = "v-wrap-contra", intent = 23, arg = 0, expect = "accept" },
+  # U07: one variant per check of the ui-render judge (docs/ui-judges-render.md, "Canaries").
+  { id = "v-invisible", intent = 24, arg = 0, expect = "accept" },
+  { id = "v-contrast", intent = 25, arg = 0, expect = "accept" },
+  { id = "v-disabled", intent = 26, arg = 0, expect = "accept" },
+  { id = "v-click", intent = 27, arg = 0, expect = "accept" },
+  { id = "v-hidden", intent = 28, arg = 0, expect = "accept" },
+  { id = "v-long", intent = 29, arg = 0, expect = "accept" },
+  { id = "v-align", intent = 30, arg = 0, expect = "accept" },
+  { id = "v-line", intent = 31, arg = 0, expect = "accept" },
+  { id = "v-noink", intent = 32, arg = 0, expect = "accept" },
+  { id = "v-covered", intent = 33, arg = 0, expect = "accept" },
+  { id = "v-btn-text", intent = 34, arg = 0, expect = "accept" },
+  { id = "v-fill", intent = 35, arg = 0, expect = "accept" },
 ]
 
 [u2]

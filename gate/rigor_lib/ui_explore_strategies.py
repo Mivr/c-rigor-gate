@@ -11,7 +11,7 @@ from rigor_lib.ui_explore_judges import (CoarseTable, ambient_judge, make, misro
                                          run_step_judges,
                                          run_twice_judge, starvation_judge, state_of, unreachable_judge)
 from rigor_lib.ui_explore_probe import ORIGIN_MAX_MS, TAP_CAPS, BudgetSpent
-from rigor_lib.ui_explore_run import run_twice
+from rigor_lib.ui_explore_run import InkPlan, run_twice
 
 STRATEGIES = ("sweep", "bfs", "walk", "replay")
 REQUIRED = {"sweep": ("C1",), "bfs": ("C8",), "walk": ()}   # replay: the criteria of its paths file
@@ -28,8 +28,9 @@ def domain_indices(count):
 
 
 class Explorer:
-    def __init__(self, config, contract, word, caps=(), step_judges=(), run_judges=()):
+    def __init__(self, config, contract, word, caps=(), step_judges=(), run_judges=(), ink=False):
         catalogue = config.catalogue
+        self.ink = InkPlan() if ink else None    # U07: ink each (abstract state, frame checksum) once
         self.config, self.contract = config, contract
         self.step_judges = [starvation_judge(catalogue.key), unreachable_judge(catalogue.key),
                             missed_judge(catalogue.key), misrouted_judge(catalogue.key), noop_judge(catalogue.key),
@@ -47,7 +48,7 @@ class Explorer:
         """Run `words` twice; returns the steps of the first run."""
         if self.config.budget.spent():
             raise BudgetSpent()
-        first, second = run_twice(self.config, words, settle)
+        first, second = run_twice(self.config, words, settle, self.ink)
         self.runs += 1
         self.commands += first.commands + second.commands
         self.virtual_ms += first.virtual_ms + second.virtual_ms

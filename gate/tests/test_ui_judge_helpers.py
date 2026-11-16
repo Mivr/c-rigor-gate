@@ -57,6 +57,7 @@ class Tree:
 
     def __init__(self, width=320, height=240):
         self.width, self.height, self.nodes = width, height, []
+        self.align_drawn = 1          # the drawn alignment of a label that names none (U07: 1 left, 2 centre)
         self.root = self.node(-1, "lv_obj", (0, 0, width - 1, height - 1), clickable=1, bg=255)
 
     def node(self, parent, cls, box, hidden=0, clickable=0, clip=-1, scroll=-1, bg=0, exact=1, grad=0, image=0,
@@ -69,13 +70,14 @@ class Tree:
 
     def label(self, parent, text, box, natural=None, laid=None, lines=1, line_h=16, long_mode=0, full=None,
               drawn=1, unsupported=0, glyphs="auto", visible="auto", missing=0, clipped=0, hidden=0, fit=True,
-              clip=-1):
+              clip=-1, align_drawn=None):
         """A label; its line height defaults to 16, the canary contract's line height of every style."""
         index = self.node(parent, "lv_label", box, hidden=hidden, clip=clip)
         w, h = box[2] - box[0] + 1, box[3] - box[1] + 1
         data = text.encode("utf-8") if isinstance(text, str) else text
         self.nodes[index]["label"] = {"text": data, "full": full, "natural": natural or (w, h),
-                                      "laid": laid or (w, h), "lines": lines, "line_h": line_h, "long": long_mode}
+                                      "laid": laid or (w, h), "lines": lines, "line_h": line_h, "long": long_mode,
+                                      "align_drawn": align_drawn}
         if fit:
             gbox = "%d,%d,%d,%d" % (box[0] + 1, box[1] + 1, box[2] - 1, box[3] - 1) if glyphs == "auto" else glyphs
             vbox = "%d,%d,%d,%d" % box if visible == "auto" else visible
@@ -94,7 +96,9 @@ class Tree:
             label = n["label"]
             if label is not None:
                 full = "-" if label["full"] is None else "=" + esc(label["full"].encode("utf-8"))
-                out.append("\t".join(["label", str(i), "-", str(label["line_h"]), "0", "1", str(label["long"]),
+                drawn = self.align_drawn if label["align_drawn"] is None else label["align_drawn"]
+                align = str(label.get("align", 0))
+                out.append("\t".join(["label", str(i), "-", str(label["line_h"]), align, str(drawn), str(label["long"]),
                                       "0" if label["full"] is None else "1", str(label["lines"]),
                                       str(label["natural"][0]), str(label["natural"][1]), str(label["laid"][0]),
                                       str(label["laid"][1]), "=" + esc(label["text"]), full]))
