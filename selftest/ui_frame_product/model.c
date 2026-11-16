@@ -372,3 +372,16 @@ bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down)
     (void)down;
     return false;
 }
+
+/* No scene identity (U24): `identity` is `err identity unsupported`, the greeting does not announce it. */
+bool uim_identity_supported(void)
+{
+    return false;
+}
+
+bool uim_identity(uim_t *m, uim_buf_t *out)
+{
+    (void)m;
+    out->len = 0;
+    return false;
+}

@@ -66,7 +66,8 @@ def add_parser(subparsers):
     parser.add_argument("--contract", help="the UI contract (ui-contract/1) handed to the judges")
     parser.add_argument("--judges", type=_list(r"[a-z][a-z-]{0,31}"),
                         help="judges to run besides the explorer's own: ui-scene,ui-fit,ui-render (they need "
-                             "--contract and --today; ui-render also a probe with ink)")
+                             "--contract and --today; ui-render also a probe with ink; ui-scene reads identity when "
+                             "the probe announces it)")
     parser.add_argument("--today", type=_date, help="the date (YYYY-MM-DD) the contract's exceptions expire against")
     parser.add_argument("--origin-ms", type=_uint)
     parser.add_argument("--seed", type=_uint, help="the seed of every `open`")
@@ -252,7 +253,7 @@ def _start(args, catalogue):
     return (paths[1] if paths else None), criteria, word
 
 
-def _launch(args, config, contract, paths, word):
+def _launch(args, config, contract, judges, paths, word):
     """The first launch and what it decides: (config with the capabilities and the scene, caps or None, the greeting
     finding or None, the prefix words)."""
     catalogue = config.catalogue
@@ -266,7 +267,8 @@ def _launch(args, config, contract, paths, word):
         _check_taps(catalogue, caps, paths)
         prefix = _prefix(args, catalogue, caps)
         strategies.check_cost(catalogue, args, paths, caps, prefix)
-        config = Config(config.probe, config.deadline_s, catalogue, config.budget, caps, _scene(catalogue, contract))
+        config = _config(config.probe, config.deadline_s, catalogue, config.budget, caps, _identity(judges, caps),
+                         _scene(catalogue, contract))
     return config, caps, greeting, prefix
 
 
@@ -277,9 +279,9 @@ def explore(args):
     if args.today is not None and args.judges is None:
         raise InternalError("--today is only for --judges")
     judges = JudgeSet(args.judges, contract, catalogue.key, args.today) if args.judges is not None else None
-    config = Config(os.path.abspath(args.probe), args.deadline_ms / 1000.0, catalogue, Budget(args.budget_s))
+    config = _config(args.probe, args.deadline_ms / 1000.0, catalogue, Budget(args.budget_s))
     paths, criteria, word = _start(args, catalogue)
-    config, caps, greeting, prefix = _launch(args, config, contract, paths, word)
+    config, caps, greeting, prefix = _launch(args, config, contract, judges, paths, word)
     _check_judges(judges, caps)
     explorer = strategies.Explorer(config, contract, word, caps or (),
                                    step_judges=[judges.step_judge] if judges else (),
@@ -323,6 +325,18 @@ def _scene(catalogue, contract):
     if scene.scoped and scene.grid is None:
         raise InternalError("taps scope \"scene\" needs the catalogue's grid_pct or a --contract with probe_grid_pct")
     return scene
+
+
+def _config(probe, deadline_s, catalogue, budget, caps=None, identity=False, scene=None):
+    """The run's Config, by keyword (a field added to Config cannot silently swap another)."""
+    return Config(probe=os.path.abspath(probe), deadline_s=deadline_s, catalogue=catalogue, budget=budget, caps=caps,
+                  identity=identity, scene=scene)
+
+
+def _identity(judges, caps):
+    """U24: whether the explorer reads `identity` after every step: a selected judge needs it (ui-scene) and the probe
+    announces it. Without the capability the judge set reports ui-scene's identity checks as `check-blocked`."""
+    return judges is not None and judges.wants_identity(caps)
 
 
 def _check_judges(judges, caps):

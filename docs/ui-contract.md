@@ -25,7 +25,8 @@ table `{ value = ..., provenance = "..." }` or `{ pending = "<n>", provenance = 
 | `[pending_tables]` | whole tables the owner has not decided: `importance = { pending = "7", provenance = ... }` |
 
 **Tables** are arrays of rows; each row has the listed keys, an id that must be unique in its table, and a
-`provenance`. All are required except `[[exception]]`, which may be absent (no exceptions).
+`provenance`. All are required except `[[exception]]` (absent: no exceptions) and U24's `[[value]]`, `[[catalogue]]`
+and `[[identity_literal]]` (absent: the check they feed has nothing to judge).
 
 | Table | Id | Other keys |
 |---|---|---|
@@ -33,7 +34,7 @@ table `{ value = ..., provenance = "..." }` or `{ pending = "<n>", provenance = 
 | `[[role]]` | `id` | `style`, `align` (`centre`/`left`), optional `align_banner` |
 | `[[role_min]]` | `role` | `font_px_min`, `touch_dp_min` (0 means not applicable) |
 | `[[timer]]` | `kind` | `class` (`screen`/`message`), `lifetime_ms` (0 means no limit), `countdown_shown`, `dismiss` (list) |
-| `[[state_class]]` | `id` | `required` (element ids that must be present) |
+| `[[state_class]]` | `id` | `required` (element ids that must be present: a role id or an extra element of the loader; U24's `required-element-missing` looks them up by the state class of the probe's identity) |
 | `[[importance]]` | `level` | `roles` |
 | `[[toggle_group]]` | `id` | `members` (`[[element]]` ids), `exactly_one`, `shown_on` (state class ids), `marks` (U06: what tells the selected member apart: `bg`, `bg_opa`, `style`) |
 | `[[input_layer]]` | `layer` | `blocks_input_below`, `tap_outside_dismisses`, `accepts_input` |
@@ -43,6 +44,9 @@ table `{ value = ..., provenance = "..." }` or `{ pending = "<n>", provenance = 
 | `[[role_wrap]]` (U06) | `role` | `scope` (a `[[wrap]]` scope): the wrap scope of EVERY node of the role, only where the spec decides it for all of them |
 | `[[element]]` (U06) | `id` | `key` (a scene key, unique in the table), optional `wrap` (the scope of that node, where the spec decides it per node), optional `label = "accessible"` (the label is an accessible label only, never drawn) |
 | `[[style_line]]` (U06) | `style` | `line_height_px`: a regression baseline of the style's font line height, read from the product; its provenance must be `product-baseline:<commit>` |
+| `[[value]]` (U24) | `id` | `element`: the element id (docs/ui-model.md, "Scene identity") whose shown nodes make ONE value (lockers: the locker number, the entered code); a `[[role]]` id, an extra element of the loader (`countdown`, `dismiss`, `done`, `cancel`, `numpad`, `language_switch`, `size_buttons`) or an `[[element]]` id, at most one value per element; optional `max_nodes` (1..64; 1 when absent): how many shown nodes may carry it (`value-split`) |
+| `[[catalogue]]` (U24; at most one row: a second is a loader error) | `id` | `msgids`: `key` (a msgid is a catalogue key, never display text) or `source-text` (a msgid is the source language's text, as gettext's); `text_roles`: the `[[role]]` ids whose text must come from the catalogue, so a node of one of them with a label and no msgid is `raw-text` (part `no-msgid`) |
+| `[[identity_literal]]` (U24) | `msgid` | a msgid whose formatted text is the msgid itself in every language: `raw-text` does not report a label equal to it |
 
 References are checked: a style's `scale`, a role's `style`, `role_min.role`, `importance.roles` and
 `toggle_group.shown_on` must name existing entries.
@@ -110,8 +114,16 @@ names what it accepts without a reader. The layer roles are defined once, `ui_ju
 scene vocabulary (`ui_judge_vocab`) imports.
 
 The loader is split across modules (fix-up 3, the series' 500-line limit): `ui_contract.py` (schema, entries, tables,
-the Contract), `ui_contract_checks.py` (the consistency checks), `ui_contract_dwell.py` (the dwell table) and
-`ui_judge_contract.py` (the judges' tables); `ui_contract` re-exports every public name.
+the Contract), `ui_contract_checks.py` (the consistency checks), `ui_contract_dwell.py` (the dwell table),
+`ui_judge_contract.py` (the judges' tables) and `ui_contract_identity.py` (U24: the identity checks' tables, their
+references and lookups); `ui_contract` re-exports every public name.
+
+**Why `[[catalogue]].msgids` (U24).** `raw-text`'s rule "a label equal to its msgid is a raw msgid" is decidable from
+the identity alone only when msgids are keys. The lockers catalogues are gettext's (`lkui/catalog/i18n/*.pot`: the
+msgid is the English text), so in English every correct label equals its msgid, and in Bulgarian a label equal to its
+msgid is raw only when the msgid HAS a Bulgarian translation, which needs the catalogue (U17b). A contract therefore
+says which kind its msgids are; with `source-text` (or no `[[catalogue]]` row) that part of raw-text is not
+applicable (counted as such in `checks-examined`) and stays blocked on U17b.
 
 ## Checks
 

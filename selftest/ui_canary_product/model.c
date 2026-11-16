@@ -189,6 +189,58 @@ bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down)
     return false;
 }
 
+/* U24: the canary reports its scene identity: the state class, then one `node` line per node with an identity. */
+bool uim_identity_supported(void)
+{
+    return true;
+}
+
+/* Appends `node<TAB>key<TAB>element<TAB>msgid<TAB>n[<TAB>=arg]` of node i, if it has an identity. */
+static bool identity_line(unsigned i, uim_buf_t *out)
+{
+    canary_node_t node;
+    canary_identity_t id;
+    char arg[LINE / 2];
+    int n = 0;
+    if (!canary_node(i, &node)) {
+        return false;
+    }
+    if (!canary_identity(i, &id)) {
+        return true;
+    }
+    if (id.arg != NULL && !escape(arg, sizeof arg, id.arg)) {
+        return false;
+    }
+    n = snprintf(out->data + out->len, out->cap - out->len, "node\t%s\t%s\t%s\t%s%s\n", node.key, id.element,
+                 id.msgid, id.arg != NULL ? "1\t=" : "0", id.arg != NULL ? arg : "");
+    if (n <= 0 || (size_t)n >= out->cap - out->len) {
+        return false;
+    }
+    out->len += (size_t)n;
+    return true;
+}
+
+bool uim_identity(uim_t *m, uim_buf_t *out)
+{
+    unsigned i;
+    int n = 0;
+    out->len = 0;
+    if (!m->open) {
+        return false;
+    }
+    n = snprintf(out->data, out->cap, "state\t%s\n", canary_state_class());
+    if (n <= 0 || (size_t)n >= out->cap) {
+        return false;
+    }
+    out->len = (size_t)n;
+    for (i = 0; i < canary_count(); i++) {
+        if (!identity_line(i, out)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 uint16_t uim_domain_count(void)
 {
     return 0;

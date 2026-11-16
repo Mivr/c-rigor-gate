@@ -24,7 +24,7 @@ def tearDownModule():
 
 
 def config(probe, catalogue=CATALOGUE):
-    return Config(str(probe), 10.0, catalogue, Budget(60))
+    return Config(probe=str(probe), deadline_s=10.0, catalogue=catalogue, budget=Budget(60))
 
 
 class JudgeInterfaceTest(TempDirTestCase):

@@ -96,6 +96,24 @@ static bool record_ok(const probe_spec_t *spec, const char *s, size_t n)
     return field + 1u == spec->fields && field_ok(spec, field, s + start, n - start);
 }
 
+bool probe_field_ok(const char *s, size_t n)
+{
+    size_t i = 0;
+    while (i < n) {
+        if (s[i] == '\\') {
+            i = escape_end(s, i, n);
+            if (i == 0) {
+                return false;
+            }
+        } else if (!plain_ok((unsigned char)s[i])) {
+            return false;
+        } else {
+            i++;
+        }
+    }
+    return true;
+}
+
 /* A line of the frame seam: printable ASCII and TAB only. */
 static bool free_line_ok(const char *s, size_t n)
 {

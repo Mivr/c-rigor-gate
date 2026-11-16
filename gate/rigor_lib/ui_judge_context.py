@@ -16,7 +16,7 @@ rendered scrim (the scrim, or a card without one) is painted later, clickable, d
 
 import hashlib
 
-from rigor_lib import ui_judge_contract
+from rigor_lib import ui_judge_contract, ui_judge_identity
 from rigor_lib.ui_contract import ContractPending
 from rigor_lib import ui_judge_stage as stage
 from rigor_lib import ui_judge_vocab as vocab
@@ -30,6 +30,7 @@ class Context:
         self.frame = stage.parse_frame(step.obs["frame"])
         self.ink_records = step.obs.get("ink")             # U07: the ink of a state's first visit, else None
         self.ink_moved = step.obs.get("ink_moved", False)  # the frame re-taken after the ink differed from this one
+        self.identity = ui_judge_identity.parse(step.obs.get("identity"))   # U24: None without the probe's identity
         self.vocabulary = []                   # (key, fields, raw)
         counts = {}
         for record in step.obs["semantic"]:

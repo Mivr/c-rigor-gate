@@ -15,7 +15,7 @@ import tomllib
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from rigor_lib import findings, jsonio, ui_judge_contract
+from rigor_lib import findings, jsonio, ui_contract_identity, ui_judge_contract
 from rigor_lib.ui_contract_checks import EXTRA_ELEMENTS, ORDER, check_consistency  # noqa: F401 (re-exported)
 from rigor_lib.errors import InternalError
 
@@ -204,7 +204,8 @@ TABLES = {
                          "reason": _is_str, "expires": _is_date}, ()),
 }
 TABLES.update(ui_judge_contract.table_specs(_ident, _is_str, _int, _enum))   # U06: the judges' tables
-OPTIONAL_TABLES = ("exception",)
+TABLES.update(ui_contract_identity.table_specs(_ident, _is_str, _int, _enum, _list_of))   # U24: the identity checks'
+OPTIONAL_TABLES = ("exception",) + ui_contract_identity.TABLES
 _TOP = ("schema", "product", "pending_tables")
 
 
@@ -415,6 +416,7 @@ def _loads(text):
     tables = {name: _table(name, document.get(name), pending) for name in TABLES}
     check_consistency(tables, scalars, Pending)
     ui_judge_contract.check(tables)
+    ui_contract_identity.check(tables)
     return Contract(product, scalars, tables, pending)
 
 

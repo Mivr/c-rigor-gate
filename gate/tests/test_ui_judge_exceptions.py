@@ -210,7 +210,7 @@ class CliTest(h.ExploreCase):
         first = (self.tmp / "a.json").read_bytes()
         self.assertEqual(first, (self.tmp / "b.json").read_bytes())
         found = [f for f in h.findings(self.tmp / "a.json") if f["gate"] in ("ui-scene", "ui-fit")
-                 and f["check"] not in RUN_LEVEL]
+                 and f["check"] not in RUN_LEVEL + ("check-blocked",)]   # U24: the stub has no identity
         # its clickable button is in no scene node the judges can read: a control the scene does not know
         self.assertEqual({f["check"] for f in found}, {"scene-vocabulary", "stage-unowned-target"})
         self.assertEqual(sorted({f["observed"]["key"] for f in found if f["check"] == "scene-vocabulary"}),

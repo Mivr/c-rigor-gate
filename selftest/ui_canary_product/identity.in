@@ -1,0 +1,12 @@
+open 1000 7
+identity
+apply 3 36 0 -
+identity
+semantic
+apply 3 37 0 -
+identity
+apply 3 38 0 -
+identity
+apply 3 11 0 -
+identity
+quit

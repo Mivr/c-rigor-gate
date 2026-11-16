@@ -14,7 +14,7 @@ c_library(
 # its taps at the app's indev.
 c_library(
     name = "model",
-    srcs = ["model.c", "pointer_off.c"],
+    srcs = ["model.c", "pointer_off.c", "identity_off.c"],
     deps = [":toy", "gate//ui/model:model"],
     visibility = ["PUBLIC"],
 )
@@ -23,7 +23,7 @@ c_library(
 # above LVGL, and post `touch`.
 c_library(
     name = "model_pointer",
-    srcs = ["model.c", "pointer_on.c"],
+    srcs = ["model.c", "pointer_on.c", "identity_off.c"],
     deps = [":toy", "gate//ui/model:model"],
 )
 
@@ -40,6 +40,16 @@ c_ui_probe(name = "probe_pointer", model = ":model_pointer")
 c_ui_probe_session(name = "pointer_test", probe = ":probe_pointer", session = "pointer.in", expected = "pointer.out")
 
 c_ui_probe_session(name = "pointer_noentry_test", probe = ":probe", session = "pointer.in", expected = "pointer_noentry.out")
+
+# U24 fix-up 1: the adapter with a scene identity that breaks the interface (identity_bad.c): selftest/ui.sh sees
+# `err identity model-contract`, `fail identity`, and that neither poisons.
+c_library(
+    name = "model_identity_bad",
+    srcs = ["model.c", "pointer_off.c", "identity_bad.c"],
+    deps = [":toy", "gate//ui/model:model"],
+)
+
+c_ui_probe(name = "probe_identity_bad", model = ":model_identity_bad")
 
 # Ordinary product code that calls a `uim_*` symbol: flagged by the symbols gate.
 c_library(
