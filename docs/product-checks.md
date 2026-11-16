@@ -285,7 +285,13 @@ expected)` (U05c): exactly these four keywords, all of them, string literals; `p
 in the same BUCK file (why `probe` otherwise, `value` for any other form, `__` included); `session` and `expected` are
 two different plain relative files of the package (why `value`: no label, glob, `.`/`..` segment, empty segment, absolute
 path or backslash; why `file`: the same file twice); a missing keyword is why `missing`. Nothing may depend on a session,
-on a probe or on the probe's mark `<probe>__ui_probe` (why `test-target`).
+on a probe or on the probe's mark `<probe>__ui_probe` (why `test-target`). The rule kind behind the macro,
+`ui_probe_session_run`, is not loadable by a product (`bad-load`) and is no macro (`bad-call`).
+
+**A `c_ui_probe_session` IS ENFORCED BY `buck2 test` ONLY, NOT YET BY `rigor grade`:** the grade's `build` gate collects
+only `ctest_results` targets. Follow-up: `kind(ui_probe_session_run, //...)` in `grade_build.result_targets`, the tests
+gate seeing the id `ui_probe_session/<pkg>:<name>`, and a selftest step in which a failing session fails a grade
+(docs/ui-model.md, "`c_ui_probe_session`").
 
 ## Builtins (T014)
 The symbol deny list and `-Wframe-larger-than` are keyed on symbols and static frames; a compiler builtin

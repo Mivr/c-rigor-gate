@@ -64,6 +64,7 @@ static lv_indev_t *start_with_indev(ctest_t *t, lv_display_t **disp)
     lvprobe_close(&tk_probe);
     cfg.indev = indev;
     CHECK_EQ_I64(t, lvprobe_open(&tk_probe, *disp, &cfg), LVPROBE_OK);
+    CHECK_EQ_I64(t, lvprobe_observe_taps(&tk_probe), LVPROBE_OK);
     g_clicks = 0;
     g_mode = 0;
     return indev;
@@ -100,7 +101,8 @@ static void t_the_products_own_tap_is_observed_and_nothing_is_left_behind(ctest_
     pool = tk_pool_used();
     CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, TK_W / 2, TK_H / 2), LVPROBE_OK);
     CHECK_EQ_I64(t, lv_indev_get_event_count(indev), events); /* nothing added */
-    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_OK); /* no sample: nothing named */
+    /* no sample reached LVGL: never "pressed nothing", but UNREAD */
+    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_ERR_UNREAD);
     CHECK(t, !hit.pressed && !hit.clicked && hit.pressed_node == LVPROBE_NONE && hit.node == LVPROBE_NONE);
     CHECK_EQ_I64(t, (int64_t)tk_pool_used(), (int64_t)pool); /* nothing allocated */
     CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, TK_W / 2, TK_H / 2), LVPROBE_OK);
@@ -120,8 +122,9 @@ static void t_the_products_own_tap_is_observed_and_nothing_is_left_behind(ctest_
     stop(t, disp, indev);
 }
 
-/* The F3b overlay takes the product's tap; a disabled target gets no LV_EVENT_PRESSED from LVGL, so it reads as none. */
-static void t_an_overlay_takes_the_tap_and_a_disabled_target_sends_no_press(ctest_t *t)
+/* The F3b overlay takes the product's tap; a disabled target gets no LV_EVENT_PRESSED from LVGL, yet LVGL presses it
+ * (its act_obj during the press): LVGL's own search names it, pressed and not clicked, as on the injected path. */
+static void t_an_overlay_takes_it_and_a_disabled_target_is_pressed(ctest_t *t)
 {
     lv_display_t *disp = NULL;
     lv_indev_t *indev = start_with_indev(t, &disp);
@@ -143,9 +146,23 @@ static void t_an_overlay_takes_the_tap_and_a_disabled_target_sends_no_press(ctes
     CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, TK_W / 2, TK_H / 2), LVPROBE_OK);
     product_tap(indev, TK_W / 2, TK_H / 2);
     CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_OK);
-    CHECK(t, !hit.pressed && hit.pressed_obj == NULL && hit.pressed_node == LVPROBE_NONE);
+    CHECK(t, hit.pressed && hit.pressed_obj == button && hit.pressed_node == tk_index(button));
     CHECK(t, !hit.clicked && hit.obj == NULL && hit.node == LVPROBE_NONE);
     CHECK_EQ_I64(t, g_clicks, 0);
+    /* a point where nothing is clickable (the screen and the bottom layer, which LVGL makes clickable, made not):
+     * LVGL read both samples (the press advanced its vector history) and pressed nothing */
+    lv_obj_set_clickable(lv_screen_active(), false);
+    lv_obj_set_clickable(lv_display_get_layer_bottom(disp), false);
+    CHECK(t, tk_walk(t));
+    CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, 2, 2), LVPROBE_OK);
+    product_tap(indev, 2, 2);
+    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_OK);
+    CHECK(t, !hit.pressed && !hit.clicked);
+    /* a product that drops the release (or reads it elsewhere): no evidence of the tap's release at its point */
+    CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, 2, 2), LVPROBE_OK);
+    deliver(indev, 2, 2, true);
+    deliver(indev, 3, 3, false);
+    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_ERR_UNREAD);
     stop(t, disp, indev);
 }
 
@@ -164,13 +181,13 @@ static void t_a_tap_lvgl_does_not_process_is_blocked(ctest_t *t)
     CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_ERR_BLOCKED);
     CHECK(t, !hit.pressed && !hit.clicked);
     lv_indev_enable(indev, true);
-    /* blocked at the begin, but the product's own work ends the block before its samples: what LVGL did counts */
+    /* blocked at the begin (so the walk was not checked) stays blocked, even if the product's work ends the block */
     lv_indev_enable(indev, false);
     CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, TK_W / 2, TK_H / 2), LVPROBE_OK);
     lv_indev_enable(indev, true);
     product_tap(indev, TK_W / 2, TK_H / 2);
-    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_OK);
-    CHECK(t, hit.pressed && hit.clicked);
+    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_ERR_BLOCKED);
+    CHECK_EQ_I64(t, g_clicks, 1); /* LVGL clicked: the answer is still blocked, never a guess about the tree */
     g_next = tk_ok(lv_obj_create(NULL));
     CHECK(t, tk_walk(t));
     lv_screen_load_anim(g_next, LV_SCREEN_LOAD_ANIM_FADE_IN, 300, 0, false);
@@ -182,6 +199,7 @@ static void t_a_tap_lvgl_does_not_process_is_blocked(ctest_t *t)
     CHECK_EQ_I64(t, g_clicks, 1);
     lv_anim_delete_all();
     lv_screen_load(lv_obj_get_screen(button));
+    CHECK(t, button != NULL);
     stop(t, disp, indev);
 }
 
@@ -216,6 +234,44 @@ static void t_a_release_lvgl_did_not_process_is_blocked(ctest_t *t)
     stop(t, disp, indev);
 }
 
+/* A pointer-path tap whose press handler started a screen load leaves the indev held (LVGL never processed its
+ * release). Once the animation is gone the next press would get no LV_EVENT_PRESSED: the query and the next tap are
+ * blocked until the product's own release frees the indev. */
+static void t_a_held_indev_blocks_the_next_tap_and_the_query(ctest_t *t)
+{
+    lv_display_t *disp = NULL;
+    lv_indev_t *indev = start_with_indev(t, &disp);
+    lv_obj_t *button = button_at_centre();
+    lvprobe_hit_t hit;
+    int32_t node = 0;
+    lv_obj_t *obj = NULL;
+    (void)tk_ok(lv_obj_add_event_cb(button, hold_on_press, LV_EVENT_PRESSED, NULL));
+    g_mode = 1;
+    g_next = tk_ok(lv_obj_create(NULL));
+    CHECK(t, tk_walk(t));
+    CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, TK_W / 2, TK_H / 2), LVPROBE_OK);
+    product_tap(indev, TK_W / 2, TK_H / 2);
+    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_ERR_BLOCKED);
+    g_mode = 0;
+    lv_anim_delete_all();
+    lv_screen_load(lv_obj_get_screen(button)); /* no animation any more: only the held indev is left */
+    CHECK_EQ_I64(t, lv_indev_get_state(indev), LV_INDEV_STATE_PRESSED);
+    CHECK(t, tk_walk(t));
+    CHECK_EQ_I64(t, lvprobe_hit_test(&tk_probe, TK_W / 2, TK_H / 2, &node, &obj), LVPROBE_ERR_BLOCKED);
+    CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, TK_W / 2, TK_H / 2), LVPROBE_OK);
+    product_tap(indev, TK_W / 2, TK_H / 2);
+    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_ERR_BLOCKED);
+    CHECK_EQ_I64(t, lv_indev_get_state(indev), LV_INDEV_STATE_RELEASED); /* the product's release freed it */
+    CHECK(t, tk_walk(t));
+    CHECK_EQ_I64(t, lvprobe_hit_test(&tk_probe, TK_W / 2, TK_H / 2, &node, &obj), LVPROBE_OK);
+    CHECK(t, obj == button);
+    CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, TK_W / 2, TK_H / 2), LVPROBE_OK);
+    product_tap(indev, TK_W / 2, TK_H / 2);
+    CHECK_EQ_I64(t, lvprobe_observe_end(&tk_probe, &hit), LVPROBE_OK);
+    CHECK(t, hit.pressed && hit.pressed_obj == button && hit.clicked && hit.obj == button);
+    stop(t, disp, indev);
+}
+
 /* More than one press or click is not one tap; the probe never picks one of them. */
 static void t_two_taps_are_not_one(ctest_t *t)
 {
@@ -239,8 +295,10 @@ static void t_the_preconditions_are_checked(ctest_t *t)
     lvprobe_hit_t hit;
     lv_obj_t *box = NULL;
     CHECK(t, tk_walk(t));
-    /* the kit's probe created its own indev: there is no tap of the product's to observe */
-    CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, 10, 10), LVPROBE_ERR_FORMAT);
+    /* the kit's probe created its own indev: there is no tap of the product's to observe; without the mode no begin */
+    CHECK_EQ_I64(t, lvprobe_observe_taps(&tk_probe), LVPROBE_ERR_FORMAT);
+    CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, 10, 10), LVPROBE_ERR_ARG);
+    CHECK_EQ_I64(t, lvprobe_hit(&tk_probe, 10, 10, &hit), LVPROBE_OK); /* the injected path is untouched */
     tk_stop(t, disp);
     indev = start_with_indev(t, &disp);
     CHECK(t, tk_walk(t));
@@ -285,6 +343,8 @@ static void t_close_and_a_deleted_indev_leave_nothing(ctest_t *t)
     CHECK_EQ_I64(t, lv_indev_get_event_count(indev), events - 1u); /* the probe's listener, and nothing else */
     cfg.indev = indev;
     CHECK_EQ_I64(t, lvprobe_open(&tk_probe, disp, &cfg), LVPROBE_OK);
+    CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, 5, 5), LVPROBE_ERR_ARG); /* a new open is not in the mode */
+    CHECK_EQ_I64(t, lvprobe_observe_taps(&tk_probe), LVPROBE_OK);
     CHECK(t, tk_walk(t));
     CHECK_EQ_I64(t, lvprobe_observe_begin(&tk_probe, 5, 5), LVPROBE_OK);
     lv_indev_delete(indev);
@@ -296,8 +356,9 @@ static void t_close_and_a_deleted_indev_leave_nothing(ctest_t *t)
 CTEST_SUITE("lvprobe_observe",
             { "the_products_own_tap_is_observed_and_nothing_is_left_behind",
               t_the_products_own_tap_is_observed_and_nothing_is_left_behind },
-            { "an_overlay_takes_the_tap_and_a_disabled_target_sends_no_press",
-              t_an_overlay_takes_the_tap_and_a_disabled_target_sends_no_press },
+            { "an_overlay_takes_it_and_a_disabled_target_is_pressed",
+              t_an_overlay_takes_it_and_a_disabled_target_is_pressed },
+            { "a_held_indev_blocks_the_next_tap_and_the_query", t_a_held_indev_blocks_the_next_tap_and_the_query },
             { "a_tap_lvgl_does_not_process_is_blocked", t_a_tap_lvgl_does_not_process_is_blocked },
             { "a_release_lvgl_did_not_process_is_blocked", t_a_release_lvgl_did_not_process_is_blocked },
             { "two_taps_are_not_one", t_two_taps_are_not_one },

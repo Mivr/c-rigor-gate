@@ -221,3 +221,106 @@ class TapExploreTest(h.ExploreCase):
                 self.assertEqual(len(runs), 2)
                 self.assertTrue(all(run.rstrip("\n").rsplit("\n", 1)[-1].split(" ")[0] == command for run in runs),
                                 "a command was sent after the poisoning err")
+
+
+AMBIENT = ('drain_ms = 1024', 'drain_ms = 1024\nrequires = ["pointer"]\nambient = { trace = ["touch"], '
+           'trace_provenance = "oracle:the stub posts touch on every tap"%s }')
+RESTART = ', due_restart_ms = 5000, due_restart_provenance = "oracle:the stub restarts its idle deadline"'
+
+
+class AmbientTest(h.ExploreCase):
+    """U05c: taps through a product's pointer entry, whose entry posts `touch` on every sample (docs/ui-explore.md,
+    "Ambient events")."""
+
+    def ambient(self, restart=""):
+        return self.catalogue(AMBIENT[0], AMBIENT[1] % restart, base=self.catalogue(PRESS_LINE, CREATE_LINE,
+                                                                                     base=self.catalogue(*TAPS)))
+
+    def found(self, mode, paths, code, restart="", summary=None):
+        extra = ("--summary", str(summary)) if summary else ()
+        _, found = self.replay(mode, paths, *extra, catalogue=self.ambient(restart), code=code)
+        return [(f["check"], f["id"], f["observed"]) for f in found]
+
+    def test_the_ambient_touch_is_not_a_change(self):
+        """A button tap is accepted, a complement tap changes nothing, and the canary under the notice is missed again,
+        although every tap posted `touch`."""
+        summary = self.tmp / "s.json"
+        self.assertEqual(self.found("ptouch", [[h.OPEN, BUTTON], [h.OPEN, BLANK]], 0, summary=summary), [])
+        data = __import__("json").loads(summary.read_text())
+        self.assertEqual((data["events"][BLANK], data["taps"]),
+                         ({"accepted_states": 0, "refused_states": 1, "missed_states": 0}, "entry"))
+        self.assertEqual(self.found("ptouch", [[h.OPEN, PRESS, BUTTON]], 1), [
+            ("intent-missed", h.finding_id("intent-missed", ["missed", PRESSED_KEY, BUTTON]),
+             {"word": BUTTON, "applies": ["missed"]})])
+
+    def test_a_tap_without_its_touch_is_ambient_missing(self):
+        self.assertEqual(self.found("pnotouch", [[h.OPEN, BLANK]], 1), [
+            ("ambient-missing", h.finding_id("ambient-missing", ["missing", h.STUB_OPEN_KEY, BLANK]),
+             {"word": BLANK, "types": ["touch"]})])
+
+    def test_a_tap_with_two_touches_is_ambient_extra_and_the_second_is_a_change(self):
+        found = self.found("ptwice", [[h.OPEN, BLANK]], 1)
+        self.assertEqual(sorted(found), sorted([
+            ("ambient-extra", h.finding_id("ambient-extra", ["extra", h.STUB_OPEN_KEY, BLANK]),
+             {"word": BLANK, "types": ["touch"]}),
+            ("noop-tap-effect", h.finding_id("noop-tap-effect", ["noop", h.STUB_OPEN_KEY, BLANK]),
+             {"word": BLANK, "changed": ["trace"]})]))
+
+    def test_a_complement_tap_that_posts_touch_and_changes_the_scene_is_still_noop_tap_effect(self):
+        self.assertEqual(self.found("pchange", [[h.OPEN, BLANK]], 1), [
+            ("noop-tap-effect", h.finding_id("noop-tap-effect", ["noop", h.STUB_OPEN_KEY, BLANK]),
+             {"word": BLANK, "changed": ["patches"]})])
+
+    def test_a_restarted_idle_deadline_is_no_change_only_when_declared(self):
+        # one frame first, so that the restarted deadline (tap + 5000) is not the one armed at open (open + 5000)
+        self.assertEqual(self.found("prestart", [[h.OPEN, "one-frame", BLANK]], 0, restart=RESTART), [])
+        found = self.found("prestart", [[h.OPEN, "one-frame", BLANK]], 1)
+        self.assertEqual([(c, o) for c, _, o in found], [("noop-tap-effect", {"word": BLANK, "changed": ["due"]})])
+
+    def test_ambient_types_outside_taps_and_at_another_instant_are_ordinary(self):
+        """`touch` is discounted in a tap step only: the same record type from an apply is a change as before."""
+        from rigor_lib import ui_explore_grammar as g
+        from rigor_lib import ui_explore_words as w
+        records = [g.Record("0\ttouch\t5", ("0", "touch", "5"), ()), g.Record("1\ttouch\t4", ("1", "touch", "4"), ()),
+                   g.Record("2\ttouch\t5", ("2", "touch", "5"), ()), g.Record("3\tpress\t5", ("3", "press", "5"), ())]
+        other, missing, extra = w.ambient_split(records, ("touch", "beep"), 5)
+        self.assertEqual(([r.raw for r in other], missing, extra), (["1\ttouch\t4", "2\ttouch\t5", "3\tpress\t5"],
+                                                                     ["beep"], ["touch"]))
+
+    def test_taps_injected_at_a_product_indev_are_reported_once(self):
+        summary = self.tmp / "s.json"
+        _, found = self.replay("pindev", [[h.OPEN, BUTTON], [h.OPEN, BLANK]], "--summary", str(summary),
+                               catalogue=self.catalogue(PRESS_LINE, CREATE_LINE, base=self.catalogue(*TAPS)), code=0)
+        sha = catalogue_mod.load(self.tmp / sorted(p.name for p in self.tmp.glob("cat*.toml"))[-1]).sha256
+        self.assertEqual([(f["check"], f["severity"], f["id"], f["observed"]) for f in found],
+                         [("taps-injected", "info", h.finding_id("taps-injected", ["taps-injected", sha]),
+                           {"taps": "indev", "pointer": False})])
+        self.assertEqual(__import__("json").loads(summary.read_text())["taps"], "indev")
+        _, plain = self.replay("facts", [[h.OPEN, BUTTON]], "--summary", str(summary),
+                               catalogue=self.catalogue(PRESS_LINE, CREATE_LINE, base=self.catalogue(*TAPS)), code=0)
+        self.assertEqual((plain, __import__("json").loads(summary.read_text())["taps"]), ([], None))
+
+    def test_the_ambient_table_is_strict(self):
+        base = self.catalogue(PRESS_LINE, CREATE_LINE, base=self.catalogue(*TAPS))
+        good = 'ambient = { trace = ["touch"], trace_provenance = "oracle:x" }'
+        for text, why in (
+                ('requires = ["tap"]\n' + good, "needs `requires` with \"pointer\""),
+                ('requires = ["pointer"]\nambient = { trace = [], trace_provenance = "oracle:x" }', "ambient.trace"),
+                ('requires = ["pointer"]\nambient = { trace = ["a", "a"], trace_provenance = "oracle:x" }', "ambient.trace"),
+                ('requires = ["pointer"]\nambient = { trace = ["a b"], trace_provenance = "oracle:x" }', "ambient.trace"),
+                ('requires = ["pointer"]\nambient = { trace = ["a"] }', "missing key(s) trace_provenance"),
+                ('requires = ["pointer"]\nambient = { trace = ["a"], trace_provenance = "x" }', "provenance"),
+                ('requires = ["pointer"]\nambient = { trace = ["a"], trace_provenance = "oracle:x", extra = 1 }',
+                 "unknown key(s) extra"),
+                ('requires = ["pointer"]\nambient = { trace = ["a"], trace_provenance = "oracle:x", due_restart_ms = 5 }',
+                 "go together"),
+                ('requires = ["pointer"]\nambient = { trace = ["a"], trace_provenance = "oracle:x", due_restart_ms = 0, '
+                 'due_restart_provenance = "oracle:y" }', "ambient.due_restart_ms"),
+                ('requires = ["pointer"]\nambient = 3', "must be a table")):
+            with self.subTest(text=text):
+                with self.assertRaises(Exception) as caught:
+                    catalogue_mod.loads(base.read_text().replace("drain_ms = 1024", "drain_ms = 1024\n" + text).encode())
+                self.assertIn(why, str(caught.exception))
+        loaded = catalogue_mod.loads(base.read_text().replace(
+            "drain_ms = 1024", "drain_ms = 1024\nrequires = [\"pointer\"]\n" + good[:-2] + RESTART + " }").encode())
+        self.assertEqual((loaded.ambient, loaded.due_restart_ms), (("touch",), 5000))

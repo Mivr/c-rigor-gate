@@ -21,4 +21,12 @@ trace
 frame
 tap 57 57
 trace
+advance 7000
+trace
+apply 3 676 0 -
+frame
+hit-test 57 57
+tap 57 57
+trace
+apply 3 677 0 -
 quit

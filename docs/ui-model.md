@@ -54,6 +54,10 @@ restarts idle deadlines) and tracks the held state, and only its loop feeds LVGL
 LVGL's indev skips all of that, so it is not the production input path. A product therefore says whether it has a
 pointer entry, and the probe then taps through it.
 
+**An interface break.** Every model adapter must now define both functions (`uim_pointer_supported` and
+`uim_pointer`), also one without a pointer entry: an adapter of before U05c no longer links with the probe main. The
+selftest's adapters and the frame toy define the "no entry" pair below; a real product adds the same few lines.
+
 **The mechanism: two required functions.** `bool uim_pointer_supported(void)` returns a constant of the build, and
 `bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down)` must exist in every adapter and return false when it is not
 supported (and whenever the sample could not be delivered). Both are ordinary required symbols: the probe main
@@ -181,6 +185,7 @@ lvprobe's, defined in docs/ui-lvprobe.md ("Text format", "Definitions"):
 | `label` | 15 | `label`, i, font id or `-`, line_h, align, align_drawn, long, dotted, lines, natural_w, natural_h, laid_w, laid_h, `=`text, full_text or `-` (after its node, labels only) |
 | `fit` | 8 | `fit`, i, drawn, unsupported, glyphs box, visible box, missing (placeholder glyphs), clipped (after `label`) |
 | `region` | 3 | `region`, i, hash (FNV-1a of the node's coords inside the display) |
+| `taps` | 2 | written by the probe, in the first frame of a session only, third (after `frame`): `taps`, `entry`, `indev` or `probe` (U05c, "Hit query and tap") |
 | `life` | 7 | written by the probe: `life`, seq (lvprobe's running number since `open`), `created` or `deleted`, late (`1`: found on a screen observed late), node, parent, `=` and the class |
 
 `life`: node is the walk index of a deleted object in the **previous reported** frame's walk (-1 for a creation), parent
@@ -244,16 +249,34 @@ roots): no input event is sent; only LVGL's own `LV_EVENT_HIT_TEST` reaches obje
   `uim_pointer(x, y, true)`, `uim_pointer(x, y, false)`, then `uim_settle` (the product processes its samples and the
   work the click queues, at the tap's time), then `lvprobe_observe_end`, then refreshes to a quiet frame. The probe injects
   nothing and swaps no callback: pressed and clicked are OBSERVED from LVGL's own events on the product's indev
-  (`LV_EVENT_PRESSED` and `LV_EVENT_CLICKED`, each mapped to its walk index when LVGL sends it). **Blocked** on this path:
-  nothing was pressed or clicked and LVGL would not have processed a press when the tap began (no display, the indev
-  disabled, a screen-load animation running, waiting for a release: the same cases as the injected path and the hit
-  query), or LVGL left the indev pressed (it did not process the release). A failing `uim_pointer` or `uim_settle` is
-  `fail tap` (poisons); a product that announces `pointer` and has no pointer indev on its display at the session's
-  first frame, deletes its indev during the tap, removes the probe's listener or produces more than one press or click
-  is `err tap model-contract`. A disabled target receives no `LV_EVENT_PRESSED` from LVGL, so on this path it reads
-  `pressed none` (the injected path reads LVGL's pressed object directly and names it).
+  (`LV_EVENT_PRESSED` and `LV_EVENT_CLICKED`, each mapped to its walk index when LVGL sends it). LVGL sends no
+  `LV_EVENT_PRESSED` for a disabled object although it presses it; when none came, LVGL's own pointer search at the
+  point (the one `hit-test` uses) names the pressed node if it is a live walked node in the disabled state, clicked
+  `none`: the answer of the injected path (the toy's disabled button is `ok tap 3 none` on both builds).
+  **Blocked** on this path: LVGL would not have processed a press when the tap began (no display, the indev disabled, a
+  screen-load animation running, waiting for a release: the cases of the injected path; and a HELD indev, which LVGL
+  left pressed after a release it did not process: its next press gets no `LV_EVENT_PRESSED`. `hit-test` says
+  `blocked` in the same cases, so the two agree). A tap blocked when it began is `blocked` whatever happened during the
+  settle (the walk was not checked then). It is also blocked when LVGL leaves the indev pressed after this tap. A
+  failing `uim_pointer` or `uim_settle` is `fail tap` (poisons). `err tap model-contract` (poisons): a product that
+  announces `pointer` with no pointer indev of its own at the session's first frame (`err frame model-contract` at that
+  frame), a `uim_pointer_supported()` that differs from the greeting's (re-read at every tap), an indev deleted during
+  the tap, the probe's listener removed, more than one press or click, and samples LVGL never read: an unblocked tap
+  needs evidence that LVGL read the press (its `LV_EVENT_PRESSED`, or the advance of the indev's vector history that
+  every processed press makes) and the release at the tap's point (the indev released, its point the tap's); a product
+  that claims the entry and drops samples never reads as "pressed nothing".
+  The probe does not reset the product's indev on this path, so LVGL's click streak persists between taps: a second
+  tap at the same point within LVGL's double-click window also raises `LV_EVENT_DOUBLE_CLICKED` (`LV_EVENT_CLICKED` is
+  still sent once per tap, and a tap is still one tap). "Clicked" means LVGL dispatched `LV_EVENT_CLICKED` to the
+  indev; a product's own indev handler can stop the processing before the object sees it.
 * **Injected at the pointer indev** (no `pointer`): `lvprobe_hit` (the product's handlers run, its read callback is
-  replaced for the two reads), then `uim_settle`, then refreshes to a quiet frame.
+  replaced for the two reads, the indev reset first), then `uim_settle`, then refreshes to a quiet frame.
+
+Which path taps take is a frame fact: the first frame of a session (the one that attaches lvprobe) carries one line
+`taps<TAB><path>` after the `frame` line: `entry` (the product's pointer entry), `indev` (injected at the product's own
+pointer indev: a product that has one but does not announce `pointer`) or `probe` (injected at the indev lvprobe
+created: the display had none). The explorer records it in its summary (`taps`) and reports the info finding
+`taps-injected` once per run for `indev` (docs/ui-explore.md).
 
 The reply names the walk index of the pressed and of the clicked object; an object outside the walk is `err tap
 internal`. The toy of `selftest/ui.sh` has both builds: `probe_pointer` (a queue above LVGL that the settle feeds to the
@@ -312,13 +335,27 @@ The id is `ui_probe_session/<package, "/" written ".">:<name>`; a failed run has
 check as `reason`. Sub-targets `[report]` and `[verdict]`. `buck2 test` runs the target as one test (an external-runner
 test labelled `c_ui_probe_session`, like a `c_fuzz` or `c_sim` verdict), listed under its label:
 `✓ Pass: root//selftest/ui_product:session_test` with the report on its stdout, counted in `Pass N. Fail M.`. A later
-expected-tests list holds the id above, one per target (the same id in release and san, as for a `c_test`). The grade's
-`build` gate (gate/rigor_lib/grade_build.py) collects only `kind(ctest_results, //...)` today; collecting these results
-too is a change there (not in U05c's scope).
+expected-tests list holds the id above, one per target (the same id in release and san, as for a `c_test`). The id
+spells `/` as `.`, so the packages `a/b` and `a.b` give the same id for a target of the same name: a product must not
+have both (an id collision the tests gate would report as a duplicate).
 
-`selftest/ui.sh` checks both toys' `session.in` with `session_test` targets in release and san (besides its own
-comparison steps); a changed byte of `expected`, a probe that writes to stderr and a session that does not end in `quit`
-each fail it (gate/tests/test_ui_probe_session.py drives the runner with fake probes for every check).
+**A SESSION IS ENFORCED BY `buck2 test` ONLY, NOT YET BY `rigor grade`.** The grade's `build` gate
+(gate/rigor_lib/grade_build.py) collects only `kind(ctest_results, //...)` targets. The rule kind of every session is
+the public name `ui_probe_session_run` (`kind(ui_probe_session_run, //...)` lists them; `selftest/ui.sh` queries it).
+The follow-up, outside U05c: query that kind in `result_targets` too and copy each default output into the results
+directory, so the tests gate sees the id `ui_probe_session/<pkg>:<name>` like any ctest id; and a selftest step in which
+a failing session fails a grade.
+
+Bounds: the runner reads stdout up to the expected length plus 64 KiB and stderr up to 64 KiB, and the run lasts at
+most 600 s; past any of them the probe is killed and the session fails with that reason (a recorded failing verdict:
+the build of the target succeeds and `buck2 test` fails, never a hang). A session whose replies contain an `err` exits 1
+even when it ends in `quit`, so it cannot be a session test: such strict-protocol transcripts stay script steps.
+
+`selftest/ui.sh` checks both toys' `session.in` and the taps session on both toy builds with session targets in
+release and san (besides its own comparison steps), and shows at Buck2 level that one changed byte of `session.out`
+leaves the build of the target green and makes `buck2 test` fail naming the first differing line (the file is
+restored). A probe that writes to stderr, a session that does not end in `quit`, a probe that writes past its caps or
+never ends each fail it (gate/tests/test_ui_probe_session.py drives the runner with fake probes for every check).
 
 ## Confinement of the `uim_`, `lvprobe_` and `lvp_` symbols (P004 6.3)
 

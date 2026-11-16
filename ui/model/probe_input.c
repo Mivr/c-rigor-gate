@@ -123,6 +123,9 @@ bool probe_cmd_tap(probe_t *p, char **arg)
     }
     p->framed = false;
     memset(&hit, 0, sizeof hit);
+    if (uim_pointer_supported() != p->pointer) {
+        return probe_fatal(p, "model-contract");   /* not the constant the greeting announced */
+    }
     tick = probe_tick_ok(p);
     if (!(p->pointer ? pointer_tap(p, x, y, tick, &hit, &st, &reply) : injected_tap(p, x, y, tick, &hit, &st, &reply))) {
         return reply;

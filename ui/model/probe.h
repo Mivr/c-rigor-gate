@@ -40,7 +40,8 @@ typedef struct {
     bool framed;            /* a `frame` succeeded and no command changed the model since */
     bool tick_set;          /* tick_offset is taken (at the session's first frame) */
     uint32_t tick_offset;   /* lv_tick_get() - (uint32_t)now: constant while only uim_step moves the tick */
-    bool pointer;           /* uim_pointer_supported(), read once: taps go through the product's pointer entry */
+    bool pointer;           /* uim_pointer_supported() at the greeting: taps go through the product's pointer entry */
+    bool product_indev;     /* lvprobe is attached to the product's own pointer indev (not one it created) */
 } probe_t;
 
 /* The shape of the records of one call (model.h): field count and which fields are decimal numbers. */

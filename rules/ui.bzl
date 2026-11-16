@@ -124,7 +124,8 @@ def _session_impl(ctx: AnalysisContext) -> list[Provider]:
         ),
     ]
 
-_session = rule(
+# The rule kind of every session target: `kind(ui_probe_session_run, //...)` lists them (a stable, public name).
+ui_probe_session_run = rule(
     impl = _session_impl,
     attrs = {
         "expected": attrs.source(),
@@ -145,6 +146,11 @@ def c_ui_probe_session(name, probe, session, expected):
     its number. The run is a cacheable build action (`gate//ui/model:probe_session.py`, stdlib Python): the default
     output of `name` is its result in the JSON Lines of `ctest`, one test id `ui_probe_session/<package, `/` as `.`>:<name>`;
     `buck2 test` reads the verdict. A product supplies data files only (docs/ui-model.md, "`c_ui_probe_session`").
+
+    ENFORCED BY `buck2 test` ONLY, NOT YET BY `rigor grade`: the grade's build gate collects only `ctest_results` targets
+    (gate/rigor_lib/grade_build.py, `result_targets`). The follow-up: query `kind(ui_probe_session_run, //...)` there
+    too and copy each default output into the results directory, so the tests gate sees the id
+    `ui_probe_session/<pkg>:<name>` like any ctest id; and a selftest step in which a failing session fails a grade.
     """
     if type(probe) != "string" or not probe.startswith(":") or "/" in probe or "__" in probe or len(probe) < 2:
         fail("c_ui_probe_session {}: `probe` must be the label \":name\" of a c_ui_probe of this package, got {!r}".format(name, probe))
@@ -153,7 +159,7 @@ def c_ui_probe_session(name, probe, session, expected):
     if session == expected:
         fail("c_ui_probe_session {}: `session` and `expected` must be two files, got {!r} twice".format(name, session))
     package = native.package_name()
-    _session(
+    ui_probe_session_run(
         name = name,
         probe = probe + "__ui_probe",
         session = session,

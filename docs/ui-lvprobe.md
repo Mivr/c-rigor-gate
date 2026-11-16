@@ -46,6 +46,9 @@ against real pixels or real events, so an LVGL upgrade that changes the logic fa
 | scrollbar areas (`lv_obj_get_scrollbar_area`) of the ancestors where they touch the diff box, with the node's bit set and cleared | `lvprobe_ink2/a_scrollbar_change_makes_ink_unstable` |
 | query order sys, top, active, bottom (`pointer_search_obj`) | `lvprobe_hit/the_hit_query_agrees_with_the_tap_and_fires_nothing` |
 | indev reset of the click streak and timestamps (private fields) | `lvprobe_hit/three_taps_are_three_single_clicks` |
+| observed tap, U05c: a disabled target is pressed without `LV_EVENT_PRESSED` (`indev_proc_press` sets `act_obj` and skips the event for `LV_STATE_DISABLED`), so LVGL's search names it | `lvprobe_observe/an_overlay_takes_it_and_a_disabled_target_is_pressed` |
+| observed tap: every processed press advances `pointer.vect_hist_index` (`indev_proc_press`, lv_indev.c:1399), the evidence that a sample was read | `lvprobe_observe/the_products_own_tap_is_observed_and_nothing_is_left_behind` (no sample: UNREAD) and the same test's point where nothing is clickable |
+| observed tap: a held indev (`act_obj`, `state`, `wait_until_release`) makes LVGL send the next press no `LV_EVENT_PRESSED` | `lvprobe_observe/a_held_indev_blocks_the_next_tap_and_the_query` |
 
 ## Calls and the seam
 
@@ -83,30 +86,43 @@ after `lv_display_delete` (the probe hears the display's `LV_EVENT_DELETE` and t
 ### Observing a tap (U05c)
 
 A product with a pointer entry (docs/ui-model.md, "The pointer entry") feeds its own pointer indev; the probe must see
-what LVGL made of those samples without injecting anything. `lvprobe_observe_begin(p, x, y)` checks what `lvprobe_hit`
-checks (the point inside the display, a current walk; not the walk when a press would be blocked now, since a screen
-load changes the tree) and records whether LVGL would process a press now (`blocked`: no display, the indev disabled,
-`prev_scr`, `wait_until_release`). The product then delivers its samples and processes them. `lvprobe_observe_end(p,
-&hit)` returns what LVGL's own events on the indev named: the object of `LV_EVENT_PRESSED` and of `LV_EVENT_CLICKED`
-(each the event's parameter, alive while LVGL sends it, mapped to its walk index at once by `lvprobe_find`; the probe
-keeps the pointer for comparison only and never dereferences it). Statuses of the end: `LVPROBE_ERR_BLOCKED` when
-nothing was pressed or clicked and a press would have been blocked at the begin, or when the indev is left pressed
-(`act_obj`, `state` or `wait_until_release`: LVGL did not process the release); `LVPROBE_ERR_UNSTABLE` for more than one
-press or click (not one tap: the probe never picks one); `LVPROBE_ERR_GONE` when the indev is no longer in LVGL's list
-(found by traversal; the probe then forgets it and touches it no more, close included); `LVPROBE_ERR_LVGL` when the
-probe's listener is no longer on the indev (also at the begin). `LVPROBE_ERR_FORMAT` at the begin: the probe opened
-with its own indev, so there is no product indev to observe. `lvprobe_hit` is refused while an observation is open.
+what LVGL made of those samples without injecting anything. `lvprobe_observe_taps(p)` switches the probe to that mode
+for good (until close; `LVPROBE_ERR_FORMAT` when the probe opened with its own indev: nothing of the product's to
+observe). From then on `lvprobe_hit` is refused, and a HELD indev (LVGL left it pressed: `act_obj`, `state` or
+`wait_until_release`, after a release it did not process) counts as blocked for `lvprobe_hit_test` and
+`lvprobe_observe_begin`, because LVGL would send the next press no `LV_EVENT_PRESSED` (an injected tap resets the
+indev first, so there only LVGL's own cases count).
 
-The listener is the probe's one event callback on the indev, added at `lvprobe_open` (now with the filter
-`LV_EVENT_ALL`, so it also hears `LV_EVENT_PRESSED`; outside a tap or an observation it ignores every event) and removed
-at `lvprobe_close`: an observation adds, allocates and removes nothing (adding and removing a callback per tap would
-leave LVGL's event array grown, a pool change the tests catch), and an observation left open is closed with the probe.
-LVGL sends `LV_EVENT_PRESSED` only for an enabled object, so a disabled target observed reads as nothing pressed,
-where an injected tap names LVGL's pressed object (`act_obj`). The probe leaves the indev as LVGL left it, also a
-pressed one: on this path the indev state is the product's, made by its own samples. Tests:
-`ui/lvprobe/tests/lvprobe_observe_test.c` (the product's tap observed with nothing left behind, the F3b overlay, a
-disabled target, the indev disabled, a screen-load animation, a release LVGL did not process, two taps, every
-precondition, a removed listener, close during an observation, an indev deleted during one).
+`lvprobe_observe_begin(p, x, y)` checks what `lvprobe_hit` checks (the point inside the display, a current walk; not
+the walk when a press would be blocked now, since a screen load changes the tree), records whether a press would be
+blocked now, the point and the indev's vector history index. The product then delivers its samples and processes them.
+`lvprobe_observe_end(p, &hit)` returns what LVGL's own events on the indev named: the object of `LV_EVENT_PRESSED` and
+of `LV_EVENT_CLICKED` (each the event's parameter, alive while LVGL sends it, mapped to its walk index at once by
+`lvprobe_find`; the pointer is kept for comparison only). Statuses of the end, in this order:
+`LVPROBE_ERR_GONE` (the indev is no longer in LVGL's list, found by traversal; the probe forgets it, close included),
+`LVPROBE_ERR_LVGL` (the probe's listener is no longer on the indev; also at the begin), `LVPROBE_ERR_BLOCKED` (blocked
+at the begin, whatever LVGL did during the product's settle: the walk was not checked), `LVPROBE_ERR_UNSTABLE` (more
+than one press or click: not one tap, the probe never picks one), `LVPROBE_ERR_BLOCKED` (LVGL left the indev pressed:
+it did not process the release; the probe leaves it so), `LVPROBE_ERR_UNREAD` (no evidence that LVGL read the samples:
+neither an `LV_EVENT_PRESSED` nor an advance of `pointer.vect_hist_index`, which `indev_proc_press` advances on every
+press it processes, enabled target or not; or the indev not released at the tap's point; a product that claims the
+entry and drops its samples is never "pressed nothing"). On `LVPROBE_OK` with no `LV_EVENT_PRESSED`: LVGL sends that
+event for an enabled object only, but its pointer search does not skip a disabled one, and it does press it. So the
+end asks LVGL's own search at the point (`lv_indev_search_obj` over sys, top, active and bottom, the roots of
+`lvprobe_hit_test`); a live walked node in the disabled state that it finds is reported pressed (clicked none), the
+answer the injected path gives from `act_obj`.
+
+The listener is the probe's one event callback on the indev, added at `lvprobe_open` (with the filter `LV_EVENT_ALL`, so
+it also hears `LV_EVENT_PRESSED`; outside a tap or an observation it ignores every event) and removed at
+`lvprobe_close`: an observation adds, allocates and removes nothing (adding and removing a callback per tap would leave
+LVGL's event array grown, a pool change the tests catch), and an observation left open is closed with the probe. The
+probe leaves the indev as LVGL left it, also a pressed one, and never resets it: on this path the indev state, the
+click streak included, is the product's. Tests: `ui/lvprobe/tests/lvprobe_observe_test.c` (the product's tap observed
+with nothing left behind and a tap whose samples were not read, the F3b overlay, a disabled target pressed and not
+clicked, a point where nothing is clickable, a release read elsewhere, the indev disabled, blocked at the begin and
+unblocked during the tap, a screen-load animation, a release LVGL did not process, a held indev blocking the query and
+the next tap, two taps, every precondition, a removed listener, close during an observation, an indev deleted during
+one).
 
 ## Configuration and storage
 

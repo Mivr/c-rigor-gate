@@ -11,6 +11,9 @@ sanitizer variables only (rules/ui.bzl sets them, as for a `c_test`). The sessio
 * the probe writes nothing on stderr;
 * its stdout is byte-identical to OUT.
 
+Reads are bounded: stdout up to len(OUT) + 64 KiB, stderr up to 64 KiB, the whole run up to 600 s; past any of them the
+probe is killed and the session FAILS with the reason (a recorded failing verdict, never a hang or an unbounded read).
+
 Writes RESULTS in the JSON Lines of the `ctest` framework (one record `{"id": ID, "status": "pass"|"fail", "asserts": 4,
 "reason": ...}` and the summary; gate/rigor_lib/results_parse.py), REPORT (what a person reads: every failed check, and
 for a stdout difference the first differing line with its number) and VERDICT (`pass` or `fail`). Exit status 0 when
@@ -21,10 +24,14 @@ import argparse
 import json
 import os
 import re
+import selectors
 import subprocess
 import sys
+import time
 
 TIMEOUT_S = 600
+STDOUT_SLACK = 65536      # stdout may exceed the expected transcript by this much before the probe is killed
+STDERR_CAP = 65536        # likewise stderr (which must be empty anyway)
 SHOW_BYTES = 512          # a line in the report: at most this many bytes of it, and the report says so
 CHECKS = 4                # ends-in-quit, exit status, stderr, stdout
 ID = re.compile(r"[A-Za-z0-9_.+:-]+/[A-Za-z0-9_.+:-]+")
@@ -89,16 +96,59 @@ def judge(session, want, run):
     return problems
 
 
-def run_probe(probe, session):
-    env = {k: os.environ[k] for k in SAN_VARS if k in os.environ}
+def collect(proc, caps, deadline):
+    """Read the probe's stdout and stderr to their ends, each up to its cap. None when both ended, else why the probe
+    is being killed (a cap passed or the deadline): a recorded failing verdict, never an unbounded read."""
+    out = {proc.stdout: bytearray(), proc.stderr: bytearray()}
+    names = {proc.stdout: "stdout", proc.stderr: "stderr"}
+    sel = selectors.DefaultSelector()
+    for stream in out:
+        sel.register(stream, selectors.EVENT_READ)
     try:
-        done = subprocess.run([probe], input=session, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
-                              timeout=TIMEOUT_S, check=False)
-    except subprocess.TimeoutExpired:
-        return "the probe did not end within %d s" % TIMEOUT_S
+        while sel.get_map():
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return out, "the probe did not end within %d s (killed)" % TIMEOUT_S
+            for key, _ in sel.select(left):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    sel.unregister(key.fileobj)
+                    continue
+                out[key.fileobj] += chunk
+                if len(out[key.fileobj]) > caps[names[key.fileobj]]:
+                    return out, "the probe wrote more than %d bytes on %s (killed)" % (
+                        caps[names[key.fileobj]], names[key.fileobj])
+        return out, None
+    finally:
+        sel.close()
+
+
+def run_probe(probe, session_path, want_len):
+    """(returncode, stdout, stderr), or a str: why the run is a failure without an exit status (timeout, a cap)."""
+    env = {k: os.environ[k] for k in SAN_VARS if k in os.environ}
+    caps = {"stdout": want_len + STDOUT_SLACK, "stderr": STDERR_CAP}
+    deadline = time.monotonic() + TIMEOUT_S
+    try:
+        with open(session_path, "rb") as stdin:
+            proc = subprocess.Popen([probe], stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     except OSError as exc:
         raise Usage("cannot run the probe %s: %s" % (probe, exc)) from exc
-    return done.returncode, done.stdout, done.stderr
+    try:
+        out, why = collect(proc, caps, deadline)
+        if why is None:
+            try:
+                code = proc.wait(timeout=max(deadline - time.monotonic(), 0.001))
+            except subprocess.TimeoutExpired:
+                why = "the probe did not end within %d s (killed)" % TIMEOUT_S
+        if why is not None:
+            return why
+        return code, bytes(out[proc.stdout]), bytes(out[proc.stderr])
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
+        proc.stdout.close()
+        proc.stderr.close()
 
 
 def read(path):
@@ -146,7 +196,7 @@ def main(argv):
         if not ID.fullmatch(args.id):
             raise Usage("bad test id %r" % args.id)
         session, want = read(args.session), read(args.expected)
-        problems = judge(session, want, run_probe(args.probe, session))
+        problems = judge(session, want, run_probe(args.probe, args.session, len(want)))
         results, report, verdict = outputs(args, problems, want)
         write(args.out, results)
         write(args.report, report)

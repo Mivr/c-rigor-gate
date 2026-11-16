@@ -1,5 +1,5 @@
 # The event catalogue and abstraction key of the toy app (U05; schema ui-events/1, docs/ui-explore.md), for its
-# build with the pointer entry (U05c): toy.events.toml plus `pointer` in `requires`, nothing else.
+# build with the pointer entry (U05c): toy.events.toml plus `pointer` in `requires` and its ambient `touch`.
 # A real product's catalogue is owner-sealed (P004 8.5); this one is the selftest's fixture.
 schema = "ui-events/1"
 product = "selftest"
@@ -12,6 +12,9 @@ drain_ms = 1024
 # U05c: the same catalogue for the toy's build WITH its pointer entry (//selftest/ui_product:probe_pointer): it also
 # requires `pointer`, so the explorer refuses the build without the entry (//selftest/ui_product:probe).
 requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer"]
+# The toy's pointer entry posts `touch` for every sample it receives, as a kiosk's input hook does; a tap's own `touch`
+# is not an effect of the tap (docs/ui-explore.md, "Ambient events"). It restarts no deadline.
+ambient = { trace = ["touch"], trace_provenance = "oracle:selftest/ui_product/model.c uim_pointer posts touch per press" }
 
 # Every semantic field is in the key; so are the deadline bucket and the enabled env inputs (the two facts).
 [key]

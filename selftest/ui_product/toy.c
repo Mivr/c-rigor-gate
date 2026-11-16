@@ -167,6 +167,13 @@ bool toy_pointer_enabled(void)
     return g_indev != NULL && g_pointer_on;
 }
 
+void toy_set_button_disabled(bool disabled)
+{
+    if (g_button != NULL) {
+        lv_obj_set_state(g_button, LV_STATE_DISABLED, disabled);
+    }
+}
+
 void toy_show_notice(const char *text, uint64_t now_ms)
 {
     lv_label_set_text(g_notice, text);

@@ -118,6 +118,11 @@ class UiSessionBuckFiles(test_buckfiles.BuckFilesCase):
         self.bad('load("@gate//rules:c.bzl", "c_ui_probe_session")\n' + SESSION, "bad-load", "bad-argument")
         self.setUp()
         self.bad('load("@gate//rules:ui.bzl", "c_ui_probe_sessions")\n', "bad-load")
+        self.setUp()   # the rule kind behind the macro is the gate's: neither loadable nor callable
+        self.bad('load("@gate//rules:ui.bzl", "ui_probe_session_run")\n', "bad-load")
+        self.setUp()
+        self.bad(C_LOAD + SESSION_LOAD + MODEL + PROBE + SESSION.replace("c_ui_probe_session(", "ui_probe_session_run("),
+                 "bad-call")
 
     def test_the_probe_must_be_a_c_ui_probe_of_the_same_build_file(self):
         head = C_LOAD + SESSION_LOAD + MODEL

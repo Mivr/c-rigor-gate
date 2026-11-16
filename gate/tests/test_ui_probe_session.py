@@ -130,6 +130,28 @@ class Runner(unittest.TestCase):
         names = [line.split("=", 1)[0] for line in (self.dir / "env.txt").read_text().splitlines()]
         self.assertEqual([n for n in names if n not in ("PWD", "SHLVL", "_", "OLDPWD")], ["ASAN_OPTIONS"])
 
+    def test_output_past_its_cap_kills_the_probe_and_fails(self):
+        """stdout may exceed the expected transcript by 64 KiB, stderr may hold 64 KiB: past that the probe is killed and
+        the session fails with the reason, whatever the probe would still have written (it writes forever here)."""
+        loud = self.probe('cat > /dev/null\nwhile :; do printf "%%01024d" 0; done')
+        self.failing(loud, "the probe wrote more than %d bytes on stdout (killed)" % (len(WANT) + 65536))
+        noisy = self.probe('cat > /dev/null\nwhile :; do printf "%%01024d" 0 >&2; done')
+        self.failing(noisy, "the probe wrote more than 65536 bytes on stderr (killed)")
+
+    def test_a_probe_that_does_not_end_is_killed_at_the_deadline(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("probe_session_runner", RUNNER)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        runner.TIMEOUT_S = 1
+        (self.dir / "s.in").write_bytes(SESSION)
+        stuck = self.probe("exec sleep 30")
+        self.assertEqual(runner.run_probe(str(stuck), str(self.dir / "s.in"), len(WANT)),
+                         "the probe did not end within 1 s (killed)")
+        quiet = self.probe("exec 1>&- 2>&-; exec sleep 30")   # its pipes closed, it still does not exit
+        self.assertEqual(runner.run_probe(str(quiet), str(self.dir / "s.in"), len(WANT)),
+                         "the probe did not end within 1 s (killed)")
+
     def test_usage_and_io_errors_are_exit_2_and_write_nothing(self):
         code, err = self.run_runner(self.dir / "no-such-probe")
         self.assertEqual(code, 2)

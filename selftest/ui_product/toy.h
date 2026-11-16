@@ -37,6 +37,9 @@ unsigned toy_pump(void);
 void toy_set_pointer_enabled(bool enabled);
 bool toy_pointer_enabled(void);
 
+/* Put the button in LVGL's disabled state or take it out (LVGL then presses it but sends it no event). */
+void toy_set_button_disabled(bool disabled);
+
 /* True once per click since the last call (the button's handler records it). */
 bool toy_take_press(void);
 

@@ -6,7 +6,8 @@
 `touch` and the click's `press` at the tap's instant, pressing and clicking node 3 (the lv_button); under the notice the
 scrim (node 6) takes the tap and only `touch` is posted; with the app's indev disabled the tap is blocked (the hit query
 agrees) and the entry still posts `touch`, which LVGL then drops; after the notice times out the next tap presses the
-button again, at the new time. `noentry`: the build without it (probe): no `pointer` capability, the same pressed and
+button again, at the new time; the button disabled is pressed and not clicked (LVGL sends it no event; the probe names
+what LVGL's search finds, as the injected path does), and only `touch` is posted. `noentry`: the build without it (probe): no `pointer` capability, the same pressed and
 clicked nodes and blocked tap, and no `touch` anywhere. Exit 0 when every fact holds, 1 otherwise (each failed fact
 printed).
 """
@@ -78,6 +79,14 @@ def check(mode, greeting, ex):
         ("frame", None, None),
         ("tap 57 57", "ok tap 3 3", None),
         ("trace", None, touch("4000") + [("press", "4000")]),
+        ("advance 7000", "ok advance 7000", None),                 # the notice the last tap showed times out
+        ("trace", None, [("notice_timeout", "7000")]),
+        ("apply 3 676 0 -", "ok apply", None),                     # the button disabled
+        ("frame", None, None),
+        ("hit-test 57 57", "ok hit-test 3", None),                 # LVGL's search does not skip it
+        ("tap 57 57", "ok tap 3 none", None),                      # pressed, never clicked: the same on both paths
+        ("trace", None, touch("7000")),
+        ("apply 3 677 0 -", "ok apply", None),
         ("quit", "ok quit", None),
     ]
     bad = []

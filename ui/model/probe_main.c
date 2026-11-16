@@ -446,7 +446,8 @@ int main(void)
     p.framed = false;
     p.tick_set = false;
     p.tick_offset = 0;
-    p.pointer = uim_pointer_supported();   /* a constant of the build: read once */
+    p.pointer = uim_pointer_supported();   /* a constant of the build: the greeting's; every tap checks it again */
+    p.product_indev = false;
     g_tail_len = 0;
     if (p.model == NULL || !fits(snprintf(g_reply, sizeof g_reply, "%s%s", GREETING, p.pointer ? " pointer" : "")) ||
         !emit()) {

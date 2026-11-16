@@ -13,7 +13,8 @@
  * INTENT_POINTER_TOGGLE disables (and then enables again) the app's pointer indev: LVGL processes no tap then.
  * Two broken pointer entries for the probe's rules: after INTENT_POINTER_FAIL `uim_pointer` fails (`fail tap`, the
  * session poisoned); after INTENT_POINTER_TWICE a release queues a second whole tap after it (two presses and two
- * clicks: not one tap, `err tap model-contract`). */
+ * clicks: not one tap, `err tap model-contract`). INTENT_BUTTON_DISABLE and INTENT_BUTTON_ENABLE put the button in
+ * LVGL's disabled state and back (a tap then presses it and clicks nothing, on both paths). */
 #include <stdio.h>
 #include <string.h>
 
@@ -22,7 +23,8 @@
 
 enum { LOG_MAX = 2048, INTENT_PRESS = 1, INTENT_BROKEN = 666, INTENT_BAD_RECORD = 667,
        INTENT_DUE_NOW = 668, INTENT_CHAIN = 669, INTENT_LOG_STEPS = 670, INTENT_MANY_TABS = 671, INTENT_SHRINK_BUF = 672,
-       INTENT_POINTER_TOGGLE = 673, INTENT_POINTER_FAIL = 674, INTENT_POINTER_TWICE = 675, ENV_OFFLINE = 1, LINE_MAX_BYTES = 160 };
+       INTENT_POINTER_TOGGLE = 673, INTENT_POINTER_FAIL = 674, INTENT_POINTER_TWICE = 675,
+       INTENT_BUTTON_DISABLE = 676, INTENT_BUTTON_ENABLE = 677, ENV_OFFLINE = 1, LINE_MAX_BYTES = 160 };
 
 struct uim {
     bool open;
@@ -177,6 +179,10 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     if (in->kind == UIM_IN_INTENT && (in->id == INTENT_POINTER_FAIL || in->id == INTENT_POINTER_TWICE)) {
         m->pointer_fail = m->pointer_fail || in->id == INTENT_POINTER_FAIL;
         m->pointer_twice = m->pointer_twice || in->id == INTENT_POINTER_TWICE;
+        return UIM_OK;
+    }
+    if (in->kind == UIM_IN_INTENT && (in->id == INTENT_BUTTON_DISABLE || in->id == INTENT_BUTTON_ENABLE)) {
+        toy_set_button_disabled(in->id == INTENT_BUTTON_DISABLE);
         return UIM_OK;
     }
     if (in->kind == UIM_IN_INTENT && in->id == INTENT_POINTER_TOGGLE) {

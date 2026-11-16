@@ -1,8 +1,9 @@
 ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop
 ok open
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
@@ -523,9 +524,10 @@ ok trace lines 2
 15	anim_done	1000
 16	anim_done	1000
 ok open
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
