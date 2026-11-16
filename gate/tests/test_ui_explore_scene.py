@@ -109,8 +109,11 @@ class LayerPolicyTest(SceneCase):
                                                          "pressed lv_obj 0,0,319,239 other": 1})
         self.assertEqual(summary["outcomes"]["go"], {"apply missed": 1, "layer inert go": 1})
         # the dialog's Close is drawn over the inert key `ok`: a tap at ok's centre is Close's, never blocked or misrouted
-        _, found, summary = self.scene_replay("dialog", [[OPEN, "tap@ok#0"]], contract=True, code=0)
+        # (the card itself, clickable over `k2`, is no control: a tap there stays inert and refused)
+        _, found, summary = self.scene_replay("dialog", [[OPEN, "tap@ok#0"], [OPEN, "tap@k2#0"]], contract=True, code=0)
         self.assertEqual((found, summary["outcomes"]["tap@ok#0"]["layer covered dscrim"]), ([], 1))
+        self.assertEqual(summary["outcomes"]["tap@k2#0"], {"layer inert dscrim": 1, "tap refused": 1,
+                                                           "pressed lv_obj 60,60,259,179 other": 1})
         _, found, _ = self.scene_replay("dialoglive", self.PATHS, contract=True, code=1)
         self.assertEqual(self.checks(found), [("blocked-target-live", "tap-go"), ("blocked-target-live", "tap@go#0")])
         self.assertEqual(found[0]["observed"]["layer"], "dscrim")

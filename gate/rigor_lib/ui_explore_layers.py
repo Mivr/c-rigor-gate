@@ -5,7 +5,8 @@ the rendered tree, their association, each layer's sealed `[[input_layer]]` poli
 state before the tap. Without a contract nothing here runs. One verdict per tap, in this order:
   inert    the tap's target (a u2 tap's aimed node, a scene tap's node) is interactive and inert under R7: the tap
            must have NO effect; an effect is `blocked-target-live`; neither `intent-missed` nor `tap-misrouted`;
-  covered  the same, but the tap pressed a node of the modal layer's own card (its Dismiss over the target's point):
+  covered  the same, but the tap pressed an interactive control of the modal layer's own card (its Dismiss drawn over
+           the target's point; pressing the card itself stays `inert`):
            the tap is that control's, judged as a tap on it (`intent-missed` when nothing changed), never misrouted;
   dismiss  the point is under a scrim (outside its card), the topmost layer there, whose sealed rows say a tap outside
            dismisses: the tap must do exactly that layer's dismiss: the layer's records leave the scene and nothing
@@ -84,8 +85,11 @@ def _inert(ctx, aim, x, y, pressed):
                if policy == "capture-modal-inert" and shield > aim and _holds(ctx, shield, x, y)]
     layer = shields[-1][0] if shields else None
     cards = [part for _, parts in shields for part in parts[1:]]
-    if pressed is not None and pressed < len(ctx.frame.nodes) and any(ctx.frame.descends(pressed, c) for c in cards):
-        return Verdict("covered", layer, node.key, None, ())      # the layer's own card (its control) took the tap
+    if pressed is not None and pressed < len(ctx.frame.nodes):
+        control = next((n for n, i in ctx.matched() if n.interactive and ctx.frame.descends(pressed, i)
+                        and any(ctx.frame.descends(i, card) for card in cards)), None)
+        if control is not None:      # a control of the layer's own card took the tap: it is that control's
+            return Verdict("covered", layer, control.key, None, ())
     return Verdict("inert", layer, node.key, None, ())
 
 
