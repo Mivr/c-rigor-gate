@@ -49,8 +49,10 @@ _OPTIONAL_TOP = ("starvation", "requires", "ambient")
 # U05c: `[ambient]` names the trace events a product's pointer entry posts on every sample it receives (a kiosk's
 # `touch`), and optionally the idle deadline such a sample restarts (docs/ui-explore.md, "Ambient events"); each with
 # its provenance. Only for a catalogue that requires `pointer`: without it taps never reach the product's entry.
+# U05d: and optionally the scene role of a countdown such a sample restarts (docs/ui-explore.md, "Countdown restart").
 _AMBIENT_KEYS = ("trace", "trace_provenance")
-_AMBIENT_OPTIONAL = ("due_restart_ms", "due_restart_provenance")
+_AMBIENT_OPTIONAL = ("due_restart_ms", "due_restart_provenance", "countdown_restart_role",
+                     "countdown_restart_provenance")
 _TRACE_TYPE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")    # a trace record's type field, a plain name
 _CLASS = re.compile(r"[a-z][a-z0-9_]{0,63}")     # an LVGL class name (`lv_button`): a u2 tap's declared target
 
@@ -102,6 +104,7 @@ class Catalogue:
     requires: tuple = ()    # probe capabilities the catalogue needs (`requires`), in CAPABILITIES order
     ambient: tuple = ()     # trace types a tap's own sample posts (`[ambient] trace`), file order
     due_restart_ms: object = None   # the idle deadline a tap's sample restarts (`[ambient] due_restart_ms`), or None
+    countdown_role: object = None   # the role of a countdown a tap's sample restarts (`countdown_restart_role`), or None
 
     def __post_init__(self):
         object.__setattr__(self, "_index", {event.id: event for event in self.events})
@@ -190,9 +193,10 @@ def _requires(raw):
 
 
 def _ambient(raw, requires):
-    """(trace types, due_restart_ms or None) of `[ambient]`; ((), None) without one."""
+    """(trace types, due_restart_ms or None, countdown_restart_role or None) of `[ambient]`; ((), None, None) without
+    one."""
     if raw is None:
-        return (), None
+        return (), None, None
     if "pointer" not in requires:
         _fail("ambient", "needs `requires` with \"pointer\" (only taps through the product's pointer entry post them)")
     if type(raw) is not dict:
@@ -209,7 +213,18 @@ def _ambient(raw, requires):
     if "due_restart_ms" in raw:
         restart = _int("ambient.due_restart_ms", raw["due_restart_ms"], 1, MAX_WAIT_CEILING_MS)
         ui_contract.check_provenance("ambient.due_restart_provenance", raw["due_restart_provenance"])
-    return tuple(types), restart
+    return tuple(types), restart, _countdown(raw)
+
+
+def _countdown(raw):
+    """`countdown_restart_role` (a scene role in its escaped record spelling) or None; with its provenance (U05d)."""
+    if ("countdown_restart_role" in raw) != ("countdown_restart_provenance" in raw):
+        _fail("ambient", "countdown_restart_role and countdown_restart_provenance go together")
+    if "countdown_restart_role" not in raw:
+        return None
+    role = _selector("ambient.countdown_restart_role", raw["countdown_restart_role"])
+    ui_contract.check_provenance("ambient.countdown_restart_provenance", raw["countdown_restart_provenance"])
+    return role
 
 
 def _code(where, raw):
@@ -372,11 +387,11 @@ def loads(data):
         _fail("events", "needs at least one input event with expect = \"accept\" (a catalogue nothing is accepted in "
                         "exercises nothing)")
     requires = _requires(document.get("requires"))
-    ambient, restart = _ambient(document.get("ambient"), requires)
+    ambient, restart, countdown = _ambient(document.get("ambient"), requires)
     return Catalogue(_str("product", document["product"], _NAME), _str("app", document["app"], _NAME),
                      _int("version", document["version"], 1, 2**31 - 1), max_wait, drain, firings, window,
                      _key(document["key"]),
-                     tuple(events), jsonio.sha256_hex(data), requires, ambient, restart)
+                     tuple(events), jsonio.sha256_hex(data), requires, ambient, restart, countdown)
 
 
 def load(path):

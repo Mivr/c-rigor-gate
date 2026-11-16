@@ -55,6 +55,18 @@ selftests = ["ui"]
 [[rule]]
 glob = "gate/rigor_lib/ui_explore*"
 selftests = ["ui"]
+# U05d: the declared countdown restart's selftest (selftest/ui_restart.sh, run by selftest/ui.sh) runs the unit tests'
+# stub probe and imports its catalogue and real-frame helpers from the explorer's tests (test_ui_explore_restart*,
+# which import test_ui_explore_helpers and test_ui_explore_taps).
+[[rule]]
+glob = "selftest/ui_restart.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "gate/tests/data/ui_explore/**"
+selftests = ["ui"]
+[[rule]]
+glob = "gate/tests/test_ui_explore_*.py"
+selftests = ["ui"]
 # U06: the ui-scene and ui-fit judges, their canary product and selftest (selftest/ui_judges.sh, run by selftest/ui.sh).
 [[rule]]
 glob = "gate/rigor_lib/ui_judge_*"

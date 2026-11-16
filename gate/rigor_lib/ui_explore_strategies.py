@@ -7,7 +7,7 @@ import hashlib
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_coverage import Exploration, key_facts_judge
 from rigor_lib.ui_explore_judges import (CoarseTable, ambient_judge, make, misrouted_judge, missed_judge, noop_judge,
-                                         probe_error_judge,
+                                         probe_error_judge, restart_judge,
                                          run_step_judges,
                                          run_twice_judge, starvation_judge, state_of, unreachable_judge)
 from rigor_lib.ui_explore_probe import ORIGIN_MAX_MS, TAP_CAPS, BudgetSpent
@@ -34,7 +34,7 @@ class Explorer:
         self.config, self.contract = config, contract
         self.step_judges = [starvation_judge(catalogue.key), unreachable_judge(catalogue.key),
                             missed_judge(catalogue.key), misrouted_judge(catalogue.key), noop_judge(catalogue.key),
-                            ambient_judge(catalogue.key)]
+                            ambient_judge(catalogue.key), restart_judge(catalogue.key)]
         self.step_judges += list(step_judges)
         self.run_judges = [probe_error_judge(catalogue.key), run_twice_judge(catalogue.key)] + list(run_judges)
         self.sendable = [e.id for e in catalogue.events if e.cls not in ("u2", "u3") or all(c in caps for c in TAP_CAPS)]

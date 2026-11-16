@@ -73,6 +73,26 @@ U05c, the product's pointer entry: these frame-facts modes announce `pointer` to
     prestart     as ptouch, and every tap restarts an idle deadline 5000 ms later (armed at open; it does nothing)
     pindev       no `pointer`: taps are injected at the product's own indev (`taps indev`: taps-injected)
 
+U05d, a countdown restarted by every sample (as ptouch, plus a semantic node `count` of role `countdown` showing
+"298 s", drawn as the frame's node 2, an lv_label at 2,1..3,1 whose text is the label; as on a real LVGL frame, the
+crc, the screen's region (its box covers the label) and the label's own region follow the text, the button's (0,0..1,1,
+not meeting the label) does not). The first tap, and the first refused apply, restart it to 300 (patch
+`update count text 298 s 300 s`); a later one changes nothing, as the value is already 300:
+
+    pcount       exactly that (a declared countdown restart)
+    pskip        the restart sets 290: the countdown skips forward
+    pplus        the restart also patches another node (`set notice hidden 1 0`)
+    ptworun      the label is "1/298 s" -> "1/300 s" (two runs of digits)
+    ptext        the label is "298 s" -> "300 sec" (the text around the digits changes)
+    pnode        the restart also adds a semantic node (a navigation)
+    pflag        the restart also changes the countdown node's flags
+    pframe       the restart also changes the button's frame region
+    plife        the restart also creates an object (a `life` line)
+    pbg          the restart also changes the countdown node's bg colour (its own `node` record)
+    pfont        the restart also changes the countdown label's font id (its own `label` record)
+    pdecoy       a second lv_label (node 3) shows the same text as the countdown, before and after
+    pdouble      a second countdown `count2` (node 3, "58 m" -> "60 m") restarts with the first
+
 In every mode intent 2 is accepted only while the notice is shown (trace `late`), intent 10 is a pad digit (accepted,
 trace `digit`) and intent 11 the pad's enter (accepted after a digit, trace `enter`). A stub that would sleep exits as
 soon as its parent is gone, so a killed explorer never leaves one behind.
@@ -88,11 +108,16 @@ NOTICE_MS = 3000
 FACTS = ("facts", "framebad", "frametype", "tapblocked", "tapdisagree", "noframe", "toolarge", "blankchange", "cropbad",
          "refuselife", "framework", "misroute", "tapnone", "framenum", "wide", "ptouch", "pnotouch", "ptwice", "pchange",
          "prestart", "pindev")
-POINTER = ("ptouch", "pnotouch", "ptwice", "pchange", "prestart")
+COUNT = ("pcount", "pskip", "pplus", "ptworun", "ptext", "pnode", "pflag", "pframe", "plife", "pbg", "pfont", "pdecoy",
+         "pdouble")
+FACTS += COUNT
+POINTER = ("ptouch", "pnotouch", "ptwice", "pchange", "prestart") + COUNT
 IDLE_MS = 5000
 SCREEN = "node\t0\t-1\t0\tlv_obj\t0\t0\t3\t1\t0\t1\t-1\t-1\t0\t0\tffffff\t255\t255\t1\t0\t0"
 BUTTON = "node\t1\t0\t1\tlv_button\t0\t0\t1\t1\t0\t1\t-1\t-1\t0\t0\t2196f3\t255\t255\t1\t0\t0"
 OVERLAY = "node\t2\t0\t1\tlv_obj\t0\t0\t3\t1\t0\t1\t-1\t-1\t0\t0\tffffff\t0\t0\t1\t0\t0"
+COUNT_NODE = "node\t%d\t0\t1\tlv_label\t%s\t0\t0\t-1\t-1\t0\t0\t%s\t0\t0\t1\t0\t0"
+COUNT_LABEL = "label\t%d\t%s\t16\t0\t0\t0\t0\t1\t40\t16\t40\t16\t=%s\t-"
 FACT_FRAME = ["lvprobe\t1\t2", "frame\t4\t2\t0badcafe", SCREEN, "region\t0\t0badcafe", BUTTON, "region\t1\t12345678"]
 LOG = os.environ.get("UI_STUB_LOG")
 
@@ -115,7 +140,28 @@ class Model:
         self.queued = False
         self.framed = False         # the session's first frame carries the `taps` line (U05c modes)
         self.idle = origin + IDLE_MS if MODE == "prestart" else None
+        self.count, self.restarted = (298 if MODE in COUNT else None), False
+        self.count2 = 58 if MODE == "pdouble" else None
         self.event("boot")
+
+    def count_label(self):
+        text = "%d s" % self.count
+        return "1/" + text if MODE == "ptworun" else text + "ec" if MODE == "ptext" and self.restarted else text
+
+    def restart(self):
+        """The countdown restart of the U05d modes: 298 -> 300 (pskip: 290), once."""
+        if self.restarted:
+            return
+        old = self.count_label()
+        self.count, self.restarted = (290 if MODE == "pskip" else 300), True
+        self.patches.append("update\tcount\ttext\t%s\t%s" % (old, self.count_label()))
+        if MODE == "pdouble":
+            self.count2 = 60
+            self.patches.append("update\tcount2\ttext\t58 m\t60 m")
+        if MODE == "pplus":
+            self.patches.append("set\tnotice\thidden\t1\t0")
+        if MODE == "plife":
+            self.life.append("life\t9\tcreated\t0\t-1\t0\t=lv_label")
 
     def event(self, kind):
         self.trace.append("%d\t%s\t%d" % (self.seq, kind, self.now))
@@ -170,6 +216,8 @@ class Model:
         if kind == 2 and text != "-":
             self.event("line")
             return "ok apply"
+        if MODE in COUNT:
+            self.restart()
         if MODE == "refusechange":
             self.event("refused-but-changed")
         if MODE == "refuseframe":
@@ -196,7 +244,36 @@ class Model:
         flags = "-" if self.notice else "hidden"
         return ["title\tlabel\tToy\t8\t8\t24\t16\t1\t-\t-\tbody\tnormal\tnone\tnone",
                 "button\tbutton\tPress\t8\t40\t100\t36\t1\t1:0\t-\tbody\tnormal\ttap\tnone",
-                "notice\tlabel\t%s\t8\t90\t%d\t16\t1\t-\t%s\tbody\tnormal\tnone\tnone" % (self.notice, 8 * len(self.notice), flags)]
+                "notice\tlabel\t%s\t8\t90\t%d\t16\t1\t-\t%s\tbody\tnormal\tnone\tnone" % (self.notice, 8 * len(self.notice), flags)] \
+            + self.count_semantic()
+
+    def count_semantic(self):
+        if self.count is None:
+            return []
+        flags = "urgent" if MODE == "pflag" and self.restarted else "-"
+        extra = ["more\tlabel\tMore\t8\t140\t32\t16\t1\t-\t-\tbody\tnormal\tnone\tnone"] \
+            if MODE == "pnode" and self.restarted else []
+        if MODE == "pdouble":
+            extra.append("count2\tcountdown\t%d m\t8\t140\t40\t16\t1\t-\t-\tbody\tnormal\tnone\tnone" % self.count2)
+        return ["count\tcountdown\t%s\t8\t120\t40\t16\t1\t-\t%s\tbody\tnormal\tnone\tnone" % (self.count_label(), flags)] + extra
+
+
+def count_frame(model, frame):
+    """The U05d modes' frame (in place): the countdown's lv_label (node 2) and, in pdecoy and pdouble, node 3; the crc,
+    the screen's region and each label's region follow the texts, as on a real LVGL frame."""
+    nodes = [(2, model.count_label(), "2\t1\t3\t1")]
+    if MODE in ("pdecoy", "pdouble"):
+        nodes.append((3, model.count_label() if MODE == "pdecoy" else "%d m" % model.count2, "0\t1\t1\t1"))
+    pixels = "%08x" % sum("".join(text for _, text, _ in nodes).encode())
+    frame[0], frame[1], frame[3] = "lvprobe\t1\t%d" % (2 + len(nodes)), "frame\t4\t2\t" + pixels, "region\t0\t" + pixels
+    changed = model.restarted
+    for index, text, box in nodes:
+        bg = "ff0000" if MODE == "pbg" and changed and index == 2 else "ffffff"
+        font = "1" if MODE == "pfont" and changed and index == 2 else "-"
+        frame += [COUNT_NODE % (index, box, bg), COUNT_LABEL % (index, font, text),
+                  "region\t%d\t%08x" % (index, sum(text.encode()) + index)]
+    if MODE == "pframe" and changed:
+        frame[5] = "region\t1\t87654321"
 
 
 def say(line):
@@ -267,6 +344,8 @@ def fact_frame(model):
     if MODE == "wide":
         frame[1] = "frame\t9000\t2\t0badcafe"
         frame[4] = BUTTON.replace("\t1\t1\t0\t1\t-1", "\t8999\t1\t0\t1\t-1")
+    if model.count is not None:
+        count_frame(model, frame)
     if (MODE in POINTER or MODE == "pindev") and not model.framed:
         frame.insert(2, "taps\t%s" % ("indev" if MODE == "pindev" else "entry"))
     model.framed = True
@@ -303,8 +382,10 @@ def facts(words, model):
         if MODE == "tapnone":
             return ["ok tap none 1"]
         node = 0 if MODE == "tapdisagree" else hit(words)
-        for _ in range({"ptouch": 1, "pchange": 1, "prestart": 1, "ptwice": 2}.get(MODE, 0)):
+        for _ in range({"ptouch": 1, "pchange": 1, "prestart": 1, "ptwice": 2}.get(MODE, 1 if MODE in COUNT else 0)):
             model.event("touch")     # the entry's own event, at the tap's instant
+        if MODE in COUNT:
+            model.restart()
         if MODE == "prestart":
             model.idle = model.now + IDLE_MS
         if node == 0 and MODE == "pchange":

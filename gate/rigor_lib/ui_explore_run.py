@@ -59,6 +59,7 @@ class Step:
     misrouted: object = None      # a u2 tap pressed another non-root node than the one its target names
     noop: object = None           # a tap that must change nothing changed the model
     ambient: object = None        # a tap whose declared ambient events were missing or repeated (U05c)
+    restart: object = None        # a tap whose residual change was a declared countdown restart (U05d)
     image_box: object = None      # (x, y, w, h) of the evidence image of the node a tap pressed
     key: object = None
     proj: object = None

@@ -25,14 +25,24 @@ false `noop-tap-effect`, and a non-root tap with no intent is `ok` instead of `m
      declared role;
    - the semantic trees differ only in the label field of those same keys (every other field of those nodes and every
      other node byte-identical; no node added or removed);
-   - where frame records are compared: differences are confined to records of those same nodes, and there is no `life`
-     line;
+   - where frame records are compared (amended after review 1; a `region` hash covers the pixels inside a node's box,
+     so every node whose box covers the countdown changes its region and the whole-frame crc with it): there is no
+     `life` line and no change of the `lvprobe` count; each restarted key matches exactly ONE walk index (its `label`
+     record shows the old text before and the new after, same class before and after; an ambiguous match rejects);
+     of that index, the `node` record may differ only in x1, y1, x2, y2, the `label` record only in dotted, lines,
+     natural/laid w/h, text and full_text (font id, line_h, align, align_drawn, long identical), `fit` and `region`
+     freely; of any other index only the `region` record may differ, and only if its `node` record is unchanged and
+     its box intersects the countdown's box (before or after); the `frame` line may differ in crc only;
+   - every patched key has a semantic label difference, and its patches form a chain (first old = semantic old, each
+     old = the previous new, last new = semantic new, after unescaping); a digit run longer than 18 rejects;
    - for each such node, old and new label each contain exactly one run of decimal digits, the text around the run is
      identical, and new value >= old value (a restart never skips a countdown forward);
    - no other new trace record and no `next-due` change other than a declared `due_restart_ms`.
    Anything else stays a change exactly as today. Equal old and new values cannot produce a patch; do not special-case.
 3. A step that used the rule records it: a new INFO finding `ambient-restart` (key before, word; evidence: word, node
-   keys, old and new values), at most one per (state key, node key) per run so a sweep does not flood the report. Add
+   keys, old and new values). Amended after review 1: one finding per restarted node, identity
+   ["restart", key before, node key], the word in `observed`; no private `seen` set: the ordinary dedupe keeps one per
+   id, shortest path first. Add
    it to the findings table and to the judges' id list. With the rule applied, a u3/root tap is judged as refused/no-op
    and a u2 tap on a non-root node with no intent is `intent-missed`, as on any other screen.
 4. Gaming resistance, to state in the doc and prove by tests: the rule can hide only a text change of a node of the
