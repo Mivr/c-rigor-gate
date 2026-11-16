@@ -27,7 +27,8 @@ _AT = re.compile(r"at (0|[1-9][0-9]{0,15})")
 
 
 def word_mode(word, catalogue):
-    """`open`, `input`, `time` or `domain`: what a path word does to the model (docs/ui-explore.md, "Paths and time")."""
+    """`open`, `input` (a user input: u1..u5), `env` (an environment reply, e1: no user input), `time` or `domain`: what
+    a path word does to the model (docs/ui-explore.md, "Paths and time")."""
     if word.startswith("open "):
         return "open"
     if word in ("settle", "wait-change") or _AT.fullmatch(word):
@@ -37,7 +38,7 @@ def word_mode(word, catalogue):
     event = catalogue.by_id(word)
     if event is not None and event.cls == "t1":
         return "time"
-    return "input"
+    return "env" if event is not None and event.cls == "e1" else "input"
 
 
 def countdown_value(label):

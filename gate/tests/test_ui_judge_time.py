@@ -161,6 +161,8 @@ class RulesTest(unittest.TestCase):
         same = [fact(0, mode="input", cls="main"), fact(1000, prev=0, cls="detail")]
         seen = [fact(0, mode="input", cls="main"), fact(1000, prev=0, cls="detail", semantic=("other",))]
         tapped = [fact(0, mode="input", cls="main"), fact(0, mode="input", cls="detail")]
+        env = [fact(0, mode="input", cls="main"), fact(0, mode="env", cls="detail")]
+        self.assertEqual(len(checks.invisible_verdicts(env)[0]), 1)       # an env reply is no user input
         self.assertEqual([v["identity"] for v in checks.invisible_verdicts(same)[0]], [["main", "detail"]])
         self.assertEqual(checks.invisible_verdicts(seen)[0], [])
         self.assertEqual(checks.invisible_verdicts(tapped), ([], 0))

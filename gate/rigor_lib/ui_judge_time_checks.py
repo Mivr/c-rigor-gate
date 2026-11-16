@@ -141,12 +141,13 @@ def countdown_verdicts(kind, seq, timer):
 
 
 def flash_verdicts(facts, threshold):
-    """flash: a scene node (not a countdown) created and removed with no input after its creation, within less than
+    """flash: a scene node (not a countdown) created and removed with no user input (u1..u5, a domain move or open)
+    after its creation, within less than
     the flash threshold, measured on the patches (`create`/`remove`); a node created and removed within ONE step is
     judged by that step's span (0 for an input). Returns (verdicts, the number of removals judged)."""
     born, out, judged = {}, [], 0
     for at, fact in enumerate(facts):
-        if fact.mode != "time":
+        if fact.mode not in ("time", "env"):
             born = {}
         for op, key, _name, old, new in fact.patches:
             role = (new if op == "create" else old).decode("ascii", "replace")
@@ -163,12 +164,12 @@ def flash_verdicts(facts, threshold):
 
 
 def invisible_verdicts(facts):
-    """invisible-auto-transition: a time step that changes the identity's state class while the semantic records and
-    the frame (but its life and taps lines) are unchanged. Returns (verdicts, the time steps judged)."""
+    """invisible-auto-transition: a time or env step (no user input) that changes the identity's state class while the
+    semantic records and the frame (but its life and taps lines) are unchanged. Returns (verdicts, the steps judged)."""
     out, judged = [], 0
     for m in range(1, len(facts)):
         before, fact = facts[m - 1], facts[m]
-        if fact.mode != "time" or before.cls is None or fact.cls is None:
+        if fact.mode not in ("time", "env") or before.cls is None or fact.cls is None:
             continue
         judged += 1
         if before.cls != fact.cls and before.semantic == fact.semantic and before.frame == fact.frame:

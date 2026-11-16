@@ -2,7 +2,7 @@
 
 The third judge, `ui-render` (U07, P004 3.3: what is painted, from lvprobe's ink), has its own page:
 [docs/ui-judges-render.md](ui-judges-render.md). Everything below about findings, pending values, exceptions,
-`checks-examined` and `check-vacuous` applies to it too.
+`checks-examined` and `check-vacuous` applies to it too. The fourth, `ui-time` (U09, P004 3.5, judged per path): [docs/ui-judges-time.md](ui-judges-time.md).
 
 **What they find today.** On the 23 frames of the real lockers kiosk the judges find six true product defects: banner
 scrims no tap can reach (frames 1-4, 15-18), the snackbar's clickable full-window scrim over BG, EN and Done and the

@@ -18,6 +18,7 @@ owner-declared abstraction key, applies the judges and writes one JSON line per 
 | `ui_explore_coverage.py` | the exploration (visited graph) and the exploration judges (C1, C8, key facts) |
 | `ui_explore_strategies.py` | sweep, bfs, walk, replay, and the cost check |
 | `ui_explore_png.py` | the PNG writer |
+| `ui_explore_time.py` | U09: with `--judges ui-time`, hands every path to the ui-time judge and runs its probing runs and clock-origin replays ([docs/ui-judges-time.md](ui-judges-time.md)) |
 
 Selftest: `selftest/ui.sh` steps 8 to 14 and its last step, 16. The fixtures are the toy probe and three adapters: a
 nondeterministic one, a starving one and one with a perpetual tick. The last step checks that no probe process is left.
@@ -63,7 +64,7 @@ exits with 128 + the signal.
 | `--budget-s` (1800) | the wall-clock budget of the whole run. When it is spent, the run stops with one `ui-explore-timeout` (`observed.kind` = `budget`), no criterion counts as evaluated, and the exit is 1, never a hang and never 2. Where it stops depends on the host, so such a findings file is not reproducible |
 | `--require` | criteria that must be evaluated; each one not evaluated becomes a `ui-coverage-gap` with `observed.evaluated` = false |
 | `--contract` | the UI contract (docs/ui-contract.md) handed to the judges; the built-in judges do not read it |
-| `--judges` | judges of other gates to run as well: distinct names of `ui-scene` and `ui-fit` (docs/ui-judges.md). They need `--contract`, `--today` and a probe that announces `frame-facts` (exit 2 otherwise, the capability right after the greeting). With `ui-scene` and a probe that announces `identity` the explorer also reads the scene identity of every step ("Scene identity"); without that capability ui-scene's identity checks are `check-blocked` |
+| `--judges` | judges of other gates to run as well: distinct names of `ui-scene` and `ui-fit` (docs/ui-judges.md). They need `--contract`, `--today` and a probe that announces `frame-facts` (exit 2 otherwise, the capability right after the greeting). With `ui-scene` and a probe that announces `identity` the explorer also reads the scene identity of every step ("Scene identity"); without that capability ui-scene's identity checks are `check-blocked`. `ui-time` (U09) judges every path as a timeline and runs extra probing paths and clock-origin replays; it reads identity too when the probe announces it ([docs/ui-judges-time.md](ui-judges-time.md)) |
 | `--today` | the date (`YYYY-MM-DD`) the contract's exceptions expire against; only with `--judges`. The judges never read the wall clock, so the same inputs give the same bytes on any day |
 
 Clock origins and seeds are arguments. Deriving them from the verdict's input hash (P004 6.3) belongs to the grade
@@ -220,6 +221,10 @@ Worst virtual time, by strategy:
 
 The longest span of `fire-due`, `before-due`, `until-change`, `settle` and `wait-change` is `max_wait_ms`; of `advance`,
 its `ms`; of `at`, min(offset, `max_wait_ms`).
+
+**ui-time's extra runs (U09).** The probing runs and clock-origin replays of `--judges ui-time` are not in this
+pre-run check: they depend on what the paths show. They are bounded by the judge (docs/ui-judges-time.md, "The
+time-probing mode"), spend the same wall budget and are added to `cost`.
 
 **Scene identity (U24).** With `--judges` naming `ui-scene` and a probe that announces `identity`, the explorer sends
 one `identity` command per completed step of BOTH runs of a path (read last in the step's observation, after
@@ -511,7 +516,11 @@ What a step judge receives:
 To attach evidence, a judge passes `evidence={"<name>.json": data}`, where the name matches `[a-z0-9][a-z0-9_-]*.json`
 and is not `paths.json`.
 
-The `--judges` set registers one step judge (`ui_judge_findings.JudgeSet.step_judge`) and the end-of-run hook.
+The `--judges` set registers one step judge (`ui_judge_findings.JudgeSet.step_judge`) and the end-of-run hook. With
+`ui-time` (U09) a fifth kind: a PATH judge, `TimeJudge.path(runner, steps)`, called once per path the strategy runs with
+the steps of its first run (`ui_explore_time.attach` wraps `Explorer.run`); through the runner it may run more paths
+(probing runs, each twice, and clock-origin replays, once), which spend the budget and the summary's `cost` but are not
+strategy paths (docs/ui-judges-time.md, "The time-probing mode").
 
 Built-in judges:
 - step judges: `timer-starvation`, `timer-unreachable`, `intent-missed`, `tap-misrouted`, `noop-tap-effect`,
