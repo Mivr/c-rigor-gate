@@ -5244,7 +5244,7 @@ allow = ["core_str_from_cstr"]
 exports = ["main"]
 
 [module."//apps/fiscal/dtadp/store:store"]
-level = "L3"
+level = "L2"
 impl = ["apps/fiscal/dtadp/store/src/**"]
 allow = ["bcmp", "memcpy"]
 exports = ["store_init", "store_port"]
