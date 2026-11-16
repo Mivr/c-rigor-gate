@@ -1,37 +1,61 @@
 """The `ui-fit` judge (U06, P004 3.2): text fit from the rendered facts of every label of the frame (O3, lvprobe's `label`
-and `fit` records), with the scene's rect and wrap scope (O2) where a scene node owns the label (ui_judge_stage).
+and `fit` records), with the owner's rect (O2) and the wrap scope and line height the contract gives its typographic
+role and style, where a scene node owns the label (ui_judge_vocab).
 
 Per label, fail closed: a label lvprobe could not measure (`unsupported`, or no `fit` record) is `fit-unmeasurable`
 and nothing else is judged on it; placeholder glyphs are `glyph-missing`. Then `text-clipped` (lvprobe's `clipped`),
-`full-string-shown` (LVGL's dots), and, for an owned label, `text-overflow` against the owner's rect and wrap scope.
-A label no scene node owns is judged on everything but text-overflow (it has no declared rect or scope) and is
-`stage-unmatched` (ui_judge_context). `font-shrunk` is blocked (docs/ui-judges.md): lvprobe maps no font.
+`full-string-shown` (LVGL's dots), and, for an owned label, `text-overflow` (against the owner's rect and its role's
+scope) and `font-shrunk` (its line height against the contract's `[[style_line]]` for its style). A label no scene node
+owns is judged by class, box and text hash, on everything but text-overflow and font-shrunk; it is `stage-unmatched`.
 """
+
+from rigor_lib.ui_contract import ContractPending
 
 
 def judge(ctx, report):
     scopes = {row["scope"]: row for row in ctx.contract.rows("wrap")}
+    lines = {row["style"]: row["line_height_px"] for row in ctx.contract.rows("style_line")}
     for index in sorted(ctx.frame.labels):
-        _label(ctx, report, index, scopes)
+        _label(ctx, report, index, scopes, lines)
     return report.found
 
 
 def _who(ctx, index):
-    """(identity, observed part, exception target) of a label: its owner's key, or its walk index."""
+    """(identity, observed part, exception target, owner node) of a label."""
     key = ctx.assoc.owner.get(index)
     if key is not None:
-        return [key], {"key": key}, key
-    return ["index", index], {"index": index}, None
+        return [key], {"key": key}, key, ctx.by_key[key]
+    name = ctx.rendered_name(index)
+    return ["label", name["target"]], {"label": name}, name["target"], None
 
 
-def _label(ctx, report, index, scopes):
+def _scope(ctx, report, owner, scopes):
+    """The wrap scope row of the owner's typographic role; None (reported) when it cannot be had."""
+    role = ctx.role_of(owner) if owner is not None else None
+    if role is None:
+        return None
+    rows = [row for row in ctx.contract.rows("role_wrap") if row["role"] == role]
+    if not rows:
+        report.incomplete("role-wrap", role)      # ui-scene reports it as wrap-policy-undeclared too
+        return None
+    try:
+        return scopes[ctx.contract.row_value("role_wrap", role, "scope")]
+    except ContractPending as error:
+        report.pending("text-overflow", error, whole=False)
+        return None
+
+
+def _label(ctx, report, index, scopes, lines):
     frame = ctx.frame
     label, fit = frame.labels[index], frame.fits.get(index)
-    identity, who, target = _who(ctx, index)
-    owner = ctx.by_key.get(who.get("key"))
-    scope = scopes.get(owner.wrap_policy) if owner is not None else None
+    if label.own_text == b"" or not frame.shown(index):
+        return
+    identity, who, target, owner = _who(ctx, index)
+    scope = _scope(ctx, report, owner, scopes)
     records = ctx.records(index) + ([owner.raw] if owner is not None else [])
     base = dict(who, stage="O3" if owner is None else "O2+O3")
+    for check in ("fit-unmeasurable", "glyph-missing", "text-clipped", "full-string-shown"):
+        report.examined(check)
     if fit is None or fit.unsupported:
         report.add("fit-unmeasurable", identity + ["facts"], dict(base, reason="unsupported" if fit else "no-fit"),
                    target=target, records=records)
@@ -42,18 +66,29 @@ def _label(ctx, report, index, scopes):
         report.add("text-clipped", identity, dict(base, drawn=fit.drawn), target=target, records=records)
     if label.dotted and not (scope is not None and scope["ellipsis"]):
         report.add("full-string-shown", identity, dict(base, part="dotted"), target=target, records=records)
-    if owner is not None and frame.shown(index) and label.own_text != b"":
-        _overflow(report, identity, base, target, records, owner, scope, label)
+    if owner is not None and ctx.role_of(owner) is not None:
+        _font(ctx, report, identity, base, target, records, owner, label, lines)
+        if scope is not None:
+            _overflow(report, identity, base, target, records, owner, scope, label)
+
+
+def _font(ctx, report, identity, base, target, records, owner, label, lines):
+    """The label's line height below the contract's line height of the owner's style (`[[style_line]]`)."""
+    style = ctx.style_of(owner)
+    if style not in lines:
+        report.incomplete("style-line", style)
+        return
+    report.examined("font-shrunk")
+    if label.line_h < lines[style]:
+        report.add("font-shrunk", identity, dict(base, line_h=label.line_h, contract_line_h=lines[style]),
+                   target=target, records=records)
 
 
 def _overflow(report, identity, base, target, records, owner, scope, label):
     """At the font the label is rendered with: single-line scope (`wrap = none`): the natural width above the owner's
     width; a wrapping scope: the laid-out height above the owner's height, or more lines than `max_lines` (0: no cap).
-    A scope that declares an ellipsis or a clip makes the excess intended. No scope: fit-unmeasurable."""
-    if scope is None:
-        report.add("fit-unmeasurable", identity + ["scope"], dict(base, reason="no-wrap-scope"), target=target,
-                   records=records)
-        return
+    A scope that declares an ellipsis or a clip makes the excess intended."""
+    report.examined("text-overflow")
     if scope["ellipsis"] or scope["clip"]:
         return
     if scope["wrap"] == "none":

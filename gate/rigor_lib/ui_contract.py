@@ -33,6 +33,8 @@ PENDING_ENTRIES = {
     ("thresholds", "hierarchy_ratio_k"): "5",
 }
 PENDING_TABLES = {"importance": "7"}
+# Rows whose one decided key may instead be `pending = "<n>"` (U06): table -> (key, question).
+PENDING_ROWS = {"role_wrap": ("scope", "7"), "layer": ("policy", "7")}
 # Thresholds P004 3.10 marks [I] or [P] are design values, not literature (`design:P004#3.10-<key>`).
 DESIGN_THRESHOLDS = frozenset(("probe_grid_pct", "feedback_target_frames", "frame_hz", "dwell_base_ms",
                                "dwell_floor_ms", "dwell_chars_per_word", "flicker_floor_ms",
@@ -58,8 +60,14 @@ EXCEPTION_RULES = frozenset((
     'toggle-state-invisible', 'touch-target-small', 'unresponsive-intent', 'value-split',
     'wrap-policy-undeclared',
     # U06: the ui-scene and ui-fit judges' own findings that an owner may except (docs/ui-judges.md)
-    'fit-unmeasurable', 'glyph-missing', 'stage-unmatched',
+    'fit-unmeasurable', 'glyph-missing', 'stage-unmatched', 'stage-text-mismatch',
 ))
+# The structural roles of the scene (docs/ui-judges.md, "The scene vocabulary"); the layers among them.
+STRUCTURAL_ROLES = ("root", "panel", "text", "button", "key", "countdown", "scrim", "dialog", "banner", "snackbar")
+LAYER_ROLES = ("scrim", "dialog", "banner", "snackbar")
+CARD_ROLES = ("dialog", "banner", "snackbar")
+LAYER_POLICIES = ("pass-through", "capture-modal-inert", "capture-and-dismiss")
+TOGGLE_MARKS = ("bg", "bg_opa", "style")
 EXTRA_ELEMENTS = frozenset(("countdown", "dismiss", "done", "cancel", "numpad", "language_switch",
                             "size_buttons"))
 STYLE_TOKENS = 21
@@ -202,13 +210,24 @@ TABLES = {
     "state_class": ("id", {"id": _ident, "required": _list_of(_ident)}, ()),
     "importance": ("level", {"level": _int(1, 9), "roles": _list_of(_ident)}, ()),
     "toggle_group": ("id", {"id": _ident, "members": _list_of(_ident, minimum=2), "exactly_one": _is_bool,
-                            "shown_on": _list_of(_ident)}, ()),
+                            "shown_on": _list_of(_ident), "marks": _list_of(_enum(*TOGGLE_MARKS))}, ()),
     "input_layer": ("layer", {"layer": _ident, "blocks_input_below": _is_bool, "tap_outside_dismisses": _is_bool,
                               "accepts_input": _is_bool}, ()),
     "wrap": ("scope", {"scope": _ident, "wrap": _enum("word", "char", "none"), "max_lines": _int(0, 1000),
                        "ellipsis": _is_bool, "clip": _is_bool}, ()),
     "exception": ("id", {"id": _ident, "rule": _enum(*sorted(EXCEPTION_RULES)), "target": _concrete_target,
                          "reason": _is_str, "expires": _is_date}, ()),
+    # U06: the typographic role of a style no [[role]] row names (a colour variant of a role's style)
+    "style_role": ("style", {"style": _ident, "role": _ident}, ()),
+    # U06: the wrap scope of each typographic role (or pending: the spec decides wrapping per node, not per role)
+    "role_wrap": ("role", {"role": _ident, "scope": _ident, "pending": _is_str}, ("scope", "pending")),
+    # U06: the input policy of each layer role of the scene; a scrim's by the card that follows it
+    "layer": ("id", {"id": _ident, "role": _enum(*LAYER_ROLES), "card": _enum(*CARD_ROLES),
+                     "policy": _enum(*LAYER_POLICIES), "pending": _is_str}, ("card", "policy", "pending")),
+    # U06: a contract element id -> the scene key of its node
+    "element": ("id", {"id": _ident, "key": _is_str}, ()),
+    # U06: the line height in px of the font of each style (font-shrunk)
+    "style_line": ("style", {"style": _ident, "line_height_px": _int(1, 2000)}, ()),
 }
 OPTIONAL_TABLES = ("exception",)
 _TOP = ("schema", "product", "pending_tables")
@@ -300,6 +319,12 @@ def _row(name, index, raw, id_key, keys, optional):
             _fail("%s: key %r has the wrong type or range: %r" % (where, key, raw[key]))
     if name == "exception" and not raw["provenance"].startswith("owner:"):
         _fail("%s: an exception needs an owner: provenance" % where)
+    if name in PENDING_ROWS:
+        key, question = PENDING_ROWS[name]
+        if (key in raw) == ("pending" in raw):
+            _fail("%s needs exactly one of `%s` and `pending`" % (where, key))
+        if "pending" in raw:
+            _pending_value(where, raw["pending"], question)
     return _freeze(raw)
 
 
@@ -352,6 +377,9 @@ class Contract:
         found = [("%s.%s" % (s, k), e.value.question)
                  for s, keys in self.scalars.items() for k, e in keys.items() if isinstance(e.value, Pending)]
         found.extend(("table:%s" % name, p.question) for name, p in self.pending_tables.items())
+        for name in PENDING_ROWS:
+            id_key = TABLES[name][0]
+            found.extend(("%s.%s" % (name, row[id_key]), row["pending"]) for row in self.tables[name] if "pending" in row)
         return sorted(found)
 
     def rows(self, name):
@@ -370,6 +398,28 @@ class Contract:
             if row[id_key] == ident:
                 return row
         raise InternalError("ui-contract: no [[%s]] row %s=%r" % (name, id_key, ident))
+
+    def row_value(self, name, ident, key):
+        """A decided key of a row of a PENDING_ROWS table, or ContractPending for a pending row."""
+        row = self.row(name, ident)
+        if "pending" in row:
+            raise ContractPending("%s.%s" % (name, ident), row["pending"])
+        return row[key]
+
+    def style_by_token(self, token):
+        """The [[style]] row of a numeric style token, or None."""
+        return next((row for row in self.tables["style"] if row["token"] == token), None)
+
+    def role_of_style(self, style):
+        """The typographic role of a style: the [[role]] row that names it, else its [[style_role]] row; or None."""
+        for row in self.tables["role"]:
+            if row["style"] == style:
+                return row["id"]
+        return next((row["role"] for row in self.tables["style_role"] if row["style"] == style), None)
+
+    def layer_row(self, role, card=None):
+        """The [[layer]] row of a layer role (a scrim's with the role of its card), or None."""
+        return next((row for row in self.tables["layer"] if row["role"] == role and row.get("card") == card), None)
 
     def style_px(self, style):
         """Font size in px of a style row: its `scale` names a type_scale entry."""
@@ -460,6 +510,38 @@ def _check_role_min(row, roles, styles, scalars):
         _fail("[[role_min]] %r: touch_dp_min is 0 or at least %d" % (row["role"], touch))
 
 
+def _check_u06(tables):
+    """The tables U06 added: references, one typographic role per style, one layer row per (role, card)."""
+    styles = {r["id"] for r in tables["style"]}
+    roles = {r["id"] for r in tables["role"]}
+    named = {r["style"] for r in tables["role"]}
+    for row in tables["style_role"]:
+        if row["style"] not in styles or row["role"] not in roles:
+            _fail("[[style_role]] %r: style and role must be [[style]] and [[role]] ids" % row["style"])
+        if row["style"] in named:
+            _fail("[[style_role]] %r: a [[role]] row already names this style" % row["style"])
+    if len(named) != len(tables["role"]):
+        _fail("[[role]]: two roles share a style, so a style token has no single role")
+    scopes = {r["scope"] for r in tables["wrap"]}
+    for row in tables["role_wrap"]:
+        if row["role"] not in roles or ("scope" in row and row["scope"] not in scopes):
+            _fail("[[role_wrap]] %r: role and scope must be [[role]] and [[wrap]] ids" % row["role"])
+    seen = set()
+    for row in tables["layer"]:
+        if (row["role"] == "scrim") != ("card" in row):
+            _fail("[[layer]] %r: a scrim row needs `card`, any other row may not have it" % row["id"])
+        if (row["role"], row.get("card")) in seen:
+            _fail("[[layer]] %r: a second row for the same role and card" % row["id"])
+        seen.add((row["role"], row.get("card")))
+    elements = {r["id"] for r in tables["element"]}
+    for row in tables["toggle_group"]:
+        if not set(row["members"]) <= elements:
+            _fail("[[toggle_group]] %r: every member must be an [[element]] id" % row["id"])
+    for row in tables["style_line"]:
+        if row["style"] not in styles:
+            _fail("[[style_line]] %r is not a [[style]] id" % row["style"])
+
+
 def _check_rows(tables):
     for row in tables["timer"]:
         if row["countdown_shown"] and row["lifetime_ms"] == 0:
@@ -499,6 +581,7 @@ def _loads(text):
     _check_thresholds(scalars)
     _check_refs(tables, scalars)
     _check_rows(tables)
+    _check_u06(tables)
     return Contract(product, scalars, tables, pending)
 
 

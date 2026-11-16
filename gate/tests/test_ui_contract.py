@@ -20,7 +20,10 @@ EXPECTED_PENDING = [
     ("policy.target_population", "10"), ("reading.rate_wpm", "11"), ("table:importance", "7"),
     ("thresholds.button_floor_mm", "10"), ("thresholds.button_recommended_mm", "10"),
     ("thresholds.contrast_large", "15"), ("thresholds.contrast_text", "15"), ("thresholds.flicker_floor_ms", "5"),
-    ("thresholds.hierarchy_ratio_k", "5"), ("thresholds.keypad_key_min_mm", "10")]
+    ("thresholds.hierarchy_ratio_k", "5"), ("thresholds.keypad_key_min_mm", "10"),
+    # U06: rows the spec does not decide per role (P004 11 q7)
+    ("layer.banner", "7"), ("layer.banner-scrim", "7"), ("role_wrap.key_label", "7"),
+    ("role_wrap.screen_headline", "7"), ("role_wrap.small_button_label", "7"), ("role_wrap.staff_strong", "7")]
 # ui-look.md 4.2, token by token: (name, scale-px, weight). Written out here, not read from the contract.
 STYLES = {1: ("display", 200, 600), 2: ("headline", 48, 600), 3: ("title", 40, 600), 4: ("body", 32, 400),
           5: ("body_muted", 32, 400), 6: ("count_large", 40, 400), 7: ("staff", 24, 400),
@@ -82,7 +85,7 @@ class Checked(unittest.TestCase):
         self.assertEqual((contract.get("window", "width_px"), contract.get("window", "height_px")), (1280, 800))
 
     def test_the_exact_pending_set(self):
-        self.assertEqual(uc.load(LOCKERS).pending_entries(), EXPECTED_PENDING)
+        self.assertEqual(uc.load(LOCKERS).pending_entries(), sorted(EXPECTED_PENDING))
 
     def test_removing_each_provenance_in_turn_is_an_error(self):
         contract = uc.load(LOCKERS)
@@ -437,6 +440,45 @@ class Incomplete(unittest.TestCase):
         self.assertEqual([(f["what"], f["name"]) for f in found],
                          [("timer-kind", "toast"), ("state-class", "admin"), ("state-class", "settings"),
                           ("role", "tooltip")])
+
+
+class JudgeTablesTest(unittest.TestCase):
+    """U06: the tables the ui-scene and ui-fit judges read (style_role, role_wrap, layer, element, style_line, the
+    toggle group's marks)."""
+
+    def test_the_lockers_tables_resolve(self):
+        contract = uc.load(LOCKERS)
+        self.assertEqual(contract.role_of_style(contract.style_by_token(15)["id"]), "key_label")
+        self.assertEqual(contract.role_of_style(contract.style_by_token(20)["id"]), "small_button_label")
+        self.assertIsNone(contract.style_by_token(0))
+        self.assertEqual(contract.row_value("role_wrap", "subtitle", "scope"), "default")
+        with self.assertRaises(uc.ContractPending) as caught:
+            contract.row_value("role_wrap", "key_label", "scope")
+        self.assertEqual((caught.exception.path, caught.exception.question), ("role_wrap.key_label", "7"))
+        self.assertEqual(contract.layer_row("scrim", "dialog")["policy"], "capture-modal-inert")
+        self.assertIsNone(contract.layer_row("scrim"))
+        self.assertEqual([r["key"] for r in contract.rows("element")], ["11", "12"])
+        self.assertEqual(contract.row("style_line", "display")["line_height_px"], 229)
+
+    def test_the_tables_are_strict(self):
+        must_fail(self, edited('style = "btn_action"\nrole = "key_label"', 'style = "btn_key"\nrole = "key_label"'),
+                  "already names this style")
+        must_fail(self, edited('role = "subtitle"\nscope = "default"', 'role = "subtitle"\nscope = "nowhere"'),
+                  "must be [[role]] and [[wrap]] ids")
+        must_fail(self, edited('role = "key_label"\npending = "7"', 'role = "key_label"\npending = "5"'),
+                  "pending must be exactly")
+        must_fail(self, edited('role = "key_label"\npending = "7"', 'role = "key_label"\nscope = "default"\npending = "7"'),
+                  "exactly one of `scope` and `pending`")
+        must_fail(self, edited('role = "scrim"\ncard = "dialog"\n', 'role = "scrim"\n'), "a scrim row needs `card`")
+        must_fail(self, edited('id = "snackbar"\nrole = "snackbar"', 'id = "snackbar"\nrole = "dialog"'),
+                  "a second row for the same role and card")
+        must_fail(self, edited('policy = "capture-modal-inert"', 'policy = "modal"'), "wrong type or range")
+        must_fail(self, edited('id = "lang_bg"\nkey = "11"', 'id = "lang_xx"\nkey = "11"'), "must be an [[element]] id")
+        must_fail(self, edited('marks = ["bg", "style"]', 'marks = ["colour"]'), "wrong type or range")
+        must_fail(self, edited('style = "display"\nline_height_px', 'style = "nonesuch"\nline_height_px'),
+                  "is not a [[style]] id")
+        must_fail(self, edited('id = "subtitle"\nstyle = "body_muted"', 'id = "subtitle"\nstyle = "body"'),
+                  "two roles share a style")
 
 
 if __name__ == "__main__":

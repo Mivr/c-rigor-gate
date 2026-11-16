@@ -3,6 +3,7 @@ semantic records (O2) and the frame-facts lines (O3) written as the probe writes
 independent recomputation of the finding id (from docs/ui-judges.md with hashlib and json only)."""
 
 import copy
+import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -18,6 +19,9 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 CANARY_CONTRACT = REPO / "selftest" / "ui_canary_product" / "canary.toml"
 KEY = SimpleNamespace(fields=("role",))
+TODAY = datetime.date(2026, 11, 16)
+# the style tokens of the canary contract (selftest/ui_canary_product/canary.toml)
+TOKENS = {"title": 1, "body": 2, "caption": 3, "btn": 5, "lang_on": 6, "lang_off": 7, "small_body": 8, "big_body": 9}
 STATE_KEY = "k" * 64
 OPEN = "open 1000 7"
 
@@ -38,10 +42,13 @@ def esc(data):
     return "".join(out)
 
 
-def sem(key, role, label, rect, intent="-", flags="-", style="-", importance="-", policy="-", wrap="-", enabled=1):
+def sem(key, role, label, rect, intent="-", flags="-", style=0, importance="-", policy="-", wrap="-", enabled=1):
+    """One semantic record in the scene vocabulary (docs/ui-judges.md): `style` a token number or a canary style
+    name, `flags` letters."""
     text = label.encode("utf-8") if isinstance(label, str) else label
     x, y, w, h = rect
-    return "\t".join([key, role, esc(text), str(x), str(y), str(w), str(h), str(enabled), intent, flags, style,
+    token = str(TOKENS[style]) if style in TOKENS else str(style)
+    return "\t".join([key, role, esc(text), str(x), str(y), str(w), str(h), str(enabled), intent, flags, token,
                       importance, policy, wrap])
 
 
@@ -52,16 +59,18 @@ class Tree:
         self.width, self.height, self.nodes = width, height, []
         self.root = self.node(-1, "lv_obj", (0, 0, width - 1, height - 1), clickable=1, bg=255)
 
-    def node(self, parent, cls, box, hidden=0, clickable=0, clip=-1, scroll=-1, bg=0, exact=1, grad=0, image=0):
+    def node(self, parent, cls, box, hidden=0, clickable=0, clip=-1, scroll=-1, bg=0, exact=1, grad=0, image=0,
+             colour="ffffff"):
         depth = 0 if parent == -1 else self.nodes[parent]["depth"] + 1
         self.nodes.append({"parent": parent, "depth": depth, "cls": cls, "box": box, "hidden": hidden,
                            "clickable": clickable, "clip": clip, "scroll": scroll, "bg": bg, "exact": exact,
-                           "grad": grad, "image": image, "label": None, "fit": None})
+                           "grad": grad, "image": image, "label": None, "fit": None, "colour": colour})
         return len(self.nodes) - 1
 
     def label(self, parent, text, box, natural=None, laid=None, lines=1, line_h=16, long_mode=0, full=None,
               drawn=1, unsupported=0, glyphs="auto", visible="auto", missing=0, clipped=0, hidden=0, fit=True,
               clip=-1):
+        """A label; its line height defaults to 16, the canary contract's line height of every style."""
         index = self.node(parent, "lv_label", box, hidden=hidden, clip=clip)
         w, h = box[2] - box[0] + 1, box[3] - box[1] + 1
         data = text.encode("utf-8") if isinstance(text, str) else text
@@ -80,7 +89,7 @@ class Tree:
             out.append("\t".join(["node", str(i), str(n["parent"]), str(n["depth"]), n["cls"]]
                                  + [str(v) for v in n["box"]]
                                  + [str(n["hidden"]), str(n["clickable"]), str(n["clip"]), str(n["scroll"]), "0", "0",
-                                    "ffffff", str(n["bg"]), str(n["bg"]), str(n["exact"]), str(n["grad"]),
+                                    n["colour"], str(n["bg"]), str(n["bg"]), str(n["exact"]), str(n["grad"]),
                                     str(n["image"])]))
             label = n["label"]
             if label is not None:
@@ -123,7 +132,7 @@ def step(semantic, tree, word="ev", index=1):
 
 def run(semantic, tree, gates=("ui-scene", "ui-fit"), the_contract=None, today=None, finish=False):
     """The findings of one step (and, with `finish`, of the end of the run), without the private evidence key."""
-    judges = JudgeSet(list(gates), the_contract or contract(), KEY, today=today)
+    judges = JudgeSet(list(gates), the_contract or contract(), KEY, today or TODAY)
     open_step = Step(0, OPEN)
     found = judges.step_judge(step(semantic, tree), PathSoFar([open_step], 1), None)
     if finish:
@@ -142,15 +151,29 @@ def checks(found, severity=None):
 
 
 # ---- the clean base scene ------------------------------------------------------------------------------------------
-def base():
-    """(semantic lines, tree) of a correct state: a title, a body text and one button with its label."""
+LANG = [sem("lang_bg", "button", "BG", (216, 8, 48, 48), intent="8:0", style="lang_on"),
+        sem("lang_en", "button", "EN", (272, 8, 48, 48), intent="8:1", style="lang_off")]
+
+
+def add_lang(tree):
+    """The BG/EN switch (the canary contract's toggle group): two buttons of different fill."""
+    for x, text, colour in ((216, "BG", "2b4678"), (272, "EN", "282a2f")):
+        button = tree.node(0, "lv_button", (x, 8, x + 47, 55), clickable=1, bg=255, colour=colour)
+        tree.label(button, text, (x + 14, 24, x + 33, 39))
+
+
+def base(lang=False):
+    """(semantic lines, tree) of a correct state: a title, a body text and one button with its label; with `lang`, the
+    BG/EN switch after them."""
     tree = Tree()
     tree.label(0, "Title", (8, 8, 207, 31))
     tree.label(0, "Body text", (8, 40, 207, 63))
     button = tree.node(0, "lv_button", (8, 100, 107, 149), clickable=1, bg=255)
     tree.label(button, "OK", (48, 117, 67, 132))
-    semantic = [sem("title", "title", "Title", (8, 8, 200, 24), style="title", importance="1", wrap="default"),
-                sem("body", "body", "Body text", (8, 40, 200, 24), style="body", importance="2", wrap="default"),
-                sem("ok", "key_label", "OK", (8, 100, 100, 50), intent="1:0", style="btn", importance="2",
-                    wrap="single_line")]
+    semantic = [sem("title", "text", "Title", (8, 8, 200, 24), style="title"),
+                sem("body", "text", "Body text", (8, 40, 200, 24), style="body"),
+                sem("ok", "button", "OK", (8, 100, 100, 50), intent="1:0", style="btn")]
+    if lang:
+        add_lang(tree)
+        semantic += LANG
     return semantic, tree

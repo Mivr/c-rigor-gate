@@ -1,5 +1,6 @@
 # The event catalogue of the U06 canary app (ui-events/1, docs/ui-explore.md; docs/ui-judges.md "Canaries"). A selftest
-# fixture: intent v (1..16) puts the scene into the state with exactly one defect of one check; `open` is the clean state.
+# fixture: intent v (1..20) puts the scene into the state with exactly one defect of one check (v-modal: a correct
+# modal dialog that no check may flag); `open` is the clean state.
 schema = "ui-events/1"
 product = "selftest"
 app = "canary"
@@ -33,6 +34,10 @@ events = [
   { id = "v-unmeasurable", intent = 14, arg = 0, expect = "accept" },
   { id = "v-glyph", intent = 15, arg = 0, expect = "accept" },
   { id = "v-unmatched", intent = 16, arg = 0, expect = "accept" },
+  { id = "v-toggle", intent = 17, arg = 0, expect = "accept" },
+  { id = "v-text", intent = 18, arg = 0, expect = "accept" },
+  { id = "v-shrunk", intent = 19, arg = 0, expect = "accept" },
+  { id = "v-modal", intent = 20, arg = 0, expect = "accept" },
 ]
 
 [u2]

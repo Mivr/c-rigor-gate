@@ -1,7 +1,9 @@
 /* The canary app of the U06 judges selftest (selftest/ui_judges.sh): one 320x240 screen whose scene is a table of nodes.
  * Variant 0 is the clean state; every other variant puts the scene into a state with exactly one defect that one check
- * of the ui-scene or ui-fit judge must find (docs/ui-judges.md, "Canaries"). The model adapter reports the table as
- * the semantic records; the LVGL objects are built from the same table.
+ * of the ui-scene or ui-fit judge must find, or (V_MODAL) a correct modal dialog over an inert background that no check
+ * may flag (docs/ui-judges.md, "Canaries"). The model adapter reports the table as the semantic records, in the scene
+ * vocabulary of the real lockers kiosk: structural roles, numeric style tokens, flag letters, `-` for importance,
+ * input and wrap policy. The LVGL objects are built from the same table.
  * Product rules apply: static memory, no libc allocation, LVGL from the gate. */
 #ifndef SELFTEST_UI_CANARY_PRODUCT_CANARY_H
 #define SELFTEST_UI_CANARY_PRODUCT_CANARY_H
@@ -13,32 +15,34 @@
 
 #define CANARY_W 320
 #define CANARY_H 240
-#define CANARY_NODES 8u
-#define CANARY_VARIANTS 17u
+#define CANARY_NODES 12u
+#define CANARY_VARIANTS 21u
 
-typedef enum { CANARY_LABEL, CANARY_BUTTON, CANARY_PANEL, CANARY_LAYER, CANARY_GHOST } canary_kind_t;
+typedef enum { CANARY_LABEL, CANARY_BUTTON, CANARY_PANEL, CANARY_GHOST } canary_kind_t;
 
 /* One scene node: what the scene declares (the semantic record) and how it is drawn. */
 typedef struct {
     const char *key;
-    const char *role;
+    const char *role;     /* structural: text, button, panel, dialog, ... */
     const char *text;
     int32_t x;
     int32_t y;
     int32_t w;
     int32_t h;
     const char *intent;
-    const char *style;
-    const char *importance;
-    const char *policy;
-    const char *wrap;
+    const char *flags;    /* `-` or letters (I inert) */
+    unsigned token;       /* the style token (canary.toml [[style]]) */
     canary_kind_t kind;
+    bool enabled;
+    bool opaque;          /* a panel's background */
+    bool clickable;       /* a panel takes taps */
+    bool in_card;         /* built inside the last opaque panel (a dialog's button) */
 } canary_node_t;
 
 /* Cold start: a fresh LVGL and the clean scene drawn. False if LVGL cannot start. */
 bool canary_start(void);
 
-/* Rebuild the scene as variant `v` (0 clean, 1..CANARY_VARIANTS-1 one defect each); false if `v` is out of range. */
+/* Rebuild the scene as variant `v` (0 clean, 1..CANARY_VARIANTS-1); false if `v` is out of range. */
 bool canary_show(unsigned v);
 
 /* The display of the running app, or NULL when it is not started. */

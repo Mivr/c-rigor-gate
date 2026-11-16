@@ -1,44 +1,62 @@
-"""Findings, pending values, exceptions and the judge set of the ui-scene and ui-fit judges (U06, P004 3.1, 3.2, 4.5).
+"""Findings, pending values, exceptions, vacuity and the judge set of the ui-scene and ui-fit judges (U06, P004 3.1,
+3.2, 4.5, 6.4).
 
 A finding has the schema of docs/ui-explore.md ("Findings"); its id is `<gate>.<check>/<12 hex>` of sha256 over the
-canonical JSON of [gate, check, identity]. Identities name scene nodes by their key, rendered nodes no scene node owns by
-their walk index, and states by the abstraction key, never by exploration order. `observed` holds gate text, numbers and
-scene keys only, never a label text; the records involved go to the evidence (`records.json`).
+canonical JSON of [gate, check, [identity, state key]] ([gate, check, identity] for findings about the contract or the
+run). Identities name scene nodes by key and rendered nodes without a scene node by class, box and a hash of their
+text, never by walk index or exploration order. `observed` holds gate text, numbers and keys, never a label text.
 
-`contract-pending` (P004 6.2, docs/ui-contract.md): a check that needs a value the owner has not decided reports it with
-identity [check, entry], so the explorer's de-duplication leaves one per check and entry for the whole run, and skips
-only that check (or that part of it). Its severity is the loader's (`PENDING_SEVERITY`).
-
-Exceptions: a contract `[[exception]]` row that has not expired on the run's date (UTC) turns exactly the finding with
-its check and target into severity `info`, with the exception's id and expiry in `observed.exception`. At the end, every
-exception whose rule is a check of a selected judge and that turned nothing (or has expired) is `exception-unused`.
+`contract-pending`: identity [check, entry], one per check and entry per run; only what needs the value is skipped.
+Exceptions: a live `[[exception]]` row (its expiry compared with `--today`, never the wall clock) turns exactly the
+finding with its check and target into `info`. At the end of the run: `exception-unused` for an exception that turned
+nothing (error when its target was visited or it expired, info otherwise), one `checks-examined` (info) per judge with
+the nodes each check examined per state, and `check-vacuous` (error) for a check that applies to the contract and
+examined nothing in any state.
 """
-
-import datetime
 
 from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_scene
 from rigor_lib.errors import InternalError
-from rigor_lib.ui_judge_context import Context
 from rigor_lib.ui_explore_judges import PRIVATE, state_of
+from rigor_lib.ui_judge_context import Context
 
-SCENE_CHECKS = ("occluded-target", "overlay-policy", "touch-target-small", "target-spacing", "node-out-of-bounds",
-                "text-overlap", "font-below-min", "hierarchy-violated", "raw-text", "wrap-policy-undeclared",
-                "stage-unmatched", "scene-vocabulary", "contract-incomplete", "contract-pending", "exception-unused")
-FIT_CHECKS = ("text-overflow", "text-clipped", "full-string-shown", "fit-unmeasurable", "glyph-missing",
-              "stage-unmatched", "scene-vocabulary", "contract-pending", "exception-unused")
-GATES = {"ui-scene": SCENE_CHECKS, "ui-fit": FIT_CHECKS}
+SCENE_NODE_CHECKS = ("occluded-target", "overlay-policy", "touch-target-small", "target-spacing", "node-out-of-bounds",
+                     "text-overlap", "font-below-min", "hierarchy-violated", "raw-text", "wrap-policy-undeclared",
+                     "toggle-group-indistinct")
+FIT_NODE_CHECKS = ("text-overflow", "text-clipped", "full-string-shown", "fit-unmeasurable", "glyph-missing",
+                   "font-shrunk")
+COMMON = ("stage-unmatched", "stage-text-mismatch", "scene-vocabulary", "contract-incomplete", "contract-pending",
+          "exception-unused", "checks-examined", "check-vacuous")
+NODE_CHECKS = {"ui-scene": SCENE_NODE_CHECKS, "ui-fit": FIT_NODE_CHECKS}
+GATES = {gate: checks + COMMON for gate, checks in NODE_CHECKS.items()}
 ORDER = ("ui-scene", "ui-fit")          # the stage findings belong to the first selected gate in this order
-LAYERS = {"stage-unmatched": "L3", "scene-vocabulary": "meta", "contract-incomplete": "meta",
-          "contract-pending": "meta", "exception-unused": "meta"}       # every other check: L4 (P004 3.1, 3.2)
-INFO = frozenset(("stage-unmatched",))
+LAYERS = {"stage-unmatched": "L3", "stage-text-mismatch": "L3", "font-shrunk": "L3"}
+META = frozenset(("scene-vocabulary", "contract-incomplete", "contract-pending", "exception-unused", "checks-examined",
+                  "check-vacuous"))
 
 
 def finding_id(gate, check, identity):
     return "%s.%s/%s" % (gate, check, jsonio.sha256_hex(jsonio.canonical_dumps([gate, check, identity]))[:12])
 
 
+def _item(gate, check, identity, severity, state, path, observed):
+    return {"id": finding_id(gate, check, identity), "gate": gate, "check": check,
+            "layer": "meta" if check in META else LAYERS.get(check, "L4"), "severity": severity, "state": state,
+            "path": list(path), "observed": observed, "blame": [], "evidence": [], "explanation": None}
+
+
+def applies(check, contract):
+    """Whether the contract declares what a check applies to (a check that never examines a node is then vacuous)."""
+    if check in ("touch-target-small", "occluded-target", "target-spacing"):
+        return any(row["touch_dp_min"] > 0 for row in contract.rows("role_min"))
+    if check == "overlay-policy":
+        return bool(contract.rows("layer"))
+    if check == "toggle-group-indistinct":
+        return bool(contract.rows("toggle_group"))
+    return bool(contract.rows("role"))
+
+
 class Exceptions:
-    """The contract's exceptions for the selected gates, and which of them turned a finding."""
+    """The contract's exceptions for the selected gates, which of them turned a finding, whose target was seen."""
 
     def __init__(self, contract, gates, today):
         checks = {check for gate in gates for check in GATES[gate]}
@@ -48,7 +66,14 @@ class Exceptions:
         for row in sorted((r for r in rows if r["id"] in live), key=lambda r: r["id"]):
             self.active.setdefault((row["rule"], row["target"]), []).append(row)   # a duplicate stays unused
         self.expired = [row for row in rows if row["id"] not in live]
-        self.used = set()
+        self.targets = sorted({row["target"] for row in rows})
+        self.used, self.visited = set(), set()
+
+    def see(self, names):
+        """Mark the targets one state shows: a name of it, or a pair `a/b` of two names of that same state."""
+        for target in self.targets:
+            if target in names or (target.count("/") == 1 and set(target.split("/")) <= names):
+                self.visited.add(target)
 
     def apply(self, item, target):
         rows = self.active.get((item["check"], target)) if target is not None else None
@@ -56,9 +81,8 @@ class Exceptions:
             return item
         row = rows[0]
         self.used.add(row["id"])
-        expires = row["expires"]
         item["severity"] = "info"
-        item["observed"] = dict(item["observed"], exception={"id": row["id"], "expires": str(expires)})
+        item["observed"] = dict(item["observed"], exception={"id": row["id"], "expires": str(row["expires"])})
         return item
 
     def unused(self):
@@ -75,60 +99,88 @@ class Reporter:
         self.state = state_of(step.key, step.proj, judges.catalogue_key, step.origin)
         self.state_key = step.key
         self.path = [view.word for view in path] + [step.word]
+        self.counts = {}
+        self.pendings = set()
 
     def add(self, check, identity, observed, target=None, severity=None, records=None, stateless=False):
         if check not in GATES[self.gate]:
             raise ValueError("unknown check %r of %s" % (check, self.gate))
-        item = {"id": finding_id(self.gate, check, identity if stateless else [identity, self.state_key]),
-                "gate": self.gate, "check": check, "layer": LAYERS.get(check, "L4"),
-                "severity": severity or ("info" if check in INFO else "error"),
-                "state": None if stateless else self.state, "path": list(self.path), "observed": observed,
-                "blame": [], "evidence": [], "explanation": None}
+        item = _item(self.gate, check, identity if stateless else [identity, self.state_key],
+                     severity or "error", None if stateless else self.state, self.path, observed)
         if records:
             item[PRIVATE] = {"records.json": {"records": list(records)}}
         self.found.append(self.judges.exceptions.apply(item, target))
 
-    def pending(self, check, error):
-        """`contract-pending` for one check and entry: once per run whatever the state (identity [check, entry])."""
+    def examined(self, check, count=1):
+        self.counts[check] = self.counts.get(check, 0) + count
+
+    def pending(self, check, error, whole=True):
+        """`contract-pending` for one check and entry (identity [check, entry]); `whole`: the check did not run."""
+        if whole:
+            self.judges.pending_checks.add(check)
+        if (check, error.path) in self.pendings:
+            return
+        self.pendings.add((check, error.path))
         self.add("contract-pending", [check, error.path],
                  {"check": check, "entry": error.path, "question": error.question}, stateless=True,
                  severity=ui_contract.PENDING_SEVERITY)
+
+    def incomplete(self, what, name):
+        self.add("contract-incomplete", [what, name], {"what": what, "name": name}, stateless=True)
 
 
 class JudgeSet:
     """The selected judges: one step judge for the explorer, and `finish` for the run-level findings."""
 
-    def __init__(self, gates, contract, catalogue_key, today=None):
+    def __init__(self, gates, contract, catalogue_key, today):
         if contract is None:
             raise InternalError("--judges %s need --contract (the UI contract)" % ",".join(gates))
+        if today is None:
+            raise InternalError("--judges need --today YYYY-MM-DD (the date exceptions expire against)")
         unknown = [g for g in gates if g not in GATES]
         if unknown or len(set(gates)) != len(gates) or not gates:
             raise InternalError("--judges: distinct names of %s" % ", ".join(ORDER))
         self.gates = tuple(g for g in ORDER if g in gates)
         self.contract, self.catalogue_key = contract, catalogue_key
-        today = today or datetime.datetime.now(datetime.timezone.utc).date()
         self.exceptions = Exceptions(contract, self.gates, today)
+        self.examined = {gate: {} for gate in self.gates}       # gate -> state key -> check -> nodes
+        self.pending_checks = set()
 
     def step_judge(self, step, path, contract):
         del contract
         context = Context(self, step)
+        names = set(context.by_key) | {context.rendered_name(i)["target"] for i in context.frame.labels
+                                       if i not in context.assoc.owner}
+        self.exceptions.see(names)
         out = context.stage_findings(Reporter(self.gates[0], self, step, path))
-        if "ui-scene" in self.gates:
-            out += ui_judge_scene.judge(context, Reporter("ui-scene", self, step, path))
-        if "ui-fit" in self.gates:
-            out += ui_judge_fit.judge(context, Reporter("ui-fit", self, step, path))
+        for gate, module in (("ui-scene", ui_judge_scene), ("ui-fit", ui_judge_fit)):
+            if gate in self.gates:
+                report = Reporter(gate, self, step, path)
+                out += module.judge(context, report)
+                seen = self.examined[gate].setdefault(step.key, {})
+                for check in NODE_CHECKS[gate]:
+                    seen[check] = max(seen.get(check, 0), report.counts.get(check, 0))
         return out
 
     def finish(self, open_word):
-        """`exception-unused` for every exception of a selected gate's check that turned no finding or has expired."""
+        """The run-level findings (path: the open word; state: null)."""
         out = []
         for row, expired in self.exceptions.unused():
             gate = next(g for g in self.gates if row["rule"] in GATES[g])
-            identity = ["exception", row["id"]]
-            out.append({"id": finding_id(gate, "exception-unused", identity), "gate": gate,
-                        "check": "exception-unused", "layer": "meta", "severity": "error", "state": None,
-                        "path": [open_word],
-                        "observed": {"exception": row["id"], "rule": row["rule"], "target": row["target"],
-                                     "expires": str(row["expires"]), "expired": expired},
-                        "blame": [], "evidence": [], "explanation": None})
+            visited = row["target"] in self.exceptions.visited
+            out.append(_item(gate, "exception-unused", ["exception", row["id"]],
+                             "error" if visited or expired else "info", None, [open_word],
+                             {"exception": row["id"], "rule": row["rule"], "target": row["target"],
+                              "expires": str(row["expires"]), "expired": expired, "target_visited": visited}))
+        for gate in self.gates:
+            states = self.examined[gate]
+            totals = {check: sum(s.get(check, 0) for s in states.values()) for check in NODE_CHECKS[gate]}
+            out.append(_item(gate, "checks-examined", ["examined"], "info", None, [open_word],
+                             {"states": len(states), "totals": totals,
+                              "per_state": {key: states[key] for key in sorted(states)}}))
+            for check in NODE_CHECKS[gate]:
+                if states and totals[check] == 0 and check not in self.pending_checks \
+                        and applies(check, self.contract):
+                    out.append(_item(gate, "check-vacuous", ["vacuous", check], "error", None, [open_word],
+                                     {"check": check, "states": len(states)}))
         return out

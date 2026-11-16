@@ -1,16 +1,7 @@
-"""The two stages the ui-scene and ui-fit judges read (U06, P004 2.1), and the association between them.
-
-O2, the scene: the semantic records of a step (`uim_semantic`, 14 fields). model.h leaves every field but the numbers
-and `enabled` to the product; this module reads them through the gate's scene vocabulary (docs/ui-judges.md, "The scene
-vocabulary"), and every value outside it is the finding `scene-vocabulary`, never a guess.
-
-O3, the rendered tree: the lvprobe records of the step's `frame` reply (`node`, `label`, `fit`, `frame`). They are
-written by gate code, so a record that breaks their shape is the gate's error (InternalError, exit 2).
-
-The association (docs/ui-judges.md, "Scene to rendered"): a scene node S is the rendered node N when S's rect, read in
-display pixels, is exactly N's box AND S's label is N's text (a label's own text; for any other node either an empty
-label, or the own text of exactly one of N's direct label children). It holds only when it is unique both ways: no
-other node of the frame satisfies it for S, and no other scene node for N. Anything else is `stage-unmatched`.
+"""The rendered tree the ui-scene and ui-fit judges read (U06, P004 2.1 stage O3): the lvprobe records of a step's `frame`
+reply (`node`, `label`, `fit`, `frame`; docs/ui-lvprobe.md, "Text format"). They are written by gate code, so a record
+that breaks their shape is the gate's error (InternalError, exit 2). The scene (O2) and the association of the two are
+ui_judge_vocab.
 """
 
 import re
@@ -18,11 +9,8 @@ from dataclasses import dataclass, field
 
 from rigor_lib.errors import InternalError
 
-FLAG_TOKENS = frozenset(("hidden", "inert", "selected"))
-_INTENT = re.compile(r"(0|[1-9][0-9]{0,9}):(0|-?[1-9][0-9]{0,9})")
 _INT = re.compile(r"0|-?[1-9][0-9]{0,17}")
 _BOX = re.compile(r"(-?[0-9]{1,10}),(-?[0-9]{1,10}),(-?[0-9]{1,10}),(-?[0-9]{1,10})")
-_IMPORTANCE = re.compile(r"[1-9]")
 
 
 def _fail(why):
@@ -59,6 +47,7 @@ class RNode:
     depth: int
     cls: str
     box: tuple
+    bg: str
     hidden: bool
     clickable: bool
     clip: int
@@ -157,7 +146,7 @@ def inside(inner, outer):
 def _node(record):
     f = record.fields
     return RNode(index=_int(f[1], "node index"), parent=_int(f[2], "parent"), depth=_int(f[3], "depth"),
-                 cls=f[4], box=tuple(_int(f[k], "coordinate") for k in (5, 6, 7, 8)),
+                 cls=f[4], box=tuple(_int(f[k], "coordinate") for k in (5, 6, 7, 8)), bg=f[15],
                  hidden=_flag(f[9], "hidden"), clickable=_flag(f[10], "clickable"), clip=_int(f[11], "clip"),
                  scroll=_int(f[12], "scroll"), bg_opa_drawn=_int(f[17], "bg_opa_drawn"),
                  bg_opa_exact=_flag(f[18], "bg_opa_exact"), bg_grad=_flag(f[19], "bg_grad"),
@@ -228,133 +217,3 @@ def _tree(frame):
             frame.end[ancestor] = node.index
         frame.children.setdefault(node.parent, []).append(node.index)
         stack.append(node.index)
-
-
-# ---- O2 -----------------------------------------------------------------------------------------------------------
-@dataclass(frozen=True)
-class SNode:
-    """One semantic record read through the scene vocabulary. `rect` is the inclusive box of x, y, w, h."""
-    key: str
-    role: str
-    label: bytes
-    x: int
-    y: int
-    w: int
-    h: int
-    enabled: bool
-    intent: str
-    flags: frozenset
-    style: str
-    importance: object        # int or None
-    input_policy: str
-    wrap_policy: str
-    raw: str
-
-    @property
-    def rect(self):
-        return (self.x, self.y, self.x + self.w - 1, self.y + self.h - 1)
-
-    @property
-    def hidden(self):
-        return "hidden" in self.flags
-
-    @property
-    def interactive(self):
-        """A node a visitor can operate: an intent, enabled, not declared inert."""
-        return self.intent != "-" and self.enabled and "inert" not in self.flags
-
-
-def _flags(text):
-    if text == "-":
-        return frozenset()
-    tokens = text.split(",")
-    if len(set(tokens)) != len(tokens) or not set(tokens) <= FLAG_TOKENS:
-        return None
-    return frozenset(tokens)
-
-
-def scene_vocabulary(record, contract):
-    """(SNode or None, the fields that break the vocabulary). The contract decides roles, styles, layers and scopes."""
-    f, v = record.fields, record.values
-    roles = set(contract.ids("role"))
-    bad = []
-    flags = _flags(f[9])
-    if flags is None:
-        bad.append("flags")
-    if f[8] != "-" and not _INTENT.fullmatch(f[8]):
-        bad.append("intent")
-    text_node = f[1] in roles
-    if v[2] != b"" and not text_node:
-        bad.append("role")                    # a node that shows text has a contract role
-    if text_node and f[10] not in contract.ids("style"):
-        bad.append("style")
-    if f[11] != "-" and not _IMPORTANCE.fullmatch(f[11]):
-        bad.append("importance")
-    if f[12] != "-" and f[12] not in contract.ids("input_layer"):
-        bad.append("input_policy")
-    if f[13] != "-" and f[13] not in contract.ids("wrap"):
-        bad.append("wrap_policy")
-    if bad:
-        return None, bad
-    node = SNode(key=f[0], role=f[1], label=v[2], x=int(f[3]), y=int(f[4]), w=int(f[5]), h=int(f[6]),
-                 enabled=f[7] == "1", intent=f[8], flags=flags, style=f[10],
-                 importance=None if f[11] == "-" else int(f[11]), input_policy=f[12], wrap_policy=f[13],
-                 raw=record.raw)
-    return node, []
-
-
-def is_text_node(node, contract):
-    return node.role in contract.ids("role")
-
-
-# ---- the association ----------------------------------------------------------------------------------------------
-@dataclass
-class Association:
-    """match: scene key -> rendered index; text: scene key -> its label's index (or None); unmatched: [(key,
-    reason)]; owner: label index -> scene key."""
-    match: dict
-    text: dict
-    unmatched: list
-    owner: dict
-
-
-def _text_label(frame, index, label):
-    """(matches, the label index that carries the text) of a scene label against rendered node `index`."""
-    if index in frame.labels:
-        return frame.labels[index].own_text == label, index
-    if label == b"":
-        return True, None
-    carriers = [c for c in frame.children.get(index, ()) if c in frame.labels and frame.labels[c].own_text == label]
-    return len(carriers) == 1, carriers[0] if len(carriers) == 1 else None
-
-
-def associate(scene, frame):
-    """The exact, unique association of scene nodes (SNode, distinct keys) with rendered nodes."""
-    by_box = {}
-    for node in frame.nodes:
-        if not frame.is_root(node.index):
-            by_box.setdefault(node.box, []).append(node.index)
-    tentative, unmatched = {}, []
-    for node in scene:
-        hits = []
-        for index in by_box.get(node.rect, ()):
-            ok, carrier = _text_label(frame, index, node.label)
-            if ok:
-                hits.append((index, carrier))
-        if len(hits) == 1:
-            tentative[node.key] = hits[0]
-        else:
-            unmatched.append((node.key, "absent" if not hits else "ambiguous"))
-    claims = {}
-    for key, (index, _carrier) in tentative.items():
-        claims.setdefault(index, []).append(key)
-    match, text, owner = {}, {}, {}
-    for key, (index, carrier) in tentative.items():
-        if len(claims[index]) > 1:
-            unmatched.append((key, "ambiguous"))
-            continue
-        match[key] = index
-        text[key] = carrier
-        if carrier is not None:
-            owner[carrier] = key
-    return Association(match, text, sorted(unmatched), owner)

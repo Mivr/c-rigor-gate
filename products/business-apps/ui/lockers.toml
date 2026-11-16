@@ -488,6 +488,7 @@ id = "language"
 members = ["lang_bg", "lang_en"]
 exactly_one = true
 shown_on = ["welcome", "choose_size", "opened"]
+marks = ["bg", "style"]     # U06: the selected button has another fill (6.1) and another style token (4.2: 20 / 21)
 provenance = "spec:ui-look.md#6.1"
 
 # ---- input policy per layer (ui-rules.md: Presentation and the Rust-derived clarification) -------------------------
@@ -563,5 +564,226 @@ max_lines = 1
 ellipsis = false
 clip = false
 provenance = "spec:ui-look.md#5"
+
+# ---- U06: what the ui-scene and ui-fit judges read from the contract rather than from the scene ---------------------
+# The typographic role of the button styles no [[role]] row names: colour variants of the key and small button
+# label roles (ui-look.md 4.1 "Label colour variants of buttons", 4.2 tokens 16, 18 to 21).
+[[style_role]]
+style = "btn_action"
+role = "key_label"
+provenance = "spec:ui-look.md#4.1"
+[[style_role]]
+style = "btn_cancel"
+role = "key_label"
+provenance = "spec:ui-look.md#4.1"
+[[style_role]]
+style = "btn_cancel_small"
+role = "small_button_label"
+provenance = "spec:ui-look.md#4.1"
+[[style_role]]
+style = "btn_lang_on"
+role = "small_button_label"
+provenance = "spec:ui-look.md#4.1"
+[[style_role]]
+style = "btn_lang_off"
+role = "small_button_label"
+provenance = "spec:ui-look.md#4.1"
+
+# The wrap scope of each typographic role (ui-look.md 5: a text wraps at word boundaries unless it is on the one-line
+# list; the code echo and the size-button labels break at any character). ui-look.md decides wrapping per NODE: where
+# one role holds both a one-line node and a wrapped one, the role's scope is the owner's (P004 11 q7, pending).
+[[role_wrap]]
+role = "subtitle"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "body"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "report_title"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "large_countdown"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "staff_detail"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "caption"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "muted_caption"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "error_caption"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "notice_title"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "notice_body"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "notice_caption"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "hero_number"
+scope = "single_line"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]   # "Welcome", "Choose a size" one line; the lockout and fault titles word-wrapped
+role = "screen_headline"
+pending = "7"
+provenance = "spec:P004#11-q7"
+[[role_wrap]]   # "Inspected", "Blocked" one line; "Released: N" word-wrapped
+role = "staff_strong"
+pending = "7"
+provenance = "spec:P004#11-q7"
+[[role_wrap]]   # button labels one line; a size button's label char-wrapped
+role = "key_label"
+pending = "7"
+provenance = "spec:P004#11-q7"
+[[role_wrap]]   # Done and BG / EN one line; a size button's label (5 or 6 sizes) char-wrapped
+role = "small_button_label"
+pending = "7"
+provenance = "spec:P004#11-q7"
+
+# The input policy of each layer role (ui-rules.md, Presentation; a scrim's by the card it belongs to). A dialog blocks
+# the input behind it; a tap outside a snackbar dismisses it. A banner's scrim and card cannot be told apart by role:
+# a notice of kind banner has a dismissing full-window scrim, a banner of the persistent set has no tap-outside area
+# (ui-rules.md, "Rust-derived clarification"): the owner decides (P004 11 q7).
+[[layer]]
+id = "dialog"
+role = "dialog"
+policy = "capture-modal-inert"
+provenance = "spec:ui-rules.md#presentation"
+[[layer]]
+id = "dialog-scrim"
+role = "scrim"
+card = "dialog"
+policy = "capture-modal-inert"
+provenance = "spec:ui-rules.md#presentation"
+[[layer]]
+id = "snackbar"
+role = "snackbar"
+policy = "capture-and-dismiss"
+provenance = "spec:ui-rules.md#presentation"
+[[layer]]
+id = "snackbar-scrim"
+role = "scrim"
+card = "snackbar"
+policy = "capture-and-dismiss"
+provenance = "spec:ui-rules.md#presentation"
+[[layer]]
+id = "banner"
+role = "banner"
+pending = "7"
+provenance = "spec:P004#11-q7"
+[[layer]]
+id = "banner-scrim"
+role = "scrim"
+card = "banner"
+pending = "7"
+provenance = "spec:P004#11-q7"
+
+# Contract elements and the scene key of their node (ui-look.md 4.2: LANG_BG is key 11, LANG_EN key 12).
+[[element]]
+id = "lang_bg"
+key = "11"
+provenance = "spec:ui-look.md#4.2"
+[[element]]
+id = "lang_en"
+key = "12"
+provenance = "spec:ui-look.md#4.2"
+
+# The line height of each style's font, in px. READ FROM THE C KIOSK, NOT FROM THE SPEC: the label records of
+# business-apps apps/lockers/lkapp/uimodel/tests/screens.out (commit f1274bf; the copy in gate/tests/data/ui_judge/).
+# Pending the owner's review: font-shrunk against these values catches a font that gets smaller than today, not one
+# that is already wrong. Styles 11 and 19 do not occur in the transcript and have no row.
+[[style_line]]
+style = "display"
+line_height_px = 229
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 1, owner review pending"
+[[style_line]]
+style = "headline"
+line_height_px = 55
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 2, owner review pending"
+[[style_line]]
+style = "title"
+line_height_px = 45
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 3, owner review pending"
+[[style_line]]
+style = "body"
+line_height_px = 36
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 4, owner review pending"
+[[style_line]]
+style = "body_muted"
+line_height_px = 36
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 5, owner review pending"
+[[style_line]]
+style = "count_large"
+line_height_px = 45
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 6, owner review pending"
+[[style_line]]
+style = "staff"
+line_height_px = 27
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 7, owner review pending"
+[[style_line]]
+style = "staff_strong"
+line_height_px = 27
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 8, owner review pending"
+[[style_line]]
+style = "caption"
+line_height_px = 18
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 9, owner review pending"
+[[style_line]]
+style = "caption_muted"
+line_height_px = 18
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 10, owner review pending"
+[[style_line]]
+style = "notice_title"
+line_height_px = 45
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 12, owner review pending"
+[[style_line]]
+style = "notice_body"
+line_height_px = 36
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 13, owner review pending"
+[[style_line]]
+style = "notice_caption"
+line_height_px = 18
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 14, owner review pending"
+[[style_line]]
+style = "btn_key"
+line_height_px = 36
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 15, owner review pending"
+[[style_line]]
+style = "btn_action"
+line_height_px = 36
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 16, owner review pending"
+[[style_line]]
+style = "btn_action_small"
+line_height_px = 27
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 17, owner review pending"
+[[style_line]]
+style = "btn_cancel"
+line_height_px = 36
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 18, owner review pending"
+[[style_line]]
+style = "btn_lang_on"
+line_height_px = 27
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 20, owner review pending"
+[[style_line]]
+style = "btn_lang_off"
+line_height_px = 27
+provenance = "oracle:lockers C kiosk screens.out f1274bf token 21, owner review pending"
 
 # No exceptions are sealed yet: an exception is a [[exception]] row (id, rule, target, reason, provenance).

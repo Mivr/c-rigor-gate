@@ -4,6 +4,7 @@ line per finding. Exit 0: no error finding; 1: at least one; 2: the gate could n
 a probe that cannot be executed). Schemas and the judge interface: docs/ui-explore.md.
 """
 
+import datetime
 import os
 import re
 import signal
@@ -39,6 +40,12 @@ def _uint(text):
     return int(text)
 
 
+def _date(text):
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text):
+        raise ValueError(text)
+    return datetime.date.fromisoformat(text)
+
+
 def _list(pattern):
     def parse(text):
         parts = text.split(",")
@@ -57,7 +64,8 @@ def add_parser(subparsers):
     parser.add_argument("--out", required=True, help="findings, one JSON line each")
     parser.add_argument("--contract", help="the UI contract (ui-contract/1) handed to the judges")
     parser.add_argument("--judges", type=_list(r"[a-z][a-z-]{0,31}"),
-                        help="judges to run besides the explorer's own: ui-scene,ui-fit (they need --contract)")
+                        help="judges to run besides the explorer's own: ui-scene,ui-fit (they need --contract and --today)")
+    parser.add_argument("--today", type=_date, help="the date (YYYY-MM-DD) the contract's exceptions expire against")
     parser.add_argument("--origin-ms", type=_uint)
     parser.add_argument("--seed", type=_uint, help="the seed of every `open`")
     parser.add_argument("--depth", type=_uint, help="bfs: the depth bound")
@@ -195,7 +203,9 @@ def explore(args):
     """(findings, summary) of one ui-explore run."""
     _check_args(args)
     catalogue, contract = _load(args)
-    judges = JudgeSet(args.judges, contract, catalogue.key) if args.judges is not None else None
+    if args.today is not None and args.judges is None:
+        raise InternalError("--today is only for --judges")
+    judges = JudgeSet(args.judges, contract, catalogue.key, args.today) if args.judges is not None else None
     budget = Budget(args.budget_s)
     config = Config(os.path.abspath(args.probe), args.deadline_ms / 1000.0, catalogue, budget)
     paths = load_paths(args.paths, catalogue, CAPABILITIES) if args.strategy == "replay" else None
@@ -270,8 +280,18 @@ def _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, foun
             "domain_count": exploration.domain_count, "domain_visited": sorted(exploration.domain_visited),
             "events": events, "outcomes": exploration.outcomes,
             "cost": {"probe_commands": explorer.commands, "virtual_ms": explorer.virtual_ms},
-            "findings": {check: sum(1 for f in found if f["check"] == check) for check in CHECKS},
+            "findings": _counts(found),
             "detail": detail}
+
+
+def _counts(found):
+    """Findings per check: the explorer's own checks by name (all of them, 0 included), a judge's as `<gate>.<check>`."""
+    counts = {check: sum(1 for f in found if f["check"] == check) for check in CHECKS}
+    for item in found:
+        if item["gate"] != "ui-explore":
+            name = "%s.%s" % (item["gate"], item["check"])
+            counts[name] = counts.get(name, 0) + 1
+    return counts
 
 
 def _remove(path):

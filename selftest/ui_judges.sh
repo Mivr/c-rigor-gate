@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Self-test of the ui-scene and ui-fit judges (U06, docs/ui-judges.md), called by selftest/ui.sh: the canary app in
-# selftest/ui_canary_product is built as a probe in release and san; `rigor ui-explore --judges ui-scene,ui-fit` replays
-# the clean state and one state per check (canary.paths.json). Per check: exactly one finding of that check, with the id
-# recomputed here from its identity, in its canary state, and no other finding there (the one stated extra of the wrap
-# canary); no finding at all in the clean state; byte-identical findings across two runs and across release and san;
-# every finding replays to its id; the contract's exceptions turn exactly their finding into info, and an unused or
-# expired one is exception-unused; the judges refuse to run without a contract. No canary probe process is left.
+# selftest/ui_canary_product (speaking the scene vocabulary of the real lockers kiosk) is built as a probe in release
+# and san; `rigor ui-explore --judges ui-scene,ui-fit --today` replays the clean state, one state per check and a
+# correct modal dialog (canary.paths.json). Per check: exactly its findings, the ids recomputed here from the identity,
+# in its canary state, and nothing else there; nothing in the clean state nor under the modal dialog; every check
+# examined nodes (checks-examined) and none is check-vacuous; the summary counts the judges' findings; byte-identical
+# findings across two runs and across release and san; every finding replays to its id; the contract's exceptions
+# against --today; the judges refuse to run without a contract, a date or known names. No canary probe is left.
 # Needs bash, python3 (stdlib) and tools/buck2. Scratch lives under $TMPDIR.
 set -uo pipefail
 
@@ -35,11 +36,12 @@ build_out() {
 CAT="$prod/canary.events.toml"
 PATHS="$prod/canary.paths.json"
 CONTRACT="$prod/canary.toml"
+TODAY=2026-11-16
 # judge <name> <wanted exit> <probe> <contract> [args...]: replays the canary paths with both judges
 judge() {
   local name="$1" want="$2" bin="$3" contract="$4"; shift 4
   "${RIGOR[@]}" ui-explore --probe "$bin" --catalogue "$CAT" --strategy replay --paths "$PATHS" \
-    --judges ui-scene,ui-fit --contract "$contract" --out "$out/j.$name.json" "$@" > "$out/j.$name.txt" 2>&1
+    --judges ui-scene,ui-fit --contract "$contract" --today "$TODAY" --out "$out/j.$name.json" "$@" > "$out/j.$name.txt" 2>&1
   local rc=$?
   [ "$rc" = "$want" ] || fail "$CUR: ui-explore $name exited $rc, wanted $want" "$out/j.$name.txt"
 }
@@ -48,56 +50,71 @@ begin "c_ui_probe builds the probe of the canary app in release and in san"
 build_out probe_rel "$REL" "$P:probe"
 build_out probe_san "$SAN" "$P:probe"
 
-begin "the judges on the canary: per check exactly one finding with its recomputed id in its canary state and nothing else there; nothing in the clean state"
-judge rel.1 1 "$probe_rel" "$CONTRACT" --evidence "$out/ev.rel.1"
-python3 -I - "$out/j.rel.1.json" "$PATHS" <<'PY' || fail "$CUR: the canary findings" "$out/j.rel.1.txt"
+begin "the judges on the canary: per check exactly its finding, the id recomputed, in its canary state and nothing else there; nothing in the clean state nor in the correct modal dialog; every check examined nodes and none is vacuous"
+judge rel.1 1 "$probe_rel" "$CONTRACT" --evidence "$out/ev.rel.1" --summary "$out/j.rel.1.sum"
+python3 -I - "$out/j.rel.1.json" "$PATHS" "$out/j.rel.1.sum" <<'PY' || fail "$CUR: the canary findings" "$out/j.rel.1.txt"
 import hashlib, json, sys
 found = [json.loads(line) for line in open(sys.argv[1])]
 paths = json.load(open(sys.argv[2]))["paths"]
-# canary event -> (gate, check, identity) of the one finding it must give (docs/ui-judges.md, "Canaries")
+summary = json.load(open(sys.argv[3]))
+# canary event -> (gate, check, identity, stateless) of the findings it must give (docs/ui-judges.md, "Canaries")
 WANT = {
-    "v-occluded": ("ui-scene", "occluded-target", ["ok"]),
-    "v-overlay": ("ui-scene", "overlay-policy", ["veil", "ok", "captures"]),
-    "v-small": ("ui-scene", "touch-target-small", ["ok", "dp"]),
-    "v-spacing": ("ui-scene", "target-spacing", ["back", "ok", "hard"]),
-    "v-bounds": ("ui-scene", "node-out-of-bounds", ["edge", "window"]),
-    "v-overlap": ("ui-scene", "text-overlap", ["body", "title"]),
-    "v-font": ("ui-scene", "font-below-min", ["body"]),
-    "v-hierarchy": ("ui-scene", "hierarchy-violated", ["rank"]),
-    "v-raw": ("ui-scene", "raw-text", ["body", "empty"]),
-    "v-wrap": ("ui-scene", "wrap-policy-undeclared", ["body"]),
-    "v-overflow": ("ui-fit", "text-overflow", ["body"]),
-    "v-clipped": ("ui-fit", "text-clipped", ["ok"]),
-    "v-dots": ("ui-fit", "full-string-shown", ["body"]),
-    "v-unmeasurable": ("ui-fit", "fit-unmeasurable", ["body", "facts"]),
-    "v-glyph": ("ui-fit", "glyph-missing", ["body"]),
-    "v-unmatched": ("ui-scene", "stage-unmatched", ["scene", "ghost", "absent"]),
+    "v-occluded": [("ui-scene", "occluded-target", ["ok"], False)],
+    "v-overlay": [("ui-scene", "overlay-policy", ["veil", "ok", "captures"], False)],
+    "v-small": [("ui-scene", "touch-target-small", ["ok", "dp"], False)],
+    "v-spacing": [("ui-scene", "target-spacing", ["back", "ok", "hard"], False)],
+    "v-bounds": [("ui-scene", "node-out-of-bounds", ["edge", "window"], False)],
+    "v-overlap": [("ui-scene", "text-overlap", ["body", "title"], False)],
+    "v-font": [("ui-scene", "font-below-min", ["body"], False)],
+    "v-hierarchy": [("ui-scene", "hierarchy-violated", ["rank"], False)],
+    "v-raw": [("ui-scene", "raw-text", ["body", "empty"], False)],
+    # a role without a wrap scope: the contract's gap, once per role per run (and ui-fit cannot judge its overflow)
+    "v-wrap": [("ui-scene", "wrap-policy-undeclared", ["role", "caption"], True),
+               ("ui-fit", "contract-incomplete", ["role-wrap", "caption"], True)],
+    "v-overflow": [("ui-fit", "text-overflow", ["title"], False)],
+    "v-clipped": [("ui-fit", "text-clipped", ["ok"], False)],
+    "v-dots": [("ui-fit", "full-string-shown", ["body"], False)],
+    "v-unmeasurable": [("ui-fit", "fit-unmeasurable", ["body", "facts"], False)],
+    "v-glyph": [("ui-fit", "glyph-missing", ["body"], False)],
+    "v-unmatched": [("ui-scene", "stage-unmatched", ["scene", "ghost", "absent"], False)],
+    "v-toggle": [("ui-scene", "toggle-group-indistinct", ["language", "bg"], False)],
+    "v-text": [("ui-scene", "stage-text-mismatch", ["scene", "body"], False)],
+    "v-shrunk": [("ui-fit", "font-shrunk", ["body"], False)],
+    "v-modal": [],
 }
-# the one stated extra: a text node without a wrap scope cannot be measured for overflow either
-EXTRA = {"v-wrap": [("ui-fit", "fit-unmeasurable", ["body", "scope"])]}
-def fid(gate, check, identity, key):
-    data = json.dumps([gate, check, [identity, key]], sort_keys=True, separators=(",", ":")).encode() + b"\n"
+def fid(gate, check, identity, key, stateless):
+    data = json.dumps([gate, check, identity if stateless else [identity, key]], sort_keys=True,
+                      separators=(",", ":")).encode() + b"\n"
     return "%s.%s/%s" % (gate, check, hashlib.sha256(data).hexdigest()[:12])
 assert sorted(WANT) == sorted(p[-1] for p in paths[1:]) and paths[0] == ["open 1000000000 7"], "paths"
-assert not [f for f in found if f["path"] == paths[0]], "a finding in the clean state: %r" % [f["id"] for f in found if f["path"] == paths[0]]
+run_level = [f for f in found if f["state"] is None and f["check"] in ("checks-examined", "check-vacuous")]
+assert sorted((f["gate"], f["check"], f["severity"]) for f in run_level) == \
+    [("ui-fit", "checks-examined", "info"), ("ui-scene", "checks-examined", "info")], run_level
+for f in run_level:
+    assert all(n > 0 for n in f["observed"]["totals"].values()), f["observed"]["totals"]
+    assert f["observed"]["states"] == 21
+found = [f for f in found if f not in run_level]
+assert not [f for f in found if f["path"] == paths[0]], [f["id"] for f in found if f["path"] == paths[0]]
 keys = {}
 for path in paths[1:]:
     event = path[-1]
     here = [f for f in found if f["path"] == path]
-    assert here and len({f["state"]["key"] for f in here}) == 1, "%s: no finding or several states" % event
-    key = here[0]["state"]["key"]
+    states = {f["state"]["key"] for f in here if f["state"] is not None}
+    assert len(states) <= 1, "%s: several states" % event
+    if not WANT[event]:
+        assert here == [], "%s: %r" % (event, [f["id"] for f in here])
+        continue
+    key = states.pop() if states else None
     keys[event] = key
-    want = [WANT[event]] + EXTRA.get(event, [])
     got = sorted((f["gate"], f["check"], f["id"]) for f in here)
-    expected = sorted((g, c, fid(g, c, i, key)) for g, c, i in want)
+    expected = sorted((g, c, fid(g, c, i, key, st)) for g, c, i, st in WANT[event])
     assert got == expected, "%s: got %r, wanted %r" % (event, got, expected)
-    gate, check, _ = WANT[event]
-    assert len([f for f in here if f["check"] == check]) == 1
-assert len(set(keys.values())) == len(keys), "two canary states share a key"
-assert len(found) == len(WANT) + 1, "%d findings" % len(found)
-severity = {f["check"]: f["severity"] for f in found if f["check"] != "fit-unmeasurable"}
-assert severity.pop("stage-unmatched") == "info" and set(severity.values()) == {"error"}
-print("  %d checks, one canary state each, ids recomputed; the clean state has none" % len(WANT))
+assert len(set(v for v in keys.values() if v)) == len([v for v in keys.values() if v]), "two canary states share a key"
+assert len(found) == sum(len(w) for w in WANT.values()), "%d findings" % len(found)
+assert {f["severity"] for f in found} == {"error"}
+counts = summary["findings"]
+assert counts["ui-scene.checks-examined"] == 1 and counts["ui-fit.font-shrunk"] == 1 and counts["intent-missed"] == 0
+print("  %d canary states, the ids recomputed; nothing in the clean state nor under the correct modal dialog" % len(WANT))
 PY
 
 begin "byte-identical findings: two release runs, and release against san"
@@ -109,19 +126,20 @@ diff -r "$out/ev.rel.1" "$out/ev.rel.2" > "$out/ev.diff" || fail "$CUR: the evid
 
 begin "every finding replays from its evidence paths to its id"
 n=0
-for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit("/",1)[1]) for l in open(sys.argv[1])]' "$out/j.rel.1.json"); do
-  dir="$out/ev.rel.1/$ident"
-  [ -f "$dir/paths.json" ] && [ -f "$dir/records.json" ] || fail "$CUR: no evidence paths or records for $ident" "$out/j.rel.1.txt"
+for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit("/",1)[1], int(json.loads(l)["state"] is not None)) for l in open(sys.argv[1])]' "$out/j.rel.1.json" | tr ' ' ':'); do
+  stated="${ident#*:}"; ident="${ident%:*}"; dir="$out/ev.rel.1/$ident"
+  [ -f "$dir/paths.json" ] || fail "$CUR: no evidence paths for $ident" "$out/j.rel.1.txt"
+  [ "$stated" = 0 ] || [ -f "$dir/records.json" ] || fail "$CUR: no evidence records for $ident" "$out/j.rel.1.txt"
   "${RIGOR[@]}" ui-explore --probe "$probe_rel" --catalogue "$CAT" --strategy replay --paths "$dir/paths.json" \
-    --judges ui-scene,ui-fit --contract "$CONTRACT" --out "$out/rp.json" > "$out/rp.txt" 2>&1
+    --judges ui-scene,ui-fit --contract "$CONTRACT" --today "$TODAY" --out "$out/rp.json" > "$out/rp.txt" 2>&1
   [ "$?" -le 1 ] || fail "$CUR: replay of $ident failed" "$out/rp.txt"
   grep -q "/$ident\"" "$out/rp.json" || fail "$CUR: the replay of $ident does not give $ident" "$out/rp.txt"
   n=$((n + 1))
 done
-[ "$n" = 17 ] || fail "$CUR: $n findings replayed, wanted 17"
+[ "$n" = 22 ] || fail "$CUR: $n findings replayed, wanted 22"
 echo "  $n findings replayed to their ids"
 
-begin "exceptions: a live one turns exactly its finding into info with its expiry; an unused and an expired one are exception-unused"
+begin "exceptions against --today: a live one turns exactly its finding into info with its expiry; an unused one is exception-unused, an error when its target was visited and info when not; an expired one is an error and changes nothing"
 { cat "$CONTRACT"; cat <<'TOML'
 [[exception]]
 id = "x-small"
@@ -131,18 +149,25 @@ reason = "selftest: a live exception"
 expires = "2099-12-31"
 provenance = "owner:D1"
 [[exception]]
-id = "x-unused"
-rule = "text-overlap"
-target = "nobody/none"
-reason = "selftest: matches nothing"
+id = "x-seen"
+rule = "raw-text"
+target = "title"
+reason = "selftest: its target is visited, it matches nothing"
 expires = "2099-12-31"
 provenance = "owner:D2"
+[[exception]]
+id = "x-unseen"
+rule = "text-overlap"
+target = "nobody/none"
+reason = "selftest: its target is never visited"
+expires = "2099-12-31"
+provenance = "owner:D4"
 [[exception]]
 id = "x-expired"
 rule = "node-out-of-bounds"
 target = "edge"
 reason = "selftest: expired"
-expires = "2020-01-01"
+expires = "2026-11-15"
 provenance = "owner:D3"
 TOML
 } > "$out/exc.toml"
@@ -158,21 +183,27 @@ assert len(small) == 1 and exc[small[0]]["severity"] == "info"
 assert exc[small[0]]["observed"]["exception"] == {"id": "x-small", "expires": "2099-12-31"}
 bounds = [i for i, f in plain.items() if f["check"] == "node-out-of-bounds"]
 assert exc[bounds[0]] == plain[bounds[0]], "an expired exception changed its finding"
-unused = sorted((f["observed"]["exception"], f["observed"]["expired"]) for f in exc.values() if f["check"] == "exception-unused")
-assert unused == [("x-expired", True), ("x-unused", False)], unused
-others = set(exc) - set(plain)
-assert len(others) == 2 and set(plain) - set(exc) == set()
+unused = sorted((f["observed"]["exception"], f["observed"]["expired"], f["observed"]["target_visited"], f["severity"])
+                for f in exc.values() if f["check"] == "exception-unused")
+assert unused == [("x-expired", True, True, "error"), ("x-seen", False, True, "error"),
+                  ("x-unseen", False, False, "info")], unused
+assert len(set(exc) - set(plain)) == 3 and set(plain) - set(exc) == set()
 assert all(exc[i] == plain[i] for i in plain if i not in small), "an exception touched another finding"
-print("  x-small applied (info, expires 2099-12-31); x-unused and x-expired are exception-unused")
+print("  x-small applied (info, expires 2099-12-31); x-seen and x-expired errors, x-unseen info")
 PY
 
-begin "the judges need a contract and known names (exit 2)"
-"${RIGOR[@]}" ui-explore --probe "$probe_rel" --catalogue "$CAT" --strategy replay --paths "$PATHS" --judges ui-scene \
-  --out "$out/n.json" > "$out/n.txt" 2>&1
-[ "$?" = 2 ] && grep -q "need --contract" "$out/n.txt" || fail "$CUR: --judges without --contract" "$out/n.txt"
-"${RIGOR[@]}" ui-explore --probe "$probe_rel" --catalogue "$CAT" --strategy replay --paths "$PATHS" --judges ui-scene,ui-nope \
-  --contract "$CONTRACT" --out "$out/n.json" > "$out/n.txt" 2>&1
-[ "$?" = 2 ] && grep -q "distinct names of" "$out/n.txt" || fail "$CUR: an unknown judge" "$out/n.txt"
+begin "the judges need a contract, --today and known names (exit 2)"
+refused() {
+  local why="$1"; shift
+  "${RIGOR[@]}" ui-explore --probe "$probe_rel" --catalogue "$CAT" --strategy replay --paths "$PATHS" \
+    --out "$out/n.json" "$@" > "$out/n.txt" 2>&1
+  [ "$?" = 2 ] && grep -q -- "$why" "$out/n.txt" || fail "$CUR: wanted exit 2 and '$why' for $*" "$out/n.txt"
+}
+refused "need --contract" --judges ui-scene --today "$TODAY"
+refused "need --today" --judges ui-scene --contract "$CONTRACT"
+refused "distinct names of" --judges ui-scene,ui-nope --contract "$CONTRACT" --today "$TODAY"
+refused "only for --judges" --contract "$CONTRACT" --today "$TODAY"
+refused "today" --judges ui-scene --contract "$CONTRACT" --today 2026-13-01
 
 begin "no canary probe process this selftest started is still alive"
 python3 -I - "$probe_rel" "$probe_san" <<'PY' || fail "$CUR: canary probe processes left behind"

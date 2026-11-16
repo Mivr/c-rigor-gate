@@ -1,7 +1,7 @@
 /* The model adapter of the canary app (selftest/ui_judges.sh): implements ui/model/model.h on top of canary.h.
  * Intent v (1..CANARY_VARIANTS-1, arg 0) rebuilds the scene as variant v; intent 0 the clean scene. The semantic records
- * are the scene table in the vocabulary of docs/ui-judges.md: rects in display pixels, flags `-`, the role, style,
- * importance, layer policy and wrap scope of each node. No deadline, no env input. */
+ * are the scene table in the vocabulary of docs/ui-judges.md (that of the real lockers adapter): rects in display
+ * pixels, structural roles, flag letters, numeric style tokens. No deadline, no env input. */
 #include <stdio.h>
 #include <string.h>
 
@@ -121,7 +121,8 @@ static bool escape(char *out, size_t cap, const char *in)
     return true;
 }
 
-/* key, role, label, x, y, w, h, enabled, intent:arg, flags, style, importance, input_policy, wrap_policy */
+/* key, role, label, x, y, w, h, enabled, intent:arg, flags, style token, and `-` for importance, input_policy and
+ * wrap_policy (the judges take them from the contract), as the real lockers adapter writes them. */
 static bool node_line(unsigned i, uim_buf_t *out)
 {
     canary_node_t node;
@@ -130,9 +131,9 @@ static bool node_line(unsigned i, uim_buf_t *out)
     if (!canary_node(i, &node) || !escape(text, sizeof text, node.text)) {
         return false;
     }
-    n = snprintf(out->data + out->len, out->cap - out->len, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t1\t%s\t-\t%s\t%s\t%s\t%s\n",
-                 node.key, node.role, text, (int)node.x, (int)node.y, (int)node.w, (int)node.h, node.intent,
-                 node.style, node.importance, node.policy, node.wrap);
+    n = snprintf(out->data + out->len, out->cap - out->len, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%u\t-\t-\t-\n",
+                 node.key, node.role, text, (int)node.x, (int)node.y, (int)node.w, (int)node.h, node.enabled ? 1 : 0,
+                 node.intent, node.flags, node.token);
     if (n <= 0 || (size_t)n >= out->cap - out->len) {
         return false;
     }
