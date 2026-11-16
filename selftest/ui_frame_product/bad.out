@@ -15,9 +15,10 @@ err tap bad-arguments
 err crop no-frame
 err crop bad-arguments
 err frame bad-arguments
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
@@ -248,9 +249,10 @@ ok apply
 err frame too-large
 err semantic not-open
 ok open
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
@@ -307,9 +309,10 @@ ok apply
 err frame model-contract
 ok open
 ok apply
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
@@ -362,9 +365,10 @@ ok apply
 err frame model-contract
 ok open
 ok apply
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
@@ -413,9 +417,10 @@ ok open
 err frame model-contract
 ok open
 ok apply
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
@@ -461,9 +466,10 @@ region	14	3f670cca
 err frame model-contract
 err semantic not-open
 ok open
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
@@ -515,9 +521,10 @@ fail frame
 err semantic not-open
 ok open
 ok apply
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
@@ -563,9 +570,10 @@ region	14	3f670cca
 fail tap
 err semantic not-open
 ok open
-ok frame lines 44
+ok frame lines 45
 lvprobe	1	15
 frame	160	120	3f670cca
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	3f670cca
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0

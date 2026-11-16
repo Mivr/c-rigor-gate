@@ -16,6 +16,12 @@ static lv_obj_t *g_scrim;           /* the notice's transparent scrim over the w
 static lv_indev_t *g_indev;         /* the product's pointer */
 static lv_point_t g_touch;
 static bool g_touch_down;
+static struct {
+    lv_point_t at;
+    bool down;
+} g_queue[TOY_QUEUE];               /* the host's pointer samples, not yet read by LVGL */
+static unsigned g_queued;
+static bool g_pointer_on;           /* what toy_set_pointer_enabled last asked LVGL for (LVGL has no getter) */
 static uint64_t g_notice_due = UINT64_MAX;
 static bool g_pressed;
 
@@ -89,6 +95,8 @@ bool toy_start(void)
     lv_init();
     g_notice_due = UINT64_MAX;
     g_pressed = false;
+    g_queued = 0;
+    g_pointer_on = true;
     g_disp = lvgl_gate_test_display_create(TOY_W, TOY_H, g_frame, sizeof g_frame, &g_draw_buf);
     if (g_disp == NULL || !create_pointer()) {
         return false;
@@ -118,6 +126,52 @@ void toy_press(void)
     lv_indev_read(g_indev);
     g_touch_down = false;
     lv_indev_read(g_indev);
+}
+
+bool toy_pointer(int32_t x, int32_t y, bool down)
+{
+    if (g_indev == NULL || g_queued >= TOY_QUEUE) {
+        return false;
+    }
+    g_queue[g_queued].at.x = x;
+    g_queue[g_queued].at.y = y;
+    g_queue[g_queued].down = down;
+    g_queued++;
+    return true;
+}
+
+unsigned toy_pump(void)
+{
+    unsigned i;
+    unsigned n = g_queued;
+    for (i = 0; i < n && g_indev != NULL; i++) {
+        g_touch = g_queue[i].at;
+        g_touch_down = g_queue[i].down;
+        lv_indev_read(g_indev);
+    }
+    g_touch_down = false;
+    g_queued = 0;
+    return n;
+}
+
+void toy_set_pointer_enabled(bool enabled)
+{
+    if (g_indev != NULL) {
+        lv_indev_enable(g_indev, enabled);
+        g_pointer_on = enabled;
+    }
+}
+
+bool toy_pointer_enabled(void)
+{
+    return g_indev != NULL && g_pointer_on;
+}
+
+void toy_set_button_disabled(bool disabled)
+{
+    if (g_button != NULL) {
+        lv_obj_set_state(g_button, LV_STATE_DISABLED, disabled);
+    }
 }
 
 void toy_show_notice(const char *text, uint64_t now_ms)

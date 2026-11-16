@@ -20,6 +20,7 @@ typedef struct {
     uint16_t indexed;     /* events g_life[0..indexed) were drained before any walk of this command */
     bool walked;
     probe_work_t work;    /* the last uim_settle */
+    bool attached;        /* this frame attached lvprobe (the session's first): it carries the `taps` line */
 } snap_t;
 
 /* ---- the display and the indev ------------------------------------------------------------------------------- */
@@ -79,7 +80,14 @@ static lvprobe_status_t attach(probe_t *p, lv_display_t *disp)
     cfg.scratch = g_ink_px;
     cfg.scratch_px = PROBE_LV_SCRATCH_PX;
     st = lvprobe_open(p->lv, disp, &cfg);
+    if (st == LVPROBE_OK && p->pointer) {
+        st = lvprobe_observe_taps(p->lv);   /* FORMAT: `pointer` announced, but no pointer indev of the product's */
+        if (st != LVPROBE_OK) {
+            lvprobe_close(p->lv);
+        }
+    }
     p->disp = st == LVPROBE_OK ? disp : NULL;
+    p->product_indev = st == LVPROBE_OK && cfg.indev != NULL;
     return st;
 }
 
@@ -143,7 +151,22 @@ static lvprobe_status_t snapshot(probe_t *p, snap_t *s)
 
 /* ---- the reply ----------------------------------------------------------------------------------------------- */
 
-/* The head, every node (streamed: one encoder call per node, at its offset) and the life lines into out[0..*at). */
+/* The `taps` line of the frame that attached lvprobe (U05c): which path taps take. `entry`: the product's pointer
+ * entry (capability `pointer`); `indev`: injected at the product's own pointer indev; `probe`: injected at the indev
+ * lvprobe created (the display had none). TRUNC when it does not fit (`*at` does not move). */
+static lvprobe_status_t taps_line(const probe_t *p, char *out, size_t cap, size_t *at)
+{
+    const char *path = p->pointer ? "entry" : p->product_indev ? "indev" : "probe";
+    int n = snprintf(out + *at, cap - *at, "taps\t%s\n", path);
+    if (n <= 0 || (size_t)n >= cap - *at) {
+        return LVPROBE_ERR_TRUNC;
+    }
+    *at += (size_t)n;
+    return LVPROBE_OK;
+}
+
+/* The head (and, in the frame that attached, the `taps` line), every node (streamed: one encoder call per node, at
+ * its offset) and the life lines into out[0..*at). */
 static lvprobe_status_t encode(const probe_t *p, const snap_t *s, char *out, size_t cap, size_t *at)
 {
     size_t len = 0;
@@ -151,6 +174,7 @@ static lvprobe_status_t encode(const probe_t *p, const snap_t *s, char *out, siz
     uint16_t count = lvprobe_count(p->lv);
     lvprobe_status_t st = lvprobe_encode_head(p->lv, out, cap, &len);
     *at = st == LVPROBE_OK ? len : 0u;
+    st = (st == LVPROBE_OK && s->attached) ? taps_line(p, out, cap, at) : st;
     for (i = 0; i < count && st == LVPROBE_OK; i++) {
         st = lvprobe_encode_node(p->lv, i, out + *at, cap - *at, &len);
         *at += st == LVPROBE_OK ? len : 0u;
@@ -202,7 +226,8 @@ bool probe_cmd_frame(probe_t *p, char **arg)
     if (disp == NULL || !listed(disp) || (p->disp != NULL && disp != p->disp)) {
         return probe_fatal(p, "model-contract");   /* no display, one LVGL does not know, or another one */
     }
-    st = p->disp == NULL ? attach(p, disp) : LVPROBE_OK;
+    s.attached = p->disp == NULL;
+    st = s.attached ? attach(p, disp) : LVPROBE_OK;
     if (st != LVPROBE_OK) {
         return probe_fatal(p, probe_why(st));
     }

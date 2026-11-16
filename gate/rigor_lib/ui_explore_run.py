@@ -57,6 +57,7 @@ class Step:
     images: dict = field(default_factory=dict)
     misrouted: object = None      # a u2 tap pressed another non-root node than the one its target names
     noop: object = None           # a tap that must change nothing changed the model
+    ambient: object = None        # a tap whose declared ambient events were missing or repeated (U05c)
     image_box: object = None      # (x, y, w, h) of the evidence image of the node a tap pressed
     key: object = None
     proj: object = None
@@ -141,7 +142,8 @@ def _do_word(session, step, run, catalogue, before):
         if event.cls == "t1":
             words_mod.time_event(session, step, run, event, catalogue, step.key_before)
         else:
-            words_mod.inputs(session, step, words_mod.snapshot_of(before.obs), words_mod.input_sends(session, event))
+            words_mod.inputs(session, step, words_mod.snapshot_of(before.obs), words_mod.input_sends(session, event),
+                             catalogue)
 
 
 def _observe(session, step):

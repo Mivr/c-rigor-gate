@@ -279,6 +279,20 @@ f-strings), `bad-statement` (assignment, `def`, `if`, `for`, import, bare expres
 `BUCK.*` such as `BUCK.v2` which wins over `BUCK`, `TARGETS*`, `PACKAGE*`, `.buckconfig*`, `.buckroot`,
 `.buckignore`, `.buckjavaversion`, and `buck`/`Buck` spellings), `symlink` (any symlink anywhere).
 
+The UI macros come from the second permitted load, `load("@gate//rules:ui.bzl", ...)`, naming only `c_ui_probe` and
+`c_ui_probe_session` (docs/ui-model.md). `c_ui_probe(name, model)` (U03). `c_ui_probe_session(name, probe, session,
+expected)` (U05c): exactly these four keywords, all of them, string literals; `probe` is `":x"` of a `c_ui_probe` declared
+in the same BUCK file (why `probe` otherwise, `value` for any other form, `__` included); `session` and `expected` are
+two different plain relative files of the package (why `value`: no label, glob, `.`/`..` segment, empty segment, absolute
+path or backslash; why `file`: the same file twice); a missing keyword is why `missing`. Nothing may depend on a session,
+on a probe or on the probe's mark `<probe>__ui_probe` (why `test-target`). The rule kind behind the macro,
+`ui_probe_session_run`, is not loadable by a product (`bad-load`) and is no macro (`bad-call`).
+
+**A `c_ui_probe_session` IS ENFORCED BY `buck2 test` ONLY, NOT YET BY `rigor grade`:** the grade's `build` gate collects
+only `ctest_results` targets. Follow-up: `kind(ui_probe_session_run, //...)` in `grade_build.result_targets`, the tests
+gate seeing the id `ui_probe_session/<pkg>:<name>`, and a selftest step in which a failing session fails a grade
+(docs/ui-model.md, "`c_ui_probe_session`").
+
 ## Builtins (T014)
 The symbol deny list and `-Wframe-larger-than` are keyed on symbols and static frames; a compiler builtin
 has neither (`__builtin_alloca` is a stack adjustment, `__builtin_setjmp`/`__builtin_longjmp` are

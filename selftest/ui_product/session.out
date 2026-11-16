@@ -2,9 +2,10 @@ ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop
 ok domain-count 2
 ok open
 ok env-inputs 1 1:1:0:-
-ok frame lines 26
+ok frame lines 27
 lvprobe	1	9
 frame	160	120	fc2f3b12
+taps	indev
 node	0	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
 region	0	fc2f3b12
 node	1	-1	0	lv_obj	0	0	159	119	0	1	-1	-1	0	0	ffffff	255	255	1	0	0

@@ -31,8 +31,10 @@ from rigor_lib.ui_explore_grammar import (BUF_MAX, DOMAIN_MAX, FRAME_FIELDS, INK
                                           parse_typed_line, printable)
 
 GREETING = "ui-probe/1 ready"
-# what a greeting may announce, in this order (docs/ui-model.md "The greeting"; the C probe announces them all)
-CAPABILITIES = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop")
+# what a greeting may announce, in this order (docs/ui-model.md "The greeting"; the C probe announces the first six, and
+# `pointer` (U05c) when the product's taps go through its own pointer entry; no explorer behaviour depends on it, a
+# catalogue may require it)
+CAPABILITIES = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer")
 TAP_CAPS = ("hit-test", "tap")          # catalogue taps (u2, u3) need both: every tap is preceded by its hit query
 FRAME_MS = 16
 ADVANCE_MAX_MS = 600000

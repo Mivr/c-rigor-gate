@@ -5,7 +5,16 @@
  * violation), INTENT_CHAIN makes the next notice timeout arm a second timer 20 ms later (a deadline created during an
  * advance), INTENT_SHRINK_BUF makes uim_semantic change the capacity of the caller's buffer, INTENT_MANY_TABS writes a trace record with 40 TABs, INTENT_LOG_STEPS toggles one trace event per uim_step (so the frame grid is visible).
  * INTENT_PRESS taps the button through the app's pointer: while the notice shows, its scrim takes the tap and the apply
- * is UIM_MISSED (U05a, the F3b canary). */
+ * is UIM_MISSED (U05a, the F3b canary).
+ * U05c: the toy's pointer entry, `uim_pointer`, works like a host's input hook: it queues the sample above LVGL (toy.h)
+ * and a press posts the trace event `touch`; `uim_settle` feeds the queue to the app's indev, then runs the press the
+ * button's handler recorded. It exists only in the build that links pointer_on.c (`uim_pointer_supported`); the build
+ * with pointer_off.c has no entry, so the probe injects its taps at the indev and no `touch` is posted.
+ * INTENT_POINTER_TOGGLE disables (and then enables again) the app's pointer indev: LVGL processes no tap then.
+ * Two broken pointer entries for the probe's rules: after INTENT_POINTER_FAIL `uim_pointer` fails (`fail tap`, the
+ * session poisoned); after INTENT_POINTER_TWICE a release queues a second whole tap after it (two presses and two
+ * clicks: not one tap, `err tap model-contract`). INTENT_BUTTON_DISABLE and INTENT_BUTTON_ENABLE put the button in
+ * LVGL's disabled state and back (a tap then presses it and clicks nothing, on both paths). */
 #include <stdio.h>
 #include <string.h>
 
@@ -13,7 +22,9 @@
 #include "ui/model/model.h"
 
 enum { LOG_MAX = 2048, INTENT_PRESS = 1, INTENT_BROKEN = 666, INTENT_BAD_RECORD = 667,
-       INTENT_DUE_NOW = 668, INTENT_CHAIN = 669, INTENT_LOG_STEPS = 670, INTENT_MANY_TABS = 671, INTENT_SHRINK_BUF = 672, ENV_OFFLINE = 1, LINE_MAX_BYTES = 160 };
+       INTENT_DUE_NOW = 668, INTENT_CHAIN = 669, INTENT_LOG_STEPS = 670, INTENT_MANY_TABS = 671, INTENT_SHRINK_BUF = 672,
+       INTENT_POINTER_TOGGLE = 673, INTENT_POINTER_FAIL = 674, INTENT_POINTER_TWICE = 675,
+       INTENT_BUTTON_DISABLE = 676, INTENT_BUTTON_ENABLE = 677, ENV_OFFLINE = 1, LINE_MAX_BYTES = 160 };
 
 struct uim {
     bool open;
@@ -24,6 +35,8 @@ struct uim {
     bool chain;
     bool log_steps;
     bool shrink;
+    bool pointer_fail;
+    bool pointer_twice;
     char patches[LOG_MAX];
     size_t patches_len;
     char trace[LOG_MAX];
@@ -117,6 +130,8 @@ bool uim_open(uim_t *m, uint64_t clock_origin_ms, uint64_t seed)
     m->chain = false;
     m->log_steps = false;
     m->shrink = false;
+    m->pointer_fail = false;
+    m->pointer_twice = false;
     if (!toy_start()) {
         return false;
     }
@@ -161,6 +176,19 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
         m->log_steps = in->id == INTENT_LOG_STEPS ? !m->log_steps : m->log_steps;
         return UIM_OK;
     }
+    if (in->kind == UIM_IN_INTENT && (in->id == INTENT_POINTER_FAIL || in->id == INTENT_POINTER_TWICE)) {
+        m->pointer_fail = m->pointer_fail || in->id == INTENT_POINTER_FAIL;
+        m->pointer_twice = m->pointer_twice || in->id == INTENT_POINTER_TWICE;
+        return UIM_OK;
+    }
+    if (in->kind == UIM_IN_INTENT && (in->id == INTENT_BUTTON_DISABLE || in->id == INTENT_BUTTON_ENABLE)) {
+        toy_set_button_disabled(in->id == INTENT_BUTTON_DISABLE);
+        return UIM_OK;
+    }
+    if (in->kind == UIM_IN_INTENT && in->id == INTENT_POINTER_TOGGLE) {
+        toy_set_pointer_enabled(!toy_pointer_enabled());
+        return UIM_OK;
+    }
     if (in->kind == UIM_IN_INTENT && in->id == INTENT_SHRINK_BUF) {
         m->shrink = true;
         return UIM_OK;
@@ -190,13 +218,27 @@ uim_result_t uim_apply(uim_t *m, const uim_input_t *in)
     return UIM_REFUSED;
 }
 
-/* A probe tap at the button leaves a press queued (the button's handler records it): run it now, as an apply would. */
+/* The toy's pointer entry: queue the sample, and a press posts `touch` (only in the build that has the entry). */
+bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down)
+{
+    if (!uim_pointer_supported() || !m->open || m->pointer_fail || !toy_pointer(x, y, down)) {
+        return false;
+    }
+    if (m->pointer_twice && !down && (!toy_pointer(x, y, true) || !toy_pointer(x, y, false))) {
+        return false;   /* the release of a tap, then a second whole tap */
+    }
+    return !down || event(m, "touch");
+}
+
+/* The queued pointer samples go to the app's indev; a tap at the button leaves a press queued (the button's handler
+ * records it): run it now, as an apply would. */
 uim_result_t uim_settle(uim_t *m, bool *worked)
 {
     *worked = false;
     if (!m->open) {
         return UIM_ERROR;
     }
+    *worked = toy_pump() > 0u;
     if (!toy_take_press()) {
         return UIM_OK;
     }

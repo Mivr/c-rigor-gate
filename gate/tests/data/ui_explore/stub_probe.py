@@ -63,6 +63,16 @@ the notice is shown the button's tap changes nothing (the F3b canary) and intent
     blankchange  a tap on the screen (outside the button) emits a trace event
     cropbad      `crop` rows are one hex digit short
 
+U05c, the product's pointer entry: these frame-facts modes announce `pointer` too (all but `pindev`) and write the
+`taps` line in the first frame of a session (`entry`; `indev` for `pindev`). Every tap is a sample through the entry:
+
+    ptouch       every tap posts one `touch` at its instant (a correct product with an ambient event)
+    pnotouch     a tap posts no `touch` (ambient-missing)
+    ptwice       a tap posts `touch` twice (ambient-extra)
+    pchange      as ptouch, and a tap on the screen (outside the button) also emits a patch (noop-tap-effect)
+    prestart     as ptouch, and every tap restarts an idle deadline 5000 ms later (armed at open; it does nothing)
+    pindev       no `pointer`: taps are injected at the product's own indev (`taps indev`: taps-injected)
+
 In every mode intent 2 is accepted only while the notice is shown (trace `late`), intent 10 is a pad digit (accepted,
 trace `digit`) and intent 11 the pad's enter (accepted after a digit, trace `enter`). A stub that would sleep exits as
 soon as its parent is gone, so a killed explorer never leaves one behind.
@@ -76,7 +86,10 @@ import time
 MODE = sys.argv[1]
 NOTICE_MS = 3000
 FACTS = ("facts", "framebad", "frametype", "tapblocked", "tapdisagree", "noframe", "toolarge", "blankchange", "cropbad",
-         "refuselife", "framework", "misroute", "tapnone", "framenum", "wide")
+         "refuselife", "framework", "misroute", "tapnone", "framenum", "wide", "ptouch", "pnotouch", "ptwice", "pchange",
+         "prestart", "pindev")
+POINTER = ("ptouch", "pnotouch", "ptwice", "pchange", "prestart")
+IDLE_MS = 5000
 SCREEN = "node\t0\t-1\t0\tlv_obj\t0\t0\t3\t1\t0\t1\t-1\t-1\t0\t0\tffffff\t255\t255\t1\t0\t0"
 BUTTON = "node\t1\t0\t1\tlv_button\t0\t0\t1\t1\t0\t1\t-1\t-1\t0\t0\t2196f3\t255\t255\t1\t0\t0"
 OVERLAY = "node\t2\t0\t1\tlv_obj\t0\t0\t3\t1\t0\t1\t-1\t-1\t0\t0\tffffff\t0\t0\t1\t0\t0"
@@ -100,6 +113,8 @@ class Model:
         self.patches = ["create\tscreen\t-\t-\t-"]
         self.life = ["life\t0\tcreated\t0\t-1\t0\t=lv_\\x01obj"]   # in the first frame after its event only
         self.queued = False
+        self.framed = False         # the session's first frame carries the `taps` line (U05c modes)
+        self.idle = origin + IDLE_MS if MODE == "prestart" else None
         self.event("boot")
 
     def event(self, kind):
@@ -107,7 +122,7 @@ class Model:
         self.seq += 1
 
     def next_due(self):
-        dues = [d for d in (self.due, self.spin, self.tick) if d is not None]
+        dues = [d for d in (self.due, self.spin, self.tick, self.idle) if d is not None]
         return min(dues) if dues else None
 
     def press(self):
@@ -170,6 +185,8 @@ class Model:
                 self.spin = self.now + self.alt
             if self.tick is not None and self.now >= self.tick:
                 self.tick += 250
+            if self.idle is not None and self.now >= self.idle:
+                self.idle = None
             if self.due is not None and self.now >= self.due:
                 self.notice, self.due = "", None
                 self.patches.append("set\tnotice\thidden\t0\t1")
@@ -250,6 +267,9 @@ def fact_frame(model):
     if MODE == "wide":
         frame[1] = "frame\t9000\t2\t0badcafe"
         frame[4] = BUTTON.replace("\t1\t1\t0\t1\t-1", "\t8999\t1\t0\t1\t-1")
+    if (MODE in POINTER or MODE == "pindev") and not model.framed:
+        frame.insert(2, "taps\t%s" % ("indev" if MODE == "pindev" else "entry"))
+    model.framed = True
     frame += model.life
     model.life = []
     return frame
@@ -283,6 +303,12 @@ def facts(words, model):
         if MODE == "tapnone":
             return ["ok tap none 1"]
         node = 0 if MODE == "tapdisagree" else hit(words)
+        for _ in range({"ptouch": 1, "pchange": 1, "prestart": 1, "ptwice": 2}.get(MODE, 0)):
+            model.event("touch")     # the entry's own event, at the tap's instant
+        if MODE == "prestart":
+            model.idle = model.now + IDLE_MS
+        if node == 0 and MODE == "pchange":
+            model.patches.append("set\tscreen\tcolor\twhite\tgrey")
         if node == 1 and not model.notice and MODE == "framework":
             model.queued = True
         elif node == 1 and not model.notice:
@@ -351,6 +377,8 @@ def greeting():
         with open(LOG + ".count", "w") as stream:
             stream.write(str(count))
         return "ui-probe/1 ready tap" if count % 2 else "ui-probe/1 ready"
+    if MODE in POINTER:
+        return "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop pointer"
     if MODE in FACTS:
         return "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop"
     return {"tapcap": "ui-probe/1 ready hit-test tap", "badcap": "ui-probe/1 ready teleport",

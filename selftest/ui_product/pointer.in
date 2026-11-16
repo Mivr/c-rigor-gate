@@ -1,0 +1,32 @@
+open 1000 1
+frame
+trace
+hit-test 57 57
+tap 57 57
+trace
+semantic
+next-due
+frame
+hit-test 57 57
+tap 57 57
+trace
+apply 3 673 0 -
+frame
+hit-test 57 57
+tap 57 57
+trace
+apply 3 673 0 -
+advance 4000
+trace
+frame
+tap 57 57
+trace
+advance 7000
+trace
+apply 3 676 0 -
+frame
+hit-test 57 57
+tap 57 57
+trace
+apply 3 677 0 -
+quit

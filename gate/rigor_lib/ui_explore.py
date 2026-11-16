@@ -243,6 +243,9 @@ def explore(args):
         if judges is not None:
             extra.extend(judges.finish(word))
     extra.extend(not_evaluated(c, explorer.exploration) for c in (args.require or ()) if c not in evaluated)
+    if explorer.taps == "indev" and "pointer" not in (caps or ()):
+        extra.append(make("taps-injected", ["taps-injected", catalogue.sha256], None, [word],
+                          {"taps": "indev", "pointer": False}))
     found = _dedupe(explorer.all_findings() + extra)
     if args.evidence:
         _evidence(found, args.evidence, criteria)
@@ -278,7 +281,7 @@ def _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, foun
             "probe_sha256": jsonio.sha256_hex(jsonio.read_bytes(args.probe)), "runs": explorer.runs,
             "abstract_states": len(exploration.reachable), "pairs_exercised": len(exploration.exercised()),
             "domain_count": exploration.domain_count, "domain_visited": sorted(exploration.domain_visited),
-            "events": events, "outcomes": exploration.outcomes,
+            "events": events, "outcomes": exploration.outcomes, "taps": explorer.taps,
             "cost": {"probe_commands": explorer.commands, "virtual_ms": explorer.virtual_ms},
             "findings": _counts(found),
             "detail": detail}

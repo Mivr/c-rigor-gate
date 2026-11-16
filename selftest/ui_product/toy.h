@@ -1,5 +1,6 @@
 /* The toy LVGL app of the UI gate selftest (U03): one screen with a title, one button and one timed notice whose
- * transparent scrim covers the screen while it shows (U05a), and the app's own pointer indev.
+ * transparent scrim covers the screen while it shows (U05a), and the app's own pointer indev, fed from a queue of
+ * pointer samples above LVGL as a real host's input loop does (U05c).
  * Product rules apply: static memory, no libc allocation, LVGL from the gate. */
 #ifndef SELFTEST_UI_PRODUCT_TOY_H
 #define SELFTEST_UI_PRODUCT_TOY_H
@@ -22,6 +23,22 @@ lv_display_t *toy_display(void);
 /* Tap the centre of the button through the app's pointer indev (the production input path). While the notice shows,
  * its transparent clickable scrim covers the screen and takes the tap (the F3b canary): the button gets no click. */
 void toy_press(void);
+
+/* Queue one pointer sample (display pixel, pressed or released) above LVGL, as the host's input hook does; false when
+ * the queue (TOY_QUEUE samples) is full. */
+#define TOY_QUEUE 8u
+bool toy_pointer(int32_t x, int32_t y, bool down);
+
+/* Feed every queued sample to the app's pointer indev, oldest first (one LVGL read each), and empty the queue; the
+ * number of samples fed. */
+unsigned toy_pump(void);
+
+/* Enable or disable the app's pointer indev (LVGL processes no sample of a disabled one). */
+void toy_set_pointer_enabled(bool enabled);
+bool toy_pointer_enabled(void);
+
+/* Put the button in LVGL's disabled state or take it out (LVGL then presses it but sends it no event). */
+void toy_set_button_disabled(bool disabled);
 
 /* True once per click since the last call (the button's handler records it). */
 bool toy_take_press(void);

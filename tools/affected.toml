@@ -181,6 +181,13 @@ selftests = ["require"]
 [[rule]]
 glob = "gate/rigor_lib/ui_pseudo.py"
 selftests = []
+# U13: the deviation-tag scanner runs in the unit tests and as `rigor ui-deviations` only (no selftest uses it).
+[[rule]]
+glob = "gate/rigor_lib/ui_deviations.py"
+selftests = []
+[[rule]]
+glob = "gate/rigor_lib/ui_deviations_*.py"
+selftests = []
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
