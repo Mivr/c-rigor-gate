@@ -6,7 +6,8 @@ import hashlib
 
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_coverage import Exploration, key_facts_judge
-from rigor_lib.ui_explore_judges import (CoarseTable, make, misrouted_judge, missed_judge, noop_judge, probe_error_judge,
+from rigor_lib.ui_explore_judges import (CoarseTable, ambient_judge, make, misrouted_judge, missed_judge, noop_judge,
+                                         probe_error_judge,
                                          run_step_judges,
                                          run_twice_judge, starvation_judge, state_of, unreachable_judge)
 from rigor_lib.ui_explore_probe import ORIGIN_MAX_MS, TAP_CAPS, BudgetSpent
@@ -31,7 +32,8 @@ class Explorer:
         catalogue = config.catalogue
         self.config, self.contract = config, contract
         self.step_judges = [starvation_judge(catalogue.key), unreachable_judge(catalogue.key),
-                            missed_judge(catalogue.key), misrouted_judge(catalogue.key), noop_judge(catalogue.key)]
+                            missed_judge(catalogue.key), misrouted_judge(catalogue.key), noop_judge(catalogue.key),
+                            ambient_judge(catalogue.key)]
         self.step_judges += list(step_judges)
         self.run_judges = [probe_error_judge(catalogue.key), run_twice_judge(catalogue.key)] + list(run_judges)
         self.sendable = [e.id for e in catalogue.events if e.cls not in ("u2", "u3") or all(c in caps for c in TAP_CAPS)]
@@ -39,6 +41,7 @@ class Explorer:
         self.coarse = CoarseTable(catalogue.key)
         self.findings = []
         self.runs = self.commands = self.virtual_ms = 0
+        self.taps = None    # the `taps` frame fact of the first frame of the first run (U05c): entry, indev or probe
 
     def run(self, words, settle=True, explore=True):
         """Run `words` twice; returns the steps of the first run."""
@@ -54,6 +57,8 @@ class Explorer:
         for step in first.steps:
             if step.key is not None:
                 self.coarse.add(step, first.words)
+        if self.taps is None:
+            self.taps = next((r.fields[1] for r in first.steps[0].obs.get("frame", ()) if r.fields[0] == "taps"), None)
         if "domain" in first.steps[0].obs and self.exploration.domain_count is None:
             self.exploration.domain_count = first.steps[0].obs["domain"]
         if explore:

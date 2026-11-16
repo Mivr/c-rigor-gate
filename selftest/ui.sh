@@ -98,8 +98,38 @@ begin "a failing model call poisons the session (every later command is not-open
 printf 'open 0 1\napply 3 666 0 -\nsemantic\nopen 0 1\napply 3 99 0 -\nsemantic\nquit\n' | "$probe_san" > "$out/poison.txt" 2>&1
 [ "$(sed -n 2,6p "$out/poison.txt" | cut -c1-30)" = "$(printf 'ok open\nfail apply\nerr semantic not-open\nok open\nok apply refused')" ] || fail "$CUR: poison/refusal replies" "$out/poison.txt"
 
-begin "rigor buckfiles accepts the product tree (c_ui_probe, its load, the model header dep)"
+begin "rigor buckfiles accepts the product tree (c_ui_probe, c_ui_probe_session, their load, the model header dep)"
 "${RIGOR[@]}" buckfiles --root "$prod" --out "$out/bf.json" > "$out/bf.txt" 2>&1 || fail "$CUR: buckfiles refuses $prod" "$out/bf.txt"
+"${RIGOR[@]}" buckfiles --root selftest/ui_frame_product --out "$out/bf2.json" > "$out/bf2.txt" 2>&1 || fail "$CUR: buckfiles refuses selftest/ui_frame_product" "$out/bf2.txt"
+
+begin "c_ui_probe_session: both toys' session transcripts and the taps session on both toy builds pass as Buck2 tests in release and in san, one result each"
+for plat in "$REL" "$SAN"; do
+  run "$out/sess.log" test --target-platforms "$plat" "$P:session_test" "$P:pointer_test" "$P:pointer_noentry_test" //selftest/ui_frame_product:session_test || fail "$CUR: the session tests failed in $plat" "$out/sess.log"
+  grep -Eq "Pass 4\. Fail 0\." "$out/sess.log" || fail "$CUR: the test summary in $plat is not four passes" "$out/sess.log"
+  [ "$(grep -c "c_ui_probe_session root//selftest/ui_\(frame_\)\?product:\(session\|pointer\|pointer_noentry\)_test: PASS" "$out/sess.log")" = 4 ] || fail "$CUR: the session reports in $plat" "$out/sess.log"
+  build_out sess_res "$plat" "$P:session_test"
+  [ "$(cat "$sess_res")" = "$(printf '{"asserts": 4, "id": "ui_probe_session/selftest.ui_product:session_test", "status": "pass"}\n{"summary": {"passed": 1, "total": 1}}')" ] || fail "$CUR: the results file in $plat" "$sess_res"
+done
+run "$out/kind.log" uquery "kind(ui_probe_session_run, //selftest/...)" || fail "$CUR: the kind query failed" "$out/kind.log"
+[ "$(grep -c '^root//selftest/ui_\(frame_\)\?product:' "$out/kind.log")" = 4 ] || fail "$CUR: kind(ui_probe_session_run) does not list the four sessions" "$out/kind.log"
+
+begin "one changed byte of an expected transcript: buck2 build of the session target still succeeds (the verdict is an artifact), buck2 test FAILS naming the first differing line; the file is restored"
+cp "$prod/session.out" "$out/session.out.keep"
+trap 'cp "$out/session.out.keep" "$prod/session.out"; rm -rf "$out"' EXIT
+python3 -I - "$prod/session.out" <<'PY' || fail "$CUR: could not change the byte"
+import sys
+data = open(sys.argv[1], "rb").read().split(b"\n")
+assert data[4] == b"ok frame lines 27"
+data[4] = b"oK frame lines 27"
+open(sys.argv[1], "wb").write(b"\n".join(data))
+PY
+run "$out/flip.build.log" build --target-platforms "$REL" "$P:session_test" || fail "$CUR: the build of the session target failed" "$out/flip.build.log"
+if run "$out/flip.test.log" test --target-platforms "$REL" "$P:session_test"; then fail "$CUR: the test passed with a changed byte" "$out/flip.test.log"; fi
+grep -qF "stdout line 5 differs: got b'ok frame lines 27\\n', want b'oK frame lines 27\\n'" "$out/flip.test.log" || fail "$CUR: the failure does not name the first differing line" "$out/flip.test.log"
+grep -Eq "Pass 0\. Fail 1\." "$out/flip.test.log" || fail "$CUR: the test summary is not one failure" "$out/flip.test.log"
+cp "$out/session.out.keep" "$prod/session.out"
+trap 'rm -rf "$out"' EXIT
+cmp -s "$out/session.out.keep" "$prod/session.out" || fail "$CUR: session.out was not restored"
 
 begin "the symbols gate reserves the uim_, lvprobe_ and lvp_ prefixes: the adapter and the probe pass under an unmodified product-style policy (the gate's lvprobe trusted); product code that references or defines one is flagged"
 for t in model toy misuse misdef lvpuse lvpdef probe; do build_out "f_$t" "$REL" "$P:${t}_facts"; done
@@ -138,7 +168,8 @@ python3 -I - "$out" <<'PY' || fail "$CUR: could not write the policy"
 import sys
 out = sys.argv[1]
 UIM = ["uim_instance", "uim_open", "uim_env_inputs", "uim_apply", "uim_settle", "uim_next_due", "uim_step", "uim_frame",
-       "uim_semantic", "uim_patches", "uim_domain_count", "uim_domain_at", "uim_trace"]
+       "uim_semantic", "uim_patches", "uim_domain_count", "uim_domain_at", "uim_trace", "uim_pointer_supported",
+       "uim_pointer"]
 # The policy of a product: the gate's global block as it is (no uim_ entry of any kind), then the modules.
 text = open("policy/hello.toml").read()
 head = text.split("[module.")[0]
@@ -146,12 +177,14 @@ assert head.count("[global]") == 1 and "uim_" not in head and head.count('truste
 # the gate's lvprobe is a gate-owned library like ctest: trusted, its facts given, its exports grant the probe's calls
 head = head.replace('trusted = ["//ctest:ctest"]', 'trusted = ["//ctest:ctest", "gate//ui/lvprobe:lvprobe"]')
 toy = ["toy_start", "toy_display", "toy_press", "toy_take_press", "toy_show_notice", "toy_hide_notice", "toy_notice_due",
-       "toy_step", "toy_node", "toy_notice_shown", "toy_draw"]
+       "toy_step", "toy_node", "toy_notice_shown", "toy_draw", "toy_pointer", "toy_pump", "toy_set_pointer_enabled",
+       "toy_pointer_enabled", "toy_set_button_disabled"]
 probe = ["main", "probe_parse_u64", "probe_parse_i32", "probe_parse_text", "probe_to_hex", "probe_hex_digit",
          "probe_check_records", "probe_advance_to", "probe_reply_err", "probe_reply_plain", "probe_reply_lines",
          "probe_payload", "probe_cmd_frame", "probe_cmd_ink", "probe_cmd_hit_test", "probe_cmd_tap", "probe_cmd_crop",
          "probe_life_line", "probe_why", "probe_fatal", "probe_refuse", "probe_reply_words", "probe_lv_settle",
          "probe_model_settle", "probe_tick_ok", "probe_point", "probe_point_err", "probe_node_word",
+         "probe_cmd_semantic", "probe_cmd_patches", "probe_cmd_trace",
          "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
 libc = open(out + "/probe_imports.actual").read().split()
 q = lambda names: "[" + ", ".join('"%s"' % n for n in names) + "]"
@@ -240,12 +273,26 @@ explore() {
     > "$out/x.$name.txt" 2>&1
   local rc=$?
   [ "$rc" = "$want" ] || fail "$CUR: ui-explore $name exited $rc, wanted $want" "$out/x.$name.txt"
+  # U05c: every toy probe has the app's own pointer indev; a build without the pointer entry has its taps injected at it,
+  # which the run reports once as the info taps-injected (summary taps = indev); the build with the entry never does.
+  [ "$want" = 2 ] && return
+  local taps=indev; case "$bin" in *probe_pointer) taps=entry;; esac
+  python3 -I - "$out/x.$name.json" "$out/x.$name.sum" "$taps" <<'PY' || fail "$CUR: $name: the taps fact and taps-injected" "$out/x.$name.txt"
+import json, sys
+F = [json.loads(line) for line in open(sys.argv[1])]
+S = json.load(open(sys.argv[2]))
+injected = [f for f in F if f["check"] == "taps-injected"]
+want = [{"taps": "indev", "pointer": False}] if sys.argv[3] == "indev" else []
+sys.exit(0 if S["taps"] == sys.argv[3] and [f["observed"] for f in injected] == want
+         and all(f["severity"] == "info" and f["path"] == f["path"][:1] for f in injected) else 1)
+PY
 }
-# expect <name> <python expression over F (the findings) and S (the summary)>: fails unless it is true
+# expect <name> <python expression over F (the findings but taps-injected, which explore checks) and S (the summary)>
 expect() {
   python3 -I - "$out/x.$1.json" "$out/x.$1.sum" "$2" <<'PY' || fail "$CUR: $1: wanted $2" "$out/x.$1.txt"
 import json, sys
 F = [json.loads(line) for line in open(sys.argv[1])]
+F = [f for f in F if f["check"] != "taps-injected"]
 S = json.load(open(sys.argv[2]))
 ids = lambda check: [f["id"] for f in F if f["check"] == check]
 all_of = lambda check: [f for f in F if f["check"] == check]
@@ -294,14 +341,14 @@ expect bfs.1 'len(F) == 12 and len(all_of("intent-missed")) == 8 and sorted(f["o
 python3 -I - "$out/x.bfs.1.json" "$out/ev.bfs.1" <<'PY' || fail "$CUR: the evidence images of the missed taps"
 import json, struct, sys, zlib
 found = [json.loads(line) for line in open(sys.argv[1])]
-taps = [f for f in found if f["observed"]["word"] == "probe-press"]
+taps = [f for f in found if f["observed"].get("word") == "probe-press"]
 assert len(taps) == 8 and all(f["id"].rsplit("/", 1)[1] + "/tap-node.png" in f["evidence"] for f in taps)
 for f in taps:
     data = open("%s/%s" % (sys.argv[2], f["id"].rsplit("/", 1)[1] + "/tap-node.png"), "rb").read()
     assert data[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", data[16:24]) == (160, 120)
     raw = zlib.decompress(data[41:-16])
     assert len(raw) == 120 * (1 + 160 * 4) and all(raw[r * 641] == 0 for r in range(120))
-assert not any("tap-node.png" in "".join(f["evidence"]) for f in found if f["observed"]["word"] == "tap-press")
+assert not any("tap-node.png" in "".join(f["evidence"]) for f in found if f["observed"].get("word") == "tap-press")
 PY
 replays bfs.1 "$probe_rel" "$CAT"
 explore shallow.1 1 "$probe_rel" "$CAT" --strategy bfs "${SEED[@]}" --depth 1 --max-states 100
@@ -346,6 +393,46 @@ expect walk.1 'len(all_of("intent-missed")) == 2 and len(all_of("tap-misrouted")
 explore walk.req 1 "$probe_rel" "$CAT" --strategy walk "${SEED[@]}" --walk-seeds 11 --walk-length 3 --extra-origins 0 --require C8
 expect walk.req 'len(ids("ui-coverage-gap")) == 1 and one("ui-coverage-gap")["observed"] == {"criterion": "C8", "evaluated": False} and len(ids("intent-missed")) == 1 and len(F) == 2'
 
+# ---- U05c: taps through the product's pointer entry -------------------------------------------------------------------
+begin "a tap through the toy's pointer entry (probe_pointer: the queue above LVGL) posts touch and the click's press at the tap's instant, pressed and clicked node 3 (the lv_button), the scrim (node 6) under the notice, a blocked tap, the disabled button pressed and not clicked (3 none); the build without the entry (probe) taps at the indev: the same replies, no touch, no pointer capability, taps indev; byte-identical twice in release and san"
+build_out probe_ptr_rel "$REL" "$P:probe_pointer"
+build_out probe_ptr_san "$SAN" "$P:probe_pointer"
+for mode in rel san; do
+  for build in ptr ""; do
+    eval "bin=\$probe_${build:+${build}_}$mode"
+    want="$prod/pointer.out"; kind=entry
+    [ -z "$build" ] && { want="$prod/pointer_noentry.out"; kind=noentry; }
+    for n in 1 2; do
+      session "$bin" "$prod/pointer.in" "$out/pt.$kind.$mode.$n"
+      [ "$rc" = 0 ] && [ ! -s "$out/pt.$kind.$mode.$n.err" ] || fail "$CUR: $kind $mode run $n exited $rc" "$out/pt.$kind.$mode.$n"
+      cmp -s "$out/pt.$kind.$mode.$n" "$want" || { diff "$want" "$out/pt.$kind.$mode.$n" > "$out/d.txt"; fail "$CUR: $kind $mode run $n differs from $want" "$out/d.txt"; }
+    done
+    python3 -I "$prod/pointer_check.py" "$kind" "$prod/pointer.in" "$out/pt.$kind.$mode.1" > "$out/ptc.txt" 2>&1 || fail "$CUR: $kind ($mode)" "$out/ptc.txt"
+  done
+done
+echo "  entry: touch + press at 1000 and at 4000, the scrim's tap posts touch only, blocked with touch; no entry: press only"
+
+begin "the pointer path is strict (transcript pointer_bad.out, exit 1, nothing on stderr, release and san): a failing uim_pointer is fail tap and poisons; a product that delivers a second tap is err tap model-contract and poisons; every malformed tap is err tap bad-arguments"
+for mode in rel san; do
+  eval "bin=\$probe_ptr_$mode"
+  session "$bin" "$prod/pointer_bad.in" "$out/pb.$mode"
+  [ "$rc" = 1 ] || fail "$CUR: $mode exited $rc, wanted 1" "$out/pb.$mode"
+  [ ! -s "$out/pb.$mode.err" ] || fail "$CUR: $mode wrote to stderr" "$out/pb.$mode.err"
+  cmp -s "$out/pb.$mode" "$prod/pointer_bad.out" || { diff "$prod/pointer_bad.out" "$out/pb.$mode" > "$out/d.txt"; fail "$CUR: $mode differs from pointer_bad.out" "$out/d.txt"; }
+done
+[ "$(grep -c '^fail tap$' "$prod/pointer_bad.out")" = 1 ] && [ "$(grep -c '^err tap model-contract$' "$prod/pointer_bad.out")" = 1 ] && [ "$(grep -c '^err \(semantic\|trace\) not-open$' "$prod/pointer_bad.out")" = 2 ] || fail "$CUR: the transcript lacks a failure or its poison" "$prod/pointer_bad.out"
+
+begin "a catalogue that requires pointer (and declares the entry's touch ambient) is refused by the build without the entry (the house message, exit 2) and drives the build with it: bfs saturates and the F3b canary is what the injected build gives, 8 intent-missed (4 probe-press under the scrim, 4 tap-press) and 4 tap-misrouted, no noop-tap-effect (a tap's own touch is not its effect); byte-identical twice, findings replay"
+PCAT="$prod/toy_pointer.events.toml"
+explore ptr.refused 2 "$probe_rel" "$PCAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100
+grep -q "the catalogue requires the probe capabilities pointer, which the probe does not announce" "$out/x.ptr.refused.txt" || fail "$CUR: the refusal is not the house message" "$out/x.ptr.refused.txt"
+explore ptr.1 1 "$probe_ptr_rel" "$PCAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8 --evidence "$out/ev.ptr.1"
+explore ptr.2 1 "$probe_ptr_rel" "$PCAT" --strategy bfs "${SEED[@]}" --depth 8 --max-states 100 --require C8 --evidence "$out/ev.ptr.2"
+same ptr.1 ptr.2
+expect ptr.1 'len(F) == 12 and len(all_of("tap-misrouted")) == 4 and all(f["observed"] == {"word": "probe-press", "pressed": {"index": 6, "class": "lv_obj", "box": [0, 0, 159, 119]}, "aimed": {"index": 3, "class": "lv_button", "box": [8, 40, 107, 75]}} for f in all_of("tap-misrouted")) and sorted(f["observed"]["word"] for f in all_of("intent-missed")) == ["probe-press"] * 4 + ["tap-press"] * 4 and all_of("noop-tap-effect") == [] and all_of("ambient-missing") == [] and all_of("ambient-extra") == [] and S["outcomes"]["probe-press"] == {"pressed lv_button 8,40,107,75 aimed": 3, "pressed lv_obj 0,0,159,119 other": 4, "tap missed": 4, "tap ok": 3} and S["outcomes"]["probe-blank"] == {"pressed lv_obj 0,0,159,119 root": 3, "pressed lv_obj 0,0,159,119 untargeted": 4, "tap refused": 7} and S["detail"]["states_per_depth"] == [1, 2, 4, 0] and S["abstract_states"] == 7 and S["pairs_exercised"] == 91 and S["evaluated"] == ["C8"]'
+cmp -s <(python3 -I -c 'import json,sys; print(sorted((f["check"], f["observed"]) for f in map(json.loads, open(sys.argv[1])) if f["check"] != "taps-injected"))' "$out/x.ptr.1.json") <(python3 -I -c 'import json,sys; print(sorted((f["check"], f["observed"]) for f in map(json.loads, open(sys.argv[1])) if f["check"] != "taps-injected"))' "$out/x.bfs.1.json") || fail "$CUR: the canary differs between the two builds"
+replays ptr.1 "$probe_ptr_rel" "$PCAT"
+
 begin "the lvprobe tests (//ui/lvprobe/...) pass in release and san"
 for plat in "$REL" "$SAN"; do
   run "$out/lvprobe.log" test --target-platforms "$plat" //ui/lvprobe/... || fail "$CUR: //ui/lvprobe/... failed in $plat" "$out/lvprobe.log"
@@ -355,7 +442,7 @@ done
 bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
 
 begin "no probe process this selftest started is still alive"
-python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" <<'PY' || fail "$CUR: probe processes left behind"
+python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" "$probe_ptr_rel" "$probe_ptr_san" <<'PY' || fail "$CUR: probe processes left behind"
 import os, sys, time
 root, binaries = sys.argv[1], {os.path.realpath(os.path.join(sys.argv[1], b)) for b in sys.argv[2:]}
 stub = os.path.join(root, "gate/tests/data/ui_explore/stub_probe.py").encode()

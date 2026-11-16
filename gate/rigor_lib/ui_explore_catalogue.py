@@ -45,7 +45,13 @@ _DIGITS = re.compile(r"[0-9]{0,%d}" % TEXT_MAX)
 _SELECTOR_MAX = 1024                      # a node key or role in its escaped record spelling (model.h grammar)
 _REASON = re.compile(r"[ -~]{1,400}")
 _TOP = ("schema", "product", "app", "version", "max_wait_ms", "drain_ms", "key") + CLASSES
-_OPTIONAL_TOP = ("starvation", "requires")
+_OPTIONAL_TOP = ("starvation", "requires", "ambient")
+# U05c: `[ambient]` names the trace events a product's pointer entry posts on every sample it receives (a kiosk's
+# `touch`), and optionally the idle deadline such a sample restarts (docs/ui-explore.md, "Ambient events"); each with
+# its provenance. Only for a catalogue that requires `pointer`: without it taps never reach the product's entry.
+_AMBIENT_KEYS = ("trace", "trace_provenance")
+_AMBIENT_OPTIONAL = ("due_restart_ms", "due_restart_provenance")
+_TRACE_TYPE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")    # a trace record's type field, a plain name
 _CLASS = re.compile(r"[a-z][a-z0-9_]{0,63}")     # an LVGL class name (`lv_button`): a u2 tap's declared target
 
 
@@ -94,6 +100,8 @@ class Catalogue:
     events: tuple       # every event, class order then file order
     sha256: str
     requires: tuple = ()    # probe capabilities the catalogue needs (`requires`), in CAPABILITIES order
+    ambient: tuple = ()     # trace types a tap's own sample posts (`[ambient] trace`), file order
+    due_restart_ms: object = None   # the idle deadline a tap's sample restarts (`[ambient] due_restart_ms`), or None
 
     def __post_init__(self):
         object.__setattr__(self, "_index", {event.id: event for event in self.events})
@@ -179,6 +187,29 @@ def _requires(raw):
             or len(set(raw)) != len(raw):
         _fail("requires", "must be a list of distinct probe capabilities (%s)" % ", ".join(CAPABILITIES))
     return tuple(c for c in CAPABILITIES if c in raw)
+
+
+def _ambient(raw, requires):
+    """(trace types, due_restart_ms or None) of `[ambient]`; ((), None) without one."""
+    if raw is None:
+        return (), None
+    if "pointer" not in requires:
+        _fail("ambient", "needs `requires` with \"pointer\" (only taps through the product's pointer entry post them)")
+    if type(raw) is not dict:
+        _fail("ambient", "must be a table")
+    _keys("ambient", raw, _AMBIENT_KEYS, _AMBIENT_OPTIONAL)
+    types = raw["trace"]
+    if type(types) is not list or not types or len(set(types)) != len(types) \
+            or any(type(t) is not str or not _TRACE_TYPE.fullmatch(t) for t in types):
+        _fail("ambient.trace", "must be a non-empty list of distinct trace types matching %s" % _TRACE_TYPE.pattern)
+    ui_contract.check_provenance("ambient.trace_provenance", raw["trace_provenance"])
+    if ("due_restart_ms" in raw) != ("due_restart_provenance" in raw):
+        _fail("ambient", "due_restart_ms and due_restart_provenance go together")
+    restart = None
+    if "due_restart_ms" in raw:
+        restart = _int("ambient.due_restart_ms", raw["due_restart_ms"], 1, MAX_WAIT_CEILING_MS)
+        ui_contract.check_provenance("ambient.due_restart_provenance", raw["due_restart_provenance"])
+    return tuple(types), restart
 
 
 def _code(where, raw):
@@ -340,10 +371,12 @@ def loads(data):
     if not any(event.cls in APPLY_CLASSES and event.get("expect") == "accept" for event in events):
         _fail("events", "needs at least one input event with expect = \"accept\" (a catalogue nothing is accepted in "
                         "exercises nothing)")
+    requires = _requires(document.get("requires"))
+    ambient, restart = _ambient(document.get("ambient"), requires)
     return Catalogue(_str("product", document["product"], _NAME), _str("app", document["app"], _NAME),
                      _int("version", document["version"], 1, 2**31 - 1), max_wait, drain, firings, window,
                      _key(document["key"]),
-                     tuple(events), jsonio.sha256_hex(data), _requires(document.get("requires")))
+                     tuple(events), jsonio.sha256_hex(data), requires, ambient, restart)
 
 
 def load(path):

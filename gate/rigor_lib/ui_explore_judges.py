@@ -21,8 +21,11 @@ GATE = "ui-explore"
 LAYERS = {"model-nondeterministic": "L0", "run-twice-mismatch": "L0", "timer-starvation": "L0"}
 CHECKS = ("ui-coverage-gap", "model-nondeterministic", "run-twice-mismatch", "timer-starvation", "timer-unreachable",
           "depth-unsaturated", "key-too-coarse", "key-fact-unmatched", "event-never-accepted", "event-accepted",
-          "intent-missed", "tap-misrouted", "noop-tap-effect", "probe-internal-error", "ui-explore-timeout")
-SEVERITY = {"key-too-coarse": "info"}     # P004 3.7: I -> E after report-first; every other check is an error
+          "intent-missed", "tap-misrouted", "noop-tap-effect", "probe-internal-error", "ui-explore-timeout",
+          "ambient-missing", "ambient-extra", "taps-injected")
+# P004 3.7: I -> E after report-first; every other check is an error. `taps-injected` (U05c) says that the taps of the
+# run were injected at a product's own pointer indev: a fact about the run's fidelity, not a product defect.
+SEVERITY = {"key-too-coarse": "info", "taps-injected": "info"}
 PRIVATE = "_evidence"
 
 
@@ -109,6 +112,24 @@ def noop_judge(catalogue_key):
         return [make("noop-tap-effect", ["noop", step.key_before, step.word],
                      state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
                      [view.word for view in path] + [step.word], dict(step.noop, word=step.word))]
+    return judge
+
+
+def ambient_judge(catalogue_key):
+    """`ambient-missing` / `ambient-extra` (U05c): a tap through the product's pointer entry that did not post a
+    declared ambient event exactly once at its instant (docs/ui-explore.md, "Ambient events")."""
+    def judge(step, path, contract):
+        del contract
+        if step.ambient is None:
+            return []
+        found = []
+        for check, part in (("ambient-missing", "missing"), ("ambient-extra", "extra")):
+            if step.ambient[part]:
+                found.append(make(check, [part, step.key_before, step.word],
+                                  state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
+                                  [view.word for view in path] + [step.word],
+                                  {"word": step.word, "types": list(step.ambient[part])}))
+        return found
     return judge
 
 

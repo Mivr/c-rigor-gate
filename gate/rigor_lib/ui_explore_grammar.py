@@ -21,7 +21,7 @@ TRACE_FIELDS = ("seq", "type", "mono_ms")
 RECORD_FIELDS = {"semantic": SEMANTIC_FIELDS, "patches": PATCH_FIELDS, "trace": TRACE_FIELDS}
 # The record types of a `frame` reply from a probe that announces frame-facts, and of `ink`, with their field counts
 # (the type name included): docs/ui-model.md "Frame facts", docs/ui-lvprobe.md "Text format".
-FRAME_FIELDS = {"lvprobe": 3, "frame": 4, "node": 21, "label": 15, "fit": 8, "region": 3, "life": 7}
+FRAME_FIELDS = {"lvprobe": 3, "frame": 4, "node": 21, "label": 15, "fit": 8, "region": 3, "life": 7, "taps": 2}
 INK_FIELDS = {"ink": 8, "noink": 3}
 # the numeric fields of those records the explorer reads (u: unsigned, s: signed): walk indexes, parents, boxes, sizes
 _TYPED_KINDS = {"lvprobe": {2: "u"}, "frame": {1: "u", 2: "u"},

@@ -52,7 +52,9 @@ class Session:
         assert body[0].startswith("lvprobe\t1\t") and body[1].startswith("frame\t") and nodes == [str(k) for k in range(count)]
         kinds = [l.split("\t")[0] for l in body]
         assert kinds == sorted(kinds, key=lambda k: k == "life"), "life lines come last"
-        assert set(kinds) <= {"lvprobe", "frame", "node", "label", "fit", "region", "life"}, "a record kind frame never writes"
+        assert set(kinds) <= {"lvprobe", "frame", "taps", "node", "label", "fit", "region", "life"}, "a record kind frame never writes"
+        # U05c: only the frame that attaches lvprobe (a session's first) has the `taps` line, third, after the head
+        assert kinds.count("taps") == (1 if body[2:3] == ["taps\tindev"] else 0), "a misplaced taps line"
         return body
 
 
@@ -67,6 +69,8 @@ def fit(body, node):
 def check_session(s):
     first = s.frame(1)
     assert first[0] == "lvprobe\t1\t15" and first[1] == "frame\t160\t120\t3f670cca"
+    # U05c: the toy has its own pointer indev and no pointer entry: taps are injected at that indev
+    assert first[2] == "taps\tindev" and "taps" not in [l.split("\t")[0] for l in s.frame(8)], "the taps line"
     need(first, "node\t3\t1\t1\tlv_button\t8\t30\t97\t59\t0\t1\t-1\t-1\t0\t0\t2196f3\t255\t255\t1\t0\t0", "button coords")
     need(first, "label\t4\t-\t16\t0\t1\t0\t0\t1\t39\t16\t39\t16\t=Press\t-", "button label")
     need(first, "fit\t4\t1\t0\t35,40,72,49\t30,33,76,52\t0\t0", "button label fit")
@@ -79,7 +83,7 @@ def check_session(s):
     need(ink, "ink\t7\t0\t-\t000000\t000000\t000000\t000000", "ink 0 of the hidden label")
     need(ink, "ink\t8\t8\t140,100,143,101\tff0000\tff0000\tffffff\tffffff", "ink of the red swatch")
     need(ink, "ink\t10\t112\t131,4,138,17\t212121\t212121\tffffff\tffffff", "ink of the Cyrillic glyph")
-    assert s.frame(8) == first, "ink changed the product: the frame after it differs"
+    assert s.frame(8) == [l for l in first if l != "taps\tindev"], "ink changed the product: the frame after it differs"
     assert s.head(9, "tap 53 45") == "ok tap 3 3"
     assert s.body(10, "trace") == ["1\tbutton_pressed\t1000", "2\tpointer_clicked\t1000", "3\tbutton_clicked\t1000",
                                    "4\tpress\t1000"], "the queued press runs at the tap"

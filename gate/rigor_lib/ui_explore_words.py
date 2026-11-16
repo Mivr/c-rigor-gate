@@ -33,7 +33,7 @@ def snapshot_of(obs):
     `life` lines (a `life` line is in the first frame after its event only, so it is kept apart: `life`)."""
     frame = raws(obs["frame"])
     return {"semantic": raws(obs["semantic"]), "due": obs["due"], "env": [list(i) for i in obs["env"]],
-            "frame": [line for line in frame if not line.startswith("life\t")],
+            "frame": [line for line in frame if not line.startswith(("life\t", "taps\t"))],
             "life": [line for line in frame if line.startswith("life\t")]}
 
 
@@ -56,11 +56,17 @@ def snapshot(session, step):
     return snapshot_of(observe(session, step))
 
 
-def changes(step, marks, before, after, frame=True):
+def changes(step, marks, before, after, frame=True, ambient=None):
     """What changed between two snapshots: new patches or trace since `marks`, semantic, due, env; with `frame`, the
-    frame records too, and any `life` line in the after frame (an object was created or deleted)."""
-    changed = [name for name, mark in zip(("patches", "trace"), marks) if len(getattr(step, "acc_" + name)) > mark]
-    changed += [name for name in ("semantic", "due", "env") if after[name] != before[name]]
+    frame records too, and any `life` line in the after frame (an object was created or deleted). `ambient` (a tap step
+    of a catalogue with `[ambient]`): (the new trace records that are not the tap's own ambient ones, the deadline the
+    tap's sample restarts or None): only those records are a trace change, and a deadline that moved to exactly the
+    restarted one is not a change."""
+    trace = len(step.acc_trace) > marks[1] if ambient is None else bool(ambient[0])
+    restarted = ambient is not None and ambient[1] is not None and after["due"] == ambient[1]
+    changed = (["patches"] if len(step.acc_patches) > marks[0] else []) + (["trace"] if trace else [])
+    changed += [name for name in ("semantic", "due", "env") if after[name] != before[name]
+                and not (name == "due" and restarted)]
     if frame and (after["frame"] != before["frame"] or after["life"]):
         changed.append("frame")
     return changed
@@ -82,12 +88,12 @@ def _input(session, step, before, send, label):
     return after
 
 
-def inputs(session, step, before, sends):
+def inputs(session, step, before, sends, catalogue=None):
     """Send `sends` = [(label, callable or tap event)] in order, each checked against a snapshot taken before it."""
     for label, send in sends:
         if before is None:
             before = snapshot(session, step)
-        before = tap_input(session, step, before, send) if label == "tap" else \
+        before = tap_input(session, step, before, send, catalogue) if label == "tap" else \
             _input(session, step, before, send, label)
 
 
@@ -164,7 +170,35 @@ def _pressed(step, nodes, expect, got, event):
     return None if parent == -1 else got[0]
 
 
-def tap_input(session, step, before, event):
+def ambient_split(records, types, now):
+    """The trace records a tap step added, split by `[ambient]` (docs/ui-explore.md, "Ambient events"): the FIRST record
+    of each declared type whose time is the tap's instant is the tap's own; every other record (another type, another
+    time, a repeat) is ordinary. (ordinary records, declared types missing, declared types repeated)."""
+    seen, other = {}, []
+    for record in records:
+        kind, ms = record.fields[1], record.fields[2]
+        if kind in types and ms == str(now):
+            seen[kind] = seen.get(kind, 0) + 1
+            if seen[kind] == 1:
+                continue
+        other.append(record)
+    return other, [t for t in types if t not in seen], [t for t in types if seen.get(t, 0) > 1]
+
+
+def tap_ambient(session, step, marks, catalogue):
+    """For a catalogue with `[ambient]`: the `ambient` argument of `changes`; every declared type exactly once on the
+    tap (blocked or not: the product's entry received the sample), else `step.ambient` names what is missing or
+    repeated. None without `[ambient]`."""
+    if catalogue is None or not catalogue.ambient:
+        return None
+    other, missing, extra = ambient_split(step.acc_trace[marks[1]:], catalogue.ambient, session.now)
+    if missing or extra:
+        step.ambient = {"missing": missing, "extra": extra}
+    restart = None if catalogue.due_restart_ms is None else session.now + catalogue.due_restart_ms
+    return other, restart
+
+
+def tap_input(session, step, before, event, catalogue=None):
     """`hit-test x y`, `tap x y`, then a snapshot (frame first). A u2 tap that pressed a node (not a root): `ok` when the
     model changed, `missed` when it did not (the node's box becomes the evidence image); one that was blocked or pressed
     nothing or a root, and every u3 tap: `refused` when nothing changed, else `ok` and the finding `noop-tap-effect`."""
@@ -175,12 +209,13 @@ def tap_input(session, step, before, event):
     marks = (len(step.acc_patches), len(step.acc_trace))
     after = snapshot(session, step)
     node = _pressed(step, nodes, expect, got, event)
+    ambient = tap_ambient(session, step, marks, catalogue)
     if event.cls == "u2" and node is not None:
-        result = "ok" if changes(step, marks, before, after, frame=False) else "missed"
+        result = "ok" if changes(step, marks, before, after, frame=False, ambient=ambient) else "missed"
         if result == "missed" or step.misrouted:
             step.image_box = image_box(nodes[node][3], size)
     else:
-        changed = changes(step, marks, before, after)
+        changed = changes(step, marks, before, after, ambient=ambient)
         result = "ok" if changed else "refused"
         if changed:
             step.noop = {"changed": changed}

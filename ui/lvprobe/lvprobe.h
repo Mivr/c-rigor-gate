@@ -49,7 +49,9 @@ typedef enum {
     LVPROBE_ERR_STALE,    /* objects were created or deleted, or the screen changed, since the last walk */
     LVPROBE_ERR_BLOCKED,  /* LVGL did not process the tap (before it: indev disabled, a screen-load animation
                            * running, waiting for a release; or the release itself was not processed) */
-    LVPROBE_ERR_UNSUPPORTED /* ink of a transformed node (or under a transformed ancestor): not measured */
+    LVPROBE_ERR_UNSUPPORTED, /* ink of a transformed node (or under a transformed ancestor): not measured */
+    LVPROBE_ERR_UNREAD    /* an observed tap whose samples LVGL never read (no processed press, or the indev not
+                           * released at the tap's point): the product dropped them (U05c) */
 } lvprobe_status_t;
 
 /* One object of the last walk. Read-only for the caller. Boxes are LVGL areas (inclusive corners, absolute display
@@ -162,6 +164,13 @@ typedef struct {
     bool pressed;
     bool tapping;
     lvprobe_hit_t hit;
+    bool observe_taps;         /* lvprobe_observe_taps: taps are the product's, observed; lvprobe_hit is refused */
+    bool observing;            /* between lvprobe_observe_begin and lvprobe_observe_end (its indev callback records) */
+    lv_point_t obs_at;         /* the observed tap's point */
+    uint8_t obs_hist;          /* the indev's vector history index at the begin (LVGL advances it per processed press) */
+    bool obs_blocked;          /* LVGL would not have processed a press when the observation began */
+    uint8_t obs_presses;       /* LV_EVENT_PRESSED seen on the indev while observing (saturates at 255) */
+    uint8_t obs_clicks;        /* LV_EVENT_CLICKED seen on the indev while observing (saturates at 255) */
     uint32_t flushes;
     uint32_t gen;              /* structural changes seen */
     uint32_t walk_gen;
@@ -228,6 +237,30 @@ lvprobe_status_t lvprobe_hit(lvprobe_t *p, int32_t x, int32_t y, lvprobe_hit_t *
  * LV_EVENT_HIT_TEST to objects with LV_OBJ_FLAG_ADV_HITTEST) and changes nothing; LVPROBE_ERR_BLOCKED when a tap
  * would be blocked. */
 lvprobe_status_t lvprobe_hit_test(lvprobe_t *p, int32_t x, int32_t y, int32_t *node, lv_obj_t **obj);
+
+/* 3, observation (U05c): a tap the PRODUCT delivers to its own pointer indev (`cfg.indev` of open), observed from
+ * LVGL's own events on that indev; the probe injects nothing, replaces no callback and changes no indev state.
+ * lvprobe_observe_taps switches the probe to it for good (until close): LVPROBE_ERR_FORMAT when the probe has no
+ * product indev (it created its own). From then on lvprobe_hit is refused (ARG), and a held indev (LVGL left it pressed:
+ * a release it did not process) counts as blocked for lvprobe_hit_test and lvprobe_observe_begin, as LVGL would send
+ * the next press no LV_EVENT_PRESSED.
+ * Begin: the point (inside the display) and, unless a press would be blocked now, a current walk are checked as for
+ * lvprobe_hit; whether LVGL would process a press now is recorded. Nothing is added or allocated: the probe's listener
+ * on the indev (added at open, removed at close) records while observing.
+ * End (after the product processed its samples): `*out` holds what the indev's events named, each mapped to its walk
+ * index when LVGL sent it: `pressed` the object of LV_EVENT_PRESSED, `clicked` the object of LV_EVENT_CLICKED. LVGL
+ * sends no LV_EVENT_PRESSED for a disabled object although it presses it: when none came, LVGL's own pointer search
+ * at the point (the one of lvprobe_hit_test) names the pressed object if it is a live walked node in the disabled state
+ * (clicked stays none), the answer of the injected path. Statuses, in this order: LVPROBE_ERR_GONE (the indev is no
+ * longer one of LVGL's: the probe forgets it), LVPROBE_ERR_LVGL (the probe's listener is no longer on it),
+ * LVPROBE_ERR_BLOCKED (blocked at the begin, whatever happened after), LVPROBE_ERR_UNSTABLE (more than one press or one
+ * click: not one tap), LVPROBE_ERR_BLOCKED (LVGL left the indev pressed: it did not process the release; the probe
+ * leaves it so), LVPROBE_ERR_UNREAD (no evidence that LVGL read the samples: no LV_EVENT_PRESSED and no advance of the
+ * vector history index that every processed press advances, or the indev not released at the tap's point).
+ * End without a begin is LVPROBE_ERR_ARG. */
+lvprobe_status_t lvprobe_observe_taps(lvprobe_t *p);
+lvprobe_status_t lvprobe_observe_begin(lvprobe_t *p, int32_t x, int32_t y);
+lvprobe_status_t lvprobe_observe_end(lvprobe_t *p, lvprobe_hit_t *out);
 
 /* 4: frame CRC (FNV-1a over the B, G, R bytes of every pixel, row-major) and every node's region hash. No redraw;
  * needs a settled display and a current walk. */

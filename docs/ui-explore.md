@@ -229,7 +229,8 @@ Top level, all required unless marked otherwise, nothing else:
 - `schema = "ui-events/1"`;
 - `product`, `app`, `version`;
 - `max_wait_ms` (1 to 3 600 000);
-- optional `requires`: probe capabilities the catalogue needs, distinct names of the six known ones. A probe whose
+- optional `requires`: probe capabilities the catalogue needs, distinct names of the seven known ones (any order; kept
+  in the greeting's order). A probe whose
   greeting lacks one is the gate's input error (exit 2: "the catalogue requires the probe capabilities ..., which the
   probe does not announce"). The toy catalogue requires all six; an older probe's greeting (no capabilities) only serves
   a catalogue that requires none;
@@ -258,11 +259,49 @@ The `u4` boundary classes are `empty`, `one-digit`, `max-minus-1`, `max`, `max-p
 `unknown`, `expired` and `non-digit`.
 
 **Capabilities.** A probe's greeting is `ui-probe/1 ready[ <cap>...]` (docs/ui-model.md, "The greeting"). The known
-capabilities, in this order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop`; the C probe announces all
-six, a probe without any is an older probe of the same protocol. An unknown, repeated or unordered capability is a
+capabilities, in this order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop`, `pointer`; the C probe
+announces the first six, and `pointer` last when the product's taps go through its own pointer entry (U05c); a probe
+without any is an older probe of the same protocol. The probe picks the tap path; a catalogue that `requires`
+`pointer` refuses a build whose taps would be injected at LVGL's indev (`selftest/ui_product/toy_pointer.events.toml`),
+and only such a catalogue may declare `[ambient]` ("Ambient events"). The path is also a frame fact (the `taps` line of
+a session's first frame, docs/ui-model.md): the summary records it as `taps` (`entry`, `indev`, `probe`, or null from a
+probe that does not write it), and a run whose taps were injected at the product's OWN pointer indev (`taps indev`, no
+`pointer`) gets the info finding `taps-injected` once (its identity: the catalogue's sha256): the product could have
+taken the more faithful path. An unknown, repeated or unordered capability is a
 protocol error. The first launch fixes the capabilities, and a later launch that announces others is a protocol finding.
 Catalogue taps need `hit-test` and `tap`. A probe that cannot greet is reported as such, not as missing
 capabilities.
+
+**Ambient events** (U05c). A product's pointer entry may post an event on every sample it receives (a kiosk's input
+hook posts `touch`, which restarts its idle deadlines). Through such an entry every tap would "change the model", so a
+scrim's tap would be `ok`, not `missed`, and every complement tap `noop-tap-effect`: false findings. The catalogue
+declares them, with provenance, in an optional strict table, only together with `requires` containing `pointer`:
+
+    ambient = { trace = ["touch"], trace_provenance = "<provenance>",
+                due_restart_ms = 30000, due_restart_provenance = "<provenance>" }   # the last two optional, together
+
+`trace` is a non-empty list of distinct trace types; an unknown key, a duplicate, an empty list, a provenance of the
+wrong form or one of the two `due_restart` keys without the other is the input error (exit 2). The rule, in a TAP step
+only (`u2`, `u3`; never `apply`, an advance or a frame, where these types are ordinary records):
+- a new trace record is AMBIENT iff its type is declared and its time is the tap's instant; only the first record of
+  each declared type counts as the tap's own;
+- each declared type must appear EXACTLY once on every tap, blocked ones included (the product's entry received the
+  sample whether LVGL then processed it or not; the toy posts `touch` on a blocked tap); none is `ambient-missing`,
+  more than one `ambient-extra` (both errors, with the types), and the repeat stays an ordinary trace record;
+- after the ambient records are set aside, a tap changed nothing only when there is no other new trace record, no new
+  patch, the semantic records, the env inputs and (for a `u3` tap, or a `u2` tap that pressed nothing, a root or was
+  blocked) the frame are unchanged with no `life` line, and the next deadline is unchanged or exactly the tap's instant
+  plus `due_restart_ms` when that is declared. Anything else is a change, as before.
+
+Why this cannot hide an effect: what is set aside is at most one record per declared type, of that exact type, stamped
+with the tap's own instant, and it is demanded on every tap (so it cannot appear only when the tap did something); a
+second one, any other record, any patch, any scene, env or frame difference, and any deadline but the one declared
+restart are still changes. A product that wants an effect to vanish would have to make it be its ambient record, which
+then appears on every tap of every state and carries no information about the tap. The selftest's pointer build with
+`touch` declared gives exactly the canary of the injected build (8 `intent-missed`, 4 `tap-misrouted`, no
+`noop-tap-effect`); the stub's modes `pnotouch`, `ptwice`, `pchange` and `prestart` give `ambient-missing`,
+`ambient-extra` (with the repeat's `noop-tap-effect`), `noop-tap-effect` for a scene change, and no finding for a
+declared restart but a `due` change for an undeclared one (gate/tests/test_ui_explore_taps.py, `AmbientTest`).
 
 **The abstraction key** (P004 4.3 item 3):
 
@@ -338,6 +377,9 @@ nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` 
 | `intent-missed` | an input's outcome was `missed` (`ok apply missed`, or a `u2` tap that pressed a non-root node and changed nothing) | key before, word | `word`, `applies`; a tap's node image in `tap-node.png` |
 | `tap-misrouted` | a `u2` tap aimed at a node (its `target`) pressed another non-root node | key before, word | `word`, `pressed` and `aimed` (index, class, box); the pressed node's image |
 | `noop-tap-effect` | a tap that must change nothing changed the model | key before, word | `word`, `changed` (the parts) |
+| `ambient-missing` | a tap did not post a declared ambient event at its instant (U05c) | key before, word | `word`, `types` |
+| `ambient-extra` | a tap posted a declared ambient event more than once (U05c) | key before, word | `word`, `types` |
+| `taps-injected` (info) | the run's taps were injected at the product's own pointer indev: no `pointer` (U05c) | the catalogue | `taps`, `pointer` |
 | `ui-coverage-gap` | C1 entry not visited; C8 pair not exercised; an env input that is no `e1` event; a `--require`d criterion not evaluated | `["C1", sha, i]`, `["C8", key, event]`, `["C8-env", key, input]`, `["not-evaluated", criterion, sha]` | criterion-specific |
 | `event-never-accepted` | an `accept` event whose outcome was never `ok` | sha, event | `event`, `expect`, per-outcome state counts; `path` is the first refusing send |
 | `event-accepted` | a `refuse` event accepted somewhere | sha, event | as above; `path` is the first accepting send |

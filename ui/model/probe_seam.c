@@ -17,7 +17,7 @@ const char *probe_why(lvprobe_status_t st)
         return "too-large";
     }
     if (st == LVPROBE_ERR_FORMAT || st == LVPROBE_ERR_GONE || retry(st) || st == LVPROBE_ERR_UNSTABLE ||
-        st == LVPROBE_ERR_LVGL) {
+        st == LVPROBE_ERR_LVGL || st == LVPROBE_ERR_UNREAD) {
         return "model-contract";
     }
     return "internal";

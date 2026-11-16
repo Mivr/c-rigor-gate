@@ -119,6 +119,29 @@ class SessionTest(TempDirTestCase):
         with self.assertRaises(up.BudgetSpent):
             session.apply(3, 1, 0, "")
 
+    def greeter(self, line):
+        """A probe that only greets with `line` (then reads stdin to its end)."""
+        script = self.tmp / "greeter"
+        script.write_text("#!/bin/sh\necho '%s'\ncat > /dev/null\n" % line)
+        script.chmod(0o755)
+        return [str(script)]
+
+    def test_the_pointer_capability_is_known_and_comes_last(self):
+        """U05c: `pointer` follows the six capabilities of U05a; anywhere else, or twice, is a protocol error."""
+        full = "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop"
+        for line, caps in ((full + " pointer", up.CAPABILITIES), ("ui-probe/1 ready pointer", ("pointer",)),
+                           ("ui-probe/1 ready hit-test tap pointer", ("hit-test", "tap", "pointer"))):
+            with self.subTest(line=line):
+                session = up.Session(self.greeter(line), 2.0, up.Budget(60))
+                self.addCleanup(session.close)
+                self.assertEqual(session.caps, caps)
+        self.assertEqual(up.CAPABILITIES[-1], "pointer")
+        for line in ("ui-probe/1 ready frame-facts ink hit-test tap apply-missed pointer crop",
+                     "ui-probe/1 ready pointer frame-facts", full + " pointer pointer", full + " pointers",
+                     full + " Pointer"):
+            with self.subTest(line=line):
+                self.assert_error(lambda: up.Session(self.greeter(line), 2.0, up.Budget(60)), "protocol", "greeting")
+
     def test_a_wrong_greeting_and_a_missing_binary(self):
         script = self.tmp / "liar"
         script.write_text("#!/bin/sh\necho 'ui-probe/2 ready'\n")

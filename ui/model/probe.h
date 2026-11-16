@@ -40,6 +40,8 @@ typedef struct {
     bool framed;            /* a `frame` succeeded and no command changed the model since */
     bool tick_set;          /* tick_offset is taken (at the session's first frame) */
     uint32_t tick_offset;   /* lv_tick_get() - (uint32_t)now: constant while only uim_step moves the tick */
+    bool pointer;           /* uim_pointer_supported() at the greeting: taps go through the product's pointer entry */
+    bool product_indev;     /* lvprobe is attached to the product's own pointer indev (not one it created) */
 } probe_t;
 
 /* The shape of the records of one call (model.h): field count and which fields are decimal numbers. */
@@ -77,6 +79,10 @@ lvprobe_status_t probe_life_line(const lvprobe_life_t *e, bool indexed, char *ou
 /* probe_input.c: */
 bool probe_cmd_hit_test(probe_t *p, char **arg);
 bool probe_cmd_tap(probe_t *p, char **arg);
+/* probe_logs.c: `semantic` (read-only: a failure does not poison), `patches` and `trace`. */
+bool probe_cmd_semantic(probe_t *p, char **arg);
+bool probe_cmd_patches(probe_t *p, char **arg);
+bool probe_cmd_trace(probe_t *p, char **arg);
 /* probe_pixels.c: */
 bool probe_cmd_ink(probe_t *p, char **arg);
 bool probe_cmd_crop(probe_t *p, char **arg);

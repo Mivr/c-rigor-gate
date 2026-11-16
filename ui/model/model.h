@@ -132,9 +132,9 @@ uint64_t uim_next_due(const uim_t *m);
  * honoured) and never passes the target; a deadline therefore always ends a step exactly. */
 bool uim_step(uim_t *m, uint32_t ms);
 
-/* Run every piece of product work that is due at the current virtual time (an intent an input handler queued, work an
- * LVGL animation callback posted) to a stable scene. The clock does not move. `*worked` says whether anything ran (an
- * event was processed, a scene was published). UIM_OK, or UIM_ERROR (poisons, like a failing `uim_apply`); UIM_REFUSED
+/* Run every piece of product work that is due at the current virtual time (an intent an input handler queued, the
+ * pointer samples `uim_pointer` delivered, work an LVGL animation callback posted) to a stable scene. The clock does
+ * not move. `*worked` says whether anything ran (an event was processed, a scene was published). UIM_OK, or UIM_ERROR (poisons, like a failing `uim_apply`); UIM_REFUSED
  * and UIM_MISSED are not valid results here. The gate calls it after a tap and while it takes a frame. */
 uim_result_t uim_settle(uim_t *m, bool *worked);
 
@@ -161,5 +161,24 @@ bool uim_domain_at(uim_t *m, uint16_t i);
 /* The events the product emitted since the previous call of `uim_trace` or since `uim_open` (records above). The log
  * is then cleared. */
 bool uim_trace(uim_t *m, uim_buf_t *out);
+
+/* ---- the product's pointer entry (optional, U05c) ---------------------------------------------------------------
+ * Whether the product delivers taps through its own pointer entry. Both functions are REQUIRED in EVERY adapter (an
+ * interface break of U05c: an adapter without them no longer links; no weak symbol is involved): a product without a
+ * pointer entry returns false here and from every `uim_pointer`. The result is a constant of the build: the same value
+ * on every call, in every state, before `uim_open` included. The probe reads it for its greeting (capability `pointer`)
+ * and again at every tap; a different value is `err tap model-contract`. A product that has its own pointer indev and
+ * returns false has its taps injected at that indev, a less faithful path the explorer reports (`taps-injected`). */
+bool uim_pointer_supported(void);
+
+/* Deliver one pointer sample at display pixel (x, y), pressed (`down`) or released, EXACTLY as the product's real input
+ * source would (its input hook: the queue above LVGL, the events it posts, the held state it tracks). The clock does
+ * not move, and a sample carries the virtual time: whatever the hook stamps or schedules uses the model's virtual clock
+ * and LVGL's tick, never a real clock. The sample is processed by the following `uim_settle` (the probe delivers the
+ * press, then the release, then calls `uim_settle` once), and LVGL must read both: a sample the product drops is
+ * `err tap model-contract`, never "pressed nothing". The probe does not reset the product's indev between taps.
+ * False: the sample could not be delivered (also: not supported, or the model is not open); the session is poisoned
+ * like any failing call. The probe calls it only when `uim_pointer_supported()`. */
+bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down);
 
 #endif /* UI_MODEL_MODEL_H */
