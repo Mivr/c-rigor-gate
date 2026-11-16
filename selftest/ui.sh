@@ -441,6 +441,7 @@ done
 
 bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts) failed"
 bash selftest/ui_judges.sh || fail "selftest/ui_judges.sh (the ui-scene and ui-fit judges on the canary) failed"
+bash selftest/ui_restart.sh || fail "selftest/ui_restart.sh (the declared countdown restart) failed"
 
 begin "no probe process this selftest started is still alive"
 build_out canary_rel "$REL" "//selftest/ui_canary_product:probe"   # built by ui_judges.sh: its processes are checked too
