@@ -402,12 +402,14 @@ step_warm() {  # same head in a fresh work dir: nothing executes; `rigor verify`
   echo "  tests-msan executed 0 actions, tests-tsan none"
   [ "$sha_cold" = "$(jget "$work/warm.verdict.json" core_sha256)" ] || fail "core_sha256 differs between two runs of the same inputs"
   echo "  core_sha256 identical: $sha_cold"
-  # U30: nothing is signed. The verdict is consistent with this head and this gate revision (order and toolchain pins
-  # recomputed from the gate commit), and is refused for any other head.
-  "${rigor[@]}" verify --verdict "$work/warm.verdict.json" --expect-head "$last_head" > "$work/warm.verify.log" 2>&1 \
+  # U30: nothing is signed. The verdict's bindings match this head, this gate commit and its products/selftest (order,
+  # toolchain pins, .buckconfig and product files recomputed from the gate commit), and it is refused for another head.
+  "${rigor[@]}" verify --verdict "$work/warm.verdict.json" --expect-head "$last_head" --expect-gate "$(git rev-parse HEAD)" \
+      > "$work/warm.verify.log" 2>&1 \
     || { cat "$work/warm.verify.log" >&2; fail "rigor verify refused the warm verdict"; }
   [ -e "$work/warm.verdict.json.sig" ] && fail "a .sig was written beside the verdict"
-  "${rigor[@]}" verify --verdict "$work/warm.verdict.json" --expect-head "$base" > "$work/warm.verify-other.log" 2>&1 \
+  "${rigor[@]}" verify --verdict "$work/warm.verdict.json" --expect-head "$base" --expect-gate "$(git rev-parse HEAD)" \
+      > "$work/warm.verify-other.log" 2>&1 \
     && fail "rigor verify accepted the warm verdict for another head"
   grep -q "REJECTED: head is $last_head, expected $base" "$work/warm.verify-other.log" \
     || { cat "$work/warm.verify-other.log" >&2; fail "rigor verify did not name the head mismatch"; }

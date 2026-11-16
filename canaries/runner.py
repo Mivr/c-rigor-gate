@@ -244,9 +244,11 @@ def oracle_dir(canary_id):
 
 def verify_verdict(verdict, tier, head):
     """(exit code, output) of `rigor verify --require-tier TIER` on a verdict (U30: nothing is signed; the gate order and
-    toolchain pins are recomputed from this checkout's gate commit)."""
+    toolchain pins are recomputed from this checkout's gate commit, which must be the one that graded it)."""
+    gate = git(ROOT, "rev-parse", "HEAD")   # the gate commit this pack graded with (a clean checkout)
     result = run(["python3", "-I", "-B", os.path.join(ROOT, "gate", "rigor"), "verify", "--verdict", verdict,
-                  "--gate-repo", ROOT, "--expect-head", head, "--require-tier", tier], ROOT, check=False)
+                  "--gate-repo", ROOT, "--expect-head", head, "--expect-gate", gate, "--require-tier", tier],
+                 ROOT, check=False)
     return result.returncode, result.stdout + result.stderr
 
 

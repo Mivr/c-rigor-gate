@@ -78,7 +78,7 @@ def _is_nonempty_string(value):
     return isinstance(value, str) and value != ""
 
 
-def _parse_document(data, stem):
+def parse_document(data, stem):
     """Strictly parse approval JSON; None if malformed."""
     try:
         document = jsonio.strict_loads(data)
@@ -114,7 +114,7 @@ def _check_one(directory, stem):
     data = jsonio.read_bytes(json_path)
     if jsonio.sha256_hex(data).encode("ascii") != stem:
         return None, "name-mismatch"
-    approval = _parse_document(data, stem.decode("ascii"))
+    approval = parse_document(data, stem.decode("ascii"))
     if approval is None:
         return None, "malformed"
     return approval, None

@@ -1,6 +1,6 @@
 """The `ui-scene` judge (U06, P004 3.1): one step judge over the scene (O2) and, where the scene lacks the tree, the rendered
 tree it is associated with (O3). Every threshold and every judgement entry (typographic role, importance, wrap scope,
-the sealed layer policy) is read from the UI contract at the step; a value the owner has not decided is `contract-pending` for
+the contract's layer policy) is read from the UI contract at the step; a value the owner has not decided is `contract-pending` for
 exactly what needs it, never a default.
 
 Checks on O2 alone: touch-target-small, font-below-min, hierarchy-violated, raw-text, wrap-policy-undeclared.
@@ -33,7 +33,7 @@ def _texts(ctx):
 
 def touch_target_small(ctx, report):
     """O2: an interactive, shown node narrower or lower than the larger of `thresholds.touch_min_dp` and its typographic
-    role's `role_min.touch_dp_min` (scene px = dp); and, once the panel is sealed, than `thresholds.touch_min_mm`."""
+    role's `role_min.touch_dp_min` (scene px = dp); and, once the panel is decided, than `thresholds.touch_min_mm`."""
     contract = ctx.contract
     floor = contract.get("thresholds", "touch_min_dp")
     minimum = {row["role"]: row["touch_dp_min"] for row in contract.rows("role_min")}

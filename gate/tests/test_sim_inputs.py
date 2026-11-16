@@ -66,18 +66,24 @@ class SaltSnapshot(TempDirTestCase):
 
 
 class VerifySim(VerdictCase):
-    SPEC = "a" * 64
+    SPEC_TEXT = b"[sim]\nspec = 1\n"
+    SPEC = jsonio.sha256_hex(SPEC_TEXT)   # sim.toml is a product file: verify recomputes its binding
     SALT = "b" * 64
 
     def make_sim(self, **inputs):
+        self.product_files["sim.toml"] = self.SPEC_TEXT
+        inputs.pop("sim_spec_sha256", None)
         self.fixture.file_hashes.update(inputs)
         self.make()
 
     def no_sim(self):
-        self.fixture.file_hashes.update(sim_spec_sha256=None, sim_salt_id=None, sim_regressions_sha256=None)
+        self.product_files.pop("sim.toml", None)
+        self.product_files.pop("sim-regressions.json", None)
+        self.fixture.file_hashes.update(sim_salt_id=None)
 
     def test_the_simulation_inputs_are_printed(self):
-        self.fixture.file_hashes.update(sim_spec_sha256=self.SPEC, sim_salt_id=self.SALT)
+        self.product_files["sim.toml"] = self.SPEC_TEXT
+        self.fixture.file_hashes.update(sim_salt_id=self.SALT)
         self.fixture.sim_digest = "c" * 64
         self.make()
         outcome = self.verify()

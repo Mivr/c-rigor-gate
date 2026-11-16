@@ -60,8 +60,25 @@ def absolute_arguments(args):
             setattr(args, name, os.path.abspath(value))
 
 
+def _inside(path, directory):
+    path, directory = os.path.realpath(path), os.path.realpath(directory)
+    return os.path.commonpath([path, directory]) == directory
+
+
+def refuse_planted_approvals(args):
+    """U30 fix-up: nobody signs an approval, so an approvals directory the graded party can write would be in
+    force. One inside the product repository or the work directory is refused (exit 2)."""
+    if args.approvals is None:
+        return
+    for name, directory in (("the product repository", args.product_repo), ("the work directory", args.work)):
+        if _inside(args.approvals, directory):
+            raise InternalError("--approvals %s is inside %s: approvals must live outside what is graded"
+                                % (args.approvals, name))
+
+
 def start_grading(args):
     absolute_arguments(args)
+    refuse_planted_approvals(args)
     discard(args.verdict_out)  # no stale verdict, and none if we die before writing a new one
     gate_sha, gate_clean = grade_context.gate_checkout_state(args.allow_dirty_gate)
     grade_context.prepare_work(args.work)

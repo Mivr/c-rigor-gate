@@ -31,21 +31,35 @@ PRODUCT_FILES = ("product.toml", "policy.toml", "expected-tests.json", "expected
                  "decoupling-baseline.toml", "sim.toml", "sim-regressions.json", "sim-salt.public",
                  "oracle-policy.toml", "oracle-normalise.toml", "oracle-excluded.toml")
 SIM_SALT_NAME = "sim-salt"   # the snapshot of the salt the sim gate builds with (grade_sim.SALT_NAME)
+# U30 fix-up: every product configuration file the grade reads is bound by its own key (`sim-salt.public` is bound as
+# `sim_salt_id`, the hash of the salt actually used). `rigor verify` recomputes these from the product directory.
+PRODUCT_FILE_KEYS = {"product.toml": "product_toml_sha256", "policy.toml": "policy_sha256",
+                     "expected-tests.json": "expected_tests_sha256",
+                     "expected-tests.previous.json": "expected_tests_previous_sha256",
+                     "ram-budget.toml": "ram_budget_sha256", "architecture.toml": "architecture_sha256",
+                     "fuzz-regressions.json": "fuzz_regressions_sha256", "decoupling.toml": "decoupling_sha256",
+                     "decoupling-baseline.toml": "decoupling_baseline_sha256", "sim.toml": "sim_spec_sha256",
+                     "sim-regressions.json": "sim_regressions_sha256", "oracle-policy.toml": "oracle_policy_sha256",
+                     "oracle-normalise.toml": "oracle_normalise_sha256",
+                     "oracle-excluded.toml": "oracle_excluded_sha256"}
 
 SHA_KEYS = ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
             "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256",
             "order_sha256", "buckconfig_sha256", "toolchain_buck_sha256", "llvm_sha256",
             "sysroot_sha256", "buck2_sha256", "witness_sha256", "perf_sha256",
             "fuzz_regressions_sha256", "sim_spec_sha256", "sim_regressions_sha256", "sim_salt_id", "sim_seed_digest", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
-            "oracle_excluded_sha256")
+            "oracle_excluded_sha256", "architecture_sha256", "decoupling_sha256", "decoupling_baseline_sha256")
 COMMIT_KEYS = ("gate_sha", "head", "base", "merge_base")
-INPUT_KEYS = frozenset(SHA_KEYS + COMMIT_KEYS + ("gate_clean", "product", "uncached", "tier"))
+# `product_dir`: the product directory relative to the gate checkout (posix), or null when it lies outside it.
+INPUT_KEYS = frozenset(SHA_KEYS + COMMIT_KEYS + ("gate_clean", "product", "uncached", "tier", "product_dir"))
 # Absent on purpose in many grades: no approvals bundle, no previous expected-tests file, no witness, no perf bundle,
 # no fuzz regression list, and nothing of the simulation (no sim.toml, no regressions, no salt, no `c_sim` run) and nothing of the oracle (no bundle, no policy, no table, no exclusions).
 OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256", "ram_budget_sha256", "witness_sha256",
                            "perf_sha256", "fuzz_regressions_sha256", "sim_spec_sha256", "sim_regressions_sha256",
                            "sim_salt_id", "sim_seed_digest", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
-                           "oracle_excluded_sha256"})
+                           "oracle_excluded_sha256", "architecture_sha256", "decoupling_sha256",
+                           "decoupling_baseline_sha256"})
+_REL_PATH = re.compile(r"(?!/)(?!.*(?:^|/)\.\.?(?:/|$))[^\x00]+")
 
 
 # ---------------------------------------------------------------- snapshot (read once, use the copy)
@@ -81,6 +95,22 @@ def _approval_entry(source, destination):
         return ["file", jsonio.sha256_hex(data)]
     os.mkdir(destination)  # a directory or special file: only its name is ever looked at
     return ["other", jsonio.sha256_hex(b"")]
+
+
+def approvals_digest(source):
+    """The digest `snapshot_approvals` binds, computed from a directory in place (for `rigor verify --approvals`)."""
+    raw_source = os.fsencode(source)
+    entries = []
+    for name in sorted(os.listdir(raw_source)):
+        path = os.path.join(raw_source, name)
+        if os.path.islink(path):
+            entry = ["symlink", jsonio.sha256_hex(os.fsencode(os.readlink(path)))]
+        elif os.path.isfile(path):
+            entry = ["file", jsonio.sha256_hex(jsonio.read_bytes(path))]
+        else:
+            entry = ["other", jsonio.sha256_hex(b"")]
+        entries.append([os.fsdecode(name)] + entry)
+    return jsonio.sha256_hex(jsonio.canonical_dumps(entries))
 
 
 def snapshot_approvals(source, destination):
@@ -132,21 +162,12 @@ def snapshot_inputs(args, work):
     hashes["task_sha256"] = snapshot_file(args.task, task_copy)
     args.task = task_copy
     product_dir = os.path.dirname(args.product)
-    copies = {}
+    hashes["product_dir"] = gate_relative(product_dir)
     for name in PRODUCT_FILES:
-        copies[name] = snapshot_file(os.path.join(product_dir, name), os.path.join(base, "product", name))
+        digest = snapshot_file(os.path.join(product_dir, name), os.path.join(base, "product", name))
+        if name in PRODUCT_FILE_KEYS:
+            hashes[PRODUCT_FILE_KEYS[name]] = digest
     args.product = os.path.join(base, "product", "product.toml")
-    hashes["product_toml_sha256"] = copies["product.toml"]
-    hashes["policy_sha256"] = copies["policy.toml"]
-    hashes["expected_tests_sha256"] = copies["expected-tests.json"]
-    hashes["expected_tests_previous_sha256"] = copies["expected-tests.previous.json"]
-    hashes["ram_budget_sha256"] = copies["ram-budget.toml"]
-    hashes["fuzz_regressions_sha256"] = copies["fuzz-regressions.json"]
-    hashes["sim_spec_sha256"] = copies["sim.toml"]
-    hashes["sim_regressions_sha256"] = copies["sim-regressions.json"]
-    hashes["oracle_policy_sha256"] = copies["oracle-policy.toml"]
-    hashes["oracle_normalise_sha256"] = copies["oracle-normalise.toml"]
-    hashes["oracle_excluded_sha256"] = copies["oracle-excluded.toml"]
     hashes["sim_salt_id"] = snapshot_sim_salt(getattr(args, "sim_salt", None),
                                               os.path.join(base, "product", "sim-salt.public"),
                                               os.path.join(base, SIM_SALT_NAME))
@@ -158,6 +179,15 @@ def snapshot_inputs(args, work):
         args.approvals = approvals_copy
     _snapshot_trust_files(args, base, hashes)
     return hashes
+
+
+def gate_relative(directory):
+    """`directory` relative to the gate checkout (posix), or None when it is outside it (or is the root)."""
+    root = os.path.realpath(grade_context.GATE_ROOT)
+    path = os.path.realpath(directory)
+    if os.path.commonpath([root, path]) != root or path == root:
+        return None
+    return os.path.relpath(path, root).replace(os.sep, "/")
 
 
 def _snapshot_trust_files(args, base, hashes):
@@ -334,7 +364,7 @@ def build_inputs(g, documents):
 def missing_inputs(inputs):
     """Names of required inputs that are null or malformed."""
     bad = []
-    for key in sorted(INPUT_KEYS - OPTIONAL_KEYS):
+    for key in sorted(INPUT_KEYS - OPTIONAL_KEYS - {"product_dir"}):
         value = inputs.get(key)
         if key in ("gate_clean", "uncached"):
             ok = isinstance(value, bool)
@@ -352,4 +382,7 @@ def missing_inputs(inputs):
         value = inputs.get(key)
         if value is not None and not (isinstance(value, str) and _SHA256.fullmatch(value)):
             bad.append(key)
-    return bad
+    value = inputs.get("product_dir")
+    if value is not None and not (isinstance(value, str) and _REL_PATH.fullmatch(value)):
+        bad.append("product_dir")
+    return sorted(bad)

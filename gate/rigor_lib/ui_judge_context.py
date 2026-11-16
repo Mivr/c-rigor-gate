@@ -5,7 +5,7 @@ rendered tree (ui_judge_stage), their association, what the contract says of eac
 A scene node with a field outside the vocabulary, or whose key is not unique in the state, is reported once and takes
 part in no other check.
 
-Layers (R6, R8): a node of role scrim, dialog, banner or snackbar is a layer; its policy is the sealed `[[input_layer]]`
+Layers (R6, R8): a node of role scrim, dialog, banner or snackbar is a layer; its policy is the contract's `[[input_layer]]`
 table's: the rows of its role (a scrim: of the card that follows it in the scene), `blocks_input_below` true =
 capture-modal-inert, false = pass-through; rows of one role that disagree, or none, are contract-incomplete.
 
@@ -248,7 +248,7 @@ class Context:
         return self.inert(node, index, probe.inert_points())
 
     def tap_outside(self, node):
-        """Whether the sealed `[[input_layer]]` rows of a scrim's layer (its card's role) say a tap outside the card
+        """Whether the contract's `[[input_layer]]` rows of a scrim's layer (its card's role) say a tap outside the card
         dismisses it: True, False, or None when the rows disagree, are missing or the scrim has no card."""
         card = self.card_of(node) if node.role == "scrim" else None
         if card is None:

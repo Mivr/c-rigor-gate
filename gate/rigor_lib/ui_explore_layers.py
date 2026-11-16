@@ -1,10 +1,10 @@
 """The layer policy of the explorer's tap judges (U05e; P004 3.4; docs/ui-explore.md "Taps under a layer").
 
 With `--contract`, a tap is judged in the layer context the ui-scene judge reads (ui_judge_context.Context: the scene,
-the rendered tree, their association, each layer's sealed `[[input_layer]]` policy, inertness R7, and, with the
+the rendered tree, their association, each layer's contract `[[input_layer]]` policy, inertness R7, and, with the
 probe's `identity`, the elements), built from the state before the tap. Without a contract nothing here runs. One
 verdict per tap, in this order:
-  dismiss  the point is under a scrim (outside its card), the topmost layer there, whose sealed rows say a tap outside
+  dismiss  the point is under a scrim (outside its card), the topmost layer there, whose contract rows say a tap outside
            dismisses: the tap must do exactly that layer's dismiss (`dismissed`), else `tap-misrouted`. The dismiss
            intent is BOUND by the gate (fix-up 3 ruling): the intent of the one node inside the layer's card that is
            the `dismiss` element by scene identity (`ui_judge_identity.carries`: a button; with an `[[element]]` row,

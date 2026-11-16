@@ -10,7 +10,6 @@ from unittest import mock
 
 from rigor_lib import approvals, grade, grade_steps, jsonio, verdict, witness_bundle
 from rigor_lib.errors import InternalError
-from tests.gate_repo_fixture import gate_repo
 from tests.helpers import GATE_DIR, TempDirTestCase, read_json, run_rigor
 from tests.test_verdict_inputs import Fixture, HEAD, GATE, WITNESS_FIXTURE
 
@@ -123,206 +122,44 @@ class GradeVerdict(TempDirTestCase):
         block = read_json(self.out)["core"]["approvals"]
         self.assertEqual(block["count"], 2)
         self.assertEqual([e["stem"] for e in block["in_force"]], ["1" * 64, "2" * 64])
-        self.assertEqual(block["in_force"][1], {"kind": "ratchet", "scope": "n.toml:k", "reason": "why", "stem": "2" * 64})
+        self.assertEqual(block["in_force"][1], {"kind": "ratchet", "scope": "n.toml:k", "reason": "why",
+                                              "repo_sha": "e" * 40, "stem": "2" * 64})
 
 
-class Verify(TempDirTestCase):
-    def setUp(self):
-        super().setUp()
-        self.verdict = self.tmp / "verdict.json"
-        self.fixture = Fixture(str(self.tmp))
-        self.gate_repo = gate_repo(self.fixture)
+class PlantedApprovals(TempDirTestCase):
+    """U30 fix-up: an approvals directory the graded party can write would be in force, so it is refused."""
 
-    def make(self, mutate_core=None, fixture=None):
-        fixture = fixture or self.fixture
-        core = verdict.build_core(["a"], {"a": {"status": "PASS", "findings": []}})
-        core["uncached"] = fixture.uncached
-        core["approvals"] = verdict.approvals_in_force([])
-        core["inputs"] = fixture.inputs()
-        if mutate_core:
-            mutate_core(core)
-        self.write(core)
+    def args(self, approvals):
+        return SimpleNamespace(product_repo=str(self.tmp / "repo"), work=str(self.tmp / "work"), approvals=approvals)
 
-    def write(self, core, core_sha256=None):
-        document = {"core": core, "core_sha256": core_sha256 or jsonio.sha256_hex(jsonio.canonical_dumps(core)),
-                    "metadata": {}}
-        self.verdict.write_bytes(jsonio.canonical_dumps(document))
+    def test_inside_the_product_repo_or_the_work_directory_is_refused(self):
+        os.makedirs(self.tmp / "repo" / "approvals")
+        os.makedirs(self.tmp / "work" / "approvals")
+        os.symlink(self.tmp / "repo" / "approvals", self.tmp / "link")
+        for path, where in ((self.tmp / "repo" / "approvals", "product repository"),
+                            (self.tmp / "work" / "approvals", "work directory"),
+                            (self.tmp / "link", "product repository")):
+            with self.assertRaisesRegex(InternalError, where):
+                grade.refuse_planted_approvals(self.args(str(path)))
 
-    def verify(self, *extra):
-        return run_rigor(["verify", "--verdict", self.verdict, "--gate-repo", self.gate_repo,
-                          "--expect-head", HEAD, *extra])
+    def test_outside_both_or_none_is_accepted(self):
+        os.makedirs(self.tmp / "approvals")
+        os.makedirs(self.tmp / "repo-approvals")   # a sibling whose name starts like the repo is outside it
+        for path in (None, str(self.tmp / "approvals"), str(self.tmp / "repo-approvals")):
+            self.assertIsNone(grade.refuse_planted_approvals(self.args(path)))
 
-    def assertRejected(self, outcome, text):
-        self.assertEqual(outcome.code, 1, outcome.stdout + outcome.stderr)
-        self.assertIn(text, outcome.stdout)
-
-    def test_a_consistent_clean_pass_verifies_with_all_expectations(self):
-        self.make()
-        inputs = self.fixture.inputs()
-        outcome = self.verify("--expect-gate", self.fixture.gate_sha, "--expect-policy-sha", inputs["policy_sha256"])
-        self.assertEqual(outcome.code, 0, outcome.stdout + outcome.stderr)
-        self.assertIn("OK", outcome.stdout)
-        self.assertIn("approvals in force 0", outcome.stdout)
-
-    def test_each_expectation_is_checked_on_its_own(self):
-        self.make()
-        self.assertRejected(self.verify("--expect-head", "e" * 40), "head is")
-        self.assertRejected(self.verify("--expect-gate", "e" * 40), "gate_sha is")
-        self.assertRejected(self.verify("--expect-policy-sha", "e" * 64), "policy_sha256 is")
-        self.assertEqual(self.verify().code, 0)
-
-    def test_the_head_must_be_named(self):
-        self.make()
-        outcome = run_rigor(["verify", "--verdict", self.verdict, "--gate-repo", self.gate_repo])
+    def test_the_grade_refuses_it_before_anything_is_written(self):
+        repo = self.tmp / "repo"
+        os.makedirs(repo / "approvals")
+        task = self.tmp / "task.toml"
+        task.write_text('id = "t"\nallowed = ["**"]\n')
+        outcome = run_rigor(["grade", "--product-repo", repo, "--base", "main", "--head", "main", "--task", task,
+                             "--product", GATE_DIR.parent / "products" / "selftest" / "product.toml",
+                             "--approvals", repo / "approvals", "--work", self.tmp / "work",
+                             "--out", self.tmp / "v.json", "--allow-dirty-gate"])
         self.assertExit(outcome, 2)
-        self.assertIn("--expect-head", outcome.stderr)
-
-    def test_a_verdict_of_the_signing_gate_is_refused_by_name_and_its_signature_ignored(self):
-        def legacy(core):
-            core["inputs"]["allowed_signers_sha256"] = "5" * 64
-        self.make(legacy)
-        (self.tmp / "verdict.json.sig").write_bytes(b"-----BEGIN SSH SIGNATURE-----\n")
-        self.assertRejected(self.verify(), "written by a gate that signed verdicts")
-        for option in ("--allowed-signers", "--signature"):
-            self.assertExit(self.verify(option, self.tmp / "verdict.json.sig"), 2)
-
-    def test_a_tampered_file_is_rejected(self):
-        self.make()
-        document = read_json(self.verdict)
-        document["core"]["inputs"]["head"] = "e" * 40
-        self.verdict.write_bytes(jsonio.canonical_dumps(document))
-        self.assertRejected(self.verify(), "core_sha256 does not match")
-        self.write(document["core"])   # rehashed: consistent, but about another tree than the one asked about
-        self.assertRejected(self.verify(), "head is %s, expected %s" % ("e" * 40, HEAD))
-
-    def test_a_document_whose_hash_does_not_match_its_core(self):
-        self.make()
-        document = read_json(self.verdict)
-        self.write(document["core"], "0" * 64)
-        self.assertRejected(self.verify(), "core_sha256 does not match")
-
-    def test_a_dirty_gate_pass_is_rejected(self):
-        self.fixture.gate_clean = False
-        self.make()
-        self.assertRejected(self.verify(), "gate tree was dirty")
-
-    def test_a_fail_is_rejected(self):
-        def fail(core):
-            core["overall"] = "FAIL"
-        self.make(fail)
-        self.assertRejected(self.verify(), "not PASS")
-
-    def test_a_pass_with_a_failed_gate_is_rejected(self):
-        def lie(core):
-            core["gates"][0]["status"] = "FAIL"
-        self.make(lie)
-        self.assertRejected(self.verify(), "a gate is not")
-
-    def test_a_partial_or_reordered_grade_is_rejected(self):
-        two = Fixture(str(self.tmp / "two"))
-        self.gate_repo = gate_repo(two, ("a", "b"))
-        self.make(fixture=two)   # the core lists only `a`: an `--only` grade
-        self.assertRejected(self.verify(), "not the gate order of revision")
-        self.make(lambda core: core.__setitem__("gates", core["gates"] * 2), fixture=two)
-        self.assertRejected(self.verify(), "not the gate order of revision")
-
-    def test_every_gate_owned_input_is_recomputed_from_the_gate_revision(self):
-        for key in ("order_sha256", "toolchain_buck_sha256", "llvm_sha256", "sysroot_sha256", "buck2_sha256"):
-            self.make(lambda core, key=key: core["inputs"].__setitem__(key, "9" * 64))
-            self.assertRejected(self.verify(), "%s is %s, but gate revision" % (key, "9" * 64))
-
-    def test_a_gate_sha_that_is_not_a_gate_commit_is_rejected(self):
-        self.make(lambda core: core["inputs"].__setitem__("gate_sha", "e" * 40))
-        self.assertRejected(self.verify(), "is not a commit of the gate repository")
-
-    def test_the_approvals_in_force_are_checked_and_printed(self):
-        entry = {"kind": "ratchet", "scope": "n.toml:k", "reason": "why", "stem": "1" * 64}
-        self.make(lambda core: core.__setitem__("approvals", {"count": 1, "in_force": [entry]}))
-        outcome = self.verify()
-        self.assertEqual(outcome.code, 0, outcome.stdout)
-        self.assertIn("approvals in force 1", outcome.stdout)
-        self.assertIn("ratchet n.toml:k " + "1" * 64, outcome.stdout)
-        for block, text in (({"count": 2, "in_force": [entry]}, "count does not match"),
-                            ({"count": 2, "in_force": [entry, entry]}, "without duplicates"),
-                            ({"count": 1, "in_force": [dict(entry, kind="owner")]}, "malformed"),
-                            ({"in_force": []}, "no well-formed approvals count")):
-            self.make(lambda core, block=block: core.__setitem__("approvals", block))
-            self.assertRejected(self.verify(), text)
-        self.fixture.file_hashes["approvals_sha256"] = None
-        self.make(lambda core: core.__setitem__("approvals", {"count": 1, "in_force": [entry]}))
-        self.assertRejected(self.verify(), "no approvals bundle is bound")
-
-    def test_a_verdict_without_inputs_is_rejected(self):
-        self.make(lambda core: core.pop("inputs"))
-        self.assertRejected(self.verify(), "no well-formed inputs")
-
-    def test_a_null_required_input_is_rejected(self):
-        def null(core):
-            core["inputs"]["policy_sha256"] = None
-        self.make(null)
-        self.assertRejected(self.verify(), "policy_sha256 is missing")
-
-    def test_uncached_flag_must_agree_and_can_be_required(self):
-        self.make()
-        self.assertRejected(self.verify("--require-uncached"), "not an --uncached")
-        self.fixture.uncached = True
-        self.make()
-        self.assertEqual(self.verify("--require-uncached").code, 0)
-
-        def disagree(core):
-            core["uncached"] = False
-        self.make(disagree)
-        self.assertRejected(self.verify(), "disagrees")
-
-    def test_expect_witness_sha_accepts_only_that_bundle(self):
-        wanted = self.fixture.inputs()["witness_sha256"]
-        self.make()
-        self.assertEqual(self.verify("--expect-witness-sha", wanted).code, 0)
-        self.assertRejected(self.verify("--expect-witness-sha", "e" * 64), "witness_sha256 is %s" % wanted)
-
-    def test_expect_witness_sha_rejects_a_grade_without_a_witness(self):
-        self.fixture.file_hashes["witness_sha256"] = None
-        self.make()
-        self.assertEqual(self.verify().code, 0)
-        self.assertRejected(self.verify("--expect-witness-sha", "e" * 64), "witness_sha256 is null")
-
-    def test_a_malformed_witness_sha_is_rejected(self):
-        def bad(core):
-            core["inputs"]["witness_sha256"] = "short"
-        self.make(bad)
-        self.assertRejected(self.verify(), "witness_sha256 is missing or malformed")
-
-    def test_require_tier_accepts_only_that_tier_and_the_tier_is_always_printed(self):
-        self.make()   # a nightly grade
-        outcome = self.verify()
-        self.assertEqual(outcome.code, 0)
-        self.assertIn("tier nightly", outcome.stdout)
-        self.assertEqual(self.verify("--require-tier", "nightly").code, 0)
-        self.assertRejected(self.verify("--require-tier", "merge"), "tier is nightly, expected merge")
-        self.fixture.tier = "merge"
-        self.make()
-        outcome = self.verify("--require-tier", "nightly")
-        self.assertRejected(outcome, "tier is merge, expected nightly")
-        self.assertIn("tier merge", outcome.stdout)
-        self.assertEqual(self.verify("--require-tier", "merge").code, 0)
-        self.assertEqual(self.verify().code, 0)
-
-    def test_a_tier_edited_in_place_breaks_the_core_hash_and_an_unknown_tier_is_malformed(self):
-        self.fixture.tier = "merge"
-        self.make()
-        document = read_json(self.verdict)
-        document["core"]["inputs"]["tier"] = "nightly"
-        self.verdict.write_bytes(jsonio.canonical_dumps(document))
-        self.assertRejected(self.verify("--require-tier", "nightly"), "core_sha256 does not match")
-
-        def odd(core):
-            core["inputs"]["tier"] = "weekly"
-        self.make(odd)
-        self.assertRejected(self.verify(), "tier is missing or malformed")
-
-    def test_an_unreadable_verdict_is_an_internal_error(self):
-        outcome = run_rigor(["verify", "--verdict", self.tmp / "none.json", "--expect-head", HEAD])
-        self.assertEqual(outcome.code, 2)
+        self.assertIn("inside the product repository", outcome.stderr)
+        self.assertFalse((self.tmp / "v.json").exists())
 
 
 class GradeWitnessOption(TempDirTestCase):

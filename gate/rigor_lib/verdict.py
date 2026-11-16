@@ -120,9 +120,9 @@ def unused_approval_findings(valid, documents):
 def approvals_in_force(valid):
     """The verdict's count and list of approvals in force (U30): every loosening the grade honoured or could have.
 
-    Nobody signs an approval, so the verdict shows each one: kind, exact scope, reason and stem, sorted by stem.
+    Nobody signs an approval, so the verdict shows each one: kind, exact scope, reason, repo_sha and stem, sorted by stem.
     `count` is what a reader compares between grades; a change that adds an approval raises it."""
-    listed = [{"kind": a.kind, "scope": a.scope, "reason": a.reason, "stem": a.stem}
+    listed = [{"kind": a.kind, "scope": a.scope, "reason": a.reason, "repo_sha": a.repo_sha, "stem": a.stem}
               for a in sorted(valid, key=lambda item: item.stem)]
     return {"count": len(listed), "in_force": listed}
 

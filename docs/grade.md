@@ -463,6 +463,8 @@ the same `core_sha256`, whether the build was cold or fully cached; changing any
 | `product` | `name` from `product.toml` |
 | `task_sha256`, `product_toml_sha256`, `policy_sha256`, `expected_tests_sha256` | sha256 of the exact bytes of `--task`, `product.toml`, `policy.toml`, `expected-tests.json` |
 | `expected_tests_previous_sha256` | the same for `expected-tests.previous.json`; `null` if the file does not exist |
+| `ram_budget_sha256`, `architecture_sha256`, `decoupling_sha256`, `decoupling_baseline_sha256`, `fuzz_regressions_sha256` | sha256 of `ram-budget.toml`, `architecture.toml`, `decoupling.toml`, `decoupling-baseline.toml`, `fuzz-regressions.json` beside `policy.toml`; `null` if absent (the architecture and decoupling keys since the U30 fix-up: every product configuration file the grade reads is bound, `verdict_inputs.PRODUCT_FILE_KEYS`) |
+| `product_dir` | the directory of `--product` relative to the gate checkout (`products/selftest`, `canaries/<id>`), or `null` when it lies outside it; `rigor verify` reads the product files from there |
 | `approvals_sha256` | digest of the approvals bundle (sorted name, kind, content hash of every entry); `null` without `--approvals` |
 | `order_sha256` | the bytes of `gate/order.txt` the verdict was built from |
 | `buckconfig_sha256` | the generated `.buckconfig` (from the `assemble` manifest) |
@@ -475,10 +477,13 @@ the same `core_sha256`, whether the build was cold or fully cached; changing any
 | `tier` | `merge` or `nightly` (`--tier`, T137); a verdict of one tier never has the `core_sha256` of the other |
 
 **Approvals in force (U30).** `core.approvals` is `{"count": N, "in_force": [...]}`: every *valid* approval (well formed,
-named by its hash, `repo_sha` an ancestor of the head) with its `kind`, exact `scope`, `reason` and `stem`, sorted by stem;
+named by its hash, `repo_sha` an ancestor of the head) with its `kind`, exact `scope`, `reason`, `repo_sha` and `stem`, sorted by stem;
 `{"count": 0, "in_force": []}` without `--approvals`. Nobody signs an approval, so this is where a reader sees every
-loosening the grade could honour: a change that adds an approval (an equivalent mutant, a suppression, a removed test, a
-raised ratchet) raises `count` and is never silent. `rigor grade` prints `approvals in force (loosenings): N` and `rigor
+approval the grade could honour: a change that adds an approval (an equivalent mutant, a suppression, a removed test, a
+raised ratchet) raises `count` and is never silent. Other loosenings (a raised baseline, a relaxed threshold, an edited
+expected list) are not approvals: they change a bound product input (above) and are not counted (`docs/trust.md`, known
+gaps). `rigor grade` refuses (exit 2) an `--approvals` directory whose real path is inside the product repository or the
+work directory: an approval there would be in force although the graded party wrote it. `rigor grade` prints `approvals in force (loosenings): N` and `rigor
 verify` prints the count and each entry. It is hashed with the rest of `core`.
 
 **Unused approvals (T068).** `core.unused_approvals` is a verdict-level list (hashed with the rest of `core`, so it cannot
@@ -509,33 +514,47 @@ the same way and bound as `allowed_signers_sha256`; both are gone.)
 
 ## `rigor verify`: what a merge bot runs
 ```
-gate/rigor verify --verdict verdict.json --expect-head <40-hex head> [--gate-repo <gate checkout>] \
-    [--expect-gate <40-hex gate commit>] [--expect-policy-sha <sha256 of policy.toml>] \
+gate/rigor verify --verdict verdict.json --expect-head <40-hex head> --expect-gate <40-hex gate commit> \
+    --expect-policy-sha <sha256 of policy.toml> [--expect-task-sha <sha256 of TASK.toml>] \
+    [--gate-repo <gate checkout>] [--product-dir DIR] [--approvals DIR] \
     [--require-uncached] [--require-tier merge|nightly] \
     [--expect-sim-salt-id <sha256 of the salt>] [--expect-sim-spec-sha <sha256 of sim.toml>] [--expect-oracle-sha <oracle_sha256>]
 ```
 Nothing is signed (U30, `docs/trust.md`). Exit 0 only for a consistent PASS; exit 1 prints every reason it was rejected
-(`REJECTED: ...`); exit 2 is an internal error (unreadable file) or a usage error (no `--expect-head`; the removed
-`--allowed-signers` and `--signature`). It checks, in order: `core_sha256` recomputed from `core`; `overall == PASS`; a
-verdict of the signing gate (its inputs bind `allowed_signers_sha256`) is refused by name (`written by a gate that signed
-verdicts ... grade again with this gate`; a `.sig` beside it is never read); every required input present and well
-formed, `gate_clean == true`, `core.uncached == inputs.uncached`; then, from the gate commit `inputs.gate_sha` in
-`--gate-repo` (default: the checkout `verify` runs from; a sha that is not a commit there is rejected), it recomputes
-`order_sha256` (`gate/order.txt`), `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256` (`toolchains/BUCK` and its
-pins) and `buck2_sha256` (`tools/buck2.version`), and requires the gate list of `core` to be exactly that order with every
-gate PASS (so an `--only` grade, a reordered or a shortened list is rejected); `core.approvals` must be well formed
-(`count` equal to the entries, sorted by stem, none without a bound approvals bundle); last the `--expect-*` values.
-`--require-tier TIER` rejects a verdict graded at another tier (`tier is merge, expected nightly`); the tier of the verdict
-is printed on every run (`rigor verify: tier merge`), also when it is rejected, and so are the approvals in force.
+(`REJECTED: ...`); exit 2 is an internal error (unreadable file) or a usage error (no `--expect-head` or no
+`--expect-gate`; the removed `--allowed-signers` and `--signature`). The head and the gate commit are mandatory: without
+`--expect-gate` a verdict graded by any commit in the gate object store (an unmerged branch with a weakened gate) would be
+consistent. It checks, in order: `core_sha256` recomputed from `core`; `overall == PASS`; a verdict of the signing gate (its
+inputs bind `allowed_signers_sha256`) is refused by name (`written by a gate that signed verdicts ... grade again with this
+gate`; a `.sig` beside it is never read); every input present and well formed, `gate_clean == true`,
+`core.uncached == inputs.uncached`; the recomputed bindings below; `core.approvals` well formed (`count` equal to the
+entries, sorted by stem, each with kind, scope, reason, `repo_sha` and stem, none without a bound approvals bundle); last
+the `--expect-*` values. The tier and the approvals in force are printed on every run, also when the verdict is rejected.
 `--expect-policy-sha` is the sha256 of the policy file the merge bot trusts (`sha256sum products/<p>/policy.toml`).
 
-**What `verify` proves, and what it no longer proves.** It proves that the verdict is internally consistent, that it is
-about the head it is asked about, that it was produced by the gate revision it names with that revision's full gate list
-and toolchain, on a clean gate checkout, and how many loosenings were in force. It does **not** prove who ran the grade,
-nor that a grade ran at all: anyone can write a self-consistent `core` (with every gate PASS) and hash it. A verdict is
-trusted because anyone can run the grade again from the same inputs and compare `core_sha256` (the grade is
-deterministic: "Verdict determinism and bound inputs" above), not because of who signed it. A merge bot that must not
-trust the writer of the verdict file re-grades and compares, or grades itself.
+**Each binding, and how `verify` checks it** (`gate/rigor_lib/verdict_recompute.py`):
+
+| Binding | Checked how |
+|---|---|
+| `head` | must equal `--expect-head` |
+| `gate_sha` | must equal `--expect-gate` and be a commit of `--gate-repo` (default: the checkout `verify` runs from) |
+| `order_sha256` and the gate list of `core` | recomputed from `gate/order.txt` at `gate_sha`; the list must be exactly that order (no `--only`, no reordering) with every gate PASS; an entry that is not an object is rejected |
+| `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | recomputed from `toolchains/BUCK` and its pins and `tools/buck2.version` at `gate_sha` |
+| `buckconfig_sha256` | recomputed: the generated `.buckconfig` of the grading tree from the gate's `.buckconfig` at `gate_sha` |
+| product configuration (`product_toml_sha256`, `policy_sha256`, `expected_tests*`, `ram_budget_sha256`, `architecture_sha256`, `decoupling*`, `fuzz_regressions_sha256`, `sim_spec_sha256`, `sim_regressions_sha256`, `oracle_policy/normalise/excluded_sha256`) | recomputed from `inputs.product_dir` at `gate_sha`; when the grade's product directory was outside the gate checkout (`product_dir` null) `--product-dir DIR` is required and the files are read from it (and refused when `product_dir` is set). A file present on one side only is a mismatch |
+| `approvals_sha256` and `core.approvals.in_force` | with `--approvals DIR`: the bundle digest recomputed from DIR, and every approval in force must be the file `<stem>.json` there, of that hash, with the listed kind, scope, reason and `repo_sha`. Without it: the shape and count only |
+| `task_sha256` | `--expect-task-sha` (the merge bot hashes the contract it trusts) |
+| `policy_sha256`, `witness_sha256`, `oracle_sha256`, `perf_sha256`, `sim_salt_id`, `sim_spec_sha256` | also the matching `--expect-*` values when given |
+| `gate_clean`, `tier`, `uncached`, `base`, `merge_base`, `sim_seed_digest`, `product`, every gate's status, findings count and findings digest, `unused_approvals` | **self-reported**: not recomputable without running the grade. `gate_clean` must be true, `tier` and `uncached` checked against `--require-*` |
+
+**What `verify` proves, and what it does not.** It proves that `core` hashes to `core_sha256`; that the verdict is about
+the head and the gate commit the caller names; that the gate list, the toolchain pins, the generated `.buckconfig` and
+the product configuration it binds are those of that gate commit (or of `--product-dir`); and, with `--approvals`, that
+the approvals it lists in force are those files. It does **not** prove that the self-reported part is true, who ran the
+grade, or that a grade ran at all: anyone can write a `core` with every gate PASS that matches all recomputable bindings
+and hash it. A verdict is trusted because anyone can run the grade again from the same inputs and compare `core_sha256`
+(the grade is deterministic: "Verdict determinism and bound inputs" above), not because of who signed it. A merge bot that
+must not trust the writer of the verdict file re-grades and compares, or grades itself.
 
 ## Sealed environment
 `rigor grade` replaces its own environment, and gives Buck2 and git only:

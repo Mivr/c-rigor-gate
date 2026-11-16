@@ -1,22 +1,25 @@
 """`rigor verify`: accept a grade verdict only if it is a content-consistent clean-gate PASS (U30).
 
 Nobody signs a verdict. `verify` checks what a verdict says against what can be recomputed without
-trusting its author: the canonical sha256 of `core`, the shape of every bound input, the gate list and
-the gate-owned inputs recomputed from the gate revision the verdict names (`gate/order.txt`,
-`toolchains/BUCK` and its LLVM and sysroot pins, `tools/buck2.version`, read from that commit in the gate
-repository), the approvals it counts, and the caller's expectations. It proves that the verdict is
-consistent with that head and that gate revision; it does not prove who ran the grade. Anyone can run the
-grade again and compare `core_sha256`. See docs/grade.md ("`rigor verify`") and docs/trust.md.
+trusting its author or building: the canonical sha256 of `core`, the shape of every bound input, the
+bindings `verdict_recompute` recomputes (gate commit, product directory, approvals directory), the approvals
+it counts, and the caller's expectations (head and gate commit are mandatory). It proves that the verdict's
+bindings match those sources; the bindings that only running the grade can produce (gate statuses and
+findings, `gate_clean`, `tier`, `uncached`, commits other than the head) are self-reported. It does not prove
+who ran the grade. Anyone can grade again and compare `core_sha256`. See docs/grade.md ("`rigor verify`").
 """
 
-from rigor_lib import approvals, gitrun, grade_context, grade_tier, jsonio, verdict, verdict_inputs
-from rigor_lib.errors import InternalError
+import re
+
+from rigor_lib import approvals, grade_context, grade_tier, jsonio, verdict_inputs, verdict_recompute
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
 _PASS = "PASS"
 # A verdict written before U30 bound the signers file; it was meant to be read with its `.sig`.
 LEGACY_SIGNED_KEY = "allowed_signers_sha256"
-_APPROVAL_KEYS = {"kind", "scope", "reason", "stem"}
+_APPROVAL_KEYS = {"kind", "scope", "reason", "repo_sha", "stem"}
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_FULL_SHA = re.compile(r"[0-9a-f]{40}")
 
 
 def parse_core(data):
@@ -35,60 +38,11 @@ def parse_core(data):
     return core, []
 
 
-def _gate_file(gate_repo, gate_sha, rel_path):
-    """Bytes of `rel_path` at the gate commit, or None if the commit or the file is not there."""
-    try:
-        return gitrun.run_git(gate_repo, ["cat-file", "blob", "%s:%s" % (gate_sha, rel_path)])
-    except InternalError:
-        return None
-
-
-def gate_bindings(gate_repo, gate_sha):
-    """(expected input values, gate order) recomputed from the gate commit; InternalError-free.
-
-    Returns (None, problem) when the commit or one of its files is missing."""
-    if not gitrun.commit_exists(gate_repo, gate_sha):
-        return None, "gate_sha %s is not a commit of the gate repository %s" % (gate_sha, gate_repo)
-    files = {}
-    for rel in ("gate/order.txt", "toolchains/BUCK", "tools/buck2.version"):
-        files[rel] = _gate_file(gate_repo, gate_sha, rel)
-        if files[rel] is None:
-            return None, "gate revision %s has no %s" % (gate_sha, rel)
-    try:
-        text = files["toolchains/BUCK"].decode("utf-8")
-        expected = {"order_sha256": jsonio.sha256_hex(files["gate/order.txt"]),
-                    "toolchain_buck_sha256": jsonio.sha256_hex(files["toolchains/BUCK"]),
-                    "llvm_sha256": verdict_inputs.pin_after(text, "llvm"),
-                    "sysroot_sha256": verdict_inputs.pin_after(text, "sysroot"),
-                    "buck2_sha256": files["tools/buck2.version"].decode("ascii").strip()}
-        order = verdict.parse_order(files["gate/order.txt"])
-    except (UnicodeDecodeError, InternalError) as exc:
-        return None, "gate revision %s: %s" % (gate_sha, exc)
-    return (expected, order), None
-
-
-def check_gate(core, inputs, gate_repo):
-    """Problems with the gate list and the gate-owned inputs against the gate commit the verdict names."""
-    found, problem = gate_bindings(gate_repo, inputs["gate_sha"])
-    if problem is not None:
-        return [problem]
-    expected, order = found
-    problems = ["%s is %s, but gate revision %s gives %s" % (key, inputs[key], inputs["gate_sha"], value)
-                for key, value in sorted(expected.items()) if inputs[key] != value]
-    gates = core.get("gates")
-    ids = [entry.get("id") for entry in gates if isinstance(entry, dict)] if isinstance(gates, list) else None
-    if ids != order:
-        problems.append("the gate list is not the gate order of revision %s (a partial or reordered grade)"
-                        % inputs["gate_sha"])
-    elif not all(entry.get("status") == _PASS for entry in gates):
-        problems.append("overall is PASS but a gate is not")
-    return problems
-
-
 def _approval_entry_ok(entry):
     return (isinstance(entry, dict) and set(entry) == _APPROVAL_KEYS
             and all(isinstance(entry[k], str) and entry[k] for k in _APPROVAL_KEYS)
-            and entry["kind"] in approvals.KINDS)
+            and entry["kind"] in approvals.KINDS and _SHA256.fullmatch(entry["stem"]) is not None
+            and _FULL_SHA.fullmatch(entry["repo_sha"]) is not None)
 
 
 def check_approvals(core, inputs):
@@ -139,7 +93,8 @@ def check_expectations(inputs, expect):
     """Problems with what the caller said the verdict must be about."""
     problems = []
     for option, key in (("head", "head"), ("gate", "gate_sha"), ("policy_sha", "policy_sha256"),
-                        ("sim_salt_id", "sim_salt_id"), ("sim_spec_sha", "sim_spec_sha256")):
+                        ("task_sha", "task_sha256"), ("sim_salt_id", "sim_salt_id"),
+                        ("sim_spec_sha", "sim_spec_sha256")):
         wanted = expect.get(option)
         if wanted is not None and inputs[key] != wanted:
             problems.append("%s is %s, expected %s" % (key, inputs[key], wanted))
@@ -153,12 +108,12 @@ def check_expectations(inputs, expect):
     return problems
 
 
-def check_verdict(data, expect, gate_repo, require_uncached=False, require_tier=None):
+def check_verdict(data, expect, sources, require_uncached=False, require_tier=None):
     """Reasons this verdict must not be trusted as a PASS; an empty list means it can be.
 
-    Order: the document and `core_sha256` recomputed from `core`, then the inputs (a verdict of the
-    signing gate is refused by name), then the gate commit's own files, the approvals count and the
-    caller's expectations."""
+    `sources`: {"gate_repo", "product_dir" (or None), "approvals" (or None)}. Order: the document and
+    `core_sha256`, the inputs (a verdict of the signing gate is refused by name), the recomputed bindings,
+    the approvals count, the caller's expectations."""
     core, problems = parse_core(data)
     if core is None:
         return problems
@@ -171,10 +126,13 @@ def check_verdict(data, expect, gate_repo, require_uncached=False, require_tier=
     if not isinstance(inputs, dict) or set(inputs) != verdict_inputs.INPUT_KEYS:
         return problems + ["core has no well-formed inputs"]
     problems += check_inputs(core, inputs, require_uncached, require_tier)
-    if not problems:   # every binding is well formed: recompute the gate's own ones
-        problems += check_gate(core, inputs, gate_repo)
-    problems += check_approvals(core, inputs)
-    return problems + check_expectations(inputs, expect)
+    approval_problems = check_approvals(core, inputs)
+    if not problems:   # every binding is well formed: recompute what can be recomputed
+        problems += verdict_recompute.check_gate(core, inputs, sources["gate_repo"])
+        problems += verdict_recompute.check_product(inputs, sources["gate_repo"], sources["product_dir"])
+        if sources["approvals"] is not None and not approval_problems:
+            problems += verdict_recompute.check_approvals_dir(core, inputs, sources["approvals"])
+    return problems + approval_problems + check_expectations(inputs, expect)
 
 
 def verdict_tier(data):
@@ -220,8 +178,9 @@ def run_verify(args):
     expect = {"head": args.expect_head, "gate": args.expect_gate,
               "policy_sha": args.expect_policy_sha, "witness_sha": args.expect_witness_sha,
               "perf_sha": args.expect_perf_sha, "oracle_sha": args.expect_oracle_sha, "sim_salt_id": args.expect_sim_salt_id,
-              "sim_spec_sha": args.expect_sim_spec_sha}
-    problems = check_verdict(data, expect, args.gate_repo, args.require_uncached, args.require_tier)
+              "sim_spec_sha": args.expect_sim_spec_sha, "task_sha": args.expect_task_sha}
+    sources = {"gate_repo": args.gate_repo, "product_dir": args.product_dir, "approvals": args.approvals}
+    problems = check_verdict(data, expect, sources, args.require_uncached, args.require_tier)
     print("rigor verify: tier %s" % verdict_tier(data))
     for line in sim_lines(data) + approval_lines(data):
         print(line)
@@ -237,13 +196,18 @@ def run_verify(args):
 def add_parser(subparsers):
     parser = subparsers.add_parser(
         "verify", allow_abbrev=False,
-        help="accept a grade verdict only if it is a clean-gate PASS consistent with its head and gate revision")
+        help="accept a grade verdict only if it is a clean-gate PASS whose bindings match its head, gate commit and sources")
     parser.add_argument("--verdict", required=True)
     parser.add_argument("--expect-head", required=True, help="full sha of the head the verdict must be about")
+    parser.add_argument("--expect-gate", required=True, help="full sha of the gate commit that must have graded it")
     parser.add_argument("--gate-repo", default=grade_context.GATE_ROOT,
                         help="gate repository holding the verdict's gate_sha (default: this checkout); the gate "
-                             "order and the toolchain pins are recomputed from that commit")
-    parser.add_argument("--expect-gate", help="full sha of the gate commit that must have graded it")
+                             "order, toolchain pins, generated .buckconfig and product files are recomputed from it")
+    parser.add_argument("--product-dir", help="the product directory the grade used, when it lies outside the gate "
+                                              "checkout (inputs.product_dir null); its files are recomputed")
+    parser.add_argument("--approvals", metavar="DIR", help="the approvals directory the grade used: approvals_sha256 "
+                                                           "and every approval in force are recomputed from it")
+    parser.add_argument("--expect-task-sha", help="sha256 of the TASK.toml it must have been graded with")
     parser.add_argument("--expect-policy-sha", help="sha256 of the policy.toml it must have used")
     parser.add_argument("--expect-witness-sha",
                         help="witness_sha256 of the witness bundle it must have been graded with; "

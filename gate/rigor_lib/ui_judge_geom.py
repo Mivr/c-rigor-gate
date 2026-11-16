@@ -1,5 +1,5 @@
 """The geometric checks of the `ui-scene` judge (U06, P004 3.1, 3.10). They read the scene (O2) for what a node is
-(structural role, intent, flags, the sealed policies) and the associated rendered nodes (O3) for where it is: the box
+(structural role, intent, flags, the contract's policies) and the associated rendered nodes (O3) for where it is: the box
 (equal to the scene rect by the association), the paint order (lvprobe's walk order), ancestry and the clip chain. A
 scene node without an association takes part in none of them; it is `stage-unmatched` (ui_judge_context).
 
@@ -152,10 +152,10 @@ def _occluded(ctx, report, node, index, part, covering, hits):
 
 
 def overlay_policy(ctx, report):
-    """O2 + O3, per layer with a sealed policy: (a) capture-modal-inert over an enabled control with an intent painted
+    """O2 + O3, per layer with a contract policy: (a) capture-modal-inert over an enabled control with an intent painted
     below it, unless the control is inert (R7): part `captures`, basis `sealed`; (b) pass-through, but the layer's
     rendered node or card is clickable over an interactive, not inert control: part `captures`, basis `rendered`;
-    (c) a policy the scene states that is not the sealed one: part `contradicts`; (d) a clickable rendered node in no
+    (c) a policy the scene states that is not the contract's one: part `contradicts`; (d) a clickable rendered node in no
     layer and not part of any scene node over an interactive node: part `undeclared`; (e) a scrim the scene does not
     follow with a card, so that no policy applies: part `no-card`."""
     frame, radius = ctx.frame, _radius(ctx, report, "overlay-policy")
@@ -212,7 +212,7 @@ def _undeclared(ctx, report):
 def target_spacing(ctx, report):
     """O2 + O3: two interactive, not inert nodes with distinct intents that are not layers (a scrim's overlap is the
     layer's, judged by overlay-policy and occluded-target) whose boxes share a pixel, unless
-    `thresholds.hit_overlap_allowed`; once the panel is sealed, an edge-to-edge gap below `spacing_hard_mm` (error) or
+    `thresholds.hit_overlap_allowed`; once the panel is decided, an edge-to-edge gap below `spacing_hard_mm` (error) or
     `spacing_recommended_mm` (info)."""
     contract = ctx.contract
     overlap_allowed = contract.get("thresholds", "hit_overlap_allowed")

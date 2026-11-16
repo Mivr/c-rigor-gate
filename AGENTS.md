@@ -3,9 +3,11 @@
 These rules are mandatory. If a task conflicts with them, stop and report; do not work around them.
 
 ## Roles
-- **Owner:** Mihail. Decides scope. Nobody signs anything (owner decision 2026-11-16): loosening a gate (an approval,
-  a raised baseline, a relaxed threshold, an exception) is allowed only inside a task whose contract names it, is
-  recorded with its reason, and is counted in the verdict (`docs/trust.md`). Hard rule 2 holds for everything else.
+- **Owner:** Mihail. Decides scope. Nobody signs anything (owner decision 2026-11-16). Loosening a gate (an approval,
+  a raised baseline, a relaxed threshold, an edited expected list, an exception) is allowed only inside a task whose
+  contract names it, with its reason recorded. Approvals in force are counted and listed in the verdict; any other
+  loosening changes a bound input of the verdict and shows in the diff, but the gate does not count it
+  (`docs/trust.md`). Hard rule 2 holds for everything else.
 - **Orchestrator:** a Claude Opus session. Writes task contracts (`plan/tasks/T<NNN>-*.md`), re-runs acceptance,
   reviews gate code line by line, merges and pushes. Writes no product code.
 - **Contributors:** coding agents, one task at a time, each in its own git worktree on branch `task/T<NNN>`.
