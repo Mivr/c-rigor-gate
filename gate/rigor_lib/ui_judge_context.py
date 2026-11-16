@@ -26,6 +26,8 @@ class Context:
     def __init__(self, judges, step):
         self.contract = judges.contract
         self.frame = stage.parse_frame(step.obs["frame"])
+        self.ink_records = step.obs.get("ink")             # U07: the ink of a state's first visit, else None
+        self.ink_moved = step.obs.get("ink_moved", False)  # the frame re-taken after the ink differed from this one
         self.vocabulary = []                   # (key, fields, raw)
         counts = {}
         for record in step.obs["semantic"]:

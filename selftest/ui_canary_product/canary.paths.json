@@ -96,6 +96,42 @@
   [
    "open 1000000000 7",
    "v-wrap-contra"
+  ],
+  [
+   "open 1000000000 7",
+   "v-invisible"
+  ],
+  [
+   "open 1000000000 7",
+   "v-contrast"
+  ],
+  [
+   "open 1000000000 7",
+   "v-disabled"
+  ],
+  [
+   "open 1000000000 7",
+   "v-click"
+  ],
+  [
+   "open 1000000000 7",
+   "v-hidden"
+  ],
+  [
+   "open 1000000000 7",
+   "v-long"
+  ],
+  [
+   "open 1000000000 7",
+   "v-align"
+  ],
+  [
+   "open 1000000000 7",
+   "v-line"
+  ],
+  [
+   "open 1000000000 7",
+   "v-noink"
   ]
  ]
 }

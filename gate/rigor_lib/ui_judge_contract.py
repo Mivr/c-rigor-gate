@@ -38,7 +38,7 @@ def check_provenance_form(table, provenance, where):
         _fail("%s: the provenance form %s is that of [[style_line]] alone, and that table has no other" % (where, BASELINE))
 
 
-LAYER_ROLES = ("scrim", "dialog", "banner", "snackbar")     # the layer roles of the scene vocabulary (ui_judge_vocab)
+LAYER_ROLES = ("scrim", "dialog", "banner", "snackbar")     # the scene vocabulary's layer roles (defined here only)
 
 
 def check_input_layer_names(tables):

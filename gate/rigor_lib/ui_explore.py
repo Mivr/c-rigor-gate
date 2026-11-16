@@ -64,7 +64,8 @@ def add_parser(subparsers):
     parser.add_argument("--out", required=True, help="findings, one JSON line each")
     parser.add_argument("--contract", help="the UI contract (ui-contract/1) handed to the judges")
     parser.add_argument("--judges", type=_list(r"[a-z][a-z-]{0,31}"),
-                        help="judges to run besides the explorer's own: ui-scene,ui-fit (they need --contract and --today)")
+                        help="judges to run besides the explorer's own: ui-scene,ui-fit,ui-render (they need "
+                             "--contract and --today; ui-render also a probe with ink)")
     parser.add_argument("--today", type=_date, help="the date (YYYY-MM-DD) the contract's exceptions expire against")
     parser.add_argument("--origin-ms", type=_uint)
     parser.add_argument("--seed", type=_uint, help="the seed of every `open`")
@@ -221,10 +222,10 @@ def explore(args):
         _check_taps(catalogue, caps, paths)
         strategies.check_cost(catalogue, args, paths, caps)
         config = Config(config.probe, config.deadline_s, catalogue, budget, caps)
-    if judges is not None and caps is not None and "frame-facts" not in caps:
-        raise InternalError("--judges need a probe that announces frame-facts")
+    _check_judges(judges, caps)
     explorer = strategies.Explorer(config, contract, word, caps or (),
-                                   step_judges=[judges.step_judge] if judges else ())
+                                   step_judges=[judges.step_judge] if judges else (),
+                                   ink=judges is not None and judges.needs_ink)
     evaluated, extra, spent = [], [], greeting is not None
     detail = {}
     if greeting is not None:
@@ -252,6 +253,16 @@ def explore(args):
     for item in found:
         item.pop(PRIVATE, None)
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
+
+
+def _check_judges(judges, caps):
+    """--judges need a probe with frame-facts; ui-render also one with ink (U07)."""
+    if judges is None or caps is None:
+        return
+    if "frame-facts" not in caps:
+        raise InternalError("--judges need a probe that announces frame-facts")
+    if judges.needs_ink and "ink" not in caps:
+        raise InternalError("--judges ui-render needs a probe that announces ink")
 
 
 def _check_requires(catalogue, caps):

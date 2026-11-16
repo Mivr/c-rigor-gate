@@ -1,5 +1,5 @@
-"""Findings, pending values, exceptions, vacuity and the judge set of the ui-scene and ui-fit judges (U06, P004 3.1,
-3.2, 4.5, 6.4).
+"""Findings, pending values, exceptions, vacuity and the judge set of the ui-scene, ui-fit and ui-render judges (U06,
+U07, P004 3.1, 3.2, 3.3, 4.5, 6.4).
 
 A finding has the schema of docs/ui-explore.md ("Findings"); its id is `<gate>.<check>/<12 hex>` of sha256 over the
 canonical JSON of [gate, check, [identity, state key]] ([gate, check, identity] for findings about the contract or the
@@ -14,7 +14,7 @@ the verdicts each check reached per state (a node skipped for a pending or missi
 `check-vacuous` (error) for a check that applies to the contract and reached no verdict in any state.
 """
 
-from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_scene
+from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_render, ui_judge_scene
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_judges import PRIVATE, state_of
 from rigor_lib.ui_judge_context import Context
@@ -24,12 +24,17 @@ SCENE_NODE_CHECKS = ("occluded-target", "overlay-policy", "touch-target-small", 
                      "toggle-group-indistinct")
 FIT_NODE_CHECKS = ("text-overflow", "text-clipped", "full-string-shown", "fit-unmeasurable", "glyph-missing",
                    "font-shrunk")
+RENDER_NODE_CHECKS = ("invisible-node", "contrast-low", "ink-unmeasurable", "flag-mismatch", "align-mismatch",
+                      "line-height-mismatch")
 COMMON = ("stage-unmatched", "stage-text-mismatch", "stage-unowned-target", "scene-vocabulary", "contract-incomplete", "contract-pending",
           "exception-unused", "checks-examined", "check-vacuous")
-NODE_CHECKS = {"ui-scene": SCENE_NODE_CHECKS, "ui-fit": FIT_NODE_CHECKS}
+NODE_CHECKS = {"ui-scene": SCENE_NODE_CHECKS, "ui-fit": FIT_NODE_CHECKS, "ui-render": RENDER_NODE_CHECKS}
 GATES = {gate: checks + COMMON for gate, checks in NODE_CHECKS.items()}
-ORDER = ("ui-scene", "ui-fit")          # the stage findings belong to the first selected gate in this order
-LAYERS = {"stage-unmatched": "L3", "stage-text-mismatch": "L3", "stage-unowned-target": "L3", "font-shrunk": "L3"}
+ORDER = ("ui-scene", "ui-fit", "ui-render")   # the stage findings belong to the first selected gate in this order
+MODULES = {"ui-scene": ui_judge_scene, "ui-fit": ui_judge_fit, "ui-render": ui_judge_render}
+LAYERS = {"stage-unmatched": "L3", "stage-text-mismatch": "L3", "stage-unowned-target": "L3", "font-shrunk": "L3",
+          "flag-mismatch": "L3", "align-mismatch": "L3", "line-height-mismatch": "L3"}
+INK_GATES = frozenset(("ui-render",))         # the judges that need the probe's `ink` (U07)
 META = frozenset(("scene-vocabulary", "contract-incomplete", "contract-pending", "exception-unused", "checks-examined",
                   "check-vacuous"))
 
@@ -142,6 +147,7 @@ class JudgeSet:
         self.contract, self.catalogue_key = contract, catalogue_key
         self.exceptions = Exceptions(contract, self.gates, today)
         self.examined = {gate: {} for gate in self.gates}       # gate -> state key -> check -> nodes
+        self.needs_ink = bool(INK_GATES & set(self.gates))     # the explorer then inks each new state (U07)
 
     def step_judge(self, step, path, contract):
         del contract
@@ -150,13 +156,12 @@ class JudgeSet:
                                        if i not in context.assoc.owner}
         self.exceptions.see(names)
         out = context.stage_findings(Reporter(self.gates[0], self, step, path))
-        for gate, module in (("ui-scene", ui_judge_scene), ("ui-fit", ui_judge_fit)):
-            if gate in self.gates:
-                report = Reporter(gate, self, step, path)
-                out += module.judge(context, report)
-                seen = self.examined[gate].setdefault(step.key, {})
-                for check in NODE_CHECKS[gate]:
-                    seen[check] = max(seen.get(check, 0), report.counts.get(check, 0))
+        for gate in self.gates:
+            report = Reporter(gate, self, step, path)
+            out += MODULES[gate].judge(context, report)
+            seen = self.examined[gate].setdefault(step.key, {})
+            for check in NODE_CHECKS[gate]:
+                seen[check] = max(seen.get(check, 0), report.counts.get(check, 0))
         return out
 
     def finish(self, open_word):

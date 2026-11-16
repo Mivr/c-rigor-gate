@@ -20,9 +20,9 @@ import re
 from dataclasses import dataclass
 
 from rigor_lib import ui_judge_contract
+from rigor_lib.ui_judge_contract import LAYER_ROLES      # defined once, with the contract's input-layer naming rule
 
 STRUCTURAL_ROLES = ("root", "panel", "text", "button", "key", "countdown", "scrim", "dialog", "banner", "snackbar")
-LAYER_ROLES = ("scrim", "dialog", "banner", "snackbar")
 CARD_ROLES = ("dialog", "banner", "snackbar")
 
 FLAG_LETTERS = "IDWNSHX"          # inert, disabled, warn, notice, scroll; hidden, selected (not emitted by lockers yet)

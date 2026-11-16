@@ -52,7 +52,7 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(len(frame.nodes), 5)
         records = tuple(parse_typed_line(FRAME_FIELDS, line) for line in lines)
         later = parse_typed_line({"wide": 2}, "wide\t1")        # a record type a later probe might add
-        with self.assertRaises(InternalError):
+        with self.assertRaisesRegex(InternalError, "a wide record, which the frame facts do not have"):
             parse_frame(records + (later,))
 
     def test_the_visible_box_is_cut_by_the_display_and_the_clip_chain(self):

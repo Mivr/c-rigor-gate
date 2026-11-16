@@ -63,6 +63,8 @@ class RNode:
 class RLabel:
     index: int
     line_h: int
+    align: int           # the text-align style (lv_text_align_t: 0 auto, 1 left, 2 centre, 3 right)
+    align_drawn: int     # the alignment of the label's draw task (U07)
     long_mode: int
     dotted: bool
     lines: int
@@ -161,7 +163,8 @@ def _label(record):
     if dotted == (f[14] == "-"):
         _fail("a label whose full text does not match its dotted flag")
     text = v[13][1:]
-    return RLabel(index=_int(f[1], "label index"), line_h=_int(f[3], "line_h"), long_mode=_int(f[6], "long"),
+    return RLabel(index=_int(f[1], "label index"), line_h=_int(f[3], "line_h"), align=_int(f[4], "align"),
+                  align_drawn=_int(f[5], "align_drawn"), long_mode=_int(f[6], "long"),
                   dotted=dotted, lines=_int(f[8], "lines"), natural=(_int(f[9], "natural_w"), _int(f[10], "natural_h")),
                   laid=(_int(f[11], "laid_w"), _int(f[12], "laid_h")), text=text,
                   own_text=v[14][1:] if dotted else text, raw=record.raw)

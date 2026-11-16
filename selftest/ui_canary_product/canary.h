@@ -1,7 +1,8 @@
-/* The canary app of the U06 judges selftest (selftest/ui_judges.sh): one 320x240 screen whose scene is a table of nodes.
- * Variant 0 is the clean state; every other variant puts the scene into a state with exactly one defect that one check
- * of the ui-scene or ui-fit judge must find, or (V_MODAL) a correct modal dialog whose dimmed, clickable scrim makes
- * the background inert, which no check may flag (docs/ui-judges.md, "Canaries"). The model adapter reports the table as the semantic records, in the scene
+/* The canary app of the U06/U07 judges selftest (selftest/ui_judges.sh): one 320x240 screen whose scene is a table of
+ * nodes. Variant 0 is the clean state; every other variant puts the scene into a state with exactly one defect that one
+ * check of the ui-scene, ui-fit or ui-render judge must find, or (V_MODAL) a correct modal dialog whose dimmed,
+ * clickable scrim makes the background inert, which no check may flag (docs/ui-judges.md, docs/ui-judges-render.md,
+ * "Canaries"). The model adapter reports the table as the semantic records, in the scene
  * vocabulary of the real lockers kiosk: structural roles, numeric style tokens, flag letters, `-` for importance,
  * input and wrap policy. The LVGL objects are built from the same table.
  * Product rules apply: static memory, no libc allocation, LVGL from the gate. */
@@ -16,7 +17,7 @@
 #define CANARY_W 320
 #define CANARY_H 240
 #define CANARY_NODES 12u
-#define CANARY_VARIANTS 24u
+#define CANARY_VARIANTS 33u
 
 typedef enum { CANARY_LABEL, CANARY_BUTTON, CANARY_PANEL, CANARY_GHOST } canary_kind_t;
 

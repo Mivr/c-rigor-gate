@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Self-test of the ui-scene and ui-fit judges (U06, docs/ui-judges.md), called by selftest/ui.sh: the canary app in
-# selftest/ui_canary_product (speaking the scene vocabulary of the real lockers kiosk) is built as a probe in release
-# and san; `rigor ui-explore --judges ui-scene,ui-fit --today` replays the clean state, one state per check and a
+# Self-test of the ui-scene, ui-fit and ui-render judges (U06, U07, docs/ui-judges.md, docs/ui-judges-render.md),
+# called by selftest/ui.sh: the canary app in selftest/ui_canary_product (speaking the scene vocabulary of the real
+# lockers kiosk) is built as a probe in release and san; `rigor ui-explore --judges ui-scene,ui-fit,ui-render --today`
+# replays the clean state, one state per check and a
 # correct modal dialog whose dimmed clickable scrim makes the background inert (canary.paths.json). Per check: exactly its findings, the ids recomputed here from the identity,
 # in its canary state, and nothing else there; nothing in the clean state nor under the modal dialog; every check
 # examined nodes (checks-examined) and none is check-vacuous; the summary counts the judges' findings; byte-identical
 # findings across two runs and across release and san; every finding replays to its id; the contract's exceptions
-# against --today; the judges refuse to run without a contract, a date or known names; the canary session passes as a
+# against --today; the judges refuse to run without a contract, a date, known names or a well-named [[input_layer]];
+# the canary session passes as a
 # c_ui_probe_session test in release and san. No canary probe is left.
 # Needs bash, python3 (stdlib) and tools/buck2. Scratch lives under $TMPDIR.
 set -uo pipefail
@@ -27,7 +29,7 @@ fail() { echo "FAIL [judges $step]: $1" >&2; [ -n "${2:-}" ] && { echo "---- out
 begin() { step=$((step + 1)); echo "[judges $step] $1"; CUR="$1"; }
 strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
 build_out() {
-  local var="$1" plat="$2" target="$3" log="$out/$step.$RANDOM.log" p
+  local var="$1" plat="$2" target="$3" log="$out/$step.$1.log" p
   "${B[@]}" build --target-platforms "$plat" "$target" --show-output 2>&1 | strip_ansi > "$log"
   [ "${PIPESTATUS[0]}" = 0 ] || fail "$CUR: build $target failed" "$log"
   p="$(awk '/buck-out/ {print $2}' "$log" | tail -1)"
@@ -38,11 +40,12 @@ CAT="$prod/canary.events.toml"
 PATHS="$prod/canary.paths.json"
 CONTRACT="$prod/canary.toml"
 TODAY=2026-11-16
-# judge <name> <wanted exit> <probe> <contract> [args...]: replays the canary paths with both judges
+JUDGES=ui-scene,ui-fit,ui-render
+# judge <name> <wanted exit> <probe> <contract> [args...]: replays the canary paths with the three judges
 judge() {
   local name="$1" want="$2" bin="$3" contract="$4"; shift 4
   "${RIGOR[@]}" ui-explore --probe "$bin" --catalogue "$CAT" --strategy replay --paths "$PATHS" \
-    --judges ui-scene,ui-fit --contract "$contract" --today "$TODAY" --out "$out/j.$name.json" "$@" > "$out/j.$name.txt" 2>&1
+    --judges "$JUDGES" --contract "$contract" --today "$TODAY" --out "$out/j.$name.json" "$@" > "$out/j.$name.txt" 2>&1
   local rc=$?
   [ "$rc" = "$want" ] || fail "$CUR: ui-explore $name exited $rc, wanted $want" "$out/j.$name.txt"
 }
@@ -53,7 +56,7 @@ build_out probe_san "$SAN" "$P:probe"
 
 begin "the canary session (session.in) under buck2 test in release and san (c_ui_probe_session): transcript byte-identical, exit 0, nothing on stderr"
 for plat in "$REL" "$SAN"; do
-  log="$out/sess.$RANDOM.log"
+  log="$out/sess.${plat##*:}.log"
   "${B[@]}" test --target-platforms "$plat" "$P:session_test" 2>&1 | strip_ansi > "$log"
   [ "${PIPESTATUS[0]}" = 0 ] || fail "$CUR: the canary session test failed in $plat" "$log"
   grep -Eq "Pass 1\. Fail 0\." "$log" || fail "$CUR: the session summary in $plat is not one pass" "$log"
@@ -82,7 +85,9 @@ WANT = {
     "v-wrap-contra": [("ui-scene", "wrap-policy-undeclared", ["body", "contradicts"], False)],
     "v-overflow": [("ui-fit", "text-overflow", ["title"], False)],
     "v-clipped": [("ui-fit", "text-clipped", ["ok"], False)],
-    "v-dots": [("ui-fit", "full-string-shown", ["body"], False)],
+    # the DOTS long mode is also the label's long mode against its `default` scope (ui-render, L3)
+    "v-dots": [("ui-fit", "full-string-shown", ["body"], False),
+               ("ui-render", "flag-mismatch", ["body", "long-mode"], False)],
     "v-unmeasurable": [("ui-fit", "fit-unmeasurable", ["body", "facts"], False)],
     "v-glyph": [("ui-fit", "glyph-missing", ["body"], False)],
     "v-unmatched": [("ui-scene", "stage-unmatched", ["scene", "ghost", "absent"], False)],
@@ -92,10 +97,22 @@ WANT = {
     "v-modal": [],
     "v-fake-inert": [("ui-scene", "occluded-target", ["ok"], False)],
     "v-unreachable": [("ui-scene", "occluded-target", ["bscrim"], False)],
+    # U07: the ui-render judge (docs/ui-judges-render.md, "Canaries")
+    "v-invisible": [("ui-render", "invisible-node", ["body"], False)],
+    "v-contrast": [("ui-render", "contrast-low", ["body", "below-large"], False)],
+    "v-disabled": [("ui-render", "flag-mismatch", ["back", "disabled-clickable"], False)],
+    "v-click": [("ui-render", "flag-mismatch", ["body", "clickable"], False)],
+    "v-hidden": [("ui-render", "flag-mismatch", ["body", "hidden"], False)],
+    "v-long": [("ui-render", "flag-mismatch", ["body", "long-mode"], False)],
+    "v-align": [("ui-render", "align-mismatch", ["body"], False)],
+    "v-line": [("ui-render", "line-height-mismatch", ["body"], False)],
+    "v-noink": [("ui-render", "ink-unmeasurable", ["ok"], False)],
 }
 # the part each canary finding must have (a flip of the part is a different defect)
 PARTS = {"v-occluded": "covered", "v-fake-inert": "covered", "v-unreachable": "layer-unreachable",
-         "v-overlay": "captures", "v-wrap-contra": "contradicts"}
+         "v-overlay": "captures", "v-wrap-contra": "contradicts", "v-contrast": "below-large",
+         "v-disabled": "disabled-clickable", "v-click": "clickable", "v-hidden": "hidden", "v-long": "long-mode",
+         "v-line": "above"}
 def fid(gate, check, identity, key, stateless):
     data = json.dumps([gate, check, identity if stateless else [identity, key]], sort_keys=True,
                       separators=(",", ":")).encode() + b"\n"
@@ -103,10 +120,11 @@ def fid(gate, check, identity, key, stateless):
 assert sorted(WANT) == sorted(p[-1] for p in paths[1:]) and paths[0] == ["open 1000000000 7"], "paths"
 run_level = [f for f in found if f["state"] is None and f["check"] in ("checks-examined", "check-vacuous")]
 assert sorted((f["gate"], f["check"], f["severity"]) for f in run_level) == \
-    [("ui-fit", "checks-examined", "info"), ("ui-scene", "checks-examined", "info")], run_level
+    [("ui-fit", "checks-examined", "info"), ("ui-render", "checks-examined", "info"),
+     ("ui-scene", "checks-examined", "info")], run_level
 for f in run_level:
     assert all(n > 0 for n in f["observed"]["totals"].values()), f["observed"]["totals"]
-    assert f["observed"]["states"] == 24
+    assert f["observed"]["states"] == 33
 found = [f for f in found if f not in run_level]
 assert not [f for f in found if f["path"] == paths[0]], [f["id"] for f in found if f["path"] == paths[0]]
 keys = {}
@@ -127,9 +145,11 @@ for path in paths[1:]:
         assert [f["observed"]["part"] for f in here] == [PARTS[event]], (event, [f["observed"] for f in here])
 assert len(set(v for v in keys.values() if v)) == len([v for v in keys.values() if v]), "two canary states share a key"
 assert len(found) == sum(len(w) for w in WANT.values()), "%d findings" % len(found)
-assert {f["severity"] for f in found} == {"error"}
+# every finding is an error but the unmeasured ink, which is data (info)
+assert all(f["severity"] == ("info" if f["check"] == "ink-unmeasurable" else "error") for f in found)
 counts = summary["findings"]
 assert counts["ui-scene.checks-examined"] == 1 and counts["ui-fit.font-shrunk"] == 1 and counts["intent-missed"] == 0
+assert counts["ui-render.checks-examined"] == 1 and counts["ui-render.flag-mismatch"] == 5
 print("  %d canary states, the ids recomputed; nothing in the clean state nor under the correct modal dialog" % len(WANT))
 PY
 
@@ -147,12 +167,12 @@ for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit
   [ -f "$dir/paths.json" ] || fail "$CUR: no evidence paths for $ident" "$out/j.rel.1.txt"
   [ "$stated" = 0 ] || [ -f "$dir/records.json" ] || fail "$CUR: no evidence records for $ident" "$out/j.rel.1.txt"
   "${RIGOR[@]}" ui-explore --probe "$probe_rel" --catalogue "$CAT" --strategy replay --paths "$dir/paths.json" \
-    --judges ui-scene,ui-fit --contract "$CONTRACT" --today "$TODAY" --out "$out/rp.json" > "$out/rp.txt" 2>&1
+    --judges "$JUDGES" --contract "$CONTRACT" --today "$TODAY" --out "$out/rp.json" > "$out/rp.txt" 2>&1
   [ "$?" -le 1 ] || fail "$CUR: replay of $ident failed" "$out/rp.txt"
   grep -q "/$ident\"" "$out/rp.json" || fail "$CUR: the replay of $ident does not give $ident" "$out/rp.txt"
   n=$((n + 1))
 done
-[ "$n" = 24 ] || fail "$CUR: $n findings replayed, wanted 24"
+[ "$n" = 35 ] || fail "$CUR: $n findings replayed, wanted 35"
 echo "  $n findings replayed to their ids"
 
 begin "exceptions against --today: a live one turns exactly its finding into info with its expiry; an unused one is exception-unused, an error when its target was visited and info when not; an expired one is an error and changes nothing"
@@ -164,6 +184,13 @@ target = "ok"
 reason = "selftest: a live exception"
 expires = "2099-12-31"
 provenance = "owner:D1"
+[[exception]]
+id = "x-invisible"
+rule = "invisible-node"
+target = "body"
+reason = "selftest: a live exception of a ui-render check"
+expires = "2099-12-31"
+provenance = "owner:D5"
 [[exception]]
 id = "x-seen"
 rule = "raw-text"
@@ -197,6 +224,9 @@ plain, exc = load(sys.argv[1]), load(sys.argv[2])
 small = [i for i, f in plain.items() if f["check"] == "touch-target-small"]
 assert len(small) == 1 and exc[small[0]]["severity"] == "info"
 assert exc[small[0]]["observed"]["exception"] == {"id": "x-small", "expires": "2099-12-31"}
+invisible = [i for i, f in plain.items() if f["check"] == "invisible-node"]
+assert len(invisible) == 1 and exc[invisible[0]]["severity"] == "info"
+assert exc[invisible[0]]["observed"]["exception"] == {"id": "x-invisible", "expires": "2099-12-31"}
 bounds = [i for i, f in plain.items() if f["check"] == "node-out-of-bounds"]
 assert exc[bounds[0]] == plain[bounds[0]], "an expired exception changed its finding"
 unused = sorted((f["observed"]["exception"], f["observed"]["expired"], f["observed"]["target_visited"], f["severity"])
@@ -204,11 +234,11 @@ unused = sorted((f["observed"]["exception"], f["observed"]["expired"], f["observ
 assert unused == [("x-expired", True, True, "error"), ("x-seen", False, True, "error"),
                   ("x-unseen", False, False, "info")], unused
 assert len(set(exc) - set(plain)) == 3 and set(plain) - set(exc) == set()
-assert all(exc[i] == plain[i] for i in plain if i not in small), "an exception touched another finding"
-print("  x-small applied (info, expires 2099-12-31); x-seen and x-expired errors, x-unseen info")
+assert all(exc[i] == plain[i] for i in plain if i not in small + invisible), "an exception touched another finding"
+print("  x-small and x-invisible applied (info, expires 2099-12-31); x-seen and x-expired errors, x-unseen info")
 PY
 
-begin "the judges need a contract, --today and known names (exit 2)"
+begin "the judges need a contract, --today, known names and well-named [[input_layer]] rows (exit 2)"
 refused() {
   local why="$1"; shift
   "${RIGOR[@]}" ui-explore --probe "$probe_rel" --catalogue "$CAT" --strategy replay --paths "$PATHS" \
@@ -220,6 +250,10 @@ refused "need --today" --judges ui-scene --contract "$CONTRACT"
 refused "distinct names of" --judges ui-scene,ui-nope --contract "$CONTRACT" --today "$TODAY"
 refused "only for --judges" --contract "$CONTRACT" --today "$TODAY"
 refused "today" --judges ui-scene --contract "$CONTRACT" --today 2026-13-01
+# a typo in an [[input_layer]] name would detach the row from every judge: the loader refuses it (U06 rule, U07 test)
+sed 's/^layer = "banner"$/layer = "bnner"/' "$CONTRACT" > "$out/typo.toml"
+cmp -s "$CONTRACT" "$out/typo.toml" && fail "$CUR: the typo contract is the contract"
+refused "'bnner' names no layer role" --judges ui-render --contract "$out/typo.toml" --today "$TODAY"
 
 begin "no canary probe process this selftest started is still alive"
 python3 -I - "$probe_rel" "$probe_san" <<'PY' || fail "$CUR: canary probe processes left behind"

@@ -101,6 +101,14 @@ root) or a `[[state_class]]` id (lockers: `splash`, `lockout`). A row named othe
 finding: a typo (`dialgo`, `bnner_notice`) would detach the row from every judge without any check noticing, and the
 loader refuses every other malformation of a sealed file the same way.
 
+**Accepted, not judged (U07).** Of the names the rule accepts, only the layer-role rows (the role or `<role>_<kind>`)
+are read by a judge (ui-scene's layers, R8). A `screen` row and a row named a `[[state_class]]` id are accepted and read
+by NO judge today: no check of ui-scene, ui-fit or ui-render takes a screen-level input policy (lockers: `screen`,
+`splash`, `lockout`). The stricter rule, accepting only names a judge reads, would refuse
+`products/business-apps/ui/lockers.toml`, which has those three rows, so the rule stays as it is and this paragraph
+names what it accepts without a reader. The layer roles are defined once, `ui_judge_contract.LAYER_ROLES`, which the
+scene vocabulary (`ui_judge_vocab`) imports.
+
 The loader is split across modules (fix-up 3, the series' 500-line limit): `ui_contract.py` (schema, entries, tables,
 the Contract), `ui_contract_checks.py` (the consistency checks), `ui_contract_dwell.py` (the dwell table) and
 `ui_judge_contract.py` (the judges' tables); `ui_contract` re-exports every public name.

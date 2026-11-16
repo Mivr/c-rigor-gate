@@ -56,10 +56,10 @@ def subject(f):
     return o.get("key", o.get("role", o.get("group")))
 
 
-def judge_all():
+def judge_all(gates=("ui-scene", "ui-fit")):
     """{frame number: {(check, subject, part, severity)}} and the run-level findings."""
     contract = ui_contract.load(LOCKERS)
-    judges = JudgeSet(["ui-scene", "ui-fit"], contract, SimpleNamespace(fields=("role",)), datetime.date(2026, 11, 16))
+    judges = JudgeSet(list(gates), contract, SimpleNamespace(fields=("role",)), datetime.date(2026, 11, 16))
     per = {}
     for number, (frame, semantic) in enumerate(frames(), 1):
         step = Step(1, "frame-%d" % number)
@@ -229,6 +229,38 @@ class LockersTest(unittest.TestCase):
         # frames 5, 6, 11, 12: the dialog's dimmed, clickable full-window scrim makes the background inert (R7)
         for number in (5, 6, 11, 12):
             self.assertEqual({x for x in self.per[number] if x[0] in ("occluded-target", "overlay-policy")}, set())
+
+
+# U07: the ui-render judge on the same 23 frames. The recorded transcript has NO `ink` records (the session never sent
+# `ink`), so the ink checks reach no verdict: invisible-node, contrast-low and ink-unmeasurable are check-vacuous, and
+# contrast-low's pending thresholds (q15) are never needed. The first real run with ink belongs to the catalogue task.
+# The stage checks (flag-mismatch, align-mismatch, line-height-mismatch) read the recorded node and label records:
+# they find nothing (docs/ui-judges-render.md, "The real kiosk"). Alone, ui-render owns the stage findings.
+STAGE = ("stage-unmatched", "stage-text-mismatch", "stage-unowned-target", "contract-incomplete")
+RENDER_EXAMINED = {"invisible-node": 0, "contrast-low": 0, "ink-unmeasurable": 0, "flag-mismatch": 760,
+                   "align-mismatch": 350, "line-height-mismatch": 350}
+
+
+class LockersRenderTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.per, cls.end = judge_all(("ui-render",))
+
+    def test_no_render_finding_on_the_real_frames_only_the_stage_findings(self):
+        self.assertEqual(len(self.per), 23)
+        for number, found in sorted(self.per.items()):
+            want = {x for x in FINDINGS.get(number, set()) if x[0] in STAGE}
+            self.assertEqual(found, want, number)
+
+    def test_the_stage_checks_reached_verdicts_and_the_ink_checks_are_vacuous_without_ink(self):
+        examined = {f["gate"]: f["observed"]["totals"] for f in self.end if f["check"] == "checks-examined"}
+        self.assertEqual(examined, {"ui-render": RENDER_EXAMINED})
+        self.assertEqual(sorted(f["observed"]["check"] for f in self.end if f["check"] == "check-vacuous"),
+                         ["contrast-low", "ink-unmeasurable", "invisible-node"])
+        self.assertTrue(all(f["severity"] == "error" for f in self.end if f["check"] == "check-vacuous"))
+        frame = (DATA / "lockers-screens.out").read_text(encoding="ascii")
+        self.assertNotIn("\nink\t", frame)
+        self.assertNotIn("\nnoink\t", frame)
 
 
 if __name__ == "__main__":
