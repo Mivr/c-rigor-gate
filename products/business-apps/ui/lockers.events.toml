@@ -9,15 +9,19 @@
 #                real probe; the key, rect and intent of a node are read there)
 #   probe:U23    measured by the U23 agent on the release probe (lockers_ui_probe at business-apps 1acc1cb), recorded
 #                in docs/ui-lockers-first-run.md
-# The machine-checked provenances (`[ambient]`, `[key] ignore`) take the UI contract's forms (oracle:, spec:).
+#   U05e         rows added or changed by the U05e agent (scene taps, the pad's digit map, the boot seeds, the Welcome
+#                prefix); still DRAFT and unsigned, measured in docs/ui-lockers-first-run.md "The second run"
+# The machine-checked provenances (`[ambient]`, `[key] ignore`, `taps`, `[boot]`, `[[prefix]]`) take the UI contract's
+# forms (oracle:, spec:, design:).
 #
 # Inputs reach the adapter as follows (model:L76-L86): an intent is `apply 3 <scene node key> 0` (the node key, never
 # an intent number; a non-zero arg is refused), a wedge line is `apply 2 0 0 <hex>`, an environment row is
 # `apply 1 <id> 0 -`. Only FAKE codes of the adapter's fixtures appear (model:L55: 121212 visitor, 666662 staff,
 # 666661 inactive staff; model:L138: 343434 of the revision-4 list). No real code, token, key or address.
 #
-# Boot seeds (no catalogue field holds them: they are the `--seed` of each run, model:L110-L115, L149-L157). The seed is
-# (r << 4) | flag8 | profile, r the random seed; the runs use r = 7, as the adapter's own sessions do (screens.in):
+# Boot seeds (U05e: the `[boot]` table below, run by `--boot-seeds catalogue`; `--seed` still picks one; model:L110-L115,
+# L149-L157). The seed is (r << 4) | flag8 | profile, r the random seed; the runs use r = 7, as the adapter's own
+# sessions do (screens.in):
 #   112 healthy (profile 0)          113 relay board down at boot (1)   114 book file unreadable (2)
 #   115 book file is not a book (3)  116 wall clock never set (4)       117 disk almost full (5)
 #   118 disk full (6)                119 audit directory unwritable (7) 120 healthy + codes offline at boot (flag 8)
@@ -40,7 +44,26 @@ requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "po
 # (model:L352-L353). A touch restarts the end-of-shift report's visible countdown (rules:L42, "5 min, countdown on the
 # report"; model:L354-L362 reading fold_core/session.c:262 and :249): its scene role is `countdown` (screens:L2906,
 # node 6 of the report).
+# U05e: the u2 and u3 taps of every state come from its own scene (docs/ui-explore.md "Scene taps"): the centre and the
+# contract's 3x3 probe grid of every enabled interactive node (with --contract; `grid_pct` is the same grid without one,
+# lockers.toml probe_grid_pct), at most 32 per state and class (every node's centre comes first: Welcome has 16
+# interactive nodes, probe:U23). A u1 intent IS the scene node key (model:L76), so `intent_node = "key"` puts the u1
+# inputs under the contract's layer policy too.
+taps = { scope = "scene", max_per_state = 32, grid_pct = [20, 50, 80], intent_node = "key", provenance = "oracle:business-apps docs/lockers/ui-model.md L76 (apply 3 <scene node key> 0) and products/business-apps/ui/lockers.toml probe_grid_pct" }
 ambient = { trace = ["touch"], trace_provenance = "oracle:business-apps docs/lockers/ui-model.md L347-L353 ambient table (uiloop uil_pointer posts touch once per press)", countdown_restart_role = "countdown", countdown_restart_provenance = "oracle:business-apps docs/lockers/ui-model.md L354-L362 (fold_core/session.c:262 restarts the report countdown on touch) and docs/lockers/ui-rules.md L42 (report 5 min countdown)" }
+
+# U05e: the boot seeds of the comment above (model:L110-L115, L149-L157).
+[boot]
+seeds = [112, 113, 114, 115, 116, 117, 118, 119, 120]
+provenance = "oracle:business-apps docs/lockers/ui-model.md L110-L115 and L149-L157 (boot profiles 0-7 and the codes-offline flag, r = 7)"
+
+# U05e: a bfs from Welcome (`--prefix welcome`): the splash has left by 3200 ms after the origin on every healthy seed
+# (probe:U23: `until-change` from the splash stops 5 ms later at the deadline fact's change; the documented paths
+# leave the splash with `at 3200`).
+[[prefix]]
+name = "welcome"
+words = ["at 3200"]
+provenance = "oracle:docs/ui-lockers-first-run.md (U23, the splash ends before at 3200 on seeds 112-120)"
 
 # ---- the abstraction key (docs/ui-explore.md "The abstraction key"; docs/ui-judges.md "an engine limit") ----------
 # Separates: the screen class and every notice of the stack (node keys, roles, rects, flags: the projection lists every
@@ -125,36 +148,12 @@ events = [
   { id = "banner-not-saved-scrim", intent = 256, arg = 0, expect = "refuse" },
 ]
 
-# ---- U2: probe taps on the real controls of each screen class (hit query, then a tap through uil_pointer) ---------
-# Points are the centres of the rendered boxes (the frame's `node` records, screens.out; scene rect = rendered box).
+# ---- U2: probe taps (hit query, then a tap through uil_pointer) --------------------------------------------------
+# U05e: none fixed. The 18 fixed points of U23 (screens:L138, L1156, L1301, L2903) meant different controls on
+# different screens (docs/ui-lockers-first-run.md "Triage", the gate limitation); the scene taps above replace them:
+# every state taps its own controls.
 [u2]
-events = [
-  # Welcome / pad (screens:L138): key 1, Del, OK, BG, EN, the self-test banner's Dismiss
-  { id = "tap-key-1", x = 754, y = 124, target = "lv_button" },
-  { id = "tap-key-del", x = 754, y = 676, target = "lv_button" },
-  { id = "tap-key-ok", x = 1148, y = 676, target = "lv_button" },
-  { id = "tap-welcome-bg", x = 276, y = 442, target = "lv_button" },
-  { id = "tap-welcome-en", x = 380, y = 442, target = "lv_button" },
-  { id = "tap-banner-dismiss", x = 544, y = 56, target = "lv_button" },
-  # Choose size (screens:L1156; probe:U23 the busy variant without countdown, rect y 164): Small, Cancel, BG, EN
-  { id = "tap-size-small", x = 172, y = 488, target = "lv_button" },
-  { id = "tap-size-cancel", x = 1108, y = 488, target = "lv_button" },
-  { id = "tap-choose-bg", x = 588, y = 124, target = "lv_button" },
-  { id = "tap-choose-en", x = 692, y = 124, target = "lv_button" },
-  # Opened (screens:L1301; the drawn BG/EN 540..739 x 511..558, screens.out frame of the snackbar state): Done, BG, EN;
-  # and Done when the not-saved banner pushes the screen down (probe:U23, Done 24,619 1232x56)
-  { id = "tap-done-opened", x = 640, y = 595, target = "lv_button" },
-  { id = "tap-done-opened-banner", x = 640, y = 647, target = "lv_button" },
-  { id = "tap-opened-bg", x = 587, y = 534, target = "lv_button" },
-  { id = "tap-opened-en", x = 691, y = 534, target = "lv_button" },
-  # the end-of-shift report's Done (screens:L2903 scene key 16; its frame's node 16 24,705-1255,752)
-  { id = "tap-done-report", x = 640, y = 729, target = "lv_button" },
-  # the dialogs' Dismiss: the rejection dialog (304,490 672x48) and the taller fault dialog (304,522 672x48)
-  { id = "tap-dialog-dismiss", x = 640, y = 514, target = "lv_button" },
-  { id = "tap-dialog-dismiss-tall", x = 640, y = 546, target = "lv_button" },
-  # the snackbar's Dismiss where it is DRAWN (549,694-729,741; the scene says 384,704 512x48: the known defect)
-  { id = "tap-snackbar-dismiss", x = 639, y = 717, target = "lv_button" },
-]
+events = []
 
 # ---- U3: complement taps that must change nothing (P004 4.3 item 2) --------------------------------------------
 # Points blank on every screen class (no control in any measured frame), which lie under the dialog's full-window
@@ -170,9 +169,9 @@ events = [
 
 # ---- U4: code macros by boundary class, through the wedge and the pad -------------------------------------------
 # rules:L52 "not valid: empty, not all digits, longer than 64, or 1 to 5 digits"; "not recognised"; fixtures model:L55.
-# The pad: the catalogue's pad macro sends `apply 3 <digit_intent> <digit>`, but this adapter takes an intent as the
-# scene node key with arg 0 (model:L76): a digit d != 0 is refused. Only codes of zeros can be typed through the pad,
-# with digit_intent = 42 (the key "0") and enter_intent = 43 ("OK"). That limit is reported in the first-run doc.
+# The pad (U05e): this adapter takes an intent as the scene node key with arg 0 (model:L76), one key per digit, so every
+# pad macro carries a `digit_map`: "0" is key 42, "1".."9" are keys 32..40 (screens:L147-L158), enter is 43 ("OK"). U23
+# could only type zeros (digit_intent = 42 with the digit as arg); the map types the valid codes too.
 [u4]
 events = [
   { id = "wedge-empty", boundary = "empty", via = "wedge", hex = "", expect = "accept" },
@@ -192,12 +191,16 @@ events = [
   { id = "wedge-non-digit", boundary = "non-digit", via = "wedge", hex = "313261343536", expect = "accept" },
   # 343434: unknown until row 24 publishes the revision-4 list (model:L138)
   { id = "wedge-rev4-visitor", boundary = "valid-visitor", via = "wedge", hex = "333433343334", expect = "accept" },
-  { id = "pad-empty", boundary = "empty", via = "pad", digits = "", digit_intent = 42, enter_intent = 43, expect = "accept" },
-  { id = "pad-one-digit", boundary = "one-digit", via = "pad", digits = "0", digit_intent = 42, enter_intent = 43, expect = "accept" },
-  { id = "pad-max-minus-1", boundary = "max-minus-1", via = "pad", digits = "000000000000000000000000000000000000000000000000000000000000000", digit_intent = 42, enter_intent = 43, expect = "accept" },
-  { id = "pad-max", boundary = "max", via = "pad", digits = "0000000000000000000000000000000000000000000000000000000000000000", digit_intent = 42, enter_intent = 43, expect = "accept" },
-  { id = "pad-max-plus-1", boundary = "max-plus-1", via = "pad", digits = "00000000000000000000000000000000000000000000000000000000000000000", digit_intent = 42, enter_intent = 43, expect = "accept" },
-  { id = "pad-unknown", boundary = "unknown", via = "pad", digits = "000000", digit_intent = 42, enter_intent = 43, expect = "accept" },
+  { id = "pad-empty", boundary = "empty", via = "pad", digits = "", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-one-digit", boundary = "one-digit", via = "pad", digits = "0", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-max-minus-1", boundary = "max-minus-1", via = "pad", digits = "000000000000000000000000000000000000000000000000000000000000000", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-max", boundary = "max", via = "pad", digits = "0000000000000000000000000000000000000000000000000000000000000000", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-max-plus-1", boundary = "max-plus-1", via = "pad", digits = "00000000000000000000000000000000000000000000000000000000000000000", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  # U05e: the fixture codes through the pad (model:L55): 121212 visitor, 666662 staff, 666661 inactive staff
+  { id = "pad-visitor", boundary = "valid-visitor", via = "pad", digits = "121212", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-staff", boundary = "valid-staff", via = "pad", digits = "666662", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-expired", boundary = "expired", via = "pad", digits = "666661", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-unknown", boundary = "unknown", via = "pad", digits = "000000", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
 ]
 
 # ---- U5: language (the visitor's BG | EN switch, model:L57; BG 8:0 key 11, EN 8:1 key 12, screens:L143-L144) ----

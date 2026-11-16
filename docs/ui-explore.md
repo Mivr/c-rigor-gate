@@ -17,9 +17,15 @@ owner-declared abstraction key, applies the judges and writes one JSON line per 
 | `ui_explore_judges.py` | findings, step judges and run judges, key-too-coarse |
 | `ui_explore_coverage.py` | the exploration (visited graph) and the exploration judges (C1, C8, key facts) |
 | `ui_explore_strategies.py` | sweep, bfs, walk, replay, and the cost check |
+| `ui_explore_scene.py` | U05e: the state-scoped taps of a state ("Scene taps") |
+| `ui_explore_layers.py` | U05e: the layer policy of the tap judges under `--contract` ("Taps under a layer") |
+| `ui_explore_catalogue_ext.py` | U05e: the optional tables `taps`, `[boot]`, `[[prefix]]` and the pad's `digit_map` |
 | `ui_explore_png.py` | the PNG writer |
 
-Selftest: `selftest/ui.sh` steps 8 to 14 and its last step, 16. The fixtures are the toy probe and three adapters: a
+Selftest: `selftest/ui.sh` steps 8 to 14 and its last step, 16; U05e: `selftest/ui_taps.sh` (run by ui.sh) on the
+scene stub `gate/tests/data/ui_explore/stub_scene.py` with its catalogue `scene.events.toml` (scene taps, the layer
+policy with and without the canary contract, the digit map, boot seeds, a prefix, the cost refusal and the budget cut;
+unit tests `gate/tests/test_ui_explore_scene.py` and `test_ui_explore_boot.py`). The fixtures are the toy probe and three adapters: a
 nondeterministic one, a starving one and one with a perpetual tick. The last step checks that no probe process is left.
 Unit tests: `gate/tests/test_ui_explore*.py`, with a stub probe (`gate/tests/data/ui_explore/stub_probe.py`, one mode
 per misbehaviour, and frame-facts modes that speak the protocol as the C probe does) and its catalogue
@@ -36,6 +42,8 @@ rigor ui-explore --probe BIN --catalogue FILE.events.toml --strategy sweep|bfs|w
   bfs:    --origin-ms N --seed N --depth D (1..64) --max-states M (1..1000000)
   walk:   --origin-ms N --seed N --walk-seeds S1,S2,... --walk-length L (1..10000) --extra-origins K (0..16)
   replay: --paths FILE (ui-explore-paths/1)
+  sweep, bfs, walk: --boot-seeds catalogue in place of --seed (U05e: once per seed of the catalogue's [boot])
+  bfs: --prefix NAME (U05e: start after the words of the catalogue's [[prefix]] row NAME)
 ```
 
 Exit 0: no finding of severity error. 1: at least one. 2: the gate could not decide. That covers:
@@ -47,7 +55,9 @@ Exit 0: no finding of severity error. 1: at least one. 2: the gate could not dec
 - an `--evidence` directory that exists and is not empty;
 - catalogue taps for a probe without the tap capability;
 - `sweep` on a model without a view domain; `bfs` or `walk` with no sendable event;
-- a run whose time words could exceed the budget (see "Cost");
+- a request in which ONE path's time words could exceed the whole budget (see "Cost");
+- `--boot-seeds` with `--seed`, for `replay`, or with a catalogue without `[boot]`; `--prefix` for another strategy, a
+  name the catalogue has no `[[prefix]]` row for, or a prefix word that is not a path word;
 - a judge's evidence file name that is not `[a-z0-9][a-z0-9_-]*.json`, or is `paths.json`.
 
 Nothing the product does gives exit 2. A probe that cannot greet, one whose capabilities change between launches, and a
@@ -60,9 +70,9 @@ exits with 128 + the signal.
 | Option | Meaning |
 |---|---|
 | `--deadline-ms` (10000) | bounds every reply of the probe, the greeting, and the exit after `quit` |
-| `--budget-s` (1800) | the wall-clock budget of the whole run. When it is spent, the run stops with one `ui-explore-timeout` (`observed.kind` = `budget`), no criterion counts as evaluated, and the exit is 1, never a hang and never 2. Where it stops depends on the host, so such a findings file is not reproducible |
+| `--budget-s` (1800) | the wall-clock budget of the whole run, measured. When it is spent, the run stops: a `bfs` drops the path it cut and ends cleanly with its bound finding `depth-unsaturated` (`reasons` holds `budget`; `detail.budget_cut` true); `sweep`, `walk` and `replay` end with one `ui-explore-timeout` (`observed.kind` = `budget`). Either way `budget_spent` is true, no criterion counts as evaluated (a cut run is never reported as complete), and the exit is 1, never a hang and never 2. Where it stops depends on the host, so such a findings file is not reproducible |
 | `--require` | criteria that must be evaluated; each one not evaluated becomes a `ui-coverage-gap` with `observed.evaluated` = false |
-| `--contract` | the UI contract (docs/ui-contract.md) handed to the judges; the built-in judges do not read it |
+| `--contract` | the UI contract (docs/ui-contract.md) handed to the judges; of the built-in judges only the tap judges read it, for the layer policy and the probe grid (U05e, "Taps under a layer") |
 | `--judges` | judges of other gates to run as well: distinct names of `ui-scene` and `ui-fit` (docs/ui-judges.md). They need `--contract`, `--today` and a probe that announces `frame-facts` (exit 2 otherwise, the capability right after the greeting) |
 | `--today` | the date (`YYYY-MM-DD`) the contract's exceptions expire against; only with `--judges`. The judges never read the wall clock, so the same inputs give the same bytes on any day |
 
@@ -211,15 +221,25 @@ every finding gets `DIR/<12 hex of its id>/paths.json`, which replays it with th
 BFS replays every path from `open`, so a long time word in a prefix is paid by every descendant; this task adds no
 prefix caching. The summary reports `cost` (`probe_commands`, `virtual_ms`).
 
-Before running, the explorer refuses (exit 2) a run whose worst virtual time exceeds `--budget-s` x 16 000. The rate
-comes from the cost model: about 16 000 ms of virtual time per wall second, the lockers adapter's ~1 ms per 16 ms step.
-Worst virtual time, by strategy:
-- bfs: 2 x max_states x the sum, over sendable events, of (the event's longest span + one starvation window);
-- walk: 2 x seeds x origins x (length x the longest span + one window);
-- replay: 2 x the spans of its words.
+The run is bounded by `--budget-s` on MEASURED wall time (U05e; see the option above): a bfs the budget cuts ends with
+`depth-unsaturated` reason `budget`, exit 1, nothing evaluated. Before running, the explorer refuses (exit 2) only a
+request that cannot be served at all: one in which a SINGLE path, both runs, could need more virtual time than the whole
+budget buys at 16 000 ms of virtual time per wall second (the lockers adapter's ~1 ms per 16 ms step; the first real run
+measured ~30 000). The bound of one path is an upper bound by construction (every word at its longest span):
+- bfs: 2 x (the prefix's spans + depth bound x the longest span of a sendable event + one starvation window);
+- walk: 2 x (length x the longest span + one window);
+- replay: 2 x the spans of its longest path.
 
 The longest span of `fire-due`, `before-due`, `until-change`, `settle` and `wait-change` is `max_wait_ms`; of `advance`,
-its `ms`; of `at`, min(offset, `max_wait_ms`).
+its `ms`; of `at` (a catalogue event or a replay word `at <offset>`), min(offset, `max_wait_ms`); of an input, 0. It
+bounds one path, never the number of paths: that is what the budget, measured, is for.
+
+**The lockers numbers** (`max_wait_ms` 300 256, a starvation window of 1024 ms, 110 sendable events, `--budget-s 1200`
+= 19.2 M virtual ms). Before U05e the check bounded the whole run: 2 x max_states x the sum over the events of (span +
+1024) = 2 x max_states x ~1.42 M, so 6 states were admitted and 7 refused (19 837 356 ms). Now: 2 x (depth x 300 256 +
+1024), any `--max-states`: depth 12 needs 7.2 M (admitted), depth 31 19.2 M (admitted), depth 32 is refused. A replay
+of four paths of two `at` words (`at 3200`, `at 5200`) needed `--budget-s 600` before (each `at` at 300 256); now its
+longest path is 2 x 8 400 ms (admitted at `--budget-s 2`).
 
 ## The event catalogue (`ui-events/1`)
 
@@ -240,6 +260,7 @@ Top level, all required unless marked otherwise, nothing else:
   a catalogue that requires none;
 - `drain_ms` (16 to 60 000, a multiple of 16);
 - optional `starvation`;
+- optional (U05e) `taps`, `[boot]` and `[[prefix]]` (below);
 - `[key]`;
 - one table per class, each with exactly one key `events`, a list of inline tables. The list may be empty; the table may
   not be absent.
@@ -254,13 +275,27 @@ are `[a-z][a-z0-9-]*`, at most 64 characters, unique, never a reserved path word
 | `u1` | intent taps | `intent` (uint32), `arg` (int32), `expect` | `apply 3 <intent> <arg> -` |
 | `u2` | probe taps through the hit-test | `x`, `y` (0..65535), optional `target` (an LVGL class name) | `hit-test x y`, then `tap x y` ("Taps"), only to a probe that announces `hit-test` and `tap` |
 | `u3` | complement taps | `x`, `y` | as `u2`; must change nothing |
-| `u4` | code macros with a boundary class | `boundary`, `expect`, and either `via = "wedge"` with `hex`, or `via = "pad"` with `digits`, `digit_intent`, `enter_intent` | wedge: `apply 2 0 0 <hex>`; pad: one `apply 3 <digit_intent> <d>` per digit, then `apply 3 <enter_intent> 0`; one step |
+| `u4` | code macros with a boundary class | `boundary`, `expect`, and either `via = "wedge"` with `hex`, or `via = "pad"` with `digits`, `enter_intent` and one of `digit_intent` or (U05e) `digit_map` | wedge: `apply 2 0 0 <hex>`; pad: one `apply 3 <digit_intent> <d>` per digit (with `digit_map = { "<d>" = { intent, arg }, ... }`: `apply 3 <intent> <arg>` of that digit; every digit of `digits` must be mapped), then `apply 3 <enter_intent> 0`; one step |
 | `u5` | language | `intent`, `arg`, `expect` | as `u1` |
 | `e1` | environment replies | `env` (uint32), `arg`, `hex`, `expect` | `apply 1 <env> <arg> <hex>` |
 | `t1` | virtual-time events | `kind`: `fire-due`, `before-due`, `until-change`, `advance` with `ms` (at most `max_wait_ms`), or `at` with `offset_ms` | see "Paths and time" |
 
 The `u4` boundary classes are `empty`, `one-digit`, `max-minus-1`, `max`, `max-plus-1`, `valid-visitor`, `valid-staff`,
 `unknown`, `expired` and `non-digit`.
+
+**U05e tables.** All optional and strict (an unknown key, a wrong type or range, or a provenance not in the UI
+contract's forms is exit 2); a catalogue without them loads and runs exactly as before:
+- `taps = { scope, max_per_state, grid_pct, intent_node, provenance }`: `scope` `"scene"` (the state-scoped taps of
+  "Scene taps") or `"fixed"` (the catalogue's points only); `max_per_state` (1..4096, required with and only with
+  `scene`) caps each class per state; `grid_pct` (1 to 9 increasing integers 0..100, only with `scene`) is the probe grid
+  without `--contract` (with one, its `probe_grid_pct` is used); `intent_node` (`"key"` or `"intent"`, optional) says how
+  a u1 intent names its scene node (its node key, or its `intent:arg`), which puts u1, u5 and pad-enter inputs under the
+  layer policy ("Taps under a layer");
+- `[boot]` with `seeds` (1 to 256 distinct integers) and `provenance`: the seeds `--boot-seeds catalogue` runs the
+  strategy with, once each, in file order, into one exploration; the findings merge by id (a finding's id does not
+  depend on the seed it was found with) and `detail.boot_seeds` lists each seed's detail;
+- `[[prefix]]` rows with `name`, `words` (1 to 256 path words, no `open`) and `provenance`: `--prefix NAME` makes a bfs
+  start from the state after `open` and those words, so its bound is spent on UI states; the prefix is in every path.
 
 **Capabilities.** A probe's greeting is `ui-probe/1 ready[ <cap>...]` (docs/ui-model.md, "The greeting"). The known
 capabilities, in this order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop`, `pointer`; the C probe
@@ -381,6 +416,51 @@ grown on the tap to widen that set: it may change only by its text's own laid si
 The end-to-end proof on a real LVGL build (an LVGL toy whose countdown a tap restarts) is not in this selftest: no
 gate selftest product has such a countdown.
 
+**Scene taps** (U05e; P004 3.4, 4.3 U2/U3; `taps` scope `scene`; gate/rigor_lib/ui_explore_scene.py). Fixed points
+mean different things on different screens, so a scene-scoped catalogue derives the taps of every state from that
+state's scene and rendered tree (the observation of the step before the tap, read through the judges' vocabulary and
+association, docs/ui-judges.md):
+- u2 `tap@<key>#<i>`: for every enabled interactive scene node (an intent, enabled, neither `I` nor `D`) associated with
+  a shown rendered node, point 0 is the centre of its visible box and points 1.. the other points of the inset grid
+  (`probe_points`: x1 + floor(w x p / 100) for p in the grid and 50, the same for y), in sorted order; the node it
+  aims at is that rendered node (so `tap-misrouted` names it when another node is pressed);
+- u3 `blank#<i>`: the centre of every disabled button or key, one point of every shown scrim outside its card (the first
+  grid point of the scrim not in the card), then the grid points of the display in no interactive node and no layer;
+  duplicates dropped. Judged as every u3 tap: it must change nothing (unless a layer says otherwise, below).
+
+Order: point index first, then scene order, so every node's centre comes before any node's grid point and a cap keeps
+the centres. Each class is capped at `max_per_state`; a state over the cap is the info finding `taps-capped` (identity:
+the state's key and the class; `observed` the class, the uncapped count and the cap). A bfs sends, in each state, the
+catalogue's sendable events and then that state's own scene words; a walk uses the catalogue's events only. A scene word
+is replayable: in a replay it is resolved in the state it is sent in, and a word that names no point there is the
+outcome `unbound` (no input is sent, no finding). Fixed u2 and u3 rows stay valid beside them.
+
+**Taps under a layer** (U05e; with `--contract` only; gate/rigor_lib/ui_explore_layers.py). The tap judges read the
+layer context the ui-scene judge reads, shared, not copied (ui_judge_context.Context: the association, every layer's
+sealed `[[input_layer]]` policy, inertness R7 through `inert_target`, the same probe points as `occluded-target`), built
+from the state before the tap. One verdict per tap, in this order:
+- **inert**: the tap's target (a u2 row's aimed node, a scene tap's node) is interactive and inert by R7 (it carries
+  `I`, or a later painted capture-modal-inert layer's clickable, dimmed scrim covers all its probe points). The tap must
+  have NO effect: nothing changed is `refused` (no `intent-missed`, no `tap-misrouted`); any effect is
+  `blocked-target-live` (P004 3.4; `observed` the layer, the target, the changed parts). The outcome records
+  `layer inert <layer>`;
+- **dismiss**: the point lies under a scrim (outside its card's visible box), the topmost layer there, and the sealed
+  rows of its card's role say `tap_outside_dismisses = true`. The tap must do exactly that layer's dismiss: the layer's
+  records (the scrim, its card and the scene nodes after the card inside the card's rect) leave the scene and every
+  other semantic record and the env inputs stay as they were: the outcome `dismissed` (counted as accepted). Anything
+  else (nothing, or more, or another change) is `tap-misrouted` with `observed` `expected` (the layer and its intent),
+  `pressed` and `changed`;
+- **pass**: the point lies under such a scrim whose layer neither blocks nor dismisses, over an interactive, not inert
+  node below it. A tap that only removed the layer is `tap-swallowed-first` (`observed` the layer and the node below):
+  the layer took the tap the control below should have had. Any other outcome is judged as without a contract.
+
+With `taps` `intent_node`, an intent input (u1, u5, and a pad macro's enter) is judged the same way against its scene
+node: inert, an `ok apply missed` is the result `inert` (counted as refused, no `intent-missed`; outcome
+`layer inert <key>`), an accepted one `blocked-target-live`. Without `--contract` none of this runs: the taps and
+inputs are judged exactly as before (the selftest's `nocontract` step and the unit tests show the same dialog taps
+`intent-missed` and `tap-misrouted` without it). The summary counts the three U05e checks only in a run with `taps` or
+a contract, so the summary of a run without them keeps its bytes.
+
 **The abstraction key** (P004 4.3 item 3):
 
 ```toml
@@ -453,7 +533,7 @@ nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` 
 | `model-nondeterministic` | the two runs' traces differ | key before, word, `trace` | `step`, `word`, `part`, `item`; both values in `runs.json` |
 | `run-twice-mismatch` | the first other differing part, in read order | key before, word, part | as above |
 | `intent-missed` | an input's outcome was `missed` (`ok apply missed`, or a `u2` tap that pressed a non-root node and changed nothing) | key before, word | `word`, `applies`; a tap's node image in `tap-node.png` |
-| `tap-misrouted` | a `u2` tap aimed at a node (its `target`) pressed another non-root node | key before, word | `word`, `pressed` and `aimed` (index, class, box); the pressed node's image |
+| `tap-misrouted` | a `u2` tap aimed at a node (its `target`, or a scene tap's node) pressed another non-root node; or (U05e, `--contract`) a tap under a dismissing layer did not do exactly its dismiss | key before, word | `word`, `pressed` and `aimed` (index, class, box), or `expected`, `pressed`, `changed`; the pressed node's image |
 | `noop-tap-effect` | a tap that must change nothing changed the model | key before, word | `word`, `changed` (the parts) |
 | `ambient-missing` | a tap did not post a declared ambient event at its instant (U05c) | key before, word | `word`, `types` |
 | `ambient-extra` | a tap posted a declared ambient event more than once (U05c) | key before, word | `word`, `types` |
@@ -463,7 +543,10 @@ nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` 
 | `event-never-accepted` | an `accept` event whose outcome was never `ok` | sha, event | `event`, `expect`, per-outcome state counts; `path` is the first refusing send |
 | `event-accepted` | a `refuse` event accepted somewhere | sha, event | as above; `path` is the first accepting send |
 | `key-fact-unmatched` | a derived fact's selector never matched | sha, fact | `fact`, `node`, `role` |
-| `depth-unsaturated` | the last bfs depth added states, or the bound dropped some | `["depth", sha, depth, max_states]` | bounds, `states_per_depth`, `dropped_states`, `reasons` |
+| `depth-unsaturated` | the last bfs depth added states, the bound dropped some, or the budget cut the bfs (U05e) | `["depth", sha, depth, max_states]` | bounds, `states_per_depth`, `dropped_states`, `reasons` (`last-depth-adds-states`, `state-bound`, `budget`) |
+| `blocked-target-live` | U05e, `--contract`: a tap or intent on a target inert under a modal layer (R7) had an effect | `[check, key before, word]` | `word`, `layer`, `target`, `changed` |
+| `tap-swallowed-first` | U05e, `--contract`: a tap under a pass-through layer over a control only removed the layer | `[check, key before, word]` | `word`, `layer`, `below` |
+| `taps-capped` (info) | U05e: a state had more scene taps of a class than `max_per_state` | `["taps-capped", key, class]` | `class`, `count`, `cap` |
 | `key-too-coarse` | equal keys, different normalised records (every semantic field but justified ignores, plus every model and derived fact) | key | `witness_path`, `differs_in`; both records in `records.json` |
 
 **Output nobody asked for.** Timing decides whether a stray line is caught before a command or read as that command's
