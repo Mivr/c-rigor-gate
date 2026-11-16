@@ -63,7 +63,8 @@ class Exploration:
         if step.result is None:
             return
         count = self.events.setdefault(step.word, EventCount())
-        outcome = {"ok": "accepted", "refused": "refused", "missed": "missed"}[step.result]
+        outcome = {"ok": "accepted", "refused": "refused", "missed": "missed", "dismissed": "accepted",
+                   "inert": "refused"}[step.result]
         getattr(count, outcome).add(step.key_before)
         if outcome not in count.first:
             count.first[outcome] = (list(words[:step.index + 1]), (step.key_before, step.proj_before, step.origin))

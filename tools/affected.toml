@@ -61,6 +61,11 @@ selftests = ["ui"]
 [[rule]]
 glob = "selftest/ui_restart.sh"
 selftests = ["ui"]
+# U05e: the scene taps, layer policy, pad map, boot seeds and cost selftest (selftest/ui_taps.sh, run by selftest/ui.sh)
+# runs the scene stub (gate/tests/data/ui_explore/stub_scene.py) with the canary contract.
+[[rule]]
+glob = "selftest/ui_taps.sh"
+selftests = ["ui"]
 [[rule]]
 glob = "gate/tests/data/ui_explore/**"
 selftests = ["ui"]

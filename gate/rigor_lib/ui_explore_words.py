@@ -15,6 +15,7 @@ ends every `uim_step` at each grid boundary and each deadline anyway, so the spl
 same step lengths as one long advance; it only bounds the work per command and the log volume between drains.
 """
 
+from rigor_lib import ui_explore_layers as layers
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_grammar import BUF_MAX
 from rigor_lib.ui_explore_key import key_hash, projection
@@ -89,12 +90,14 @@ def _input(session, step, before, send, label):
     return after
 
 
-def inputs(session, step, before, sends, catalogue=None):
-    """Send `sends` = [(label, callable or tap event)] in order, each checked against a snapshot taken before it."""
+def inputs(session, step, before, sends, catalogue=None, scene=None, aim=None):
+    """Send `sends` = [(label, callable or tap event)] in order, each checked against a snapshot taken before it.
+    `scene` (U05e): the run's ui_explore_scene.Scene, whose contract puts the taps under the layer policy; `aim`: the
+    rendered node a scene tap aims at."""
     for label, send in sends:
         if before is None:
             before = snapshot(session, step)
-        before = tap_input(session, step, before, send, catalogue) if label == "tap" else \
+        before = tap_input(session, step, before, send, catalogue, scene, aim) if label == "tap" else \
             _input(session, step, before, send, label)
 
 
@@ -145,7 +148,7 @@ def box_image(session, box):
     return write_png(w, h, data)
 
 
-def _pressed(step, nodes, expect, got, event):
+def _pressed(step, nodes, expect, got, event, aim=None):
     """The node the tap pressed, or None when it pressed nothing or a screen or layer root (a node with no parent); the
     step's outcome records the pressed node (index, class, box) and whether it is the node the event aimed at. A probe
     that contradicts itself is a ProbeError kind contract."""
@@ -162,7 +165,7 @@ def _pressed(step, nodes, expect, got, event):
     if got[0] not in nodes:
         raise ProbeError("contract", "tap", "the tap pressed a node that is not in the frame")
     parent, _, cls, box = nodes[got[0]]
-    aimed = aimed_node(nodes, event)
+    aimed = aim if aim is not None else aimed_node(nodes, event)
     how = "root" if parent == -1 else "aimed" if aimed == got[0] else "other" if aimed is not None else "untargeted"
     step.outcome.append("pressed %d %s %s %s" % (got[0], cls, ",".join(str(v) for v in box), how))
     if how == "other":
@@ -212,19 +215,30 @@ def tap_changes(step, marks, before, after, frame, ambient, catalogue):
     return changed
 
 
-def tap_input(session, step, before, event, catalogue=None):
+def tap_input(session, step, before, event, catalogue=None, scene=None, aim=None):
     """`hit-test x y`, `tap x y`, then a snapshot (frame first). A u2 tap that pressed a node (not a root): `ok` when the
     model changed, `missed` when it did not (the node's box becomes the evidence image); one that was blocked or pressed
-    nothing or a root, and every u3 tap: `refused` when nothing changed, else `ok` and the finding `noop-tap-effect`."""
+    nothing or a root, and every u3 tap: `refused` when nothing changed, else `ok` and the finding `noop-tap-effect`.
+    With a contract (U05e) a tap under a layer is judged by its policy first (layer_tap)."""
     x, y = event.get("x"), event.get("y")
     nodes, size = frame_nodes(before["frame"])
     expect = session.hit_test(x, y)
     got = session.tap(x, y)
     marks = (len(step.acc_patches), len(step.acc_trace))
     after = snapshot(session, step)
-    node = _pressed(step, nodes, expect, got, event)
+    node = _pressed(step, nodes, expect, got, event, aim)
     ambient = tap_ambient(session, step, marks, catalogue)
-    if event.cls == "u2" and node is not None:
+    found = None
+    if scene is not None and scene.contract is not None and scene.judging:
+        found = layers.verdict(scene.contract, before, x, y, aim if aim is not None else aimed_node(nodes, event),
+                               None if got == "blocked" else got[0], scene.identity)
+    judged = None if found is None else layer_tap(step, found, (marks, before, after, ambient, catalogue, scene),
+                                                  event.cls == "u2" and node is not None)
+    if judged is not None:
+        result = judged
+        if (step.misrouted or result == "missed") and node is not None:
+            step.image_box = image_box(nodes[node][3], size)
+    elif event.cls == "u2" and node is not None:
         result = "ok" if tap_changes(step, marks, before, after, False, ambient, catalogue) else "missed"
         if result == "missed" or step.misrouted:
             step.image_box = image_box(nodes[node][3], size)
@@ -238,6 +252,69 @@ def tap_input(session, step, before, event, catalogue=None):
     return after
 
 
+def _pressed_name(step):
+    line = next((item for item in reversed(step.outcome) if item.startswith("pressed ")), "pressed none")
+    parts = line.split(" ")
+    if len(parts) < 5:
+        return None
+    return {"index": int(parts[1]), "class": parts[2], "box": [int(v) for v in parts[3].split(",")]}
+
+
+def _judge_change(step, verdict, judged):
+    """The parts of the tap's change that are not the expected one, and by what: a sibling replay of the bound intent
+    first (dismiss, covered), else the strict parts rule (ui_explore_layers); the outcome records which, and a sibling
+    that failed records why (never a silent fallback)."""
+    marks, before, after, ambient, catalogue, scene = judged
+    residual = ambient[0] if ambient is not None else step.acc_trace[marks[1]:]
+    role = catalogue.countdown_role if catalogue is not None and ambient is not None else None
+    parts = (before, after, step.acc_patches[marks[0]:], residual, role, ambient[1] if ambient is not None else None)
+    if verdict.kind in ("dismiss", "covered") and scene is not None:
+        sibling, failed = scene.sibling(verdict)
+        if sibling is not None and verdict.kind == "dismiss" and layers.sibling_more(verdict, before, sibling, role):
+            sibling, failed = None, "more-than-dismiss"     # its own intent does more than make the layer leave
+        if failed:
+            step.outcome.append("sibling failed %s" % failed)
+        if sibling is not None:
+            step.outcome.append("judged by sibling")
+            return layers.like_sibling(sibling, *parts)
+    if verdict.kind in ("dismiss", "covered"):
+        step.outcome.append("judged by parts")
+    allowed = scene.dismiss_trace(verdict.card_role) if scene is not None else None
+    return layers.layer_left(verdict, *parts, allowed) if verdict.removed else ["semantic"]
+
+
+def layer_tap(step, verdict, judged, pressed_node):
+    """The result of a tap the layer policy judges (ui_explore_layers): `refused`, `ok` (with `step.blocked`,
+    `step.misrouted` or `step.swallowed`), `missed` (a covering control did nothing) or `dismissed`; None to judge
+    it as without a contract."""
+    marks, before, after, ambient, catalogue, _scene = judged
+    bad = _judge_change(step, verdict, judged) if verdict.kind != "inert" else ["semantic"]
+    if verdict.kind == "pass" and bad:
+        return None
+    step.misrouted = None
+    step.outcome.append("layer %s %s" % (verdict.kind, verdict.layer or "-"))
+    if verdict.kind == "pass":
+        step.swallowed = {"layer": verdict.layer, "below": verdict.target}
+        return "ok"
+    if verdict.kind == "dismiss" and not bad:
+        return "dismissed"
+    if verdict.kind == "covered":
+        step.covered = {"control": verdict.target, "aimed": verdict.aimed}
+        step.outcome.append("covered by %s" % verdict.target)
+    changed = tap_changes(step, marks, before, after, not pressed_node, ambient, catalogue)
+    if verdict.kind == "inert":
+        if changed:
+            step.blocked = {"layer": verdict.layer, "target": verdict.target, "changed": changed}
+        return "ok" if changed else "refused"
+    if verdict.kind == "covered" and (not bad or not changed):
+        return "ok" if changed else "missed"
+    expected = {"layer": verdict.layer, "intent": verdict.intent}
+    if verdict.kind == "covered":
+        expected = dict(expected, control=verdict.target, aimed=verdict.aimed)
+    step.misrouted = {"expected": expected, "pressed": _pressed_name(step), "changed": changed, "not_the_dismiss": bad}
+    return "ok" if changed else "refused"
+
+
 def input_sends(session, event):
     cls = event.cls
     apply = session.apply
@@ -247,6 +324,10 @@ def input_sends(session, event):
         return [("apply", lambda: apply(1, event.get("env"), event.get("arg"), event.get("hex")))]
     if cls == "u4" and event.get("via") == "wedge":
         return [("apply", lambda: apply(2, 0, 0, event.get("hex")))]
+    if cls == "u4" and "digit_map" in dict(event.spec):        # U05e: one intent (and arg) per digit key
+        table = {digit: (intent, arg) for digit, intent, arg in event.get("digit_map")}
+        digits = [("apply", lambda d=d: apply(3, table[d][0], table[d][1], "")) for d in event.get("digits")]
+        return digits + [("apply", lambda: apply(3, event.get("enter_intent"), 0, ""))]
     if cls == "u4":
         digits = [("apply", lambda d=int(d): apply(3, event.get("digit_intent"), d, "")) for d in event.get("digits")]
         return digits + [("apply", lambda: apply(3, event.get("enter_intent"), 0, ""))]

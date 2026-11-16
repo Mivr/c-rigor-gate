@@ -133,6 +133,10 @@ exports = ["main"]
 allow = ["memset"]
 exports = ["main"]
 
+[module."//apps/lockers/itest/runtime:double_pulse_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
 [module."//apps/lockers/itest/shift:sh_gaps_test"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
@@ -202,6 +206,10 @@ allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/lockers/itest/view:vw_screen_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/lockers/itest/visit:vs_double_pulse_test"]
 allow = ["memset"]
 exports = ["main"]
 
@@ -1653,6 +1661,14 @@ exports = ["main"]
 allow = ["memcpy", "memset", "snprintf"]
 exports = ["main"]
 
+[module."//apps/lockers/lkapp/runtime:net_stamp_test"]
+allow = ["memcpy", "memset", "snprintf"]
+exports = ["main"]
+
+[module."//apps/lockers/lkapp/runtime:net_304_test"]
+allow = ["memcpy", "memset", "snprintf"]
+exports = ["main"]
+
 [module."//apps/lockers/lkapp/runtime:opener_test"]
 allow = ["memcpy", "memmove", "memset"]
 exports = ["main"]
@@ -1671,6 +1687,10 @@ exports = ["lkrt_audit_map", "lkrt_core_init", "lkrt_core_stats", "lkrt_core_ste
     "lkrt_opener_stats", "lkrt_opener_step", "lkrt_post_codes", "lkrt_post_opener",
     "lkrt_post_sync", "lkrt_result", "lkrt_scene", "lkrt_ui_dropped", "lkrt_ui_init",
     "lkrt_ui_post", "lkrt_warn"]
+
+[module."//apps/lockers/lkapp/runtime:snapshot_unattended_test"]
+allow = ["memcpy", "memset", "snprintf"]
+exports = ["main"]
 
 [module."//apps/lockers/lkapp/runtime:testkit"]
 level = "L1"
@@ -1990,6 +2010,10 @@ exports = ["main"]
 allow = ["strlen"]
 exports = ["main"]
 
+[module."//apps/lockers/lkrx/fold_core:fold_core_saved_test"]
+allow = ["strlen"]
+exports = ["main"]
+
 [module."//apps/lockers/lkrx/fold_core:fold_core_session_test"]
 allow = ["strlen"]
 exports = ["main"]
@@ -2025,6 +2049,10 @@ allow = []
 exports = ["main"]
 
 [module."//apps/lockers/lkrx/fold_status:fs_codes_table_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/lockers/lkrx/fold_status:fs_codes_keep_test"]
 allow = []
 exports = ["main"]
 
@@ -2410,6 +2438,10 @@ exports = ["lkui_about", "lkui_build", "lkui_build2", "lkui_build_choose", "lkui
 
 [module."//apps/lockers/lkui/screens:screens_choose_test"]
 allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/lockers/lkui/screens:screens_fit_test"]
+allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/lockers/lkui/screens:screens_opened_test"]
@@ -4642,6 +4674,17 @@ third_party = ["gate//third_party/lvgl:lvgl"]
 allow = []
 exports = []
 
+[module."//lib/ui/lvrender:lvr_bar_test"]
+third_party = ["gate//third_party/lvgl:lvgl"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["add_node", "fonts_open", "k_col", "lf_add", "lf_add_corpus", "lf_add_notice", "lf_apply", "lf_at_rect",
+    "lf_base", "lf_cat", "lf_clear", "lf_click_at", "lf_click_obj", "lf_close", "lf_corpus_rect",
+    "lf_corpus_secs", "lf_corpus_text", "lf_diff", "lf_drag", "lf_dump", "lf_empty", "lf_fresh", "lf_idx",
+    "lf_label_text", "lf_need", "lf_node", "lf_open", "lf_open_bare", "lf_patch", "lf_pool", "lf_random_scene",
+    "lf_rect", "lf_rscene", "lf_settle", "lf_step", "look_fill", "main", "rd", "rd_key", "render_one",
+    "same_all", "same_text", "style_a", "style_b", "style_close", "style_f", "style_fp", "style_look",
+    "style_open", "style_secs", "want_fill", "want_text"]
+
 [module."//lib/ui/scene:scene"]
 level = "L3"
 impl = ["lib/ui/scene/src/**"]
@@ -5161,4 +5204,41 @@ exports = ["main"]
 
 [module."//lib/io/pfscript:pfscript_test"]
 allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/types:types"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/dtc/types:dttypes_layout_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/ports:ports"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/dtc/ports:fake"]
+level = "L2"
+impl = ["apps/fiscal/dtc/ports/src/**"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["dtf_dev", "dtf_dev_add", "dtf_dev_ok", "dtf_log", "dtf_log_add", "dtf_log_ok", "dtf_push", "dtf_push_add",
+    "dtf_push_ok", "dtf_store", "dtf_store_add", "dtf_store_ok", "dtf_wait", "dtf_wait_add", "dtf_wait_ok"]
+
+[module."//apps/fiscal/dtc/ports:dtports_compile_test"]
+allow = ["core_str_from_cstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/ports:dtfake_dev_test"]
+allow = ["core_str_from_cstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/ports:dtfake_store_test"]
+allow = ["core_str_from_cstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dtc/ports:dtfake_small_test"]
+allow = ["core_str_from_cstr"]
 exports = ["main"]

@@ -17,6 +17,8 @@ CONTRACT = UI / "lockers.toml"
 ADAPTER_ENV_IDS = tuple(range(2, 16)) + tuple(range(20, 26)) + tuple(range(30, 35)) + (40, 41, 50, 51)
 # The FAKE codes of the adapter's fixtures (ui-model.md "The fixture data"; row 24's revision-4 code).
 FIXTURE_CODES = {"121212", "666662", "666661", "343434", "999999"}
+# U05e: the pad's digit map: "0" is scene key 42, "1".."9" are 32..40, every arg 0 (ui-model.md L76, screens.out L147)
+PAD_MAP = (("0", 42, 0),) + tuple((str(d), 31 + d, 0) for d in range(1, 10))
 
 
 def wedge_text(hex_text):
@@ -41,10 +43,11 @@ class LockersCatalogueTest(unittest.TestCase):
         self.assertIn("DRAFT by the U23 agent, unsigned, for the owner's review", self.data.decode("utf-8"))
 
     def test_requires_every_capability(self):
-        # the seven capabilities the kiosk's probe announces; `identity` (U24) joins when its adapter reports it
-        seven = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer")
-        self.assertEqual(self.cat.requires, seven)
-        self.assertEqual(CAPABILITIES, seven + ("identity",))
+        # the eight capabilities the kiosk's probe announces since business-apps 3e8c46e (U04g: scene identity); the
+        # layer policy binds a notice's dismiss intent by it (U05e fix-up 3)
+        eight = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer", "identity")
+        self.assertEqual(self.cat.requires, eight)
+        self.assertEqual(CAPABILITIES, eight)
 
     def test_drain_and_longest_timer(self):
         self.assertLessEqual(self.cat.drain_ms, 60000)
@@ -85,10 +88,21 @@ class LockersCatalogueTest(unittest.TestCase):
             code = wedge_text(event.get("hex")) if event.get("via") == "wedge" else event.get("digits")
             filler = set(code) <= {"0"} or set(code) <= {"1"}
             self.assertTrue(code in FIXTURE_CODES or filler or code == "12a456", (event.id, code))
-            if event.get("via") == "pad":
-                self.assertEqual((event.get("digit_intent"), event.get("enter_intent")), (42, 43))
+            if event.get("via") == "pad":           # U05e: one scene key per digit (pad keys 42, 32..40), enter 43
+                self.assertEqual((event.get("digit_map"), event.get("enter_intent")), (PAD_MAP, 43))
         # no network address of any kind (a dotted quad), so no LAN address either
         self.assertIsNone(re.search(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", self.data.decode("utf-8")))
+
+    def test_u05e_scene_taps_boot_seeds_and_the_welcome_prefix(self):
+        self.assertEqual((self.cat.taps.scope, self.cat.taps.intent_node), ("scene", "key"))
+        self.assertEqual(self.cat.taps.grid_pct, tuple(self.contract.get("thresholds", "probe_grid_pct")))
+        self.assertEqual([e for e in self.events("u2")], [])
+        self.assertEqual(self.cat.boot_seeds, tuple(range(112, 121)))
+        self.assertEqual(self.cat.prefix("welcome"), ("at 3200",))
+        for name in ("taps", "boot", "prefix"):
+            self.assertIn(name, self.raw)
+        pads = {event.get("digits") for event in self.events("u4") if event.get("via") == "pad"}
+        self.assertLessEqual({"121212", "666662", "666661"}, pads)
 
     def test_intents_are_scene_keys_with_arg_zero(self):
         for event in self.events("u1") + self.events("u5"):

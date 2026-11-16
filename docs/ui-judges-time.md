@@ -111,8 +111,12 @@ happens: the lockers catalogue's 300 256 ms covers every horizon). At most 64 pr
 the count. Every probing run is run twice with the explorer's run judges (a probe error or nondeterminism there is the
 explorer's own finding). A probing run that does not show the element at the appearance step as the path did (another
 state key there) is `probe-diverged` (error, with the path and the probing path), and that appearance is not counted
-as examined. Probing runs are not strategy paths: no step judge of another gate sees them and coverage does not record
-them; they spend the wall budget and are added to the summary's `cost`; `checks-examined` reports the judge's own
+as examined. Probing runs are not strategy paths: no step judge of another gate sees them, coverage does not record
+them, and (U05e) they run with a non-judging scene, as the layer policy's sibling replays do (scene tap words resolve;
+no layer verdict, no sibling replay). They spend the wall budget: a budget spent inside a probing run raises out of the
+path's run, so the strategy ends as a cut run (`budget_spent`, never reported complete; a bfs drops the state that path
+reached, though the path's own steps are already recorded); a budget spent during the origin replays of the end of the
+run is `time-budget-cut` (error; the summary's `budget_spent` is the strategy's). They are added to the summary's `cost`; `checks-examined` reports the judge's own
 share (`cost`: `probe_runs`, `origin_runs`, `probe_commands`, `virtual_ms`). The pre-run cost check (`check_cost`)
 does not count them: they are known only once a path has run.
 

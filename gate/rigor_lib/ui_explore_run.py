@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from rigor_lib import jsonio
 from rigor_lib.errors import InternalError
+from rigor_lib import ui_explore_scene as scene_mod
 from rigor_lib import ui_explore_words as words_mod
 from rigor_lib.ui_explore_grammar import check_identity_keys
 from rigor_lib.ui_explore_key import key_hash, projection
@@ -34,6 +35,7 @@ class Config:
     catalogue: object
     budget: object
     caps: object = None           # the capabilities of the first launch; every later launch must announce the same
+    scene: object = None          # U05e: the scene taps and the layer policy (ui_explore_scene.Scene), or None
     identity: bool = False        # U24: read `identity` after every word (a selected judge needs it)
 
 
@@ -62,6 +64,9 @@ class Step:
     noop: object = None           # a tap that must change nothing changed the model
     ambient: object = None        # a tap whose declared ambient events were missing or repeated (U05c)
     restart: object = None        # a tap whose residual change was a declared countdown restart (U05d)
+    blocked: object = None        # U05e: a tap on a target inert under a modal layer (R7) that had an effect
+    swallowed: object = None      # U05e: a tap under a pass-through layer that only removed the layer
+    covered: object = None        # U05e: the modal layer's own control that took a tap aimed at an inert target
     image_box: object = None      # (x, y, w, h) of the evidence image of the node a tap pressed
     key: object = None
     proj: object = None
@@ -97,6 +102,7 @@ class Run:
     commands: int = 0
     virtual_ms: int = 0
     inked: list = field(default_factory=list)      # U07: the indexes of the steps that tried `ink`
+    scene: object = None                            # U05e: the Config's scene taps and layer policy
 
 
 def _plain(value):
@@ -118,9 +124,11 @@ def check_words(words, catalogue, caps=()):
         if type(word) is not str:
             raise InternalError("path word %r is not a string" % (word,))
         event = catalogue.by_id(word)
-        if not (word in (SETTLE, WAIT_CHANGE) or _DOMAIN.fullmatch(word) or _AT.fullmatch(word) or event):
+        scene = event is None and catalogue.taps is not None and catalogue.taps.scope == "scene" \
+            and scene_mod.is_scene_word(word)           # U05e: a state-scoped tap
+        if not (word in (SETTLE, WAIT_CHANGE) or _DOMAIN.fullmatch(word) or _AT.fullmatch(word) or event or scene):
             raise InternalError("path word %r is not a path word or a catalogue event id" % word)
-        if event is not None and event.cls in ("u2", "u3") and not all(cap in caps for cap in TAP_CAPS):
+        if (scene or event is not None and event.cls in ("u2", "u3")) and not all(cap in caps for cap in TAP_CAPS):
             raise InternalError("path word %r is a tap, and the probe does not announce the tap capability and "
                                 "hit-test" % word)
     return origin, seed
@@ -144,12 +152,31 @@ def _do_word(session, step, run, catalogue, before):
         words_mod.advance_by(session, step, session.origin + int(word.split(" ")[1]), catalogue)
     else:
         event = catalogue.by_id(word)
-        if event.cls == "t1":
+        if run.scene is not None:
+            run.scene.path = list(run.words[:step.index])     # U05e: the words to this state, for a sibling replay
+            run.scene.identity = before.obs.get("identity")    # and its identity records (with ui-scene), or None
+        if event is None:
+            _scene_tap(session, step, run, catalogue, before)
+        elif event.cls == "t1":
             waits = event.get("kind") not in ("fire-due", "before-due", "advance", "at")     # until-change
             base = base_key(session, step, before, catalogue) if waits else step.key_before
             words_mod.time_event(session, step, run, event, catalogue, base)
         else:
-            words_mod.inputs(session, step, before_inputs(before), words_mod.input_sends(session, event), catalogue)
+            words_mod.inputs(session, step, before_inputs(before), words_mod.input_sends(session, event), catalogue,
+                             run.scene)
+            if run.scene is not None:
+                run.scene.judge_apply(step, event, words_mod.snapshot_of(before.obs))
+
+
+def _scene_tap(session, step, run, catalogue, before):
+    """A state-scoped tap word (U05e): its point in the state before (resolved from that step's own observation, as
+    the bfs derived it), or the outcome `unbound` when that state has no such point."""
+    resolved = run.scene.resolve(step.word, words_mod.snapshot_of(before.obs)) if run.scene is not None else None
+    if resolved is None or resolved == "unreadable":
+        step.outcome.append("unbound" if resolved is None else "unreadable")    # each a finding (ui_explore_judges)
+        return
+    event, aim = resolved
+    words_mod.inputs(session, step, before_inputs(before), [("tap", event)], catalogue, run.scene, aim)
 
 
 def base_key(session, step, before, catalogue):
@@ -322,7 +349,7 @@ def _settle(session, run, catalogue, plan=None, identity=False):
 def execute(config, words, settle=False, ink=None):
     """One run of `words` in a fresh probe; with `settle`, the starvation check (`_settle`) follows the path; `ink`: the
     InkPlan of the steps that take ink, or None."""
-    run = Run([], [])
+    run = Run([], [], scene=config.scene)
     try:
         session = Session([config.probe], config.deadline_s, config.budget, config.caps)
     except ProbeError as error:

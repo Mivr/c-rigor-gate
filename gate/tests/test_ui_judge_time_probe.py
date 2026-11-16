@@ -136,6 +136,24 @@ class ScreenUnderMessageTest(unittest.TestCase):
         self.assertEqual(facts[3].countdowns["choose_size"], (("6", 28),))       # the screen's own countdown
 
 
+class RunnerTest(unittest.TestCase):
+    def test_probing_runs_use_a_non_judging_scene(self):
+        """U05e: the extra runs of ui-time judge no layer and start no sibling replay (as the sibling runs do)."""
+        from pathlib import Path
+        from rigor_lib import ui_explore_catalogue
+        from rigor_lib.ui_explore_run import Config
+        from rigor_lib.ui_explore_scene import Scene
+        from rigor_lib.ui_explore_time import Runner as ExplorerRunner
+        data = Path(__file__).resolve().parent / "data" / "ui_explore" / "scene.events.toml"
+        catalogue = ui_explore_catalogue.load(str(data))
+        scene = Scene(catalogue, None)
+        config = Config(probe="p", deadline_s=1.0, catalogue=catalogue, budget=None, scene=scene)
+        runner = ExplorerRunner(SimpleNamespace(config=config, contract=None))
+        self.assertTrue(scene.judging)
+        self.assertFalse(runner.config.scene.judging)
+        self.assertIsNot(runner.config.scene, scene)
+
+
 class OriginCompareTest(unittest.TestCase):
     def test_time_and_deadline_relative_to_the_origin(self):
         def fact(now, origin, due):

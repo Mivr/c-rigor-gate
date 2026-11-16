@@ -3,7 +3,8 @@
 # Layers with no module yet are empty; they are listed so the order is fixed before the first module lands.
 [layers]
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
-         "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root"]
+         "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
+         "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -85,7 +86,8 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/lkui/input:testkit",
            "//apps/lockers/lkui/screens:testkit",
            "//apps/lockers/relay/driver:testkit",
-           "//apps/lockers/relay/opener_sm:testkit"]
+           "//apps/lockers/relay/opener_sm:testkit",
+           "//apps/fiscal/dtc/ports:fake"]
 
 [layer."lib-io"]
 modules = ["//lib/io/**"]
@@ -123,6 +125,42 @@ modules = ["//apps/lockers/lkui/**"]
 
 [layer."app-root"]
 modules = ["//apps/lockers/lkapp/**"]
+
+# Fiscal collector layers (G0 of docs/fiscal/mvp/tasks.md; docs/fiscal/mvp/collector.md sections 1 and 2.5,
+# simulator.md section 1), bottom to top. They are EMPTY until their first module lands, because a pattern that matches
+# no module is `contract-stale`: each item adds its module's pattern to its layer, and its edges, in the same pin
+# (the per-item snippets are in the G0 report). Layer assignment:
+#   fiscal-contract: apps/fiscal/dtc/{types,ports}
+#   fiscal-domain:   apps/fiscal/dt/*, apps/fiscal/journal/*
+#   fiscal-safety:   apps/fiscal/dtsafe/{req,guard}
+#   fiscal-adapters: apps/fiscal/dtadp/*
+#   fiscal-sim:      apps/fiscal/dtsim/*
+#   fiscal-root:     apps/fiscal/dtrun/loop, apps/fiscal/dtapp/*   (apps/fiscal/itest/* are c_test only, outside the layers)
+# Safety wiring rules, enforced by the edges (an edge that is not declared is `undeclared-edge`):
+#   * no layer-to-layer edge points into fiscal-safety, and none between its two modules: only
+#     dtrun/loop -> dtsafe/req and dtadp/devhttp -> dtsafe/guard exist, as module edges (added with their items);
+#   * fiscal-domain, fiscal-adapters and fiscal-sim have no edge to lib//httpreq here: the only edges to httpreq are
+#     dtsafe/req (port edge, symbol http_request_write_with only) and dtadp/pushhttp (the only module that may use
+#     http_request_write_req), both module edges added with their items;
+#   * fiscal-domain has no edge to fiscal-adapters or fiscal-safety; fiscal-sim has none to fiscal-domain or
+#     fiscal-safety (the simulator shares no code with the collector).
+[layer."fiscal-contract"]
+modules = ["//apps/fiscal/dtc/ports:ports", "//apps/fiscal/dtc/types:types"]
+
+[layer."fiscal-domain"]
+modules = []
+
+[layer."fiscal-safety"]
+modules = []
+
+[layer."fiscal-adapters"]
+modules = []
+
+[layer."fiscal-sim"]
+modules = []
+
+[layer."fiscal-root"]
+modules = []
 
 # Library edges. The most permissive matching edge wins, so the layer edges below are the whole story for their kinds.
 [[edge]]
@@ -911,3 +949,95 @@ kind = "data"
 from = "app-root"
 to = "app-contract"
 kind = "data"
+
+# Fiscal collector: the layer edges that name no module (so they cannot go stale). Every edge to a lib-fmt or lib-io
+# module, to a fiscal module, and every edge between fiscal modules is a module edge added with its item.
+[[edge]]
+from = "fiscal-contract"
+to = "lib-base"
+kind = "data"
+
+[[edge]]
+from = "fiscal-contract"
+to = "fiscal-contract"
+kind = "data"
+
+[[edge]]
+from = "//apps/fiscal/dtc/ports:fake"
+to = "fiscal-contract"
+kind = "data"
+
+[[edge]]
+from = "fiscal-domain"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-domain"
+to = "fiscal-contract"
+kind = "data"
+
+[[edge]]
+from = "fiscal-domain"
+to = "fiscal-domain"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-safety"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-safety"
+to = "fiscal-contract"
+kind = "data"
+
+[[edge]]
+from = "fiscal-adapters"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-adapters"
+to = "fiscal-contract"
+kind = "data"
+
+[[edge]]
+from = "fiscal-sim"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-sim"
+to = "lib-sim"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-sim"
+to = "fiscal-contract"
+kind = "data"
+
+[[edge]]
+from = "fiscal-sim"
+to = "fiscal-sim"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-root"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-root"
+to = "fiscal-contract"
+kind = "data"
+
+[[edge]]
+from = "fiscal-root"
+to = "fiscal-domain"
+kind = "pure"
+
+[[edge]]
+from = "fiscal-root"
+to = "fiscal-root"
+kind = "pure"
