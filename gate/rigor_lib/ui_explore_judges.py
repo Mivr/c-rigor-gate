@@ -26,7 +26,12 @@ CHECKS = ("ui-coverage-gap", "model-nondeterministic", "run-twice-mismatch", "ti
 # P004 3.7: I -> E after report-first; every other check is an error. `taps-injected` (U05c) says that the taps of the
 # run were injected at a product's own pointer indev: a fact about the run's fidelity, not a product defect.
 # `ambient-restart` (U05d) records that a tap's change was judged a declared countdown restart: a fact, not a defect.
-SEVERITY = {"key-too-coarse": "info", "taps-injected": "info", "ambient-restart": "info"}
+# U05e: counted in the summary only by a run with scene taps or a contract (a run without them keeps its bytes).
+# `taps-capped` (info) records that a state had more scene taps than the per-state cap: a fact about the run.
+SCENE_CHECKS = ("blocked-target-live", "tap-swallowed-first", "taps-capped", "scene-unreadable", "scene-taps-vacuous",
+                "scene-word-unbound", "scene-controls-untapped")
+# `scene-word-unbound` is an error; `--lenient-paths` (hand-written paths) makes it info (ui_explore.py).
+SEVERITY = {"key-too-coarse": "info", "taps-injected": "info", "ambient-restart": "info", "taps-capped": "info"}
 PRIVATE = "_evidence"
 
 
@@ -43,7 +48,7 @@ def state_of(key, proj, catalogue_key, origin_ms):
 
 
 def make(check, identity, state, path, observed, evidence=None):
-    if check not in CHECKS:
+    if check not in CHECKS and check not in SCENE_CHECKS:
         raise ValueError("unknown check %r" % check)
     item = {"id": finding_id(check, identity), "gate": GATE, "check": check, "layer": LAYERS.get(check, "meta"),
             "severity": SEVERITY.get(check, "error"), "state": state, "path": list(path), "observed": observed,
@@ -84,7 +89,9 @@ def missed_judge(catalogue_key):
             return []
         return [make("intent-missed", ["missed", step.key_before, step.word],
                      state_of(step.key_before, step.proj_before, catalogue_key, step.origin),
-                     [view.word for view in path] + [step.word], {"word": step.word, "applies": list(step.applies)},
+                     [view.word for view in path] + [step.word],
+                     dict({"word": step.word, "applies": list(step.applies)},
+                          **({"covered": step.covered} if step.covered else {})),
                      dict(step.images) or None)]
     return judge
 
@@ -145,6 +152,28 @@ def restart_judge(catalogue_key):
         return [make("ambient-restart", ["restart", step.key_before, item["node"]],
                      state_of(step.key_before, step.proj_before, catalogue_key, step.origin), words,
                      dict(item, word=step.word)) for item in step.restart or ()]
+    return judge
+
+
+def layer_judge(catalogue_key):
+    """U05e, with a contract: `blocked-target-live` (P004 3.4), a tap on a target that is inert under a modal layer
+    (R7) had an effect; `tap-swallowed-first`, a tap under a layer the contract says does not block only removed the
+    layer (docs/ui-explore.md, "Taps under a layer")."""
+    def judge(step, path, contract):
+        del contract
+        words = [view.word for view in path] + [step.word]
+        found = []
+        unbound = {"word": step.word} if "unbound" in step.outcome else None
+        unread = {"reason": "the frame facts are not a tree"} if "unreadable" in step.outcome else None
+        for check, part in (("blocked-target-live", step.blocked), ("tap-swallowed-first", step.swallowed),
+                            ("scene-word-unbound", unbound), ("scene-unreadable", unread)):
+            if part is not None:
+                ident = ["scene-unreadable", step.key_before] if check == "scene-unreadable" else \
+                    [check, step.key_before, step.word]
+                found.append(make(check, ident,
+                                  state_of(step.key_before, step.proj_before, catalogue_key, step.origin), words,
+                                  dict(part, word=step.word)))
+        return found
     return judge
 
 

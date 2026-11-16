@@ -15,8 +15,9 @@ from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 from rigor_lib import ui_explore_catalogue as catalogue_mod
 from rigor_lib import ui_explore_strategies as strategies
 from rigor_lib.ui_explore_coverage import CRITERIA, not_evaluated
-from rigor_lib.ui_explore_judges import CHECKS, PRIVATE, make
-from rigor_lib.ui_explore_probe import CAPABILITIES, TAP_CAPS, Budget, BudgetSpent, ProbeError, Session, kill_all
+from rigor_lib.ui_explore_judges import CHECKS, PRIVATE, SCENE_CHECKS, make
+from rigor_lib.ui_explore_probe import (CAPABILITIES, STOP_SIGNALS, TAP_CAPS, Budget, BudgetSpent, ProbeError,
+                                        Session, kill_all)
 from rigor_lib.ui_explore_judges import probe_error_judge
 from rigor_lib.ui_explore_run import Config, Run, Step, check_words
 from rigor_lib.ui_judge_findings import JudgeSet
@@ -76,6 +77,11 @@ def add_parser(subparsers):
     parser.add_argument("--walk-length", type=_uint, help="walk: events per walk")
     parser.add_argument("--extra-origins", type=_uint, help="walk: extra clock origins per walk")
     parser.add_argument("--paths", help="replay: a paths file (ui-explore-paths/1)")
+    parser.add_argument("--boot-seeds", choices=("catalogue",),
+                        help="sweep, bfs, walk: run once per seed of the catalogue's [boot] instead of --seed (U05e)")
+    parser.add_argument("--prefix", help="bfs: start after the words of the catalogue's [[prefix]] row of this name")
+    parser.add_argument("--lenient-paths", action="store_true",
+                        help="a scene word that names no point of its state is info, not an error (hand-written paths)")
     parser.add_argument("--deadline-ms", type=_uint, default=10000, help="deadline of every probe reply (10000)")
     parser.add_argument("--budget-s", type=_uint, default=1800, help="wall-clock budget of the whole run (1800)")
     parser.add_argument("--require", type=_list(r"C[0-9]{1,2}"), help="criteria that must be evaluated, e.g. C1,C8")
@@ -86,6 +92,14 @@ def add_parser(subparsers):
 
 def _check_args(args):
     wanted = _STRATEGY_ARGS[args.strategy]
+    if args.boot_seeds is not None:                     # U05e: the catalogue's seeds replace --seed
+        if args.strategy == "replay":
+            raise InternalError("--boot-seeds is not allowed for --strategy replay")
+        wanted = tuple(name for name in wanted if name != "seed")
+        if args.seed is not None:
+            raise InternalError("--seed is not allowed with --boot-seeds")
+    if args.prefix is not None and args.strategy != "bfs":
+        raise InternalError("--prefix is only for --strategy bfs")
     for name in _ALL_STRATEGY_ARGS:
         if (getattr(args, name) is not None) != (name in wanted):
             raise InternalError("--%s is %s for --strategy %s" % (
@@ -184,21 +198,83 @@ def _load(args):
     return catalogue, contract
 
 
-def _strategy(args, explorer, paths):
+def _strategy(args, explorer, paths, seed=None, prefix=()):
     if args.strategy == "replay":
         return strategies.replay(explorer, paths), []
-    word = strategies.open_word(args.origin_ms, args.seed)
+    seed = args.seed if seed is None else seed
+    word = strategies.open_word(args.origin_ms, seed)
     if args.strategy == "sweep":
         return strategies.sweep(explorer, word), []
     if args.strategy == "bfs":
-        return strategies.bfs(explorer, word, args.depth, args.max_states)
-    return strategies.walk(explorer, args.origin_ms, args.seed, args.walk_seeds, args.walk_length,
+        return strategies.bfs(explorer, word, args.depth, args.max_states, prefix)
+    return strategies.walk(explorer, args.origin_ms, seed, args.walk_seeds, args.walk_length,
                            args.extra_origins), []
+
+
+def _seeds(args, explorer, paths, catalogue, prefix):
+    """The strategy once per boot seed of the catalogue (U05e, --boot-seeds catalogue), one Explorer for all: the
+    findings merge by id. The detail lists each seed's; a bfs the budget cut ends the loop."""
+    if args.boot_seeds is None:
+        return _strategy(args, explorer, paths, prefix=prefix)
+    details, extra = [], []
+    for seed in catalogue.boot_seeds:
+        detail, found = _strategy(args, explorer, paths, seed, prefix)
+        details.append(dict(detail, seed=seed))
+        extra.extend((seed, item) for item in found)
+        if detail.get("budget_cut"):
+            return {"boot_seeds": details, "budget_cut": True}, strategies.merge_bounds(extra)
+    return {"boot_seeds": details}, strategies.merge_bounds(extra)
+
+
+def _prefix(args, catalogue, caps):
+    """The words of `--prefix NAME` (a `[[prefix]]` row), checked as path words, or ()."""
+    if args.prefix is None:
+        return ()
+    words = catalogue.prefix(args.prefix)
+    if words is None:
+        raise InternalError("--prefix %s: the catalogue has no [[prefix]] row of that name" % args.prefix)
+    if any(word.startswith("open ") for word in words):
+        raise InternalError("--prefix %s: a prefix cannot open a session" % args.prefix)
+    check_words(["open 0 0"] + list(words), catalogue, caps)
+    return words
 
 
 def _budget_finding(args, catalogue, word, runs):
     return make("ui-explore-timeout", ["budget", catalogue.sha256, args.strategy], None, [word],
                 {"kind": "budget", "budget_s": args.budget_s, "runs": runs})
+
+
+def _start(args, catalogue):
+    """(paths or None, the criteria, the first open word) of a run; the first boot seed's with --boot-seeds."""
+    paths = load_paths(args.paths, catalogue, CAPABILITIES) if args.strategy == "replay" else None
+    if args.boot_seeds is not None and not catalogue.boot_seeds:
+        raise InternalError("--boot-seeds catalogue: the catalogue has no [boot] seeds")
+    seed = catalogue.boot_seeds[0] if args.boot_seeds is not None else args.seed
+    criteria, word = (paths[0], paths[1][0][0]) if paths else \
+        (strategies.REQUIRED[args.strategy], strategies.open_word(args.origin_ms, seed))
+    return (paths[1] if paths else None), criteria, word
+
+
+def _launch(args, config, contract, judges, paths, word):
+    """The first launch and what it decides: (config with the capabilities and the scene, caps or None, the greeting
+    finding or None, the prefix words)."""
+    catalogue = config.catalogue
+    try:
+        caps, greeting = _greet(config, word)
+    except BudgetSpent:
+        caps, greeting = None, _budget_finding(args, catalogue, word, 0)
+    prefix = ()
+    if caps is not None:
+        _check_requires(catalogue, caps)
+        _check_taps(catalogue, caps, paths)
+        prefix = _prefix(args, catalogue, caps)
+        strategies.check_cost(catalogue, args, paths, caps, prefix)
+        scene = strategies.run_scene(catalogue, contract)
+        config = _config(config.probe, config.deadline_s, catalogue, config.budget, caps,
+                         _identity(judges, caps) or strategies.identity_for(scene, caps), scene)
+        if config.scene is not None:
+            config.scene.config = config        # the sibling replays of the layer policy run with this config
+    return config, caps, greeting, prefix
 
 
 def explore(args):
@@ -208,21 +284,9 @@ def explore(args):
     if args.today is not None and args.judges is None:
         raise InternalError("--today is only for --judges")
     judges = JudgeSet(args.judges, contract, catalogue.key, args.today) if args.judges is not None else None
-    budget = Budget(args.budget_s)
-    config = _config(args.probe, args.deadline_ms / 1000.0, catalogue, budget)
-    paths = load_paths(args.paths, catalogue, CAPABILITIES) if args.strategy == "replay" else None
-    criteria, word = (paths[0], paths[1][0][0]) if paths else \
-        (strategies.REQUIRED[args.strategy], strategies.open_word(args.origin_ms, args.seed))
-    paths = paths[1] if paths else None
-    try:
-        caps, greeting = _greet(config, word)
-    except BudgetSpent:
-        caps, greeting = None, _budget_finding(args, catalogue, word, 0)
-    if caps is not None:
-        _check_requires(catalogue, caps)
-        _check_taps(catalogue, caps, paths)
-        strategies.check_cost(catalogue, args, paths, caps)
-        config = _config(config.probe, config.deadline_s, catalogue, budget, caps, _identity(judges, caps))
+    config = _config(args.probe, args.deadline_ms / 1000.0, catalogue, Budget(args.budget_s))
+    paths, criteria, word = _start(args, catalogue)
+    config, caps, greeting, prefix = _launch(args, config, contract, judges, paths, word)
     _check_judges(judges, caps)
     explorer = strategies.Explorer(config, contract, word, caps or (),
                                    step_judges=[judges.step_judge] if judges else (),
@@ -233,9 +297,10 @@ def explore(args):
         extra = [greeting]
     else:
         try:
-            detail, extra = _strategy(args, explorer, paths)
+            detail, extra = _seeds(args, explorer, paths, catalogue, prefix)
         except BudgetSpent:
             spent, extra = True, [_budget_finding(args, catalogue, word, explorer.runs)]
+        spent = spent or bool(detail.get("budget_cut"))   # a bfs the budget cut is never reported as complete
     if not spent:
         for criterion in criteria:
             done, found = CRITERIA[criterion](explorer.exploration, contract)
@@ -244,11 +309,15 @@ def explore(args):
                 evaluated.append(criterion)
         if judges is not None:
             extra.extend(judges.finish(word, explorer.ink.capped if explorer.ink else ()))
+    extra.extend(strategies.scene_vacuity(args, explorer, catalogue, word, spent))
     extra.extend(not_evaluated(c, explorer.exploration) for c in (args.require or ()) if c not in evaluated)
     if explorer.taps == "indev" and "pointer" not in (caps or ()):
         extra.append(make("taps-injected", ["taps-injected", catalogue.sha256], None, [word],
                           {"taps": "indev", "pointer": False}))
     found = _dedupe(explorer.all_findings() + extra)
+    for item in found:          # U05e: hand-written paths may name points a state does not have (`--lenient-paths`)
+        if args.lenient_paths and item["check"] == "scene-word-unbound":
+            item["severity"] = "info"
     if args.evidence:
         _evidence(found, args.evidence, criteria)
     for item in found:
@@ -256,10 +325,10 @@ def explore(args):
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
 
 
-def _config(probe, deadline_s, catalogue, budget, caps=None, identity=False):
+def _config(probe, deadline_s, catalogue, budget, caps=None, identity=False, scene=None):
     """The run's Config, by keyword (a field added to Config cannot silently swap another)."""
     return Config(probe=os.path.abspath(probe), deadline_s=deadline_s, catalogue=catalogue, budget=budget, caps=caps,
-                  identity=identity)
+                  identity=identity, scene=scene)
 
 
 def _identity(judges, caps):
@@ -307,13 +376,17 @@ def _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, foun
             "domain_count": exploration.domain_count, "domain_visited": sorted(exploration.domain_visited),
             "events": events, "outcomes": exploration.outcomes, "taps": explorer.taps,
             "cost": {"probe_commands": explorer.commands, "virtual_ms": explorer.virtual_ms},
-            "findings": _counts(found),
+            **({"scene_taps": {"sent": explorer.scene_sent, "unbound": explorer.scene_unbound},
+                "sibling_cost": dict(explorer.config.scene.cost)} if explorer.config.scene is not None else {}),
+            "findings": _counts(found, explorer.config.scene is not None),
             "detail": detail}
 
 
-def _counts(found):
-    """Findings per check: the explorer's own checks by name (all of them, 0 included), a judge's as `<gate>.<check>`."""
-    counts = {check: sum(1 for f in found if f["check"] == check) for check in CHECKS}
+def _counts(found, scene=False):
+    """Findings per check: the explorer's own checks by name (all of them, 0 included; the U05e checks only in a run
+    with scene taps or a contract), a judge's as `<gate>.<check>`."""
+    counts = {check: sum(1 for f in found if f["check"] == check)
+              for check in CHECKS + (SCENE_CHECKS if scene else ())}
     for item in found:
         if item["gate"] != "ui-explore":
             name = "%s.%s" % (item["gate"], item["check"])
@@ -326,9 +399,23 @@ def _remove(path):
         os.unlink(path)
 
 
+_SIGNALS = STOP_SIGNALS
+_STOPPED = []          # the signal that is ending the run, once one arrived
+
+
 def _stop(signum, frame):
+    """SIGTERM, SIGINT, SIGHUP: SIGKILL every live probe's group WITHOUT waiting (the interrupted code may hold
+    Popen's wait lock), then exit 128 + the signal; `handle`'s finally reaps them. Further signals are ignored from
+    here on (a repeated SIGTERM during the teardown would otherwise meet the restored default action and kill the
+    explorer with the signal instead of 128 + it)."""
     del frame
-    kill_all()
+    _STOPPED.append(signum)
+    for sig in _SIGNALS:
+        try:
+            signal.signal(sig, signal.SIG_IGN)
+        except ValueError:      # not the main thread (a test calling the handler directly): nothing to ignore
+            pass
+    kill_all(reap=False)
     raise SystemExit(128 + signum)
 
 
@@ -353,10 +440,14 @@ def handle(args):
     _check_outputs(args)
     _remove(args.out)              # a stale result never survives this run
     _remove(args.summary)
-    previous = {sig: signal.signal(sig, _stop) for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+    del _STOPPED[:]
+    previous = {sig: signal.signal(sig, _stop) for sig in _SIGNALS}
     try:
         found, summary = explore(args)
     finally:
+        if _STOPPED:            # a signalled run: reap each probe for at most 5 s, then exit at once
+            kill_all(timeout=5)
+            os._exit(128 + _STOPPED[0])
         kill_all()
         for sig, handler in previous.items():
             signal.signal(sig, handler)
@@ -367,7 +458,8 @@ def handle(args):
     print("ui-explore %s: %d runs (each twice), %d abstract states, %d findings (%d errors); evaluated: %s"
           % (args.strategy, summary["runs"], summary["abstract_states"], len(found), errors,
              ",".join(summary["evaluated"]) or "none"))
-    for name in ("states_per_depth", "dropped_states", "domain_count", "domain_visited", "walks", "paths"):
+    for name in ("states_per_depth", "dropped_states", "domain_count", "domain_visited", "walks", "paths",
+                 "boot_seeds"):
         if name in summary["detail"]:
             print("  %s: %s" % (name, jsonio.canonical_dumps(summary["detail"][name]).decode("ascii").strip()))
     for item in found:

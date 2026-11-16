@@ -17,6 +17,7 @@ rendered scrim (the scrim, or a card without one) is painted later, clickable, d
 import hashlib
 
 from rigor_lib import ui_judge_contract, ui_judge_identity
+from rigor_lib.ui_contract import ContractPending
 from rigor_lib import ui_judge_stage as stage
 from rigor_lib import ui_judge_vocab as vocab
 from rigor_lib.ui_judge_vocab import CARD_ROLES, LAYER_ROLES
@@ -233,6 +234,27 @@ class Context:
             if points and box is not None and all(stage.inside((x, y, x, y), box) for x, y in points):
                 return True
         return False
+
+    # ---- shared with the explorer's tap judges (U05e; the judges above do not call these) ---------------------------
+    def inert_target(self, node, index):
+        """R7 for a tap's target: `inert` with exactly the probe points the geometric checks use (the grid, and with
+        the ppi the disc's corners)."""
+        from rigor_lib.ui_judge_geom import Probe
+        try:
+            radius = self.contract.mm_to_px(self.contract.get("thresholds", "probe_disc_radius_mm"))
+        except ContractPending:
+            radius = None
+        probe = Probe(self.frame.nodes[index].box, self.contract.get("thresholds", "probe_grid_pct"), radius)
+        return self.inert(node, index, probe.inert_points())
+
+    def tap_outside(self, node):
+        """Whether the sealed `[[input_layer]]` rows of a scrim's layer (its card's role) say a tap outside the card
+        dismisses it: True, False, or None when the rows disagree, are missing or the scrim has no card."""
+        card = self.card_of(node) if node.role == "scrim" else None
+        if card is None:
+            return None
+        values = {row["tap_outside_dismisses"] for row in ui_judge_contract.layer_rows(self.contract, card.role)}
+        return values.pop() if len(values) == 1 else None
 
     def records(self, *indexes):
         out = []

@@ -12,6 +12,7 @@ import tomllib
 from dataclasses import dataclass
 
 from rigor_lib import jsonio, ui_contract
+from rigor_lib import ui_explore_catalogue_ext as ext
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_grammar import SEMANTIC_FIELDS, TEXT_MAX, printable, unescape
 from rigor_lib.ui_explore_probe import CAPABILITIES
@@ -45,7 +46,7 @@ _DIGITS = re.compile(r"[0-9]{0,%d}" % TEXT_MAX)
 _SELECTOR_MAX = 1024                      # a node key or role in its escaped record spelling (model.h grammar)
 _REASON = re.compile(r"[ -~]{1,400}")
 _TOP = ("schema", "product", "app", "version", "max_wait_ms", "drain_ms", "key") + CLASSES
-_OPTIONAL_TOP = ("starvation", "requires", "ambient")
+_OPTIONAL_TOP = ("starvation", "requires", "ambient", "taps", "boot", "prefix")    # the last three: U05e
 # U05c: `[ambient]` names the trace events a product's pointer entry posts on every sample it receives (a kiosk's
 # `touch`), and optionally the idle deadline such a sample restarts (docs/ui-explore.md, "Ambient events"); each with
 # its provenance. Only for a catalogue that requires `pointer`: without it taps never reach the product's entry.
@@ -105,6 +106,12 @@ class Catalogue:
     ambient: tuple = ()     # trace types a tap's own sample posts (`[ambient] trace`), file order
     due_restart_ms: object = None   # the idle deadline a tap's sample restarts (`[ambient] due_restart_ms`), or None
     countdown_role: object = None   # the role of a countdown a tap's sample restarts (`countdown_restart_role`), or None
+    taps: object = None     # U05e: `taps` (ui_explore_catalogue_ext.Taps), or None
+    boot_seeds: tuple = ()  # U05e: `[boot] seeds`
+    prefixes: tuple = ()    # U05e: ((name, words), ...) of `[[prefix]]`
+
+    def prefix(self, name):
+        return next((words for row, words in self.prefixes if row == name), None)
 
     def __post_init__(self):
         object.__setattr__(self, "_index", {event.id: event for event in self.events})
@@ -234,10 +241,15 @@ def _code(where, raw):
         _keys(where, raw, ("id", "boundary", "via", "hex", "expect"))
         spec = {"hex": _hex(where + ".hex", raw["hex"])}
     else:
-        _keys(where, raw, ("id", "boundary", "via", "digits", "digit_intent", "enter_intent", "expect"))
+        mapped = "digit_map" in raw          # U05e: one intent (and arg) per digit key instead of digit_intent
+        _keys(where, raw, ("id", "boundary", "via", "digits", "enter_intent", "expect")
+              + (("digit_map",) if mapped else ("digit_intent",)))
         spec = {"digits": _str(where + ".digits", raw["digits"], _DIGITS),
-                "digit_intent": _int(where + ".digit_intent", raw["digit_intent"], 0, 0xffffffff),
                 "enter_intent": _int(where + ".enter_intent", raw["enter_intent"], 0, 0xffffffff)}
+        if mapped:
+            spec["digit_map"] = ext.digit_map(where + ".digit_map", raw["digit_map"], spec["digits"])
+        else:
+            spec["digit_intent"] = _int(where + ".digit_intent", raw["digit_intent"], 0, 0xffffffff)
     spec.update(boundary=_enum(where + ".boundary", raw["boundary"], BOUNDARIES), via=raw["via"])
     return spec
 
@@ -388,10 +400,13 @@ def loads(data):
                         "exercises nothing)")
     requires = _requires(document.get("requires"))
     ambient, restart, countdown = _ambient(document.get("ambient"), requires)
+    ext.check_scene_requires(ext.taps(document.get("taps")), requires)
     return Catalogue(_str("product", document["product"], _NAME), _str("app", document["app"], _NAME),
                      _int("version", document["version"], 1, 2**31 - 1), max_wait, drain, firings, window,
                      _key(document["key"]),
-                     tuple(events), jsonio.sha256_hex(data), requires, ambient, restart, countdown)
+                     tuple(events), jsonio.sha256_hex(data), requires, ambient, restart, countdown,
+                     ext.taps(document.get("taps")), ext.boot(document.get("boot")),
+                     ext.prefixes(document.get("prefix")))
 
 
 def load(path):

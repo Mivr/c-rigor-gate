@@ -195,7 +195,7 @@ class TimeTest(h.ExploreCase):
             self.assertIn('"budget_spent":true', (self.tmp / "s.json").read_text())
 
     def test_a_run_that_could_exceed_the_budget_is_refused_up_front(self):
-        outcome, found = self.bfs("good", 3, "--budget-s", "60", code=2)
+        outcome, found = self.bfs("good", 64, "--budget-s", "60", code=2)
         self.assertIn("could take", outcome.stderr)
         self.assertIsNone(found)
 
