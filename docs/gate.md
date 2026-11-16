@@ -96,8 +96,9 @@ its bytes). Nothing is signed (U30): the file is the record. `--key` is refused.
 ## Approvals
 An approval is a recorded loosening: it lets one exact finding pass. Kinds: `suppression`, `test-removal`, `ratchet`,
 `equivalent-mutant`, `witness-equivalent-mutant`. Approvals live in a directory outside the product repo
-(`--approvals`); the driver must never point `--approvals` at anything the product controls (`rigor grade` refuses a
-directory whose real path is inside the product repository or its work directory). Nobody signs an approval
+(`--approvals`); the driver must never point `--approvals` at anything the product controls (`rigor grade` and `rigor lane-mutants` refuse a
+directory whose real path is inside the product repository, the work directory, a `--witness`/`--oracle`/`--perf` bundle
+or the directory of `--task`). Nobody signs an approval
 (U30, owner decision 2026-11-16; `docs/trust.md`): one may be written only inside a task whose contract names it, with
 its reason, and every approval in force is counted and listed in the grade verdict (`core.approvals`, `docs/grade.md`).
 

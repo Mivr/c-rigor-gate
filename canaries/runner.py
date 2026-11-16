@@ -22,6 +22,7 @@ closed). The unpatched base is graded too, as the control, and must PASS. Withou
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import os
 import shutil
@@ -242,26 +243,29 @@ def oracle_dir(canary_id):
     return None
 
 
-def verify_verdict(verdict, tier, head):
+def verify_verdict(verdict, tier, head, canary_id):
     """(exit code, output) of `rigor verify --require-tier TIER` on a verdict (U30: nothing is signed; the gate order and
     toolchain pins are recomputed from this checkout's gate commit, which must be the one that graded it)."""
     gate = git(ROOT, "rev-parse", "HEAD")   # the gate commit this pack graded with (a clean checkout)
+    product_dir = os.path.relpath(os.path.join(CANARIES, canary_id), ROOT).replace(os.sep, "/")
+    with open(os.path.join(CANARIES, canary_id, "policy.toml"), "rb") as handle:
+        policy_sha = hashlib.sha256(handle.read()).hexdigest()
     result = run(["python3", "-I", "-B", os.path.join(ROOT, "gate", "rigor"), "verify", "--verdict", verdict,
-                  "--gate-repo", ROOT, "--expect-head", head, "--expect-gate", gate, "--require-tier", tier],
-                 ROOT, check=False)
+                  "--gate-repo", ROOT, "--expect-head", head, "--expect-gate", gate, "--expect-policy-sha", policy_sha,
+                  "--expect-product-dir", product_dir, "--require-tier", tier], ROOT, check=False)
     return result.returncode, result.stdout + result.stderr
 
 
-def judge_verify(expect, verdict, head):
+def judge_verify(expect, verdict, head, canary_id):
     """Reasons a `verify` canary failed. The verdict is a PASS of the grade tier the canary names; it must be
     accepted with that tier required (so it is refused for its tier alone) and refused with the other one."""
     want = expect["verify"]
     own = [t for t in TIERS if t != want["require_tier"]][0]
     why = []
-    code, out = verify_verdict(verdict, own, head)
+    code, out = verify_verdict(verdict, own, head, canary_id)
     if code != 0 or "tier %s" % own not in out:
         why.append("the verdict is not accepted at its own tier %s (exit %d): %s" % (own, code, out.strip()[-300:]))
-    code, out = verify_verdict(verdict, want["require_tier"], head)
+    code, out = verify_verdict(verdict, want["require_tier"], head, canary_id)
     if code != 1 or want["refused"] not in out:
         why.append("verify --require-tier %s was not refused as %r (exit %d): %s"
                    % (want["require_tier"], want["refused"], code, out.strip()[-300:]))
@@ -320,7 +324,7 @@ def grade_one(canary_id, scratch, uncached, keep=True, tier=None):
             log.write(result.stdout + result.stderr)
         outcome.update(judge(expect, result.returncode, os.path.join(work, "grade"), verdict, work, canary_id, tier))
         if "verify" in expect and os.path.isfile(verdict):
-            why = judge_verify(expect, verdict, head)
+            why = judge_verify(expect, verdict, head, canary_id)
             outcome["why"] = outcome.get("why", []) + why
             outcome["ok"] = outcome["ok"] and not why
         if control:

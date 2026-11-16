@@ -405,10 +405,12 @@ step_warm() {  # same head in a fresh work dir: nothing executes; `rigor verify`
   # U30: nothing is signed. The verdict's bindings match this head, this gate commit and its products/selftest (order,
   # toolchain pins, .buckconfig and product files recomputed from the gate commit), and it is refused for another head.
   "${rigor[@]}" verify --verdict "$work/warm.verdict.json" --expect-head "$last_head" --expect-gate "$(git rev-parse HEAD)" \
+      --expect-policy-sha "$(sha256sum products/selftest/policy.toml | cut -d" " -f1)" --expect-product-dir products/selftest \
       > "$work/warm.verify.log" 2>&1 \
     || { cat "$work/warm.verify.log" >&2; fail "rigor verify refused the warm verdict"; }
   [ -e "$work/warm.verdict.json.sig" ] && fail "a .sig was written beside the verdict"
   "${rigor[@]}" verify --verdict "$work/warm.verdict.json" --expect-head "$base" --expect-gate "$(git rev-parse HEAD)" \
+      --expect-policy-sha "$(sha256sum products/selftest/policy.toml | cut -d" " -f1)" --expect-product-dir products/selftest \
       > "$work/warm.verify-other.log" 2>&1 \
     && fail "rigor verify accepted the warm verdict for another head"
   grep -q "REJECTED: head is $last_head, expected $base" "$work/warm.verify-other.log" \

@@ -482,8 +482,9 @@ named by its hash, `repo_sha` an ancestor of the head) with its `kind`, exact `s
 approval the grade could honour: a change that adds an approval (an equivalent mutant, a suppression, a removed test, a
 raised ratchet) raises `count` and is never silent. Other loosenings (a raised baseline, a relaxed threshold, an edited
 expected list) are not approvals: they change a bound product input (above) and are not counted (`docs/trust.md`, known
-gaps). `rigor grade` refuses (exit 2) an `--approvals` directory whose real path is inside the product repository or the
-work directory: an approval there would be in force although the graded party wrote it. `rigor grade` prints `approvals in force (loosenings): N` and `rigor
+gaps). `rigor grade` (and `rigor lane-mutants`) refuse (exit 2) an `--approvals` directory whose real path is inside the
+product repository, the work directory, the `--witness`, `--oracle` or `--perf` bundle or the directory holding `--task`:
+an approval there would be in force although the graded side could have written it. `rigor grade` prints `approvals in force (loosenings): N` and `rigor
 verify` prints the count and each entry. It is hashed with the rest of `core`.
 
 **Unused approvals (T068).** `core.unused_approvals` is a verdict-level list (hashed with the rest of `core`, so it cannot
@@ -515,21 +516,24 @@ the same way and bound as `allowed_signers_sha256`; both are gone.)
 ## `rigor verify`: what a merge bot runs
 ```
 gate/rigor verify --verdict verdict.json --expect-head <40-hex head> --expect-gate <40-hex gate commit> \
-    --expect-policy-sha <sha256 of policy.toml> [--expect-task-sha <sha256 of TASK.toml>] \
-    [--gate-repo <gate checkout>] [--product-dir DIR] [--approvals DIR] \
+    --expect-policy-sha <sha256 of policy.toml> (--expect-product-dir products/<name> | --product-dir DIR) \
+    [--expect-task-sha <sha256 of TASK.toml>] [--gate-repo <gate checkout>] [--approvals DIR] \
     [--require-uncached] [--require-tier merge|nightly] \
     [--expect-sim-salt-id <sha256 of the salt>] [--expect-sim-spec-sha <sha256 of sim.toml>] [--expect-oracle-sha <oracle_sha256>]
 ```
 Nothing is signed (U30, `docs/trust.md`). Exit 0 only for a consistent PASS; exit 1 prints every reason it was rejected
-(`REJECTED: ...`); exit 2 is an internal error (unreadable file) or a usage error (no `--expect-head` or no
-`--expect-gate`; the removed `--allowed-signers` and `--signature`). The head and the gate commit are mandatory: without
+(`REJECTED: ...`); exit 2 is an internal error (unreadable file) or a usage error (no `--expect-head`, `--expect-gate` or
+`--expect-policy-sha`; neither `--expect-product-dir` nor `--product-dir`; the removed `--allowed-signers` and
+`--signature`). The head, the gate commit, the policy and the product directory are mandatory: without
 `--expect-gate` a verdict graded by any commit in the gate object store (an unmerged branch with a weakened gate) would be
-consistent. It checks, in order: `core_sha256` recomputed from `core`; `overall == PASS`; a verdict of the signing gate (its
+consistent, and without `--expect-product-dir` a verdict for one product could name another committed product
+directory (a canary's) whose files all recompute cleanly. It checks, in order: `core_sha256` recomputed from `core`; `overall == PASS`; a verdict of the signing gate (its
 inputs bind `allowed_signers_sha256`) is refused by name (`written by a gate that signed verdicts ... grade again with this
 gate`; a `.sig` beside it is never read); every input present and well formed, `gate_clean == true`,
 `core.uncached == inputs.uncached`; the recomputed bindings below; `core.approvals` well formed (`count` equal to the
 entries, sorted by stem, each with kind, scope, reason, `repo_sha` and stem, none without a bound approvals bundle); last
-the `--expect-*` values. The tier and the approvals in force are printed on every run, also when the verdict is rejected.
+the `--expect-*` values. The tier, `product_dir` and the approvals in force are printed on every run, also when the
+verdict is rejected.
 `--expect-policy-sha` is the sha256 of the policy file the merge bot trusts (`sha256sum products/<p>/policy.toml`).
 
 **Each binding, and how `verify` checks it** (`gate/rigor_lib/verdict_recompute.py`):
@@ -541,8 +545,9 @@ the `--expect-*` values. The tier and the approvals in force are printed on ever
 | `order_sha256` and the gate list of `core` | recomputed from `gate/order.txt` at `gate_sha`; the list must be exactly that order (no `--only`, no reordering) with every gate PASS; an entry that is not an object is rejected |
 | `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | recomputed from `toolchains/BUCK` and its pins and `tools/buck2.version` at `gate_sha` |
 | `buckconfig_sha256` | recomputed: the generated `.buckconfig` of the grading tree from the gate's `.buckconfig` at `gate_sha` |
+| `product_dir` | must equal `--expect-product-dir`; or, with `--product-dir DIR` (a grade whose product directory was outside the gate checkout), must be null |
 | product configuration (`product_toml_sha256`, `policy_sha256`, `expected_tests*`, `ram_budget_sha256`, `architecture_sha256`, `decoupling*`, `fuzz_regressions_sha256`, `sim_spec_sha256`, `sim_regressions_sha256`, `oracle_policy/normalise/excluded_sha256`) | recomputed from `inputs.product_dir` at `gate_sha`; when the grade's product directory was outside the gate checkout (`product_dir` null) `--product-dir DIR` is required and the files are read from it (and refused when `product_dir` is set). A file present on one side only is a mismatch |
-| `approvals_sha256` and `core.approvals.in_force` | with `--approvals DIR`: the bundle digest recomputed from DIR, and every approval in force must be the file `<stem>.json` there, of that hash, with the listed kind, scope, reason and `repo_sha`. Without it: the shape and count only |
+| `approvals_sha256` and `core.approvals.in_force` | with `--approvals DIR`: the bundle digest recomputed from DIR, and every approval in force must be the file `<stem>.json` there, of that hash, with the listed kind, scope, reason and `repo_sha`. One-directional: a well-formed approval in DIR that the verdict does not list is printed (`in DIR, not listed in the verdict (their applicability is not checked here)`), not rejected, because whether it applied (its `repo_sha` an ancestor of the head) needs the product repository, which `verify` does not read. Without `--approvals`: the shape and count only |
 | `task_sha256` | `--expect-task-sha` (the merge bot hashes the contract it trusts) |
 | `policy_sha256`, `witness_sha256`, `oracle_sha256`, `perf_sha256`, `sim_salt_id`, `sim_spec_sha256` | also the matching `--expect-*` values when given |
 | `gate_clean`, `tier`, `uncached`, `base`, `merge_base`, `sim_seed_digest`, `product`, every gate's status, findings count and findings digest, `unused_approvals` | **self-reported**: not recomputable without running the grade. `gate_clean` must be true, `tier` and `uncached` checked against `--require-*` |

@@ -23,11 +23,12 @@ class Verify(VerdictCase):
         self.assertRejected(self.verify("--expect-task-sha", "e" * 64), "task_sha256 is")
         self.assertEqual(self.verify().code, 0)
 
-    def test_the_head_and_the_gate_commit_must_be_named(self):
+    def test_the_head_the_gate_commit_and_the_policy_must_be_named(self):
         self.make()
-        for dropped in ("--expect-head", "--expect-gate"):
+        for dropped in ("--expect-head", "--expect-gate", "--expect-policy-sha"):
             argv = ["verify", "--verdict", self.verdict, "--gate-repo", self.gate_repo, "--product-dir", self.product,
-                    "--expect-head", HEAD, "--expect-gate", self.fixture.gate_sha]
+                    "--expect-head", HEAD, "--expect-gate", self.fixture.gate_sha,
+                    "--expect-policy-sha", self.fixture.file_hashes["policy_sha256"]]
             index = argv.index(dropped)
             outcome = run_rigor(argv[:index] + argv[index + 2:])
             self.assertExit(outcome, 2)
@@ -120,6 +121,28 @@ class VerifyProductFiles(VerdictCase):
     def test_a_product_directory_outside_the_gate_checkout_must_be_given(self):
         self.make()
         self.assertRejected(self.verify(product_dir=False), "pass --product-dir")
+        self.assertIn("rigor verify: product_dir none", self.verify().stdout)
+
+    def test_the_product_directory_must_be_named_unless_given(self):
+        self.make()
+        argv = ["verify", "--verdict", self.verdict, "--gate-repo", self.gate_repo, "--expect-head", HEAD,
+                "--expect-gate", self.fixture.gate_sha, "--expect-policy-sha", self.fixture.file_hashes["policy_sha256"]]
+        outcome = run_rigor(argv)
+        self.assertExit(outcome, 2)
+        self.assertIn("--expect-product-dir is required unless --product-dir is given", outcome.stderr)
+
+    def test_a_verdict_naming_another_committed_product_directory_is_rejected_by_name(self):
+        files = default_product_files()
+        self.fixture = Fixture(str(self.tmp / "two-products"))
+        self.gate_repo = gate_repo(self.fixture, product_dir="products/other", product_files=files)
+        Repo(self.gate_repo).write("products/prod/product.toml", "name = 'prod'\n")
+        self.fixture.gate_sha = Repo(self.gate_repo).commit("prod")
+        self.fixture.product_dir = "products/other"   # every sha recomputes cleanly from products/other
+        self.make()
+        self.assertEqual(self.verify(product_dir=False).code, 0)
+        outcome = self.verify("--expect-product-dir", "products/prod", product_dir=False)
+        self.assertRejected(outcome, "product_dir is products/other, expected products/prod")
+        self.assertIn("rigor verify: product_dir products/other", outcome.stdout)
 
     def test_a_product_directory_in_the_gate_checkout_is_read_from_the_gate_commit(self):
         files = default_product_files()
@@ -175,8 +198,26 @@ class VerifyApprovals(VerdictCase):
         outcome = self.verify("--approvals", directory)
         self.assertRejected(outcome, "approvals_sha256 is")
         (directory / "extra.txt").unlink()
+        other = jsonio.canonical_dumps(dict(self.ENTRY, scope="m.toml:k"))
+        (directory / (jsonio.sha256_hex(other) + ".json")).write_bytes(other)
+        outcome = self.verify("--approvals", directory)
+        self.assertRejected(outcome, "approvals_sha256 is")   # the bundle changed, and the new file is reported
+        self.assertIn("not listed in the verdict (their applicability is not checked here): ratchet m.toml:k "
+                      + jsonio.sha256_hex(other), outcome.stdout)
+        (directory / (jsonio.sha256_hex(other) + ".json")).unlink()
         (directory / (entry["stem"] + ".json")).write_bytes(b"{}\n")
         self.assertRejected(self.verify("--approvals", directory), "its file is not the approval of that hash")
+
+
+    def test_an_approval_in_the_directory_that_the_verdict_omits_is_reported_not_rejected(self):
+        directory, entry = self.approvals_dir()
+        other = jsonio.canonical_dumps(dict(self.ENTRY, scope="m.toml:k", repo_sha="f" * 40))
+        (directory / (jsonio.sha256_hex(other) + ".json")).write_bytes(other)
+        self.fixture.file_hashes["approvals_sha256"] = verdict_inputs.approvals_digest(str(directory))
+        self.make(lambda core: core.__setitem__("approvals", {"count": 1, "in_force": [entry]}))   # e.g. not an ancestor
+        outcome = self.verify("--approvals", directory)
+        self.assertEqual(outcome.code, 0, outcome.stdout)
+        self.assertIn("not listed in the verdict (their applicability is not checked here): ratchet m.toml:k", outcome.stdout)
 
 
 class VerifyInputs(VerdictCase):

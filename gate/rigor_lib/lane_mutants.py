@@ -20,7 +20,7 @@ import re
 from dataclasses import replace
 
 from rigor_lib import grade_build, grade_context, grade_mutants, grade_policy, grade_steps, grade_tree
-from rigor_lib import gitrun, mutants_report, mutants_verdict, product_layout
+from rigor_lib import approval_args, gitrun, mutants_report, mutants_verdict, product_layout
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_INFO
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
@@ -93,6 +93,8 @@ def _prepare(args):
     args.product = os.path.abspath(args.product)
     if args.approvals is not None:
         args.approvals = os.path.abspath(args.approvals)
+        # U30: the same refusal as `rigor grade` (the checkout plays the product repository).
+        approval_args.refuse_planted_approvals(argparse.Namespace(product_repo=repo, work=work, approvals=args.approvals))
     product = product_layout.load_product(args.product)
     g = _grading(args, work, product)
     grade_context.prepare_work(work)

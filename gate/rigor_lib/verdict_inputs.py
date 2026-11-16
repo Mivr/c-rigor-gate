@@ -59,7 +59,8 @@ OPTIONAL_KEYS = frozenset({"approvals_sha256", "expected_tests_previous_sha256",
                            "sim_salt_id", "sim_seed_digest", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
                            "oracle_excluded_sha256", "architecture_sha256", "decoupling_sha256",
                            "decoupling_baseline_sha256"})
-_REL_PATH = re.compile(r"(?!/)(?!.*(?:^|/)\.\.?(?:/|$))[^\x00]+")
+# A relative posix path: no leading `/`, no `.` or `..` segment, no NUL or line break anywhere in the string.
+_REL_PATH = re.compile(r"(?!/)(?![\s\S]*(?:^|/)\.\.?(?:/|\Z))[^\x00\n\r]+\Z")
 
 
 # ---------------------------------------------------------------- snapshot (read once, use the copy)

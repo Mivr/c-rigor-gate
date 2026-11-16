@@ -8,9 +8,9 @@ import subprocess
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import approvals, grade, grade_steps, jsonio, verdict, witness_bundle
+from rigor_lib import approval_args, approvals, grade, grade_steps, jsonio, verdict, witness_bundle
 from rigor_lib.errors import InternalError
-from tests.helpers import GATE_DIR, TempDirTestCase, read_json, run_rigor
+from tests.helpers import GATE_DIR, Repo, TempDirTestCase, read_json, run_rigor
 from tests.test_verdict_inputs import Fixture, HEAD, GATE, WITNESS_FIXTURE
 
 
@@ -130,7 +130,9 @@ class PlantedApprovals(TempDirTestCase):
     """U30 fix-up: an approvals directory the graded party can write would be in force, so it is refused."""
 
     def args(self, approvals):
-        return SimpleNamespace(product_repo=str(self.tmp / "repo"), work=str(self.tmp / "work"), approvals=approvals)
+        return SimpleNamespace(product_repo=str(self.tmp / "repo"), work=str(self.tmp / "work"), approvals=approvals,
+                               witness=str(self.tmp / "witness"), oracle=str(self.tmp / "oracle"),
+                               perf=str(self.tmp / "perf"), task=str(self.tmp / "taskdir" / "TASK.toml"))
 
     def test_inside_the_product_repo_or_the_work_directory_is_refused(self):
         os.makedirs(self.tmp / "repo" / "approvals")
@@ -140,13 +142,31 @@ class PlantedApprovals(TempDirTestCase):
                             (self.tmp / "work" / "approvals", "work directory"),
                             (self.tmp / "link", "product repository")):
             with self.assertRaisesRegex(InternalError, where):
-                grade.refuse_planted_approvals(self.args(str(path)))
+                approval_args.refuse_planted_approvals(self.args(str(path)))
 
     def test_outside_both_or_none_is_accepted(self):
         os.makedirs(self.tmp / "approvals")
         os.makedirs(self.tmp / "repo-approvals")   # a sibling whose name starts like the repo is outside it
         for path in (None, str(self.tmp / "approvals"), str(self.tmp / "repo-approvals")):
-            self.assertIsNone(grade.refuse_planted_approvals(self.args(path)))
+            self.assertIsNone(approval_args.refuse_planted_approvals(self.args(path)))
+
+    def test_inside_a_bundle_or_beside_the_task_is_refused(self):
+        for name, where in (("witness", "--witness bundle"), ("oracle", "--oracle bundle"), ("perf", "--perf bundle"),
+                            ("taskdir", "directory of --task")):
+            os.makedirs(self.tmp / name / "approvals")
+            with self.assertRaisesRegex(InternalError, where):
+                approval_args.refuse_planted_approvals(self.args(str(self.tmp / name / "approvals")))
+
+    def test_lane_mutants_refuses_approvals_inside_the_checkout(self):
+        repo = Repo(self.tmp / "checkout")
+        repo.write("a.txt", "1\n")
+        repo.commit("first")
+        os.makedirs(self.tmp / "checkout" / "approvals")
+        outcome = run_rigor(["lane-mutants", "//x:x", "--product", GATE_DIR.parent / "products" / "selftest" / "product.toml",
+                             "--repo", self.tmp / "checkout", "--work", self.tmp / "lane-work",
+                             "--approvals", self.tmp / "checkout" / "approvals"])
+        self.assertExit(outcome, 2)
+        self.assertIn("inside the product repository", outcome.stderr)
 
     def test_the_grade_refuses_it_before_anything_is_written(self):
         repo = self.tmp / "repo"

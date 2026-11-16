@@ -11,6 +11,7 @@ who ran the grade. Anyone can grade again and compare `core_sha256`. See docs/gr
 
 import re
 
+from rigor_lib.errors import InternalError
 from rigor_lib import approvals, grade_context, grade_tier, jsonio, verdict_inputs, verdict_recompute
 from rigor_lib.runner import EXIT_FAIL, EXIT_PASS
 
@@ -92,6 +93,9 @@ def _expect_bundle(inputs, key, wanted, option):
 def check_expectations(inputs, expect):
     """Problems with what the caller said the verdict must be about."""
     problems = []
+    wanted = expect.get("product_dir")
+    if wanted is not None and inputs["product_dir"] != wanted:
+        problems.append("product_dir is %s, expected %s" % (inputs["product_dir"], wanted))
     for option, key in (("head", "head"), ("gate", "gate_sha"), ("policy_sha", "policy_sha256"),
                         ("task_sha", "task_sha256"), ("sim_salt_id", "sim_salt_id"),
                         ("sim_spec_sha", "sim_spec_sha256")):
@@ -161,6 +165,28 @@ def sim_lines(data):
             for key in ("sim_spec_sha256", "sim_salt_id", "sim_seed_digest")]
 
 
+def product_dir_lines(data):
+    """`rigor verify: product_dir <path>` (`none`: outside the gate checkout, the verifier supplies the files)."""
+    inputs = _inputs_of(data)
+    if inputs is None:
+        return []
+    return ["rigor verify: product_dir %s" % (inputs.get("product_dir") or "none")]
+
+
+def unlisted_lines(data, directory):
+    """Informational lines for approvals in `--approvals DIR` that the verdict does not list in force."""
+    if directory is None:
+        return []
+    try:
+        core = jsonio.strict_loads(data)["core"]
+    except (ValueError, KeyError, TypeError):
+        return []
+    if not isinstance(core, dict) or not isinstance(core.get("approvals"), dict):
+        return []
+    return ["rigor verify: in %s, not listed in the verdict (their applicability is not checked here): %s %s %s"
+            % (directory, a.kind, a.scope, a.stem) for a in verdict_recompute.unlisted_in_dir(core, directory)]
+
+
 def approval_lines(data):
     """`rigor verify` lines: how many approvals (loosenings) the verdict counts in force, and each one."""
     try:
@@ -179,10 +205,13 @@ def run_verify(args):
               "policy_sha": args.expect_policy_sha, "witness_sha": args.expect_witness_sha,
               "perf_sha": args.expect_perf_sha, "oracle_sha": args.expect_oracle_sha, "sim_salt_id": args.expect_sim_salt_id,
               "sim_spec_sha": args.expect_sim_spec_sha, "task_sha": args.expect_task_sha}
+    if args.product_dir is None and args.expect_product_dir is None:
+        raise InternalError("--expect-product-dir is required unless --product-dir is given")
+    expect["product_dir"] = args.expect_product_dir
     sources = {"gate_repo": args.gate_repo, "product_dir": args.product_dir, "approvals": args.approvals}
     problems = check_verdict(data, expect, sources, args.require_uncached, args.require_tier)
     print("rigor verify: tier %s" % verdict_tier(data))
-    for line in sim_lines(data) + approval_lines(data):
+    for line in product_dir_lines(data) + sim_lines(data) + approval_lines(data) + unlisted_lines(data, args.approvals):
         print(line)
     for problem in problems:
         print("rigor verify: REJECTED: %s" % problem)
@@ -208,7 +237,9 @@ def add_parser(subparsers):
     parser.add_argument("--approvals", metavar="DIR", help="the approvals directory the grade used: approvals_sha256 "
                                                            "and every approval in force are recomputed from it")
     parser.add_argument("--expect-task-sha", help="sha256 of the TASK.toml it must have been graded with")
-    parser.add_argument("--expect-policy-sha", help="sha256 of the policy.toml it must have used")
+    parser.add_argument("--expect-policy-sha", required=True, help="sha256 of the policy.toml it must have used")
+    parser.add_argument("--expect-product-dir", help="the gate-relative product directory it must have been graded "
+                                                     "with (products/<name>); required unless --product-dir is given")
     parser.add_argument("--expect-witness-sha",
                         help="witness_sha256 of the witness bundle it must have been graded with; "
                              "a verdict graded without --witness is rejected")

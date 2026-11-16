@@ -119,6 +119,27 @@ def _listed_problem(directory, entry):
     return None
 
 
+def unlisted_in_dir(core, directory):
+    """The well-formed approvals in `directory` (named by their hash) that `core` does not list in force.
+
+    One-directional by design: whether such an approval applied (its `repo_sha` an ancestor of the head) needs the
+    product repository, which `verify` does not read, so these are reported, never rejected."""
+    if not os.path.isdir(directory):
+        return []
+    in_force = core.get("approvals", {}).get("in_force")
+    listed = {entry.get("stem") for entry in in_force if isinstance(entry, dict)} if isinstance(in_force, list) else set()
+    found = []
+    for name in sorted(os.listdir(directory)):
+        path = os.path.join(directory, name)
+        if not name.endswith(".json") or os.path.islink(path) or not os.path.isfile(path):
+            continue
+        stem, data = name[:-len(".json")], jsonio.read_bytes(path)
+        parsed = approvals.parse_document(data, stem)
+        if parsed is not None and jsonio.sha256_hex(data) == stem and stem not in listed:
+            found.append(parsed)
+    return found
+
+
 def check_approvals_dir(core, inputs, directory):
     """Problems with `approvals_sha256` and each approval in force against the directory `--approvals` names."""
     if not os.path.isdir(directory):

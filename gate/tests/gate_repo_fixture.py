@@ -74,10 +74,15 @@ class VerdictCase(TempDirTestCase):
         self.verdict.write_bytes(jsonio.canonical_dumps(document))
 
     def verify(self, *extra, product_dir=True):
+        """`rigor verify` with every mandatory expectation of this fixture; `extra` may override them (last wins).
+        Without `product_dir`, `--expect-product-dir` names the fixture's `product_dir` (or a directory it has not)."""
         argv = ["verify", "--verdict", self.verdict, "--gate-repo", self.gate_repo,
-                "--expect-head", test_verdict_inputs.HEAD, "--expect-gate", self.fixture.gate_sha]
+                "--expect-head", test_verdict_inputs.HEAD, "--expect-gate", self.fixture.gate_sha,
+                "--expect-policy-sha", self.fixture.file_hashes["policy_sha256"] or "0" * 64]
         if product_dir:
             argv += ["--product-dir", self.product]
+        else:
+            argv += ["--expect-product-dir", self.fixture.product_dir or "products/not-graded"]
         return run_rigor(argv + list(extra))
 
     def assertRejected(self, outcome, text):
