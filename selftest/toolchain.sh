@@ -330,5 +330,56 @@ must_pass build //examples/hello:hello
 n="$("${B[@]}" log what-ran 2>/dev/null | strip_ansi | grep -vc '^Showing\|^$')"
 [ "$n" = 0 ] || fail "$CUR: $n actions executed on the second build"
 
+begin "wasm32 (P008): examples/wasm builds tally_wasm.wasm exporting exactly tally_char (both forms), its native test passes"
+wasm_out() { awk '/tally_wasm/ && /buck-out/ {print $2}' "$1" | tail -1; }
+must_pass test //examples/wasm:tally_test
+log="$out/$step.default.log"
+run "$log" build //examples/wasm:tally_wasm --show-output || fail "$CUR: build failed" "$log"
+w1="$(wasm_out "$log")"
+[ -f "$w1" ] && [ "${w1##*/}" = tally_wasm.wasm ] || fail "$CUR: no tally_wasm.wasm" "$log"
+python3 -I -B gate/rigor_lib/wasm_exports.py "$w1" --expect tally_char > "$out/exports.txt" 2>&1 || fail "$CUR: exports" "$out/exports.txt"
+[ "$(cat "$out/exports.txt")" = tally_char ] || fail "$CUR: exports are not exactly tally_char" "$out/exports.txt"
+log="$out/$step.flag.log"
+run "$log" build --target-platforms toolchains//:wasm32_release //examples/wasm:tally_wasm --show-output || fail "$CUR: build failed" "$log"
+w2="$(wasm_out "$log")"
+cmp -s "$w1" "$w2" || fail "$CUR: --target-platforms toolchains//:wasm32_release built a different module" "$log"
+"${B[@]}" aquery 'deps(//examples/wasm:tally_wasm)' --output-attribute=cmd 2>/dev/null > "$out/wasm_aquery.json" \
+  || fail "$CUR: aquery failed"
+python3 -I - "$out/wasm_aquery.json" <<'PY' || fail "$CUR" "$out/wasm_aquery.json"
+import json, re, sys
+cmds = [re.split(r'[\s,\[\]"\']+', v.get("cmd") or "") for v in json.load(open(sys.argv[1])).values()]
+# The gate's own compile of fsl.c carries every flag inline (the prelude's compiles of tally.c use an argsfile).
+rt = [c for c in cmds if any(t.endswith("fsl.c") for t in c) and "-c" in c]
+links = [c for c in cmds if "-flavor" in c and "wasm" in c]
+assert len(rt) == 1, rt
+for flag in ("--target=wasm32-unknown-unknown", "-nostdinc", "-ffreestanding", "-nostdlib", "-std=c17", "-O2", "-Werror",
+             "-Wall", "-Wextra", "-Wpedantic", "-Wconversion", "-Wsign-conversion", "-Wshadow", "-Wcast-qual", "-Wvla",
+             "-Wframe-larger-than=512", "-Wformat=2", "-Wnull-dereference", "-Wimplicit-fallthrough"):
+    assert flag in rt[0], (flag, rt[0])
+assert not [t for t in rt[0] if "sysroot" in t or t.startswith(("-fsanitize", "-fprofile", "-fcoverage-mapping", "-g"))], rt[0]
+assert len(links) == 1, links
+for flag in ("--no-entry", "--export=tally_char", "-z", "stack-size=65536", "--initial-memory=2097152",
+             "--max-memory=2097152", "--strip-debug"):
+    assert flag in links[0], (flag, links[0])
+assert len([t for t in links[0] if t.startswith("--export")]) == 1, links[0]
+print("wasm32 compile and link commands as documented")
+PY
+
+begin "wasm32: libc headers other than <string.h> do not exist, an undefined symbol and a missing export fail the link"
+mkdir -p "$scratch"
+for hdr in stdio.h stdlib.h errno.h unistd.h; do
+  printf '#include <%s>\nint w(void) { return 1; }\n' "$hdr" > "$scratch/w.c"
+  printf 'load("@gate//rules:c.bzl", "c_library", "c_wasm")\nc_library(name = "w", srcs = ["w.c"])\nc_wasm(name = "m", deps = [":w"], exports = ["w"])\n' > "$scratch/BUCK"
+  must_fail_with "'$hdr' file not found" build //selftest/scratch:m
+done
+printf 'unsigned long malloc_size(void);\nint w(void) { return (int)malloc_size(); }\n' > "$scratch/w.c"
+must_fail_with "undefined symbol: malloc_size" build //selftest/scratch:m
+printf 'int w(void) { return 1; }\n' > "$scratch/w.c"
+printf 'load("@gate//rules:c.bzl", "c_library", "c_wasm")\nc_library(name = "w", srcs = ["w.c"])\nc_wasm(name = "m", deps = [":w"], exports = ["w", "nope"])\n' > "$scratch/BUCK"
+must_fail_with "symbol exported via --export not found: nope" build //selftest/scratch:m
+printf 'load("@gate//rules:c.bzl", "c_library", "c_wasm")\nc_library(name = "w", srcs = ["w.c"], system_libs = ["pthread"])\nc_wasm(name = "m", deps = [":w"], exports = ["w"])\n' > "$scratch/BUCK"
+must_fail_with "a wasm32 module links none" build //selftest/scratch:m
+rm -rf "$scratch"
+
 echo "elapsed ${SECONDS}s"
 echo "ALL CHECKS PASSED ($step)"

@@ -5,7 +5,7 @@ load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
 load(":fetch.bzl", "fetched_tree", "fetched_zip_tree", "tree_ref", "verified_tree")
 load(":platforms.bzl", "exec_platform", "target_platform")
 load(":select.bzl", "cxx_select")
-load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "java_jar", "ndk_cc", "ndk_ld", "ndk_roots", "system_roots", "tree_bin")
+load(":tools.bzl", "clang_cc", "clang_ld", "libc_symbols", "llvm_bin", "java_jar", "ndk_cc", "ndk_ld", "ndk_roots", "system_roots", "tree_bin", "wasm_cc", "wasm_ld")
 
 WORKER_IMAGE = read_root_config("rbe", "worker_image_digest", "")
 
@@ -51,6 +51,18 @@ target_platform(
     cpu_configuration = "prelude//cpu/constraints:arm64",
     os_configuration = "prelude//os/constraints:android",
     mode = ":android",
+    visibility = ["PUBLIC"],
+)
+
+# WebAssembly (wasm32-unknown-unknown, freestanding; P008, docs/toolchain.md "WebAssembly (wasm32)"): compiled and linked
+# on the RE farm by the pinned LLVM's clang and `lld -flavor wasm`; the module is never run there. The mode is release, so a
+# module is compiled with exactly the native release flags and warnings; the cpu (wasm32) selects the toolchain. `c_wasm`
+# configures its deps to this platform itself (rules/wasm.bzl); nothing else is meant to be built for it.
+target_platform(
+    name = "wasm32_release",
+    cpu_configuration = "prelude//cpu/constraints:wasm32",
+    os_configuration = "prelude//os/constraints:none",
+    mode = ":release",
     visibility = ["PUBLIC"],
 )
 
@@ -438,13 +450,52 @@ cxx_toolchain(
     visibility = ["PUBLIC"],
 )
 
-# `toolchains//:cxx` is what every gate rule names: the NDK toolchain in the android mode, the Linux one otherwise.
+# wasm32: the pinned clang-19 as a freestanding wasm32 compiler (no sysroot; clang's builtin headers and the gate's
+# <string.h>), `lld -flavor wasm` as the linker. Archives are made by the same llvm-ar as on Linux. `c_wasm` links with
+# `wasm_ld` itself (rules/wasm.bzl); the prelude only compiles and archives the `c_library` deps here.
+wasm_cc(name = "wasm_cc", llvm = ":llvm", llvm_major = "19", string_h = "wasm/include/string.h", visibility = ["PUBLIC"])
+
+wasm_ld(name = "wasm_ld", llvm = ":llvm", visibility = ["PUBLIC"])
+
+# The freestanding string library linked into every wasm module (the eight functions of wasm/include/string.h).
+export_file(name = "wasm_fsl.c", src = "wasm/rt/fsl.c", visibility = ["PUBLIC"])
+
+cxx_toolchain(
+    name = "cxx_wasm",
+    c_compiler = ":wasm_cc",
+    cxx_compiler = ":wasm_cc",
+    assembler = ":wasm_cc",
+    linker = ":wasm_ld",
+    archiver = ":llvm-ar",
+    archiver_type = "gnu",
+    nm = ":llvm-nm",
+    objdump = ":llvm-objdump",
+    ranlib = ":llvm-ranlib",
+    strip = ":llvm-strip",
+    objcopy_for_shared_library_interface = ":llvm-objcopy",
+    compiler_type = "clang",
+    linker_type = "gnu",
+    cpp_dep_tracking_mode = "none",
+    generate_linker_maps = False,
+    c_compiler_flags = [],
+    link_style = "static",
+    cache_links = True,
+    visibility = ["PUBLIC"],
+)
+
+# `toolchains//:cxx` is what every gate rule names: the wasm32 toolchain on the wasm32 cpu, the NDK toolchain in the
+# android mode, the Linux one otherwise.
 cxx_select(
     name = "cxx",
     android = ":cxx_android",
     host = ":cxx_linux",
+    wasm = ":cxx_wasm",
     use_android = select({
         ":android": True,
+        "DEFAULT": False,
+    }),
+    use_wasm = select({
+        "prelude//cpu/constraints:wasm32": True,
         "DEFAULT": False,
     }),
     visibility = ["PUBLIC"],
