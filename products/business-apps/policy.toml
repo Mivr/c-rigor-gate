@@ -5242,3 +5242,147 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime"]
+level = "L3"
+impl = ["apps/fiscal/dt/ltime/src/**"]
+allow = []
+exports = ["dt_date_cmp", "dt_local_add_min", "dt_local_date", "dt_local_minutes", "dt_local_valid", "dt_stamp_parse",
+    "dt_stamp_utc_sec", "dt_zdocs_window"]
+
+[module."//apps/fiscal/dt/ltime:ltime_parse_test"]
+allow = ["core_str_from_cstr", "strcpy"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_valid_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_minutes_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_add_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_window_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_dst_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/zday:zday"]
+level = "L3"
+impl = ["apps/fiscal/dt/zday/src/**"]
+allow = ["memset"]
+exports = ["zd_build", "zd_split"]
+
+[module."//apps/fiscal/dt/zday:zday_split_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/zday:zday_build_test"]
+allow = ["memchr", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/zday:zday_flags_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/zday:zday_errors_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/month:month"]
+level = "L3"
+impl = ["apps/fiscal/dt/month/src/**"]
+allow = []
+exports = ["mo_fold"]
+
+[module."//apps/fiscal/dt/month:month_fold_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/month:month_refuse_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/month:month_limits_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/retry:retry"]
+level = "L3"
+impl = ["apps/fiscal/dt/retry/src/**"]
+allow = []
+exports = ["rt_classify", "rt_next"]
+
+[module."//apps/fiscal/dt/retry:retry_classify_x_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/retry:retry_classify_ok_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/retry:retry_next_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan"]
+level = "L3"
+impl = ["apps/fiscal/dt/plan/src/**"]
+allow = []
+exports = ["pl_batch", "pl_begin", "pl_device_last_z", "pl_next", "pl_on_device", "pl_on_push", "pl_on_saved", "pl_outcome_rank", "pl_state"]
+
+[module."//apps/fiscal/dt/plan:plan_begin_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_status_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_range_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_search_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_pay_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_day_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_batch_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_fail_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_seq_test"]
+allow = ["bcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_prop_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:plan_rank_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/plan:testkit"]
+level = "L1"
+allow = []
+exports = []
