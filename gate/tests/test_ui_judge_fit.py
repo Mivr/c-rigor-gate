@@ -106,6 +106,17 @@ class OverflowTest(unittest.TestCase):
         self.assertEqual(checks(run(semantic, tree, gates=("ui-scene",))), ["stage-unmatched"])
 
 
+class VerdictTest(unittest.TestCase):
+    def test_an_intended_excess_is_no_text_overflow_verdict(self):
+        def overflow_verdicts(the_contract):
+            found = run(*base(), the_contract=the_contract, finish=True)
+            return [f["observed"]["totals"]["text-overflow"] for f in found
+                    if f["check"] == "checks-examined" and f["gate"] == "ui-fit"]
+        self.assertEqual(overflow_verdicts(contract()), [3])                  # title, body, OK
+        self.assertEqual(overflow_verdicts(scoped("clipped")), [2])           # the body's excess is intended
+        self.assertEqual(overflow_verdicts(scoped("elided")), [2])
+
+
 class FontShrunkTest(unittest.TestCase):
     def test_a_line_height_one_below_the_styles_is_a_finding_at_it_none(self):
         # every style of the canary contract has a 16 px line
