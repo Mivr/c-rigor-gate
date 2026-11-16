@@ -5281,3 +5281,38 @@ exports = ["main"]
 level = "L1"
 allow = []
 exports = []
+
+[module."//apps/fiscal/dtadp/devhttp:devhttp"]
+level = "L2"
+impl = ["apps/fiscal/dtadp/devhttp/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["devhttp_init", "devhttp_port", "dh_live", "dh_map_err", "dh_read_response"]
+
+[module."//apps/fiscal/dtadp/devhttp:init_test"]
+allow = ["memset"]
+exports = ["kit_body", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_dev", "kit_exchange", "kit_port", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_untouched", "kit_write", "main"]
+
+[module."//apps/fiscal/dtadp/devhttp:args_test"]
+allow = ["memset"]
+exports = ["kit_body", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_dev", "kit_exchange", "kit_port", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_untouched", "kit_write", "main"]
+
+[module."//apps/fiscal/dtadp/devhttp:guard_test"]
+allow = ["memset"]
+exports = ["kit_body", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_dev", "kit_exchange", "kit_port", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_untouched", "kit_write", "main"]
+
+[module."//apps/fiscal/dtadp/devhttp:outcome_test"]
+allow = ["memset"]
+exports = ["kit_body", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_dev", "kit_exchange", "kit_port", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_untouched", "kit_write", "main"]
+
+[module."//apps/fiscal/dtadp/devhttp:response_test"]
+allow = ["memset", "snprintf"]
+exports = ["kit_body", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_dev", "kit_exchange", "kit_port", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_untouched", "kit_write", "main"]
+
+[module."//apps/fiscal/dtadp/devhttp:lifecycle_test"]
+allow = ["memset"]
+exports = ["kit_body", "kit_clean", "kit_close", "kit_connect", "kit_connect_rc", "kit_dev", "kit_exchange", "kit_port", "kit_read", "kit_read_rc", "kit_run", "kit_s", "kit_script", "kit_start", "kit_steps", "kit_stream", "kit_untouched", "kit_write", "main"]
+
+[module."//apps/fiscal/dtadp/devhttp:testkit"]
+level = "L1"
+allow = []
+exports = []

@@ -88,7 +88,8 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/lockers/relay/driver:testkit",
            "//apps/lockers/relay/opener_sm:testkit",
            "//apps/fiscal/dtc/ports:fake",
-           "//apps/fiscal/dtsafe/guard:testkit"]
+           "//apps/fiscal/dtsafe/guard:testkit",
+           "//apps/fiscal/dtadp/devhttp:testkit"]
 
 [layer."lib-io"]
 modules = ["//lib/io/**"]
@@ -155,7 +156,7 @@ modules = []
 modules = ["//apps/fiscal/dtsafe/guard:guard"]
 
 [layer."fiscal-adapters"]
-modules = []
+modules = ["//apps/fiscal/dtadp/devhttp:devhttp"]
 
 [layer."fiscal-sim"]
 modules = []
@@ -1041,4 +1042,24 @@ kind = "pure"
 [[edge]]
 from = "fiscal-root"
 to = "fiscal-root"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/dtadp/devhttp:devhttp"
+to = "//apps/fiscal/dtsafe/guard:guard"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/dtadp/devhttp:devhttp"
+to = "//lib/fmt/httpresp:httpresp"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/dtadp/devhttp:devhttp"
+to = "//lib/fmt/httphdr:httphdr"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/dtadp/devhttp:devhttp"
+to = "//lib/fmt/httpdef:httpdef"
 kind = "pure"
