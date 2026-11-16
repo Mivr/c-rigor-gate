@@ -30,6 +30,9 @@ def fact(now, prev=None, mode="time", present=("dialog",), countdown=None, patch
                 present=frozenset(present), semantic=semantic, frame=frame, patches=tuple(patches))
     if countdown is not None:
         out.countdowns["dialog"] = (("7", countdown),)
+    if "dialog" in out.present:            # one dialog instance throughout (instances: test_ui_judge_time_fixup2)
+        out.tops["dialog"] = (0, "dialog")
+        out.tracked["dialog"] = (((0, "dialog"), {}),)
     return out
 
 

@@ -10,7 +10,7 @@ from rigor_lib.ui_explore_grammar import parse_record
 from rigor_lib.ui_explore_probe import BudgetSpent
 from rigor_lib.ui_explore_time import end
 from rigor_lib.ui_judge_findings import JudgeSet
-from rigor_lib.ui_judge_time_checks import increase_verdicts
+from rigor_lib.ui_judge_time_checks import absent_verdicts, increase_verdicts
 from rigor_lib.ui_judge_time_model import Binding, appearances, timeline
 
 from tests.test_ui_judge_helpers import KEY, TODAY
@@ -85,6 +85,16 @@ class InstanceTest(unittest.TestCase):
         later = [r for r in examined(found)["lifetimes"] if r["path"] == [OPEN, "go", "at 1100"]]
         self.assertTrue(any(abs(r["appeared"][1] - (T0 + 300)) <= 70 for r in later), later)   # B from about 300
 
+    def test_a_banner_covered_by_another_banner_lives_on(self):
+        # the kiosk at boot: a second banner stacked over the first, whose nodes do not change
+        sim = ScriptSim([("50", "banner", "Codes offline", 0, None, False), ("60", "banner", "Self-test", 300, None,
+                                                                             False)])
+        found, _runner, _j = judge_run(sim, [[OPEN, "go", "at 1100"]])
+        rows = sorted((r["appeared"][1] - T0, r["shown_at_most_ms"]) for r in examined(found)["lifetimes"])
+        self.assertEqual([at_most for _at, at_most in rows], [None, None])     # both still shown at the last sample
+        self.assertEqual(rows[0][0], 0)
+        self.assertNotIn("notice-lifetime-short", errors(found))
+
     def test_a_ticking_countdown_is_one_instance(self):
         found, _runner, _j = judge_run(Sim(), [[OPEN, "show", "at 1500", "at 2500"]])
         self.assertEqual(len(examined(found)["lifetimes"]), 1)
@@ -143,6 +153,21 @@ class CarryTest(unittest.TestCase):
                  made_step(1, "at 30000", 30000, "banner", welcome)]
         facts = timeline(steps, Catalogue(), binding)
         self.assertEqual(sorted(facts[1].present), ["banner"])      # key 3 is reused, its label is not
+
+
+class CountdownNodeTest(unittest.TestCase):
+    def test_a_removed_countdown_leaves_the_screen_shown_and_is_absent(self):
+        # the kiosk after a size choice: Choose size stays, only its countdown node is removed
+        rows = [{"kind": "choose_size", "class": "screen", "lifetime_ms": 30000, "countdown_shown": True}]
+        binding = Binding(SimpleNamespace(rows=lambda name: rows), True)
+        screen = [("3", "text", "Choose a size"), ("48", "button", "Small")]
+        steps = [made_step(0, "pick", 0, "choose_size", screen + [("6", "countdown", "30 s")]),
+                 made_step(1, "small", 0, "choose_size", screen)]
+        steps[1].obs["patches"] = (parse_record("patches", "remove\t6\tnode\tcountdown\t-"),)
+        facts = timeline(steps, Catalogue(), binding)
+        self.assertEqual(appearances(facts), [(0, "choose_size")])
+        found, judged = absent_verdicts(facts, {"choose_size": rows[0]})
+        self.assertEqual(([v["observed"]["step"] for v in found], judged), ([1], 2))
 
 
 class MoreTest(unittest.TestCase):

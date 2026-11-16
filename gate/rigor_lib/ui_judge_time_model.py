@@ -16,9 +16,14 @@ Binding a contract timer (`[[timer]]` kind) to what the scene shows:
 - without it: only a message timer whose kind is a layer role of the scene vocabulary (`dialog`, `banner`, `snackbar`)
   is bindable, present iff a semantic record has that role; every other timer is `check-blocked` (needs identity).
 
-An element is an INSTANCE, not a kind: its presence ends, and a new appearance starts, when a patch of the step
-removes a key of its scope (a countdown's own node aside: made again, it is the same element counting), or when the msgid of its first text (identity) or its text (role `text`, countdowns
-excluded) changes while the kind stays shown (`same_instance`). A countdown's changing label is the same instance.
+An element is an INSTANCE, not a kind, followed by its own nodes: the nodes of its kind's scope when it first is the
+topmost element of that kind. It stays shown while every one of those nodes is in the scene with the same role and
+(a countdown aside) the same label and no patch of the step removed it (a countdown's own node made again is the same
+element counting; a countdown node removed leaves it shown: `countdown-wrong` part `absent`), also under another
+element of the same kind stacked over it; its presence ends when one changes
+or goes. A new topmost scope (another text, other keys, a node made again) is a new instance: a new appearance
+(`same_instance`, `appearances`). A countdown's changing label is the same instance. Instance ids are (the index of
+the step it appeared at, kind): deterministic within a run.
 
 The scope of an element (where its countdown and text are): the semantic records are in tree order and a message layer
 is drawn above the screen, so a message's scope is the records from the LAST record of a message layer role
@@ -88,8 +93,11 @@ class Facts:
     msgids: dict = field(default_factory=dict)        # kind -> the first msgid of a text node of its scope, or None
     scopes: dict = field(default_factory=dict)        # kind -> the keys of its scope at this step
     roles: dict = field(default_factory=dict)         # kind -> {key: (role, label or None for a countdown)}
-    sigs: dict = field(default_factory=dict)          # kind -> (msgid, text): what tells one instance from another
+    sigs: dict = field(default_factory=dict)          # kind -> (msgid, text) of its topmost scope
     removed: frozenset = frozenset()                  # the keys a `remove` patch of this step names
+    rolemap: dict = field(default_factory=dict)       # key -> (role, label or None for a countdown), every record
+    tracked: dict = field(default_factory=dict)       # kind -> ((instance id, its nodes' roles), ...) shown
+    tops: dict = field(default_factory=dict)          # kind -> the id of its topmost instance
     semantic: tuple = ()
     labels: dict = field(default_factory=dict)        # key -> label bytes of the semantic records
     masked: tuple = ()                                # semantic raws, a countdown's label masked (origins)
@@ -207,7 +215,7 @@ def facts_of(step, before, catalogue, binding):
                              if r.fields[1] == "countdown" else r.raw for r in records),
                 ident=tuple(r.raw for r in step.obs.get("identity") or ()),
                 due=None if due is None else due - step.origin, frame=comparable_frame(step.obs.get("frame", ())),
-                patches=patches, removed=removed,
+                patches=patches, removed=removed, rolemap={r.fields[0]: _role_label(r) for r in records},
                 restarts=frozenset(item["node"] for item in (step.restart or ())))
     # the open step's patches are the product's boot log, whatever it reports: the chain starts after it
     out.chain = None if before is None else chain_error(before.labels, out.patches, out.labels)
@@ -224,15 +232,39 @@ def facts_of(step, before, catalogue, binding):
         out.texts[kind] = b" ".join(r.values[2] for r in texts).decode("utf-8", "replace")
         out.msgids[kind] = next((msgids[r.fields[0]] for r in texts if r.fields[0] in msgids), None)
         out.sigs[kind] = (out.msgids[kind], out.texts[kind])
+    _instances(out, before)
     return out
 
 
-def same_instance(before, fact, kind):
-    """Whether the element of `kind` shown at `before` is the one shown at `fact` (module docstring)."""
-    if kind not in before.present or kind not in fact.present or before.sigs.get(kind) != fact.sigs.get(kind):
-        return False
-    held = {key for key, (role, _label) in before.roles.get(kind, {}).items() if role != "countdown"}
-    return not held & fact.removed            # a countdown node made again is the same element counting
+def _holds(roles, fact):
+    """Whether an instance's nodes all still hold: its countdown nodes aside (a countdown removed or made again leaves
+    the element shown: `countdown-wrong` judges its countdown)."""
+    held = {key: shown for key, shown in roles.items() if shown[0] != "countdown"}
+    return not set(held) & fact.removed and all(fact.rolemap.get(key) == shown for key, shown in held.items())
+
+
+def _plain(roles):
+    return {key for key, shown in roles.items() if shown[0] != "countdown"}
+
+
+def _instances(fact, before):
+    """The instances of each kind shown at `fact`: those of the step before whose nodes all still hold, and its
+    topmost scope as a new one when no held instance has exactly those keys."""
+    for kind in sorted(fact.present):
+        held = [(iid, roles) for iid, roles in (before.tracked.get(kind, ()) if before is not None else ())
+                if _holds(roles, fact)]
+        top = fact.roles.get(kind, {})
+        match = next((iid for iid, roles in held if _plain(roles) == _plain(top)), None)
+        if match is None and top:
+            match = (fact.index, kind)
+            held.append((match, dict(top)))
+        fact.tracked[kind], fact.tops[kind] = tuple(held), match
+
+
+def same_instance(before, fact, kind, iid=None):
+    """Whether instance `iid` (by default the topmost of `kind` at `before`) is still shown at `fact`."""
+    iid = before.tops.get(kind) if iid is None else iid
+    return iid is not None and any(i == iid for i, _roles in fact.tracked.get(kind, ()))
 
 
 def timeline(steps, catalogue, binding, before=None):
@@ -251,7 +283,8 @@ def appearances(facts):
     out = []
     for i, fact in enumerate(facts):
         for kind in sorted(fact.present):
-            if i == 0 or not same_instance(facts[i - 1], fact, kind):
+            if fact.tops.get(kind) is not None and (i == 0 or not same_instance(facts[i - 1], facts[i - 1], kind,
+                                                                                fact.tops[kind])):
                 out.append((i, kind))
     return out
 
@@ -259,8 +292,8 @@ def appearances(facts):
 def alive(facts, kind, start):
     """Per fact after `start` (the appearance): whether the instance shown at `start` is still the one shown; once
     it is not, never again in that run (a later instance is another element)."""
-    out, going = [], True
-    for before, fact in zip(facts[start:], facts[start + 1:]):
-        going = going and same_instance(before, fact, kind)
+    iid, out, going = facts[start].tops.get(kind), [], True
+    for fact in facts[start + 1:]:
+        going = going and same_instance(fact, fact, kind, iid)
         out.append((fact, going))
     return out

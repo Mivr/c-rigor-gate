@@ -16,7 +16,8 @@ import hashlib
 from rigor_lib import jsonio, ui_contract
 from rigor_lib.ui_contract_dwell import char_count, reading_ms
 from rigor_lib.ui_explore_judges import state_of
-from rigor_lib.ui_judge_time_checks import (chain_verdicts, countdown_verdicts, decisions, flash_verdicts,
+from rigor_lib.ui_judge_time_checks import (absent_verdicts, chain_verdicts, countdown_verdicts, decisions,
+                                            flash_verdicts,
                                             increase_verdicts, invisible_verdicts, zero_verdicts)
 from rigor_lib import ui_judge_time_inside as inside_mod
 from rigor_lib.ui_judge_time_model import Binding, appearances, timeline
@@ -97,8 +98,10 @@ class TimeJudge:
         if threshold is not None:
             found, judged, undecided, _inside = flash_verdicts(facts, threshold)
             verdicts, self.counts["flash"] = found + undecided, self.counts["flash"] + judged
+        timers = {row["kind"]: row for row in self.contract.rows("timer")}
         for name, judge in (("invisible-auto-transition", invisible_verdicts), ("patches-inconsistent", chain_verdicts),
-                            ("countdown-wrong", increase_verdicts)):
+                            ("countdown-wrong", increase_verdicts),
+                            ("countdown-wrong", lambda got: absent_verdicts(got, timers))):
             found, judged = judge(facts)
             found = [v for v in found if name == "invisible-auto-transition" or after(v)]
             if start is not None and name == "countdown-wrong":   # the element of the appearance, keyed by it

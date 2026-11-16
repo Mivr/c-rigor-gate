@@ -70,11 +70,10 @@ class Prober:
         before, step = facts[index - 1], facts[index]
         run, run_words = self._run(words[:index], instants + [step.now], lambda f: len(f) > index and
                                    f[index - 1].key == before.key and f[-1].now == step.now and kind in f[-1].present
-                                   and f[-1].sigs.get(kind) == step.sigs.get(kind))
-        later, flags, going = run[index:], [], True
-        for j in range(len(later) - 1, -1, -1):     # back from the step's end: shown while the instance is the same
-            flags.append((later[j].now, going))
-            going = going and j > 0 and same_instance(later[j - 1], later[j], kind)
+                                   and f[-1].roles.get(kind) == step.roles.get(kind))
+        later = run[index:]
+        iid = later[-1].tops.get(kind)               # the instance at the step's end, and where it was before
+        flags = [(f.now, same_instance(f, f, kind, iid)) for f in later]
         probe.apoints += [(at, shown) for at, shown in flags if at in set(instants)]
         if not monotone(probe.apoints + [(before.now, False), (step.now, True)], True):
             raise Diverged(run_words)

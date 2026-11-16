@@ -131,9 +131,13 @@ def countdown_verdicts(kind, seq, timer, a_lo):
     want = ceil_div(timer["lifetime_ms"], SECOND_MS)
     low = ceil_div(timer["lifetime_ms"] - (seq[0].now - a_lo), SECOND_MS) if seq else want
     quiet = seq[0].now if seq else 0
+    iid = seq[0].tops.get(kind) if seq else None
     for m, fact in enumerate(seq):
-        if kind not in fact.present or (m and not same_instance(seq[m - 1], fact, kind)):
+        if not same_instance(fact, fact, kind, iid):
             break                                 # gone, or another instance: not this element's countdown
+        if fact.tops.get(kind) != iid:            # covered by another of its kind: its countdown is not the one read
+            quiet = fact.now
+            continue
         shown = fact.countdowns.get(kind, ())
         if not shown:
             parts.setdefault("absent", {"step": fact.index})
@@ -181,7 +185,8 @@ def increase_verdicts(facts):
         for kind in sorted(fact.present & before.present):
             was, now = dict(before.countdowns.get(kind, ())), dict(fact.countdowns.get(kind, ()))
             keys = set(was) & set(now)
-            if not keys or fact.chain or not same_instance(before, fact, kind):
+            if not keys or fact.chain or before.tops.get(kind) != fact.tops.get(kind) or \
+                    not same_instance(before, fact, kind):
                 continue
             judged += 1
             increases = _changes(fact, keys, keys)[2] + [
@@ -190,6 +195,22 @@ def increase_verdicts(facts):
             if increases:
                 out.append(verdict("countdown-wrong", [kind, "increase"], {
                     "step": fact.index, "kind": kind, "part": "increase", "values": increases[0]}, kind, m, m))
+    return out, judged
+
+
+def absent_verdicts(facts, timers):
+    """countdown-wrong part `absent` on a path: a step that shows the instance of a timer with `countdown_shown` as its
+    kind's topmost element and no countdown in its scope (the same rule as in `countdown_verdicts`, on the path's own
+    steps: inputs included). Returns (verdicts, steps judged)."""
+    out, judged = [], 0
+    for m, fact in enumerate(facts):
+        for kind in sorted(fact.present):
+            if not timers[kind]["countdown_shown"] or fact.tops.get(kind) is None:
+                continue
+            judged += 1
+            if not fact.countdowns.get(kind):
+                out.append(verdict("countdown-wrong", [kind, "absent"], {"step": fact.index, "kind": kind,
+                                                                         "part": "absent"}, kind, m, m))
     return out, judged
 
 

@@ -50,11 +50,14 @@ countdown-restart rule's check). A step where they do not is `patches-inconsiste
 which repeat its prefix) and gives `flash`, `stalled` and `increase` no verdict. `life` lines are not read (honesty
 table). Nothing reads the wall clock.
 
-**An element is an instance** (fix-up 2), not a kind: its presence ends, and a new appearance starts, when a patch of
-the step removes a key of its scope (its countdown's own node aside: made again, it is the same element counting), or
-when the msgid of its first text (identity) or its text (role `text`; countdowns excluded) changes while the kind
-stays shown. Banner A replaced by banner B is two elements, each with its own lifetime; a countdown's ticking label is
-one. Every probing sample shows the element only while it is that instance.
+**An element is an instance** (fix-up 2), not a kind, followed by its own nodes: the nodes of its kind's scope when it
+first is the topmost element of that kind. It stays shown while every one of those nodes is in the scene with the same
+role and label and no patch of the step removed it, also under another element of the same kind stacked over it (the
+kiosk stacks its self-test banner over a boot banner). Countdown nodes are not part of it: a countdown that ticks, is
+made again or is removed leaves the element shown (`countdown-wrong` judges the countdown: a removed one is `absent`).
+A new topmost scope (another text, other keys, a node made again) is a new instance and a new appearance. Banner A
+replaced by banner B is two elements, each with its own lifetime. Every probing sample shows the element only while it
+is that instance; the countdown rules read its countdown only while it is the topmost of its kind.
 
 **Binding a contract timer** (`[[timer]]`, docs/ui-contract.md: kind, class, `lifetime_ms` L, `countdown_shown`):
 - with identity: a kind is shown iff the step's state class IS the kind (the class of the topmost message, else of the
@@ -162,7 +165,7 @@ appearance is (a_lo, a_hi), the disappearance (t1_lo, t1_hi]: shown for more tha
 | `notice-lifetime-short-floor` | (an approximation, its own id) while the reading rate is pending: the same with max(L, `dwell_floor_ms`), a lower bound of D for any rate | as above |
 | `notice-lifetime-long` | L > 0 and shown for more than L + tick (not long when at most L + tick) | as above |
 | `flash` | a scene node not of role `countdown`, created and removed (patches) with no user input after its creation (env replies and time steps are no user input), the removal step's `now` minus the creation's `appear_lo` < `flicker_floor_ms`; a node created and removed within ONE step is measured by that step's span (0 for an input) | `[key, role]`, target the key; the creation step, path to the removal |
-| `countdown-wrong` | while the element is shown (from the appearance, one run, and every probing sample of the same instance): `absent` (no countdown in its scope; then no `stalled`); `start` (the first value outside ceil(L/1000) +-1; for an appearance bracket of s ms, any value down to ceil((L - s)/1000) - 1); `zero` (0 as a step-end label, or a patch to 0 on a node still shown at that step's end); `increase` (a value that grows, in a step's patches or from one step-end label to the next (a node made again), while the same instance stays shown, on time AND input steps of the path and of the probing runs after their prefix, unless a declared countdown restart on a tap, U05d); `stalled` (no change for 1000 ms or more after the last instant a change can have happened, or one step of W ms with c changes and W >= 1000 (c + 1)) | `[kind, part]`; the appearance (an increase on the path: the step of the increase) |
+| `countdown-wrong` | while the element is shown (from the appearance, one run, and every probing sample of the same instance): `absent` (no countdown in its scope while it is the topmost of its kind, also on the path's own steps; then no `stalled`); `start` (the first value outside ceil(L/1000) +-1; for an appearance bracket of s ms, any value down to ceil((L - s)/1000) - 1); `zero` (0 as a step-end label, or a patch to 0 on a node still shown at that step's end); `increase` (a value that grows, in a step's patches or from one step-end label to the next (a node made again), while the same instance stays shown, on time AND input steps of the path and of the probing runs after their prefix, unless a declared countdown restart on a tap, U05d); `stalled` (no change for 1000 ms or more after the last instant a change can have happened, or one step of W ms with c changes and W >= 1000 (c + 1)) | `[kind, part]`; the appearance (an increase on the path: the step of the increase) |
 | `invisible-auto-transition` | a time or env step changes the state class while the semantic records and the frame (but `life` and `taps`) are byte-identical | `[from, to]`, target `from/to`; the step before |
 | `dwell-below-reading-time` | static: a `message` timer with L > 0 below max(`dwell_floor_ms`, `dwell_base_ms` + reading) of the text the run shows (no message catalogue is given; the reading rule is the contract's dwell table, `ui_contract_dwell`) | `[kind, msgid or text:<16 hex>]`, no state (one per message) |
 | `clock-origin-divergence` | the path replayed from each origin of {1, 1000, 10^9, 2^32 + 7, 2^40} ms but its own: the first step whose semantic records (a countdown's label with every digit run masked and its value kept), identity, time since the origin or `next-due` relative to the origin differ, or where the replay ended | `[["origin", word, part], key]`, the step before; path the whole path |

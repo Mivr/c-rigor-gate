@@ -24,8 +24,19 @@ def hidden_pairs(facts):
     return out
 
 
+def _plain(roles):
+    return tuple(sorted((key, shown) for key, shown in roles.items() if shown[0] != "countdown"))
+
+
+def _sig(fact, kind):
+    """What tells one instance of a kind from another across runs: its topmost scope's keys, roles and labels (its
+    countdown nodes aside, as instances are followed: ui_judge_time_model)."""
+    return _plain(fact.roles.get(kind, {}))
+
+
 def _shows(fact, kind, sig):
-    return kind in fact.present and fact.sigs.get(kind) == sig
+    """Whether `fact` shows the instance `sig` of `kind`, topmost or covered (its nodes as they were)."""
+    return kind in fact.present and any(_plain(roles) == sig for _i, roles in fact.tracked.get(kind, ()))
 
 
 def elements(samples, before, step, pairs):
@@ -34,10 +45,12 @@ def elements(samples, before, step, pairs):
     instances, mapped, out = [], set(), []
     for _at, fact in sorted(samples.items()):
         for kind in sorted(fact.present):
-            sig = fact.sigs.get(kind)
+            sig = _sig(fact, kind)
             if (kind, sig) not in instances and not _shows(before, kind, sig) and not _shows(step, kind, sig):
                 instances.append((kind, sig))
     for n, (kind, sig) in enumerate(instances):
+        if not sig:
+            continue                       # a kind with no node of its own in its scope: nothing to follow
         out.append(("%s#%d" % (kind, n), kind, [(at, _shows(f, kind, sig)) for at, f in sorted(samples.items())]))
         mapped |= {key for f in samples.values() if _shows(f, kind, sig) for key in f.scopes.get(kind, ())}
     for key, _role in pairs:
