@@ -15,34 +15,36 @@ from rigor_lib import ui_deviations as ud
 from rigor_lib import ui_deviations_baseline as ub
 from rigor_lib.errors import InternalError
 from tests.helpers import TempDirTestCase
-from tests.test_ui_deviations import LINK, PREFIX, TODAY, block, tag
+from tests.test_ui_deviations import PREFIX, TODAY, block, tag
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data" / "ui_deviations"
 PRODUCT_DIR = HERE.parent.parent / "products" / "business-apps"
 # The real headers and what the section reader must find in each (counted by hand from the files): (name, heading line, entries).
 HEADERS = (("screens.h", 180, 12), ("selftest.h", 75, 3), ("notices.h", 205, 9), ("vstate.h", 29, 7))
-EMPTY = ub.Expectation("business-apps", MappingProxyType({}))
+EMPTY = ub.Expectation("business-apps", MappingProxyType({}), MappingProxyType({}))
 
 
-def accepted_for(*texts):
+def accepted_for(path, *texts):
     """{id: (until, sha256)} computed here, from the literal fields, not by the implementation."""
     out = {}
     for text in texts:
-        got = ud.scan_file("x.h", ("/* %s */" % text).encode(), ud.Context(PREFIX, LINK, TODAY)).tags[0]
+        got = ud.scan_file(path, ("/* %s */" % text).encode(), ud.Context(PREFIX, TODAY)).tags[0]
         canonical = json.dumps({"id": got.id, "oracle": got.oracle, "state": list(got.states), "reason": got.reason,
-                                "link": got.link, "until": got.until}, sort_keys=True, separators=(",", ":")) + "\n"
+                                "link": got.link, "until": got.until, "path": path}, sort_keys=True, separators=(",", ":")) + "\n"
         out[got.id] = (got.until, hashlib.sha256(canonical.encode("ascii")).hexdigest())
     return out
 
 
-def base(cap=10, *texts, accepted=None):
-    pins = accepted_for(*texts) if accepted is None else accepted
-    return ub.Baseline("business-apps", cap, MappingProxyType(pins), PREFIX, LINK)
+def base(cap=10, *texts, accepted=None, path="a.h"):
+    pins = accepted_for(path, *texts) if accepted is None else accepted
+    return ub.Baseline("business-apps", cap, MappingProxyType(pins), PREFIX)
 
 
 def expect(**headers):
-    return ub.Expectation("business-apps", MappingProxyType({k.replace("_", "/") + ".h": v for k, v in headers.items()}))
+    names = {k.replace("_", "/") + ".h": v for k, v in headers.items()}
+    return ub.Expectation("business-apps", MappingProxyType(names),
+                          MappingProxyType({k: tuple("e%d" % i for i in range(v)) for k, v in names.items()}))
 
 
 def comment(*tags):
@@ -94,6 +96,18 @@ class Ratchet(TempDirTestCase):
                 self.assertEqual(found, ({"rule": "deviation-changed", "severity": "error", "path": "a.h", "line": 2,
                                           "id": "UI-A1"},))
         self.assertEqual(run([("a.h", comment(tag("UI-A1")))], pinned)[1], ())
+
+    def test_a_tag_moved_to_another_header_is_changed(self):
+        _, found = run([("b.h", comment(tag("UI-A1")))], base(1, tag("UI-A1"), path="a.h"))
+        self.assertEqual(found, ({"rule": "deviation-changed", "severity": "error", "path": "b.h", "line": 2, "id": "UI-A1"},))
+        self.assertEqual(run([("a.h", comment(tag("UI-A1")))], base(1, tag("UI-A1"), path="a.h"))[1], ())
+
+    def test_the_canonical_form_is_pinned_by_a_literal_hash(self):
+        text = '@deviation(UI-A1, oracle="o", state="s1,s2", reason="substrate", link="l", until="T100")'
+        canonical = '{"id":"UI-A1","link":"l","oracle":"o","path":"a.h","reason":"substrate","state":["s1","s2"],"until":"T100"}\n'
+        got = ud.scan_file("a.h", ("/* %s */" % text).encode(), ud.Context(PREFIX, TODAY)).tags[0]
+        self.assertEqual(ud.canonical_bytes(got).decode(), canonical)
+        self.assertEqual(ud.canonical_sha256(got), hashlib.sha256(canonical.encode()).hexdigest())
 
     def test_the_same_order_of_fields_or_spacing_does_not_change_the_hash(self):
         reordered = '@deviation(UI-A1, until="T200", link="docs/lockers/ui-look.md#4.3", reason="intentional", state="welcome,choose", oracle="welcome.slint idle echo")'
@@ -218,7 +232,7 @@ class Prose(TempDirTestCase):
     def test_a_section_or_tag_in_a_file_that_is_not_a_header_is_misplaced(self):
         for name in ("a.c", "a.inc", "a.hh", "a.hpp", "a.cc", "a.def", "a.H.c"):
             with self.subTest(name=name):
-                _, found = run([(name, self.SECTION + comment(tag("UI-A1")))], base(1, tag("UI-A1")))
+                _, found = run([(name, self.SECTION + comment(tag("UI-A1")))], base(1, tag("UI-A1"), path=name))
                 self.assertEqual(found, ({"rule": "deviation-misplaced", "severity": "error", "path": name, "line": 7,
                                           "what": "tag", "id": "UI-A1"},
                                          {"rule": "deviation-misplaced", "severity": "error", "path": name, "line": 2,
@@ -232,6 +246,34 @@ class Prose(TempDirTestCase):
 
     def test_malformed_tags_in_a_non_header_are_malformed(self):
         self.assertEqual([f["rule"] for f in run([("a.c", "/* @Deviation(x) */")])[1]], ["deviation-malformed"])
+
+
+class Moves(TempDirTestCase):
+    SECTION = "/*\n * Deviations:\n * L1 a\n * L2 b\n */\n"
+
+    def test_a_listed_path_that_exists_with_another_case_or_extension_names_the_real_file(self):
+        for actual in ("a/X.H", "A/x.h", "a/x.hh", "a/x.c", "a/X.h"):
+            with self.subTest(actual=actual):
+                _, found = run([(actual, "int x;\n")], expectation=expect(a_x=2))
+                self.assertEqual(found, ({"rule": "deviation-section-missing", "severity": "error", "path": "a/x.h", "acknowledged": 2,
+                                          "tags": 0, "header": "absent", "actual": actual},))
+        _, found = run([("b/y.h", "int x;\n")], expectation=expect(a_x=2))
+        self.assertNotIn("actual", found[0])
+
+    def test_a_case_variant_does_not_satisfy_the_listing(self):
+        texts = [tag("UI-A1"), tag("UI-A2")]
+        _, found = run([("a/X.H", comment(*texts))], base(2, *texts, path="a/X.H"), expect(a_x=2))
+        self.assertEqual([f["rule"] for f in found], ["deviation-section-missing"])
+
+    def test_a_section_that_continues_after_code_is_a_split(self):
+        text = self.SECTION + "int x;\n/*\n * L3 c\n */\n"
+        _, found = run([("a.h", text)])
+        self.assertEqual(sorted((f["rule"], f["line"]) for f in found), [("deviation-section-split", 8), ("deviation-untagged", 2)])
+        self.assertEqual(run([("a.h", self.SECTION + "int x;\n/* ordinary */\n")])[1][0]["rule"], "deviation-untagged")
+
+    def test_a_confusable_heading_is_a_finding_and_hides_nothing_else(self):
+        _, found = run([("a.h", "/*\n * Dis\u0430greements:\n * plain\n */\n")])
+        self.assertEqual(found, ({"rule": "deviation-malformed", "severity": "error", "path": "a.h", "line": 2, "why": "confusable"},))
 
 
 class Hook(TempDirTestCase):
@@ -268,32 +310,30 @@ class Deterministic(TempDirTestCase):
                   + "/* Deviations:\n 1. a\n 2. b\n 3. c */\n") for i in range(8)]
         files.append(("e.h", "/* @deviation(oops */"))
         files.append(("f.c", comment(tag("UI-Q1"))))
-        first = run(files, base(3, tag("UI-Q1")), expect(d_0=2))
+        first = run(files, base(3, tag("UI-Q1"), path="f.c"), expect(d_0=2))
         for seed in range(6):
             shuffled = list(files)
             random.Random(seed).shuffle(shuffled)
-            self.assertEqual(run(shuffled, base(3, tag("UI-Q1")), expect(d_0=2)), first)
+            self.assertEqual(run(shuffled, base(3, tag("UI-Q1"), path="f.c"), expect(d_0=2)), first)
         result = ud.GateResult(ud.GATE_ID, list(first[1]), {})
         self.assertEqual(result.to_json_bytes(), ud.GateResult(ud.GATE_ID, list(reversed(first[1])), {}).to_json_bytes())
 
 
 class Loaders(TempDirTestCase):
-    SHA = "0" * 64
-    GOOD = ('schema = "ui-deviations/2"\nproduct = "business-apps"\ncap = 2\nreference_bug_link_prefix = "https://x/i/"\n'
-            "reference_bug_link_pattern = 'https://x/i/[0-9]+'\n"
+    GOOD = ('schema = "ui-deviations/3"\nproduct = "business-apps"\ncap = 2\nreference_bug_link_prefix = "https://x/i/"\n'
             '[accepted."UI-A1"]\nuntil = "T200"\nsha256 = "%s"\n[accepted."UI-B2"]\nuntil = "2027-01-01"\nsha256 = "%s"\n' % ("0" * 64, "a" * 64))
 
     def load(self, text, product="business-apps"):
         path = self.tmp / "deviations.toml"
         path.write_bytes(text if isinstance(text, bytes) else text.encode())
-        return ub.load_baseline(str(path), product)
+        return ub.load_baseline(str(path), product, TODAY)
 
     def test_the_good_file_loads_immutably(self):
         loaded = self.load(self.GOOD)
-        self.assertEqual((loaded.cap, dict(loaded.accepted), loaded.link_prefix, loaded.link_pattern),
-                         (2, {"UI-A1": ("T200", "0" * 64), "UI-B2": ("2027-01-01", "a" * 64)}, "https://x/i/", "https://x/i/[0-9]+"))
+        self.assertEqual((loaded.cap, dict(loaded.accepted), loaded.link_prefix),
+                         (2, {"UI-A1": ("T200", "0" * 64), "UI-B2": ("2027-01-01", "a" * 64)}, "https://x/i/"))
         with self.assertRaises(TypeError):
-            loaded.accepted["UI-C3"] = ("T1", self.SHA)
+            loaded.accepted["UI-C3"] = ("T1", "0" * 64)
 
     def test_every_defect_is_exit_2(self):
         good = self.GOOD
@@ -301,50 +341,49 @@ class Loaders(TempDirTestCase):
         accepted = "[accepted." + accepted
         bad = {
             "unknown key": "extra = 1\n" + good, "missing key": good.replace("cap = 2\n", ""),
-            "wrong schema": good.replace("ui-deviations/2", "ui-deviations/1"),
+            "the old pattern key": good.replace("[accepted", "reference_bug_link_pattern = 'x'\n[accepted", 1),
+            "wrong schema": good.replace("ui-deviations/3", "ui-deviations/2"),
             "other product": good.replace('"business-apps"', '"annas-c"'),
             "cap string": good.replace("cap = 2", 'cap = "2"'), "cap bool": good.replace("cap = 2", "cap = true"),
             "cap negative": good.replace("cap = 2", "cap = -1"), "cap float": good.replace("cap = 2", "cap = 2.0"),
-            "cap above the bound": good.replace("cap = 2", "cap = 1001"),
-            "above the cap": good.replace("cap = 2", "cap = 1"),
+            "cap above the bound": good.replace("cap = 2", "cap = 1001"), "above the cap": good.replace("cap = 2", "cap = 1"),
             "prefix not https": good.replace('"https://x/i/"', '"http://x/i/"'), "prefix not a string": good.replace('"https://x/i/"', "1"),
             "prefix with a space": good.replace('"https://x/i/"', '"https://x/ i/"'),
-            "empty pattern": good.replace("'https://x/i/[0-9]+'", '""'), "pattern not a string": good.replace("'https://x/i/[0-9]+'", "1"),
-            "pattern not a regex": good.replace("'https://x/i/[0-9]+'", "'(['"),
-            "pattern matches empty": good.replace("'https://x/i/[0-9]+'", "'[0-9]*'"),
-            "pattern too long": good.replace("'https://x/i/[0-9]+'", "'" + "a" * 201 + "'"),
+            "prefix without the final slash": good.replace('"https://x/i/"', '"https://x/i"'),
+            "prefix too long": good.replace('"https://x/i/"', '"https://x/' + "a" * 200 + '/"'),
             "accepted not a table": head + "accepted = []\n",
-            "accepted bad id": accepted.replace("UI-A1", "ui-a1"), "accepted unsorted": accepted.replace("UI-A1", "UI-Z1"),
-            "accepted extra key": accepted.replace('until = "T200"', 'until = "T200"\nx = 1'),
-            "accepted missing sha": accepted.replace('sha256 = "%s"\n' % ("0" * 64), ""),
-            "accepted bad until": accepted.replace('"T200"', '"NEVER-1"'), "accepted until type": accepted.replace('"T200"', "5"),
-            "accepted sha uppercase": accepted.replace("0" * 64, "A" * 64), "accepted sha short": accepted.replace("0" * 64, "0" * 63),
-            "accepted not a table entry": head + '[accepted]\n"UI-A1" = 1\n',
+            "accepted bad id": head + accepted.replace("UI-A1", "ui-a1"), "accepted unsorted": head + accepted.replace("UI-A1", "UI-Z1"),
+            "accepted extra key": head + accepted.replace('until = "T200"', 'until = "T200"\nx = 1'),
+            "accepted missing sha": head + accepted.replace('sha256 = "%s"\n' % ("0" * 64), ""),
+            "accepted bad until": head + accepted.replace('"T200"', '"NEVER-1"'), "accepted until type": head + accepted.replace('"T200"', "5"),
+            "accepted until not a calendar date": head + accepted.replace('"T200"', '"2027-02-29"'),
+            "accepted until beyond the horizon": head + accepted.replace('"T200"', '"2027-11-18"'),
+            "accepted until far away": head + accepted.replace('"T200"', '"2099-01-01"'),
+            "accepted sha uppercase": head + accepted.replace("0" * 64, "A" * 64), "accepted sha short": head + accepted.replace("0" * 64, "0" * 63),
+            "accepted entry not a table": head + '[accepted]\n"UI-A1" = 1\n',
             "not toml": "cap = = 2\n", "duplicate key": good + "cap = 3\n", "not utf-8": b"\xff\xfe",
         }
-        for name in [n for n in bad if n.startswith("accepted ") and n not in ("accepted not a table", "accepted not a table entry")]:
-            bad[name] = head + bad[name]          # these defects are in the accepted tables only: the rest of the file is good
-            self.assertNotEqual(bad[name], good)
         for name, text in bad.items():
             with self.subTest(name=name):
                 with self.assertRaises(InternalError) as caught:
                     self.load(text)
                 self.assertIn("deviations.toml", str(caught.exception))
-                if name.startswith("accepted"):
-                    self.assertIn("accepted", str(caught.exception))
-                if name.startswith("cap") or name == "above the cap":
-                    self.assertIn("cap", str(caught.exception))
-                if name.startswith("pattern") or name.startswith("empty pattern"):
-                    self.assertIn("pattern", str(caught.exception))
-                if name.startswith("prefix"):
-                    self.assertIn("prefix", str(caught.exception))
+                for word in ("accepted", "cap", "prefix"):
+                    if name.startswith(word) or name == "above the " + word:
+                        self.assertIn(word, str(caught.exception))
         self.assertEqual(self.load(head + "[accepted]\n").accepted, {})
         self.assertEqual(sorted(self.load(good).accepted), ["UI-A1", "UI-B2"])
 
-    def test_the_committed_baseline_is_empty_with_cap_zero_and_the_club_apps_issue_link(self):
-        got = ub.load_baseline(str(PRODUCT_DIR / "ui" / "deviations.toml"), "business-apps")
-        self.assertEqual((got.cap, dict(got.accepted), got.link_prefix, got.link_pattern),
-                         (0, {}, "https://github.com/Mivr/club-apps/issues/", r"https://github\.com/Mivr/club-apps/issues/[0-9]+"))
+    def test_the_until_horizon_is_checked_against_the_date_passed_in(self):
+        late = self.GOOD.replace("2027-01-01", "2027-11-16")
+        self.assertEqual(self.load(late).accepted["UI-B2"][0], "2027-11-16")
+        path = self.tmp / "deviations.toml"
+        with self.assertRaises(InternalError):
+            ub.load_baseline(str(path), "business-apps", datetime.date(2026, 11, 14))
+
+    def test_the_committed_baseline_is_empty_with_cap_zero_and_the_club_apps_prefix(self):
+        got = ub.load_baseline(str(PRODUCT_DIR / "ui" / "deviations.toml"), "business-apps", TODAY)
+        self.assertEqual((got.cap, dict(got.accepted), got.link_prefix), (0, {}, "https://github.com/Mivr/club-apps/issues/"))
 
     def expectation(self, text):
         path = self.tmp / "sections.toml"
@@ -352,16 +391,26 @@ class Loaders(TempDirTestCase):
         return ub.load_expectation(str(path), "business-apps")
 
     def test_the_expectation_loader_is_strict(self):
-        good = 'schema = "ui-deviation-sections/1"\nproduct = "business-apps"\n[headers]\n"a/b.h" = 2\n"a/c.h" = 1\n'
-        self.assertEqual(dict(self.expectation(good).headers), {"a/b.h": 2, "a/c.h": 1})
+        good = ('schema = "ui-deviation-sections/2"\nproduct = "business-apps"\n[headers."a/b.h"]\ncount = 2\nlabels = ["D1", "D2"]\n'
+                '[headers."a/c.h"]\ncount = 1\nlabels = ["N1"]\n')
+        got = self.expectation(good)
+        self.assertEqual((dict(got.headers), dict(got.labels)), ({"a/b.h": 2, "a/c.h": 1}, {"a/b.h": ("D1", "D2"), "a/c.h": ("N1",)}))
         bad = {
-            "unknown key": good + "x = 1\n" if False else "x = 1\n" + good, "missing headers": good.split("[headers]")[0],
-            "wrong schema": good.replace("/1", "/2"), "other product": good.replace("business-apps", "p"),
-            "unsorted": good.replace('"a/b.h" = 2\n"a/c.h" = 1', '"a/c.h" = 1\n"a/b.h" = 2'),
-            "zero": good.replace("= 2", "= 0"), "bool": good.replace("= 2", "= true"), "string": good.replace("= 2", '= "2"'),
-            "too many": good.replace("= 2", "= 1000"), "absolute": good.replace('"a/b.h"', '"/a/b.h"'),
-            "dot segment": good.replace('"a/b.h"', '"a/../b.h"'), "not normalised": good.replace('"a/b.h"', '"a//b.h"'),
-            "empty path": good.replace('"a/b.h"', '""'), "headers a list": good.split("[headers]")[0] + "headers = []\n",
+            "unknown key": "x = 1\n" + good, "missing headers": good.split("[headers")[0], "wrong schema": good.replace("/2", "/1"),
+            "other product": good.replace("business-apps", "p"),
+            "unsorted": good.replace('"a/b.h"', '"a/d.h"'), "count zero": good.replace("count = 2", "count = 0"),
+            "count bool": good.replace("count = 1", "count = true"), "count string": good.replace("count = 2", 'count = "2"'),
+            "count not the number of labels": good.replace("count = 2", "count = 3"),
+            "count too many": good.replace("count = 2", "count = 1000"),
+            "no labels": good.replace('labels = ["N1"]', "labels = []").replace("count = 1", "count = 0"),
+            "duplicate labels": good.replace('["D1", "D2"]', '["D1", "D1"]'), "empty label": good.replace('"D2"', '""'),
+            "padded label": good.replace('"D2"', '" D2"'), "label not a string": good.replace('"D2"', "2"),
+            "label too long": good.replace('"D2"', '"' + "x" * 81 + '"'), "labels not a list": good.replace('["D1", "D2"]', '"D1"'),
+            "extra entry key": good.replace("count = 2", "count = 2\nx = 1"), "missing labels": good.replace('labels = ["N1"]\n', ""),
+            "path not .h": good.replace('"a/c.h"', '"a/c.c"'), "path upper case extension": good.replace('"a/c.h"', '"a/c.H"'),
+            "absolute": good.replace('"a/b.h"', '"/a/b.h"'), "dot segment": good.replace('"a/b.h"', '"a/../b.h"'),
+            "not normalised": good.replace('"a/b.h"', '"a//b.h"'), "empty path": good.replace('"a/b.h"', '""'),
+            "entry not a table": good.split("[headers")[0] + '[headers]\n"a/b.h" = 2\n', "headers a list": good.split("[headers")[0] + "headers = []\n",
             "not toml": "x = = 1", "not utf-8": b"\xff",
         }
         for name, text in bad.items():
@@ -369,12 +418,20 @@ class Loaders(TempDirTestCase):
                 with self.assertRaises(InternalError):
                     self.expectation(text)
 
-    def test_the_committed_expectation_lists_the_surveyed_headers(self):
+    def test_the_committed_expectation_lists_the_read_headers_with_their_labels(self):
         got = ub.load_expectation(str(PRODUCT_DIR / "ui" / "deviation-sections.toml"), "business-apps")
         table = tomllib.loads((PRODUCT_DIR / "ui" / "deviation-sections.toml").read_text())["headers"]
-        self.assertEqual(dict(got.headers), table)
-        self.assertEqual((len(table), table["apps/lockers/lkui/notices/notices.h"], table["apps/lockers/lkrx/vstate/vstate.h"],
-                          table["apps/lockers/lkui/screens/screens.h"]), (20, 9, 7, 12))
+        self.assertEqual({k: v["count"] for k, v in table.items()}, dict(got.headers))
+        self.assertEqual({k: tuple(v["labels"]) for k, v in table.items()}, dict(got.labels))
+        want = {"apps/lockers/lkui/notices/notices.h": ["N%d" % k for k in range(1, 10)],
+                "apps/lockers/lkapp/wire/wire.h": ["D%d" % k for k in range(1, 9)],
+                "apps/lockers/lkrx/visit/visit.h": ["DISAGREE-1", "DISAGREE-2", "DISAGREE-3", "DISAGREE-4", "GAP-V1", "GAP-V2", "GAP-V3"],
+                "apps/lockers/lk/codesfile/codesfile.h": ["D1-D4", "D5", "D6", "D7"],
+                "apps/lockers/lkadp/codeshttp/codeshttp.h": ["N1", "N2", "N3", "N4", "N5", "N6", "N8"]}
+        for name, labels in want.items():
+            self.assertEqual(list(got.labels[name]), labels)
+        self.assertEqual((len(table), sum(got.headers.values())), (40, 214))
+        self.assertTrue(all(name.endswith(".h") for name in table))
 
 
 class RealHeaders(TempDirTestCase):
@@ -382,7 +439,7 @@ class RealHeaders(TempDirTestCase):
         return (DATA / name).read_bytes()
 
     def test_the_copies_are_the_recorded_bytes(self):
-        for name in [n for n, _, _ in HEADERS] + ["preflight.h"]:
+        for name in [n for n, _, _ in HEADERS] + ["preflight.h", "wire.h", "visit.h", "codesfile.h"]:
             with self.subTest(name=name):
                 recorded = (DATA / (name + ".sha256")).read_text(encoding="ascii").strip()
                 self.assertEqual(len(recorded), 64)
@@ -391,11 +448,17 @@ class RealHeaders(TempDirTestCase):
     def test_each_real_header_has_its_exact_heading_entry_count_and_no_tag(self):
         for name, line, entries in HEADERS:
             with self.subTest(name=name):
-                got = ud.scan_file(name, self.read(name), ud.Context(PREFIX, LINK, TODAY))
+                got = ud.scan_file(name, self.read(name), ud.Context(PREFIX, TODAY))
                 self.assertEqual((got.tags, got.bad, got.sections), ((), (), ((line, entries),)))
                 _, found = ud.analyse([(name, self.read(name))], base(0), EMPTY, TODAY)
                 self.assertEqual(found, ({"rule": "deviation-untagged", "severity": "error", "path": name, "line": line,
                                           "entries": entries, "detected": entries, "acknowledged": 0, "tags": 0},))
+
+    def test_wire_visit_and_codesfile_do_not_count_cross_references_as_entries(self):
+        for name, sections in (("wire.h", ((251, 8),)), ("visit.h", ((148, 7),)), ("codesfile.h", ((10, 8), (251, 4)))):
+            with self.subTest(name=name):
+                got = ud.scan_file(name, self.read(name), ud.Context(PREFIX, TODAY))
+                self.assertEqual((got.tags, got.bad, got.sections, got.splits), ((), (), sections, ()))
 
     def test_the_prose_only_header_is_unlabelled(self):
         _, found = ud.analyse([("preflight.h", self.read("preflight.h"))], base(0), EMPTY, TODAY)
@@ -407,13 +470,13 @@ class RealHeaders(TempDirTestCase):
             full = self.read(name).decode() + comment(*texts)
             short = self.read(name).decode() + comment(*texts[:-1])
             with self.subTest(name=name):
-                self.assertEqual(run([(name, full)], base(entries, *texts))[1], ())
-                _, found = run([(name, short)], base(entries, *texts[:-1]))
+                self.assertEqual(run([(name, full)], base(entries, *texts, path=name))[1], ())
+                _, found = run([(name, short)], base(entries, *texts[:-1], path=name))
                 self.assertEqual([(f["rule"], f["entries"], f["tags"]) for f in found], [("deviation-untagged", entries, entries - 1)])
 
     def test_a_malformed_tag_does_not_count_towards_the_entries(self):
         texts = [tag("UI-S1"), tag("UI-S2")]
         text = self.read("selftest.h").decode() + comment(*texts, tag("UI-S3", reason="bogus"))
-        _, found = run([("selftest.h", text)], base(3, *texts))
+        _, found = run([("selftest.h", text)], base(3, *texts, path="selftest.h"))
         self.assertEqual(sorted((f["rule"], f.get("tags")) for f in found if f["rule"] != "deviation-removed"),
                          [("deviation-malformed", None), ("deviation-untagged", 2)])

@@ -25,9 +25,11 @@ from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, findin
 from rigor_lib.runner import gate_handler
 from rigor_lib.ui_deviations_baseline import (BASELINE_RELATIVE, SECTIONS_RELATIVE, Baseline, Expectation,  # noqa: F401
                                               load_baseline, load_expectation)
+from rigor_lib.ui_deviations_conf import fold
 from rigor_lib.ui_deviations_lex import lex
-from rigor_lib.ui_deviations_sections import sections_of
-from rigor_lib.ui_deviations_tags import DATE_RE, REASONS, Context, Tag, canonical_sha256, tags_of  # noqa: F401
+from rigor_lib.ui_deviations_sections import continuation_label_lines, is_heading, sections_of
+from rigor_lib.ui_deviations_tags import (DATE_RE, REASONS, SHAPE, Context, Tag, canonical_bytes,  # noqa: F401
+                                          canonical_sha256, tags_of)
 
 GATE_ID = "ui-deviations"
 MAX_BYTES = 2000000      # a file larger than this is `deviation-malformed` (file-too-large), never read
@@ -39,10 +41,39 @@ class FileScan:
     tags: tuple
     bad: tuple         # [(line, id or None, why)]
     sections: tuple    # [(heading line, entries)], entries 0 = no recognised entry
+    splits: tuple = ()  # lines where a section continues after code (`deviation-section-split`)
 
 
 def is_header(path):
     return path.lower().endswith(".h")
+
+
+def _blank(spans):
+    """{line: [(first column, end column or None)]} of the tag spans (line, column, line, column)."""
+    out = {}
+    for first, column, last, end in spans:
+        for line in range(first, last + 1):
+            out.setdefault(line, []).append((column if line == first else 0, end if line == last else None))
+    return out
+
+
+def _blanked(text, ranges):
+    for start, end in ranges:
+        stop = len(text) if end is None else end
+        text = text[:start] + " " * (stop - start) + text[stop:]
+    return text
+
+
+def _confusable_tags(comment):
+    return [(line, None, "confusable") for line, part in comment if len(SHAPE.findall(fold(part))) > len(SHAPE.findall(part))]
+
+
+def _confusable_headings(group):
+    folded = [fold(t).strip() for _, t in group]
+    raw = [t.strip() for _, t in group]
+    return [(n, None, "confusable") for k, (n, _) in enumerate(group)
+            if is_heading(folded[k], folded[k + 1] if k + 1 < len(group) else "")
+            and not is_heading(raw[k], raw[k + 1] if k + 1 < len(group) else "")]
 
 
 def scan_file(path, data, ctx):
@@ -52,17 +83,26 @@ def scan_file(path, data, ctx):
     except UnicodeDecodeError:
         return FileScan((), ((1, None, "not-utf-8"),), ())
     comments, groups, problems = lex(text)
-    tags, bad, covered = [], [(line, None, why) for line, why in problems], set()
+    tags, bad, spans, confusable = [], [(line, None, why) for line, why in problems], [], set()
     for comment in comments:
-        found, broken, spans = tags_of(comment, path, ctx)
+        found, broken, where = tags_of(comment, path, ctx)
         tags.extend(found)
         bad.extend(broken)
-        for first, last in spans:
-            covered.update(range(first, last + 1))
-    # the text of a tag is not prose: its lines are blanked before the sections are read
-    sections = [item for group in groups
-                for item in sections_of(tuple((n, "" if n in covered else t) for n, t in group))]
-    return FileScan(tuple(tags), tuple(bad), tuple(sections))
+        confusable.update(line for line, _, _ in _confusable_tags(comment))
+        spans.extend(where)
+    covered = _blank(spans)
+    # the text of a tag is not prose: its own characters are blanked before the sections are read
+    clean = [tuple((n, _blanked(t, covered.get(n, ()))) for n, t in group) for group in groups]
+    sections, splits, previous = [], [], None
+    for group in clean:
+        confusable.update(line for line, _, _ in _confusable_headings(group))
+        found = sections_of(group)
+        if previous is not None and previous.open:
+            splits.extend(continuation_label_lines(group, previous.styles)[:1])
+        sections.extend((item.line, item.entries) for item in found)
+        previous = found[-1] if found else None
+    bad.extend((line, None, "confusable") for line in confusable)
+    return FileScan(tuple(tags), tuple(sorted(bad, key=lambda item: (item[0], item[1] or "", item[2]))), tuple(sections), tuple(splits))
 
 
 def _tag_key(tag):
@@ -78,6 +118,7 @@ def _file_findings(path, data, scan, expectation):
         found += [finding("deviation-misplaced", path=path, line=line, what="section") for line, _ in scan.sections]
         return found
     found += [finding("deviation-unlabelled", path=path, line=line) for line, entries in scan.sections if entries == 0]
+    found += [finding("deviation-section-split", path=path, line=line) for line in scan.splits]
     detected = sum(entries for _, entries in scan.sections)
     acknowledged = expectation.headers.get(path, 0)
     distinct = len({tag.id for tag in scan.tags})
@@ -93,7 +134,7 @@ def _file_findings(path, data, scan, expectation):
 def analyse(files, baseline, expectation, today):
     """files: [(relative posix path, bytes or None when too large)]; today: datetime.date.
     -> (tags sorted by id, file and line, findings)."""
-    ctx = Context(baseline.link_prefix, baseline.link_pattern, today)
+    ctx = Context(baseline.link_prefix, today)
     found, tags, headers = [], [], set()
     for path, data in sorted(files, key=lambda item: item[0]):
         if is_header(path):
@@ -104,9 +145,14 @@ def analyse(files, baseline, expectation, today):
         scan = scan_file(path, data, ctx)
         tags.extend(scan.tags)
         found.extend(_file_findings(path, data, scan, expectation))
+    seen = sorted(path for path, _ in files)
     for path, acknowledged in sorted(expectation.headers.items()):
         if path not in headers:
-            found.append(finding("deviation-section-missing", path=path, acknowledged=acknowledged, tags=0, header="absent"))
+            stem = path.rsplit(".", 1)[0].lower()
+            actual = [p for p in seen if p.rsplit(".", 1)[0].lower() == stem]
+            extra = {"actual": actual[0]} if actual else {}
+            found.append(finding("deviation-section-missing", path=path, acknowledged=acknowledged, tags=0, header="absent",
+                                 **extra))
     tags.sort(key=_tag_key)
     found.extend(_tree_findings(tags, baseline, today))
     return tuple(tags), tuple(found)
@@ -174,7 +220,10 @@ def discover(root, config):
     A directory is skipped only when the layout itself would exclude every file below it as a gate path; a
     symlink the layout would copy is reported, never followed."""
     files, problems = [], []
-    for directory, dirs, names in os.walk(root, followlinks=False):
+    def unreadable(error):
+        raise InternalError("cannot read %s: %s" % (error.filename, error.strerror))
+
+    for directory, dirs, names in os.walk(root, followlinks=False, onerror=unreadable):
         rel_dir = os.path.relpath(directory, root).replace(os.sep, "/")
         prefix = "" if rel_dir == "." else rel_dir + "/"
         keep = []
@@ -204,7 +253,7 @@ def discover(root, config):
 
 
 def _one(args, name):
-    values = getattr(args, name)
+    values = getattr(args, name) or []
     if len(values) != 1:
         raise InternalError("--%s must be given exactly once" % name)
     return values[0]
@@ -220,7 +269,7 @@ def run(args):
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as error:
         raise InternalError("%s: %s" % (product, error))
     home = os.path.dirname(os.path.abspath(product))
-    baseline = load_baseline(os.path.join(home, BASELINE_RELATIVE), config.name)
+    baseline = load_baseline(os.path.join(home, BASELINE_RELATIVE), config.name, today)
     expectation = load_expectation(os.path.join(home, SECTIONS_RELATIVE), config.name)
     files, problems = discover(root, config)
     tags, found = analyse(files, baseline, expectation, today)
@@ -232,9 +281,9 @@ def run(args):
 def add_parser(subparsers):
     parser = subparsers.add_parser("ui-deviations", allow_abbrev=False,
                                    help="deviation tags, their baseline and untagged deviation prose (docs/ui-deviations.md)")
-    parser.add_argument("--root", action="append", required=True, help="the product tree (read only)")
-    parser.add_argument("--product", action="append", required=True, help="products/<name>/product.toml")
-    parser.add_argument("--today", action="append", required=True,
-                        help="ISO date YYYY-MM-DD; the wall clock is never read; given exactly once")
+    parser.add_argument("--root", action="append", help="the product tree (read only)")
+    parser.add_argument("--product", action="append", help="products/<name>/product.toml")
+    parser.add_argument("--today", action="append",
+                        help="ISO date YYYY-MM-DD; the wall clock is never read; each of the three options is required, exactly once")
     parser.add_argument("--out")
     parser.set_defaults(handler=gate_handler(run), gate_id=GATE_ID)

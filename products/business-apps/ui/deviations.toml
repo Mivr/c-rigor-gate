@@ -2,15 +2,14 @@
 # or a higher cap needs the owner's signature (P004 section 8.5; sealing itself is a later task). The ratchet only goes
 # down: delete an id when its tag is gone (`deviation-removed` says so).
 #
-# Each accepted id carries its `until` and the sha256 of the canonical form of the tag's six fields (canonical JSON, sorted
-# keys, compact, ASCII, trailing newline, of {id, oracle, state (list), reason, link, until}); a tag whose fields differ
+# Each accepted id carries its `until` and the sha256 of the canonical form of the tag (canonical JSON, sorted keys,
+# compact, ASCII, trailing newline, of {id, oracle, state (list), reason, link, until, path}; the path is the header it stands in); a tag whose fields differ
 # is `deviation-changed`.
-schema = "ui-deviations/2"
+schema = "ui-deviations/3"
 product = "business-apps"
 cap = 0
-# A `reference-bug` tag must link an issue of the oracle's repository: the link starts with the literal prefix and matches
-# the whole pattern.
+# A `reference-bug` tag must link an issue of the oracle's repository: the link is this literal prefix followed by an
+# issue number of 1 to 7 digits, nothing else (a fixed grammar, no regular expression).
 reference_bug_link_prefix = "https://github.com/Mivr/club-apps/issues/"
-reference_bug_link_pattern = 'https://github\.com/Mivr/club-apps/issues/[0-9]+'
 
 [accepted]

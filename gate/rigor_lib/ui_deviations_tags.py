@@ -17,6 +17,7 @@ REASONS = ("intentional", "substrate", "reference-bug")
 KEYS = ("oracle", "state", "reason", "link", "until")
 MAX_ID = 64              # characters of an id
 MAX_VALUE = 512          # characters of a value
+ISSUE_RE = re.compile(r"[0-9]{1,7}")   # the issue number after the link prefix of a `reference-bug`
 HORIZON_DAYS = 366       # an `until` date further than this from --today is refused
 ID_RE = re.compile(r"[A-Z][A-Z0-9]*-[A-Z0-9.-]+")
 DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
@@ -25,7 +26,7 @@ STATE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]*")
 _NO_SPACE = re.compile(r"\S+")
 _ID_TOKEN = re.compile(r'[^\s,()="]+')
 _KEY_TOKEN = re.compile(r"[A-Za-z_]+")
-_SHAPE = re.compile("[@＠]deviation", re.IGNORECASE)
+SHAPE = re.compile("[@＠]deviation", re.IGNORECASE)
 _WORD = re.compile(r"[A-Za-z0-9_@＠]")
 _WS = " \t\n"
 
@@ -44,9 +45,8 @@ class Tag:
 
 @dataclass(frozen=True)
 class Context:
-    """What the checks need besides the tag: the link rules of the baseline and today's date."""
+    """What the checks need besides the tag: the link prefix of the baseline and today's date."""
     link_prefix: str
-    link_pattern: str
     today: datetime.date
 
 
@@ -55,9 +55,10 @@ class _Bad(Exception):
 
 
 def canonical_bytes(tag):
-    """The canonical form the baseline hashes: canonical JSON (sorted keys, compact, ASCII) of the six fields."""
+    """The canonical form the baseline hashes: canonical JSON (sorted keys, compact, ASCII) of the six fields and the path of
+    the header they stand in (so a tag cannot move to another header unnoticed)."""
     return jsonio.canonical_dumps({"id": tag.id, "oracle": tag.oracle, "state": list(tag.states), "reason": tag.reason,
-                                   "link": tag.link, "until": tag.until})
+                                   "link": tag.link, "until": tag.until, "path": tag.path})
 
 
 def canonical_sha256(tag):
@@ -150,40 +151,46 @@ def _check_fields(fields, ctx):
     if not _NO_SPACE.fullmatch(link):
         raise _Bad("bad-link")
     if fields["reason"] == "reference-bug" and not (link.startswith(ctx.link_prefix)
-                                                    and re.fullmatch(ctx.link_pattern, link)):
+                                                    and ISSUE_RE.fullmatch(link[len(ctx.link_prefix):])):
         raise _Bad("reference-bug-link-not-an-oracle-issue")
     _check_until(fields["until"], ctx.today)
     return fields["oracle"], states, fields["reason"], link, fields["until"]
 
 
 def tags_of(comment, path, ctx):
-    """-> (tags, [(line, id or None, why)], [(first line, last line)]) of one comment (a tuple of (line, text)). The last
-    value is where every tag-shaped text stands, so the section reader can leave the tags out of its prose."""
+    """-> (tags, [(line, id or None, why)], [(line, first column, last line, end column)]) of one comment (a tuple of
+    (line, text)). The last value is where every tag-shaped text stands (its own characters only), so the section reader can
+    leave the tags out of its prose and nothing else."""
     text = "\n".join(part for _, part in comment)
     starts, total = [], 0
     for _, part in comment:
         starts.append(total)
         total += len(part) + 1
     linenos = [lineno for lineno, _ in comment]
+
+    def place(offset):
+        k = bisect.bisect_right(starts, offset) - 1
+        return linenos[k], offset - starts[k]
+
     tags, bad, spans, i = [], [], [], 0
     while True:
-        m = _SHAPE.search(text, i)
+        m = SHAPE.search(text, i)
         if m is None:
             return tuple(tags), tuple(bad), tuple(spans)
         i = m.end()
-        line, ident = linenos[bisect.bisect_right(starts, m.start()) - 1], None
+        (line, column), ident = place(m.start()), None
         clean = (m.group(0) == "@deviation" and text[i:i + 1] == "("
                  and not (m.start() and _WORD.match(text[m.start() - 1])))
         if not clean:
             bad.append((line, None, "bad-tag-start"))
-            spans.append((line, line))
+            spans.append((line, column, line, column + len(m.group(0))))
             continue
         try:
             ident, fields, i = _parse(text, i)
-            spans.append((line, linenos[bisect.bisect_right(starts, i - 1) - 1]))
+            spans.append((line, column) + place(i))
             oracle, states, reason, link, until = _check_fields(fields, ctx)
         except _Bad as why:
             bad.append((line, ident, str(why)))
-            spans.append((line, line))
+            spans.append((line, column, line, column + len(m.group(0))))
             continue
         tags.append(Tag(ident, oracle, states, reason, link, until, path, line))
