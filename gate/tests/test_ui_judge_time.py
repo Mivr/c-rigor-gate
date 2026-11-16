@@ -44,6 +44,7 @@ def judge_run(sim, paths, the_contract=None, identity=True, gates=("ui-time",)):
     runner, found = Runner(sim), []
     for words in paths:
         found += judges.time.path(runner, sim.run(words))
+    found += judges.time.fill()                   # the waiting origin replays (ui_explore_time.end)
     return found + judges.finish(paths[0][0]), runner
 
 
@@ -77,11 +78,16 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(checks.refine(10, 12, 600000), [11])
 
     def test_rising_and_falling(self):
-        samples = [fact(500), fact(1000, present=()), fact(750), fact(1200, present=())]
-        self.assertEqual(checks.falling(samples, "dialog", 0), (750, 1000))
-        self.assertEqual(checks.falling([fact(500)], "dialog", 0), (500, None))
-        self.assertEqual(checks.rising([fact(300, present=()), fact(600), fact(400, present=())], "dialog", 0, 1000),
-                         (400, 600))
+        points = [(500, True), (1000, False), (750, True), (1200, False)]
+        self.assertEqual(checks.falling(points, 0), (750, 1000))
+        self.assertEqual(checks.falling([(500, True)], 0), (500, None))
+        self.assertEqual(checks.rising([(300, False), (600, True), (400, False)], 0, 1000), (400, 600))
+
+    def test_monotone(self):
+        self.assertTrue(checks.monotone([(1, False), (3, True), (2, False)], True))
+        self.assertFalse(checks.monotone([(1, True), (3, True), (2, False)], True))          # shown, gone, shown
+        self.assertFalse(checks.monotone([(1, True), (1, False)], False))                     # two runs disagree
+        self.assertTrue(checks.monotone([(1, True), (2, False), (3, False)], False))
 
     def test_short_boundary(self):
         ok, _b = checks.decisions((0, 0), (3749, 3750), 4000, 4000, None, 250)
@@ -121,7 +127,7 @@ class RulesTest(unittest.TestCase):
         steps = [fact(0, mode="open", present=()),
                  fact(0, mode="input", present=(), patches=[("create", "9", "node", b"-", b"panel"),
                                                             ("remove", "9", "node", b"panel", b"-")])]
-        found, judged = checks.flash_verdicts(steps, 500)
+        found, judged, _undecided, _inside = checks.flash_verdicts(steps, 500)
         self.assertEqual((judged, [v["identity"] for v in found]), (1, [["9", "panel"]]))
 
     def test_flash_needs_no_input_between_and_ignores_countdowns(self):
@@ -131,6 +137,12 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(len(checks.flash_verdicts(quick, 500)[0]), 1)
         slow = [fact(0, mode="input", present=(), patches=[create]), fact(500, prev=0, present=(), patches=[remove])]
         self.assertEqual(checks.flash_verdicts(slow, 500)[0], [])
+        # created at an input, removed by a 500 ms time step: shown for (0, 500]: undecided, not judged
+        self.assertEqual([v["check"] for v in checks.flash_verdicts(slow, 500)[2]], ["lifetime-undecided"])
+        self.assertEqual(checks.flash_verdicts(slow, 500)[1], 0)
+        inside = [fact(0, mode="input", present=()),
+                  fact(1100, prev=0, present=(), patches=[create, remove])]
+        self.assertEqual(checks.flash_verdicts(inside, 500)[1:], (0, [], [(1, "9", "panel")]))   # left to the probe
         tapped = [fact(0, mode="input", present=(), patches=[create]),
                   fact(0, mode="input", present=(), patches=[remove])]
         self.assertEqual(checks.flash_verdicts(tapped, 500)[0], [])

@@ -18,6 +18,7 @@ from rigor_lib.ui_contract_dwell import char_count, reading_ms
 from rigor_lib.ui_explore_judges import state_of
 from rigor_lib.ui_judge_time_checks import (chain_verdicts, countdown_verdicts, decisions, flash_verdicts,
                                             increase_verdicts, invisible_verdicts, zero_verdicts)
+from rigor_lib import ui_judge_time_inside as inside_mod
 from rigor_lib.ui_judge_time_model import Binding, appearances, timeline
 from rigor_lib.ui_judge_time_origin import Origins
 from rigor_lib.ui_judge_time_probe import Diverged, Prober
@@ -26,7 +27,7 @@ GATE = "ui-time"
 CHECKS = ("notice-lifetime-short", "notice-lifetime-short-floor", "notice-lifetime-long", "flash", "countdown-wrong",
           "invisible-auto-transition", "dwell-below-reading-time", "clock-origin-divergence", "patches-inconsistent")
 META = ("contract-pending", "contract-incomplete", "exception-unused", "checks-examined", "check-vacuous",
-        "check-blocked", "lifetime-undecided", "probe-diverged", "time-probes-capped", "time-budget-cut")
+        "check-blocked", "lifetime-undecided", "probe-diverged", "time-probes-capped")
 ALL = CHECKS + META
 LIFETIME = ("notice-lifetime-short", "notice-lifetime-short-floor", "notice-lifetime-long")
 DWELL = ("notice-lifetime-short", "dwell-below-reading-time")
@@ -77,28 +78,31 @@ class TimeJudge:
         words = [step.word for step in steps[:len(facts)]]
         for fact in facts:
             self.exceptions.see(set(fact.present) | {raw.split("\t", 1)[0] for raw in fact.semantic})
-        out = self._observed(facts, words, True)
+        out = self._observed(facts, words)
         for index, kind in appearances(facts):
             out += self._lifetime(runner, binding, facts, words, index, kind)
-        for index in _hidden_steps(facts):
-            out += self._hidden(runner, binding, facts, words, index)
+        for index, pairs in sorted(inside_mod.hidden_pairs(facts).items()):
+            out += self._hidden(runner, binding, facts, words, index, pairs)
         if self.origins.offer(facts, words):
             self.origins.take(words)
             out += self.origin_findings(runner, facts, words)
-        return out
+        return list({f["id"]: f for f in reversed(out)}.values())[::-1]     # one per id, the first
 
-    def _observed(self, facts, words, main):
-        """flash, invisible-auto-transition, patches-inconsistent, countdown increases (on the main path, input steps
-        included) and countdown formats, read from one run's observations."""
-        verdicts = []
+    def _observed(self, facts, words, start=None):
+        """flash, invisible-auto-transition, patches-inconsistent, countdown increases (input steps included) and
+        countdown formats of one run. A probing run (`start`: its appearance index) repeats the path's prefix: its
+        patch chain and increases are judged after it only (the path judges the prefix; the ids deduplicate)."""
+        verdicts, after = [], (lambda v: start is None or v["path_at"] > start)
         threshold = self._get(("flash",), "thresholds", "flicker_floor_ms", words)
         if threshold is not None:
-            found, judged = flash_verdicts(facts, threshold)
-            verdicts, self.counts["flash"] = found, self.counts["flash"] + judged
-        # a probing run repeats the path's prefix: its patches are judged (and reported) on the path itself
-        for name, judge in (("invisible-auto-transition", invisible_verdicts),) \
-                + ((("patches-inconsistent", chain_verdicts), ("countdown-wrong", increase_verdicts)) if main else ()):
+            found, judged, undecided, _inside = flash_verdicts(facts, threshold)
+            verdicts, self.counts["flash"] = found + undecided, self.counts["flash"] + judged
+        for name, judge in (("invisible-auto-transition", invisible_verdicts), ("patches-inconsistent", chain_verdicts),
+                            ("countdown-wrong", increase_verdicts)):
             found, judged = judge(facts)
+            found = [v for v in found if name == "invisible-auto-transition" or after(v)]
+            if start is not None and name == "countdown-wrong":   # the element of the appearance, keyed by it
+                found = [dict(v, state_at=start, path_at=start) for v in found]
             verdicts, self.counts[name] = verdicts + found, self.counts[name] + judged
         for fact in facts:
             for kind in sorted(fact.present):
@@ -164,69 +168,115 @@ class TimeJudge:
                                        facts, words, index)]
         return out + self._judge_probe(facts, words, index, kind, timer, (dwell, floor, tick), probe)
 
-    def _judge_probe(self, facts, words, index, kind, timer, values, probe, inside=None):
-        """Findings of one probed element; `inside` = (the state's step, an identity prefix) for a hidden one."""
-        dwell, floor, tick = values
-        found, bounds = decisions(probe.appear, probe.gone, timer["lifetime_ms"], dwell, floor, tick)
-        out, observed = [], {"kind": kind, "lifetime_ms": timer["lifetime_ms"], "tick_ms": tick,
-                             "appeared": list(probe.appear), "shown_more_than_ms": bounds[0],
-                             "shown_at_most_ms": bounds[1]}
+    def _rules(self, found, observed, kind, limits, why):
+        """The verdicts of decided lifetime rules (counted) and `lifetime-undecided` for the others (not counted)."""
+        out = []
         for check, yes in sorted(found.items()):
-            limit = {"notice-lifetime-short": dwell, "notice-lifetime-short-floor": floor}.get(check)
             if yes is None:
                 out.append({"check": "lifetime-undecided", "identity": [kind, check], "target": kind,
-                            "state_at": None, "path_at": None,
-                            "observed": dict(observed, check=check, why=probe.why or "bracket", bound_ms=limit)})
+                            "state_at": None, "path_at": None, "observed": dict(
+                                observed, check=check, why=why, bound_ms=limits.get(check))})
                 continue
             self.counts[check] += 1
             if yes:
                 out.append({"check": check, "identity": [kind], "target": kind, "state_at": None, "path_at": None,
-                            "observed": dict(observed, **({"dwell_ms": dwell} if check.endswith("short") else
-                                                          {"floor_ms": floor} if check.endswith("floor") else {}))})
+                            "observed": dict(observed, **({"dwell_ms": limits[check]} if check.endswith("short")
+                                                          else {"floor_ms": limits[check]} if check.endswith("floor")
+                                                          else {}))})
+        return out
+
+    def _judge_probe(self, facts, words, index, kind, timer, values, probe):
+        """Findings of one probed element."""
+        dwell, floor, tick = values
+        found, bounds = decisions(probe.appear, probe.gone, timer["lifetime_ms"], dwell, floor, tick)
+        observed = {"kind": kind, "lifetime_ms": timer["lifetime_ms"], "tick_ms": tick, "appeared": list(probe.appear),
+                    "shown_more_than_ms": bounds[0], "shown_at_most_ms": bounds[1]}
+        out = self._rules(found, observed, kind, {"notice-lifetime-short": dwell,
+                                                  "notice-lifetime-short-floor": floor}, probe.why or "bracket")
         if timer["countdown_shown"] and probe.seq:
             self.counts["countdown-wrong"] += 1
             parts = countdown_verdicts(kind, probe.seq, timer, probe.appear[0])
             seen = {p["identity"][1] for p in parts}
-            out += parts + ([] if "zero" in seen else zero_verdicts(kind, probe.samples))
-        self.lifetimes.append({"kind": kind, "state": facts[index].key, "lifetime_ms": timer["lifetime_ms"],
-                               "dwell_ms": dwell, "floor_ms": floor, "appeared": list(probe.appear),
-                               "shown_more_than_ms": bounds[0], "shown_at_most_ms": bounds[1], "runs": probe.runs,
-                               "decided": {c: v for c, v in sorted(found.items())}, "path": words[:index + 1]})
-        run_facts, run_words = probe.run
-        if inside is not None:
-            out = [dict(v, state_at=inside[0], path_at=index, identity=inside[1] + v["identity"]) for v in out]
+            out += parts + ([] if "zero" in seen else zero_verdicts(kind, probe.shown))
+        self._row(kind, facts[index].key, timer, values, probe.appear, bounds, probe.runs, found, words[:index + 1])
+        run_facts, run_words, start = probe.run
         return [self.finding(v, facts, words, index) for v in out] + \
-            (self._observed(run_facts, run_words, False) if run_facts else [])
+            (self._observed(run_facts, run_words, start) if run_facts else [])
 
-    def _hidden(self, runner, binding, facts, words, index):
-        """The timed elements shown only inside the time step `index`: their lifetime rules (no countdown)."""
-        if (facts[index - 1].key, facts[index].word, "inside") in self.probed:
+    def _row(self, kind, state, timer, values, appear, bounds, runs, found, path):
+        self.lifetimes.append({"kind": kind, "state": state, "lifetime_ms": timer["lifetime_ms"], "dwell_ms": values[0],
+                               "floor_ms": values[1], "appeared": list(appear), "shown_more_than_ms": bounds[0],
+                               "shown_at_most_ms": bounds[1], "runs": runs,
+                               "decided": {c: v for c, v in sorted(found.items())}, "path": path})
+
+    # ---- what is shown only inside a time step ----------------------------------------------------------------------
+    def _hidden(self, runner, binding, facts, words, index, pairs):
+        """The elements shown only inside the time step `index` (ui_judge_time_inside): lifetime rules of each timed
+        instance, flash of each plain node, `lifetime-undecided` (`hidden-unsampled`) for a key no sample showed."""
+        tag, before, step = (facts[index - 1].key, facts[index].word, "inside"), facts[index - 1], facts[index]
+        if tag in self.probed:
             return []
-        self.probed.add((facts[index - 1].key, facts[index].word, "inside"))
+        if len(self.probed) >= MAX_PROBES:
+            self.capped.append([before.key, "inside " + step.word])
+            return []
+        self.probed.add(tag)
         tick = self._get(LIFETIME, "clock", "tick_ms", words[:index + 1])
-        if tick is None:
-            return []
-        prober = Prober(runner, binding, tick)
+        threshold = self._get(("flash",), "thresholds", "flicker_floor_ms", words[:index + 1])
+        held = {"samples": {}, "found": []}
+        limits = self._limits(binding, before, held, words[:index + 1], (tick, threshold))
+
+        def wanted(got):
+            held["samples"] = got
+            return inside_mod.wanted(got, before, step, pairs, limits, runner.catalogue.max_wait_ms) if tick else []
         try:
-            probes, _samples = prober.hidden(facts, words, index)
+            samples = Prober(runner, binding, tick or 1).inside(facts, words, index, pairs, wanted)
         except Diverged as error:
-            return [self.finding({"check": "probe-diverged", "identity": ["inside", facts[index].word],
-                                  "target": facts[index].word, "state_at": index - 1, "path_at": index,
+            return [self.finding({"check": "probe-diverged", "identity": ["inside", step.word], "target": step.word,
+                                  "state_at": index - 1, "path_at": index,
                                   "observed": {"path": words[:index + 1], "probe_path": error.words}},
                                  facts, words, index)]
-        out = []
-        for kind, probe in sorted(probes.items()):
-            timer = binding.timers[kind]
-            dwell, floor, found = self._dwell(kind, facts[index - 1], words[:index + 1], timer, binding)
-            limits = (timer["lifetime_ms"], dwell, floor if dwell is None else None, tick)
-            try:
-                prober.refine_hidden(facts, words, index, kind, probe,
-                                     lambda p: None not in decisions(p.appear, p.gone, *limits[:3], tick)[0].values())
-            except Diverged:
-                pass                       # the first hidden run reached the same step: the bracket stands as is
-            out += found + self._judge_probe(facts, words, index, kind, timer, (dwell, floor, tick), probe,
-                                             (index - 1, ["inside", facts[index].word]))
-        return out
+        out = [{"check": "lifetime-undecided", "identity": ["inside", step.word, key, "hidden"], "target": key,
+                "state_at": index - 1, "path_at": index, "observed": {"key": key, "role": role, "check": "hidden",
+                                                                      "why": "hidden-unsampled", "samples": len(samples)}}
+               for key, role in pairs if not any(key in f.labels for f in samples.values())]
+        held["samples"] = samples
+        for element in inside_mod.elements(samples, before, step, pairs) if tick else ():
+            out += self._hidden_element(element, before, step, limits, words[:index + 1], binding)
+        return held["found"] + [self.finding(dict(v, state_at=index - 1, path_at=index, identity=["inside", step.word] + v["identity"]
+                                  if v["identity"][0] != "inside" else v["identity"]), facts, words, index)
+                for v in out]
+
+    def _limits(self, binding, before, held, path, values):
+        """limits(kind) of ui_judge_time_inside: (L, D, floor, tick) of a kind, its dwell from the text of the first
+        sample that shows it (its static dwell finding kept in `held`); limits(None): the flash threshold."""
+        cache, (tick, threshold) = {}, values
+
+        def limits(kind):
+            if kind is None:
+                return threshold
+            if kind not in cache:
+                timer, samples = binding.timers[kind], held["samples"]
+                shown = next((samples[at] for at in sorted(samples) if kind in samples[at].present), before)
+                dwell, floor, found = self._dwell(kind, shown, path, timer, binding)
+                held["found"] += found
+                cache[kind] = (timer["lifetime_ms"], dwell, floor if dwell is None else None, tick)
+            return cache[kind]
+        return limits
+
+    def _hidden_element(self, element, before, step, limits, path, binding):
+        name, kind, _points = element
+        found, bounds, (appear, gone) = inside_mod.judge(element, before, step, limits)
+        observed = {"element": name, "appeared": list(appear), "gone": list(gone), "shown_more_than_ms": bounds[0],
+                    "shown_at_most_ms": bounds[1]}
+        dwell = floor = None
+        if kind is not None:
+            lifetime, dwell, floor, tick = limits(kind)
+            self._row(kind, before.key, binding.timers[kind], (dwell, floor), appear, bounds, 0,
+                      {c: v for c, v in found.items() if c != "flash"}, path)
+            observed.update(kind=kind, lifetime_ms=lifetime, tick_ms=tick)
+        out = self._rules(found, observed, kind or name, {"notice-lifetime-short": dwell,
+                                                          "notice-lifetime-short-floor": floor}, "bracket")
+        return [dict(v, identity=[name] + v["identity"]) for v in out]
 
     # ---- clock-origin-divergence ------------------------------------------------------------------------------------
     def origin_findings(self, runner, facts, words):
@@ -243,22 +293,15 @@ class TimeJudge:
                       "origins": [[o, s, p] for s, p, o in sorted(diverged)]})
         return [self.exceptions.apply(found, words[at])]
 
+    def fill(self):
+        """The waiting clock-origin replays that fill the quota, once the strategy's paths are done; they spend the
+        explorer's budget, so a cut here ends the run as a cut run (ui_explore_time.end)."""
+        out = []
+        for words, facts in self.origins.fill():
+            out += self.origin_findings(self.runner, facts, words)
+        return out
+
     def finish(self, open_word):
         from rigor_lib.ui_judge_time_finish import finish
         return finish(self, open_word)
 
-
-def _hidden_steps(facts):
-    """Time steps whose patches create and later remove one key: something was shown only inside the step."""
-    out = []
-    for index in range(1, len(facts)):
-        fact, created = facts[index], set()
-        if fact.mode != "time" or fact.chain or fact.now - fact.prev_now <= 1:
-            continue
-        for op, key, _name, _old, _new in fact.patches:
-            if op == "create":
-                created.add(key)
-            elif op == "remove" and key in created:
-                out.append(index)
-                break
-    return out

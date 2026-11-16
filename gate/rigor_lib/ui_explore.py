@@ -21,7 +21,7 @@ from rigor_lib.ui_explore_probe import (CAPABILITIES, STOP_SIGNALS, TAP_CAPS, Bu
 from rigor_lib.ui_explore_judges import probe_error_judge
 from rigor_lib.ui_explore_run import Config, Run, Step, check_words
 from rigor_lib.ui_judge_findings import JudgeSet
-from rigor_lib.ui_explore_time import attach as attach_time
+from rigor_lib.ui_explore_time import attach as attach_time, end as end_time
 
 PATHS_SCHEMA = "ui-explore-paths/1"
 SUMMARY_SCHEMA = "ui-explore-summary/1"
@@ -298,7 +298,7 @@ def explore(args):
         extra = [greeting]
     else:
         try:
-            detail, extra = _seeds(args, explorer, paths, catalogue, prefix)
+            detail, extra = end_time(explorer, *_seeds(args, explorer, paths, catalogue, prefix))   # U09: origin fill
         except BudgetSpent:
             spent, extra = True, [_budget_finding(args, catalogue, word, explorer.runs)]
         spent = spent or bool(detail.get("budget_cut"))   # a bfs the budget cut is never reported as complete

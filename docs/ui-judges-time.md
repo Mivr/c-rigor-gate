@@ -11,7 +11,8 @@ Python, stdlib only:
 |---|---|
 | `ui_judge_time_model.py` | the timeline: per step a `Facts` (word mode, virtual time, state class, the timed elements shown, their countdowns and text, comparable records, patches and whether they agree with the records); binding contract timers; countdown formats |
 | `ui_judge_time_checks.py` | the rules, pure, decided on bounds (`decisions`: yes, no or undecided); the probing plan (`plan`, `refine`, `rising`, `falling`) |
-| `ui_judge_time_probe.py` | the probing runs: appearance and disappearance bisection, elements shown only inside a step, `probe-diverged`, the `at`-word cap |
+| `ui_judge_time_probe.py` | the probing runs: appearance and disappearance bisection, sampling inside a step, `probe-diverged`, the `at`-word cap |
+| `ui_judge_time_inside.py` | what is shown only inside a time step: its created-and-removed keys, the element instances seen there, their rules |
 | `ui_judge_time_origin.py` | `clock-origin-divergence`: the selection of paths and the comparison |
 | `ui_judge_time.py`, `ui_judge_time_finish.py` | the judge: per path, findings, contract values; the end of the run |
 | `ui_explore_time.py` | the explorer's side: the hook and the `Runner` of the probing runs and the origin replays |
@@ -49,11 +50,19 @@ countdown-restart rule's check). A step where they do not is `patches-inconsiste
 which repeat its prefix) and gives `flash`, `stalled` and `increase` no verdict. `life` lines are not read (honesty
 table). Nothing reads the wall clock.
 
+**An element is an instance** (fix-up 2), not a kind: its presence ends, and a new appearance starts, when a patch of
+the step removes a key of its scope (its countdown's own node aside: made again, it is the same element counting), or
+when the msgid of its first text (identity) or its text (role `text`; countdowns excluded) changes while the kind
+stays shown. Banner A replaced by banner B is two elements, each with its own lifetime; a countdown's ticking label is
+one. Every probing sample shows the element only while it is that instance.
+
 **Binding a contract timer** (`[[timer]]`, docs/ui-contract.md: kind, class, `lifetime_ms` L, `countdown_shown`):
 - with identity: a kind is shown iff the step's state class IS the kind (the class of the topmost message, else of the
-  screen; docs/ui-judges-identity.md). A SCREEN kind also stays shown while a message kind is the class and the screen
-  was shown at the step before: a message is drawn over its screen, which stays visible behind it (ui-rules), so a
-  dismissed message gives the screen no new appearance (no false short, no new countdown start);
+  screen; docs/ui-judges-identity.md). An element shown at the step before also stays shown while ANOTHER message kind
+  is the class and every node of its scope keeps its key, its role and (a countdown aside) its label, and no patch of
+  the step removed it: a message is drawn over what it covers, which stays visible behind it (ui-rules), so a screen
+  under a dialog and a banner under a snackbar continue, and a dismissed message gives no new appearance. Keys alone
+  do not tell: the kiosk reuses key 3 for the headline of several screens;
 - without identity: only a timer of class `message` whose kind is a scene layer role (`dialog`, `banner`, `snackbar`)
   can be bound, shown iff a semantic record has that role. Every other timer (all screen timers: lockers'
   `choose_size`, `opened`, `report`, `lockout`) is one `check-blocked` per check that would read it (identity
@@ -93,14 +102,22 @@ runs PROBING PATHS made of the path's own words and `at` words. No input: whatev
 3. **The disappearance**: (last instant shown, first instant gone], refined by runs of at most 15 `at` words inside it:
    to one ms for a timer with a countdown (the last label before it goes is read: a `0` shown for under a tick is seen),
    else to one tick, then further while a rule is undecided.
-4. **Inside a step**: the path to the step before, then 15 `at` words inside the step; every timed kind shown at a
-   sample but at neither end is probed the same way, both edges inside the step (lifetime rules; no countdown rules:
-   no run shows it from its start), keyed by the state before the step.
+4. **Inside a step** (a time step whose patches create and then remove one key, whatever the flash threshold): the
+   path to the step before, then 15 `at` words inside the step; then, while a created-and-removed key has not been
+   seen in any sample, the midpoints of the 15 widest gaps between consecutive samples; then the instants that narrow
+   the edges still undecided; at most 6 runs, every later run re-sampling one instant already seen (runs must agree).
+   Each element instance seen only inside (neither at the step before nor at its end) gets the lifetime rules and
+   `flash`, each created-and-removed key no such instance holds gets `flash`, both edges from the samples; a key no
+   sample ever showed is `lifetime-undecided` (`why` `hidden-unsampled`, identity `["inside", word, key, "hidden"]`)
+   and its flash is not counted. Keyed by the state before the step; such a step counts against the probe cap.
 
 **Decided or reported.** Each lifetime rule is decided on the bounds (`decisions`): yes (a finding), no, or undecided.
 An undecided rule is NOT counted as examined and is one `lifetime-undecided` (error: the gate could not judge a
 contract timer; identity `[kind, check]` and the state key of the appearance; `observed` the brackets, the bound and
-`why`: `bracket` when the runs could not narrow it, `at-word-cap` when the plan was not run). It is exceptable like
+`why`: `bracket` when the runs could not narrow it, `at-word-cap` when the plan was not run, `hidden-unsampled` for a
+key shown only inside a step that no sample caught). `flash` too: a node created at one step and removed at a later
+one is shown for more than (the step before the removal) - (its creation) and at most (the removal) - (its earliest
+creation); undecided between, it is `lifetime-undecided` (check `flash`) and not counted. It is exceptable like
 the other ui-time findings (`lifetime-undecided` is in the loader's closed rule list).
 
 **Bound.** Per edge at most 6 runs (`MAX_PHASES`; 16^5 > 600 000: a bracket of the longest advance down to one ms); a
@@ -110,13 +127,17 @@ happens: the lockers catalogue's 300 256 ms covers every horizon). At most 64 pr
 (`MAX_PROBES`); the rest are not judged and one info `time-probes-capped` names the first capped (state key, kind) and
 the count. Every probing run is run twice with the explorer's run judges (a probe error or nondeterminism there is the
 explorer's own finding). A probing run that does not show the element at the appearance step as the path did (another
-state key there) is `probe-diverged` (error, with the path and the probing path), and that appearance is not counted
-as examined. Probing runs are not strategy paths: no step judge of another gate sees them, coverage does not record
+state key there; for a bisected appearance, the instance at the step's end), or whose samples disagree with another
+run's (samples must change at most once in time: `monotone`; inside a step, one life per key; an instant re-sampled
+must agree) is `probe-diverged` (error, with the path and the probing path), and that element is not counted as
+examined: a missing element never moves a bound. Probing runs are not strategy paths: no step judge of another gate sees them, coverage does not record
 them, and (U05e) they run with a non-judging scene, as the layer policy's sibling replays do (scene tap words resolve;
 no layer verdict, no sibling replay). They spend the wall budget: a budget spent inside a probing run raises out of the
 path's run, so the strategy ends as a cut run (`budget_spent`, never reported complete; a bfs drops the state that path
-reached, though the path's own steps are already recorded); a budget spent during the origin replays of the end of the
-run is `time-budget-cut` (error; the summary's `budget_spent` is the strategy's). They are added to the summary's `cost`; `checks-examined` reports the judge's own
+reached, though the path's own steps are already recorded). The origin replays that wait for the end of the run run
+right after the strategy, inside the same budget handling (`ui_explore_time.end`): a budget spent there ends the run
+as a cut run too (`budget_spent` true, no criterion evaluated, the explorer's budget timeout). They are added to the
+summary's `cost`; `checks-examined` reports the judge's own
 share (`cost`: `probe_runs`, `origin_runs`, `probe_commands`, `virtual_ms`). The pre-run cost check (`check_cost`)
 does not count them: they are known only once a path has run.
 
@@ -141,15 +162,14 @@ appearance is (a_lo, a_hi), the disappearance (t1_lo, t1_hi]: shown for more tha
 | `notice-lifetime-short-floor` | (an approximation, its own id) while the reading rate is pending: the same with max(L, `dwell_floor_ms`), a lower bound of D for any rate | as above |
 | `notice-lifetime-long` | L > 0 and shown for more than L + tick (not long when at most L + tick) | as above |
 | `flash` | a scene node not of role `countdown`, created and removed (patches) with no user input after its creation (env replies and time steps are no user input), the removal step's `now` minus the creation's `appear_lo` < `flicker_floor_ms`; a node created and removed within ONE step is measured by that step's span (0 for an input) | `[key, role]`, target the key; the creation step, path to the removal |
-| `countdown-wrong` | while the element is shown (from the appearance, one run, and every probing sample): `absent` (no countdown in its scope; then no `stalled`); `start` (the first value outside ceil(L/1000) +-1; for an appearance bracket of s ms, any value down to ceil((L - s)/1000) - 1); `zero` (0 as a step-end label, or a patch to 0 on a node still shown at that step's end); `increase` (a value that grows while the element stays shown, on time AND input steps of the path, unless a declared countdown restart on a tap, U05d); `stalled` (no change for 1000 ms or more after the last instant a change can have happened, or one step of W ms with c changes and W >= 1000 (c + 1)) | `[kind, part]`; the appearance (an increase on the path: the step of the increase) |
+| `countdown-wrong` | while the element is shown (from the appearance, one run, and every probing sample of the same instance): `absent` (no countdown in its scope; then no `stalled`); `start` (the first value outside ceil(L/1000) +-1; for an appearance bracket of s ms, any value down to ceil((L - s)/1000) - 1); `zero` (0 as a step-end label, or a patch to 0 on a node still shown at that step's end); `increase` (a value that grows, in a step's patches or from one step-end label to the next (a node made again), while the same instance stays shown, on time AND input steps of the path and of the probing runs after their prefix, unless a declared countdown restart on a tap, U05d); `stalled` (no change for 1000 ms or more after the last instant a change can have happened, or one step of W ms with c changes and W >= 1000 (c + 1)) | `[kind, part]`; the appearance (an increase on the path: the step of the increase) |
 | `invisible-auto-transition` | a time or env step changes the state class while the semantic records and the frame (but `life` and `taps`) are byte-identical | `[from, to]`, target `from/to`; the step before |
 | `dwell-below-reading-time` | static: a `message` timer with L > 0 below max(`dwell_floor_ms`, `dwell_base_ms` + reading) of the text the run shows (no message catalogue is given; the reading rule is the contract's dwell table, `ui_contract_dwell`) | `[kind, msgid or text:<16 hex>]`, no state (one per message) |
 | `clock-origin-divergence` | the path replayed from each origin of {1, 1000, 10^9, 2^32 + 7, 2^40} ms but its own: the first step whose semantic records (a countdown's label with every digit run masked and its value kept), identity, time since the origin or `next-due` relative to the origin differ, or where the replay ended | `[["origin", word, part], key]`, the step before; path the whole path |
-| `patches-inconsistent` | the step's patches do not lead from the records before it to its own (above) | `[word, why]`; the step before, path to the step |
+| `patches-inconsistent` | the step's patches do not lead from the records before it to its own (above); judged on the path and on the probing runs after their prefix | `[word, why]`; the step before, path to the step |
 
 Run-level and meta findings besides those of docs/ui-judges.md: `lifetime-undecided`, `probe-diverged`,
-`time-probes-capped` (info), `time-budget-cut` (the budget was spent during the origin replays of the end of the run:
-the run is not complete) and `contract-incomplete` (`countdown-format`).
+`time-probes-capped` (info) and `contract-incomplete` (`countdown-format`).
 
 **"User-relevant"** (`invisible-auto-transition`): the gate's facts about what the state IS are the identity's state
 class and the catalogue key's derived facts. Derived facts are computed from the semantic records, so with the records
@@ -174,7 +194,7 @@ input).
 | `notice-lifetime-short` | implemented; D needs `reading.rate_wpm`, pending for lockers (Q11): there `contract-pending`, and the floor approximation below. Undecided bounds are `lifetime-undecided`, never silent |
 | (approximation) `notice-lifetime-short-floor` | its own id: D bounded below by max(L, `dwell_floor_ms`) while the rate is pending |
 | `notice-lifetime-long` | implemented |
-| `flash` | implemented on patches the gate checks against the records (`patches-inconsistent`); a create/remove pair inside a step longer than the threshold is not decided (counted as judged, no finding: the probing mode refines timed elements, not every node). The `life`-line half is BLOCKED: a `life` line carries no object identity, and `node -1` is written both for an object that was never in a reported walk and for an event after an unreported retried walk (docs/ui-model.md), so a created and a deleted line cannot be tied to one object nor told from a retried snapshot; the missing fact is an object id in `life` lines. The threshold is `flicker_floor_ms`, pending for lockers (Q5) |
+| `flash` | implemented on patches the gate checks against the records (`patches-inconsistent`), decided on bounds (undecided: `lifetime-undecided`, not counted); a create/remove pair inside a time step longer than the threshold is sampled inside the step. The `life`-line half is BLOCKED: a `life` line carries no object identity, and `node -1` is written both for an object that was never in a reported walk and for an event after an unreported retried walk (docs/ui-model.md), so a created and a deleted line cannot be tied to one object nor told from a retried snapshot; the missing fact is an object id in `life` lines. The threshold is `flicker_floor_ms`, pending for lockers (Q5) |
 | `countdown-wrong` | implemented for presence, start, zero, increase and the once-per-second recurrence. The formatted string against the oracle's at the same virtual time is BLOCKED: no oracle in the gate. A countdown format is the gate's (no declaration exists) |
 | `invisible-auto-transition` | implemented for the state class (a time or env step, semantic and frame unchanged); BLOCKED without identity (`check-blocked`). The O1 half (a view-state field) is BLOCKED: the protocol has no view-state stage |
 | `dwell-below-reading-time` | implemented from the texts the run shows (no message catalogue; the longest locale is the longest the run shows); needs `rate_wpm` (pending for lockers) |
@@ -250,11 +270,12 @@ failed:
 - **Without ui-time nothing changes.** The canary judges replay (`ui-scene,ui-fit,ui-render`), a toy bfs and the timed
   canary without judges give findings, summary and stdout byte-identical to the gate before U09 (`aa69748`); on the
   real kiosk the other gates' findings are the same with and without ui-time.
-- **One class per state**: identity names one class; a screen is carried under a message (above), but a screen timer
-  whose message appears by time is not told apart from a message that replaced it.
-- **Same-kind replacement**: a message replaced by another of the same kind without a gap is one element.
-- **Flash resolution**: a create/remove pair inside a step longer than the threshold is not decided (timed elements
-  are refined, not every node).
+- **One class per state**: identity names one class; an element is carried under another message only while its own
+  nodes stay as they were (above).
+- **Instance signature**: a replacement that keeps the msgid and the text of its first text node and reuses the same
+  keys without a remove patch is not seen as a replacement.
+- **Inside a step**: an element shown so briefly that six sampling runs miss it is `lifetime-undecided`
+  (`hidden-unsampled`); the refinement of undecided edges takes the 15 earliest instants per run.
 - **The cost pre-check** does not include the probing runs and replays (they depend on what the paths show).
 - **The origin quota is per seed of the open word** even without the explorer's boot seeds (a paths file with several
   seeds gets 8 per seed).

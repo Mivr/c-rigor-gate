@@ -6,7 +6,7 @@ known as a bracket (a_lo, a_hi): the element can have been shown from a_lo on an
 `lifetime-undecided`), never guessed (docs/ui-judges-time.md, "The rules").
 """
 
-from rigor_lib.ui_judge_time_model import countdown_value
+from rigor_lib.ui_judge_time_model import countdown_value, same_instance
 
 GRID = 16            # samples per probing run inside a bracket
 SECOND_MS = 1000     # the countdown's unit (P004 3.5: it changes at least once per virtual second)
@@ -59,18 +59,31 @@ def refine(lo, hi, max_wait):
     return [at for at in points(lo, hi, ceil_div(hi - lo, GRID), max_wait) if at < hi]
 
 
-def rising(samples, kind, lo, hi):
-    """The appearance bracket inside (lo, hi]: (the last instant not shown before the first shown, the first shown)."""
-    first = min([s.now for s in samples if kind in s.present and lo < s.now <= hi] + [hi])
-    return max([lo] + [s.now for s in samples if kind not in s.present and lo < s.now < first]), first
+def rising(points, lo, hi):
+    """The appearance bracket inside (lo, hi] from (instant, shown) points: (the last instant not shown before the
+    first shown, the first shown; `hi` when no point shows it)."""
+    first = min([at for at, shown in points if shown and lo < at <= hi] + [hi])
+    return max([lo] + [at for at, shown in points if not shown and lo < at < first]), first
 
 
-def falling(samples, kind, now):
-    """(t1_lo, t1_hi): the disappearance after `now` lies in (t1_lo, t1_hi]; t1_hi None when shown at every sample."""
-    gone = [s.now for s in samples if kind not in s.present and s.now > now]
+def falling(points, now):
+    """(t1_lo, t1_hi) from (instant, shown) points: the disappearance after `now` lies in (t1_lo, t1_hi]; t1_hi None
+    when every point shows it."""
+    gone = [at for at, shown in points if not shown and at > now]
     t1_hi = min(gone) if gone else None
-    shown = [s.now for s in samples if kind in s.present and s.now > now and (t1_hi is None or s.now < t1_hi)]
-    return max([now] + shown), t1_hi
+    return max([now] + [at for at, shown in points if shown and at > now and (t1_hi is None or at < t1_hi)]), t1_hi
+
+
+def monotone(points, rising):
+    """Whether (instant, shown) points, from every run, change at most once in time: not shown then shown for an
+    appearance, shown then not for a disappearance; two runs that disagree at one instant are not."""
+    seen = {}
+    for at, shown in points:
+        if seen.setdefault(at, shown) != shown:
+            return False
+    flags = [seen[at] for at in sorted(seen)]
+    flags = flags if rising else [not f for f in flags]
+    return flags == sorted(flags)
 
 
 def decisions(appear, gone, lifetime, dwell, floor, tick):
@@ -119,8 +132,8 @@ def countdown_verdicts(kind, seq, timer, a_lo):
     low = ceil_div(timer["lifetime_ms"] - (seq[0].now - a_lo), SECOND_MS) if seq else want
     quiet = seq[0].now if seq else 0
     for m, fact in enumerate(seq):
-        if kind not in fact.present:
-            break
+        if kind not in fact.present or (m and not same_instance(seq[m - 1], fact, kind)):
+            break                                 # gone, or another instance: not this element's countdown
         shown = fact.countdowns.get(kind, ())
         if not shown:
             parts.setdefault("absent", {"step": fact.index})
@@ -159,17 +172,21 @@ def zero_verdicts(kind, samples):
 
 
 def increase_verdicts(facts):
-    """countdown-wrong part `increase` on a path, input steps included: a countdown whose value grows while its
-    element stays shown, unless it is a declared countdown restart on a tap (U05d). Returns (verdicts, steps judged)."""
+    """countdown-wrong part `increase` on a path, input steps included: a countdown whose value grows (in the step's
+    patches, or from one step-end label to the next) while the same instance of its element stays shown, unless it is
+    a declared countdown restart on a tap (U05d). Returns (verdicts, steps judged)."""
     out, judged = [], 0
     for m in range(1, len(facts)):
         fact, before = facts[m], facts[m - 1]
         for kind in sorted(fact.present & before.present):
-            keys = {k for k, _v in fact.countdowns.get(kind, ())} & {k for k, _v in before.countdowns.get(kind, ())}
-            if not keys or fact.chain:
+            was, now = dict(before.countdowns.get(kind, ())), dict(fact.countdowns.get(kind, ()))
+            keys = set(was) & set(now)
+            if not keys or fact.chain or not same_instance(before, fact, kind):
                 continue
             judged += 1
-            increases = _changes(fact, keys, keys)[2]
+            increases = _changes(fact, keys, keys)[2] + [
+                [was[k], now[k]] for k in sorted(keys) if None not in (was[k], now[k]) and now[k] > was[k]
+                and k not in fact.restarts]          # a node removed and made again with a higher value
             if increases:
                 out.append(verdict("countdown-wrong", [kind, "increase"], {
                     "step": fact.index, "kind": kind, "part": "increase", "values": increases[0]}, kind, m, m))
@@ -178,10 +195,12 @@ def increase_verdicts(facts):
 
 def flash_verdicts(facts, threshold):
     """flash: a scene node (not a countdown) created and removed with no user input (u1..u5, a domain move or open)
-    after its creation, within less than the flash threshold, measured on the patches (`create`/`remove`) of steps
-    whose patches agree with their records; a node created and removed within ONE step is judged by that step's span
-    (0 for an input). Returns (verdicts, the number of removals judged)."""
-    born, out, judged = {}, [], 0
+    after its creation, shown for less than the flash threshold, on the patches of steps that agree with their
+    records. Across steps it is shown more than (the step before the removal) - (the creation) and at most (the
+    removal) - (the earliest creation): yes, no or undecided. Within ONE input or env step: 0 ms, yes. Within one TIME
+    step longer than the threshold: left to the probing of what is shown inside a step (`inside`).
+    Returns (verdicts, pairs judged, undecided pairs, inside: (step index, key, role))."""
+    born, out, judged, undecided, inside = {}, [], 0, [], []
     for at, fact in enumerate(facts):
         if fact.mode not in ("time", "env") or fact.chain:
             born = {}
@@ -193,12 +212,22 @@ def flash_verdicts(facts, threshold):
                 born[key] = (at, fact.appear_lo, role)
             elif op == "remove" and key in born:
                 created, lo, role = born.pop(key)
-                judged += 1
-                if fact.now - lo < threshold:
-                    out.append(verdict("flash", [key, role], {
-                        "key": key, "role": role, "shown_at_most_ms": fact.now - lo, "threshold_ms": threshold,
-                        "steps": [facts[created].index, fact.index]}, key, created, at))
-    return out, judged
+                at_most = fact.now - lo
+                above = 0 if created == at else facts[at - 1].now - facts[created].now
+                if created == at and fact.mode == "time" and at_most >= threshold:
+                    inside.append((at, key, role))
+                    continue
+                detail = {"key": key, "role": role, "shown_at_most_ms": at_most, "shown_more_than_ms": above,
+                          "threshold_ms": threshold, "steps": [facts[created].index, fact.index]}
+                if at_most < threshold:
+                    judged += 1
+                    out.append(verdict("flash", [key, role], detail, key, created, at))
+                elif above + 1 >= threshold:
+                    judged += 1
+                else:
+                    undecided.append(verdict("lifetime-undecided", [key, "flash"], dict(
+                        detail, check="flash", why="bracket"), key, created, at))
+    return out, judged, undecided, inside
 
 
 def invisible_verdicts(facts):

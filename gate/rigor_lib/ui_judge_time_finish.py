@@ -1,9 +1,7 @@
-"""The end of a run of the `ui-time` judge (U09, docs/ui-judges-time.md): the clock-origin replays that fill the quota,
-then the run-level findings: `contract-pending`, `contract-incomplete` (a countdown label of no known format),
-`exception-unused`, `check-blocked`, `time-probes-capped` (info), `time-budget-cut`, `checks-examined` (info) and
-`check-vacuous`. Path: the open word; state: null."""
+"""The end of a run of the `ui-time` judge (U09, docs/ui-judges-time.md): the run-level findings: `contract-pending`, `contract-incomplete` (a countdown label of no known format),
+`exception-unused`, `check-blocked`, `time-probes-capped` (info), `checks-examined` (info) and `check-vacuous`. Path:
+the open word; state: null. (The waiting origin replays run before, in the explorer's budget: `TimeJudge.fill`.)"""
 
-from rigor_lib.ui_explore_probe import BudgetSpent
 from rigor_lib.ui_judge_time import CHECKS, item
 from rigor_lib.ui_judge_time_model import Binding
 
@@ -13,18 +11,6 @@ BLOCKED_PARTS = {      # what the gate has no fact for (the honesty table of doc
     "invisible-auto-transition": "a user-relevant O1 (view-state) field: the probe protocol has no view-state stage",
     "unresponsive-intent": "the contract does not mark which intents are effective in which state class",
 }
-
-
-def _fill(judge, open_word):
-    """The waiting origin replays; a spent budget ends them with `time-budget-cut` (the run is not complete)."""
-    out = []
-    try:
-        for words, facts in judge.origins.fill():
-            out += judge.origin_findings(judge.runner, facts, words)
-    except BudgetSpent:
-        out.append(item("time-budget-cut", ["budget", "origins"], "error", None, [open_word],
-                        {"what": "clock-origin replays at the end of the run", "replays": judge.origins.runs}))
-    return out
 
 
 def _run_level(judge, binding, open_word):
@@ -47,9 +33,8 @@ def _run_level(judge, binding, open_word):
 
 
 def finish(judge, open_word):
-    out = _fill(judge, open_word) if judge.runner is not None else []
     binding = Binding(judge.contract, bool(judge.identity))
-    out += _run_level(judge, binding, open_word)
+    out = _run_level(judge, binding, open_word)
     cost = dict(judge.runner.cost) if judge.runner is not None else {}
     out.append(item("checks-examined", ["examined"], "info", None, [open_word], {
         "paths": judge.paths, "totals": dict(judge.counts), "bound": list(binding.bound()),

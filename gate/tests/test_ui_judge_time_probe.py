@@ -25,6 +25,7 @@ def judge_run(sim, paths, the_contract=None, max_wait_ms=600000):
     runner, found = Runner(sim, max_wait_ms), []
     for words in paths:
         found += judges.time.path(runner, sim.run(words))
+    found += judges.time.fill()                   # the waiting origin replays (ui_explore_time.end)
     return found + judges.finish(paths[0][0]), runner
 
 
@@ -114,9 +115,8 @@ class PatchChainTest(unittest.TestCase):
     def test_patches_that_contradict_the_records_are_a_finding_and_judge_nothing(self):
         found, _runner = judge_run(Sim(lie=True), [[OPEN, "show", "at 500"]])
         lies = [f for f in found if f["check"] == "patches-inconsistent"]
-        self.assertEqual(len(lies), 1)
-        self.assertEqual(lies[0]["path"], [OPEN, "show", "at 500"])
-        self.assertIn("did not show", lies[0]["observed"]["why"])
+        self.assertIn([OPEN, "show", "at 500"], [f["path"] for f in lies])      # the path, and its probing runs
+        self.assertTrue(all("did not show" in f["observed"]["why"] for f in lies))
 
 
 class ScreenUnderMessageTest(unittest.TestCase):

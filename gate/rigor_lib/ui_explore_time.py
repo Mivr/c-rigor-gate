@@ -59,6 +59,15 @@ class Runner:
         return run.steps
 
 
+def end(explorer, detail, extra):
+    """After the strategy (inside its budget handling): the ui-time judge's waiting origin replays, unless there is no
+    ui-time or the strategy was cut. A spent budget raises BudgetSpent here, so the run is a cut run."""
+    judge = getattr(explorer, "time_judge", None)
+    if judge is None or judge.runner is None or detail.get("budget_cut"):
+        return detail, extra
+    return detail, list(extra) + judge.fill()
+
+
 def attach(explorer, judges):
     """Hands every path the explorer runs to the ui-time judge; nothing when it is not selected. Returns `explorer`."""
     if judges is None or judges.time is None:
@@ -70,4 +79,5 @@ def attach(explorer, judges):
         explorer.findings.extend(judges.time.path(runner, steps))
         return steps
     explorer.run = run
+    explorer.time_judge = judges.time
     return explorer

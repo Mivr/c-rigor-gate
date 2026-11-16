@@ -9,10 +9,16 @@ wall clock.
 Binding a contract timer (`[[timer]]` kind) to what the scene shows:
 - with the probe's identity: the kind is present iff the state class IS the kind (the class of the topmost message,
   else of the screen; docs/ui-judges-identity.md); a kind shown at the step before stays shown while another MESSAGE
-  kind is the class and every node of its own scope at the step before is still in the scene (ui-rules: a message is
-  drawn over what it covers, which stays visible behind it: a screen under a dialog, a banner under a snackbar);
+  kind is the class and every node of its own scope at the step before is still in the scene with the same role and
+  (but a countdown) the same label, and no patch of the step removed it (ui-rules: a message is drawn over what it
+  covers, which stays visible behind it: a screen under a dialog, a banner under a snackbar; keys are reused across
+  screens, so the keys alone do not tell);
 - without it: only a message timer whose kind is a layer role of the scene vocabulary (`dialog`, `banner`, `snackbar`)
   is bindable, present iff a semantic record has that role; every other timer is `check-blocked` (needs identity).
+
+An element is an INSTANCE, not a kind: its presence ends, and a new appearance starts, when a patch of the step
+removes a key of its scope (a countdown's own node aside: made again, it is the same element counting), or when the msgid of its first text (identity) or its text (role `text`, countdowns
+excluded) changes while the kind stays shown (`same_instance`). A countdown's changing label is the same instance.
 
 The scope of an element (where its countdown and text are): the semantic records are in tree order and a message layer
 is drawn above the screen, so a message's scope is the records from the LAST record of a message layer role
@@ -81,6 +87,9 @@ class Facts:
     texts: dict = field(default_factory=dict)         # kind -> the text of its scope (role `text`), joined by a space
     msgids: dict = field(default_factory=dict)        # kind -> the first msgid of a text node of its scope, or None
     scopes: dict = field(default_factory=dict)        # kind -> the keys of its scope at this step
+    roles: dict = field(default_factory=dict)         # kind -> {key: (role, label or None for a countdown)}
+    sigs: dict = field(default_factory=dict)          # kind -> (msgid, text): what tells one instance from another
+    removed: frozenset = frozenset()                  # the keys a `remove` patch of this step names
     semantic: tuple = ()
     labels: dict = field(default_factory=dict)        # key -> label bytes of the semantic records
     masked: tuple = ()                                # semantic raws, a countdown's label masked (origins)
@@ -135,16 +144,21 @@ def _identity_msgids(step):
     return records[0].values[1].decode("utf-8", "surrogateescape"), msgids
 
 
-def _present(records, cls, binding, before):
+def _role_label(record):
+    return record.fields[1], None if record.fields[1] == "countdown" else record.values[2]
+
+
+def _present(records, cls, binding, before, removed):
     """(the kinds shown, the kinds carried under another message with their scope's keys)."""
     if not binding.identity:
         roles = {r.fields[1] for r in records}
         return frozenset(k for k in binding.bound() if k in roles), {}
-    keys = {r.fields[0] for r in records}
+    now = {r.fields[0]: _role_label(r) for r in records}
     carried = {}
     if cls in binding.timers and binding.message(cls) and before is not None:
         carried = {k: before.scopes[k] for k in before.present
-                   if k != cls and before.scopes.get(k) and before.scopes[k] <= keys}
+                   if k != cls and before.roles.get(k) and not before.scopes[k] & removed
+                   and all(now.get(key) == shown for key, shown in before.roles[k].items())}
     return frozenset({k for k in binding.bound() if k == cls} | set(carried)), carried
 
 
@@ -181,7 +195,9 @@ def facts_of(step, before, catalogue, binding):
     """The Facts of one completed step (`before`: the Facts of the step before, or None)."""
     records = tuple(step.obs.get("semantic", ()))
     cls, msgids = _identity_msgids(step)
-    present, carried = _present(records, cls, binding, before)
+    patches = tuple((p.fields[0], p.fields[1], p.fields[2], p.values[3], p.values[4]) for p in step.obs.get("patches", ()))
+    removed = frozenset(key for op, key, _f, _o, _n in patches if op == "remove")
+    present, carried = _present(records, cls, binding, before, removed)
     due = step.obs.get("due")
     out = Facts(step.index, step.word, word_mode(step.word, catalogue), step.now,
                 step.now if before is None else before.now, step.origin, step.key, step.proj, cls=cls,
@@ -191,8 +207,7 @@ def facts_of(step, before, catalogue, binding):
                              if r.fields[1] == "countdown" else r.raw for r in records),
                 ident=tuple(r.raw for r in step.obs.get("identity") or ()),
                 due=None if due is None else due - step.origin, frame=comparable_frame(step.obs.get("frame", ())),
-                patches=tuple((p.fields[0], p.fields[1], p.fields[2], p.values[3], p.values[4])
-                              for p in step.obs.get("patches", ())),
+                patches=patches, removed=removed,
                 restarts=frozenset(item["node"] for item in (step.restart or ())))
     # the open step's patches are the product's boot log, whatever it reports: the chain starts after it
     out.chain = None if before is None else chain_error(before.labels, out.patches, out.labels)
@@ -200,6 +215,7 @@ def facts_of(step, before, catalogue, binding):
         scope = tuple(r for r in records if r.fields[0] in carried[kind]) if kind in carried else \
             _scope(records, kind, binding, not binding.identity)
         out.scopes[kind] = frozenset(r.fields[0] for r in scope)
+        out.roles[kind] = {r.fields[0]: _role_label(r) for r in scope}
         counts = [(r.fields[0], countdown_value(r.values[2])) for r in scope if r.fields[1] == "countdown"]
         out.countdowns[kind] = tuple(counts)
         out.unparsed += tuple(r.values[2] for r in scope if r.fields[1] == "countdown"
@@ -207,7 +223,16 @@ def facts_of(step, before, catalogue, binding):
         texts = [r for r in scope if r.fields[1] == "text" and r.values[2] != b""]
         out.texts[kind] = b" ".join(r.values[2] for r in texts).decode("utf-8", "replace")
         out.msgids[kind] = next((msgids[r.fields[0]] for r in texts if r.fields[0] in msgids), None)
+        out.sigs[kind] = (out.msgids[kind], out.texts[kind])
     return out
+
+
+def same_instance(before, fact, kind):
+    """Whether the element of `kind` shown at `before` is the one shown at `fact` (module docstring)."""
+    if kind not in before.present or kind not in fact.present or before.sigs.get(kind) != fact.sigs.get(kind):
+        return False
+    held = {key for key, (role, _label) in before.roles.get(kind, {}).items() if role != "countdown"}
+    return not held & fact.removed            # a countdown node made again is the same element counting
 
 
 def timeline(steps, catalogue, binding, before=None):
@@ -221,10 +246,21 @@ def timeline(steps, catalogue, binding, before=None):
 
 
 def appearances(facts):
-    """(index, kind) of every step where a bound timed element is shown and was not at the step before."""
+    """(index, kind) of every step where an instance of a bound timed element is shown that was not at the step before
+    (a kind newly shown, or another instance of it)."""
     out = []
     for i, fact in enumerate(facts):
         for kind in sorted(fact.present):
-            if i == 0 or kind not in facts[i - 1].present:
+            if i == 0 or not same_instance(facts[i - 1], fact, kind):
                 out.append((i, kind))
+    return out
+
+
+def alive(facts, kind, start):
+    """Per fact after `start` (the appearance): whether the instance shown at `start` is still the one shown; once
+    it is not, never again in that run (a later instance is another element)."""
+    out, going = [], True
+    for before, fact in zip(facts[start:], facts[start + 1:]):
+        going = going and same_instance(before, fact, kind)
+        out.append((fact, going))
     return out
