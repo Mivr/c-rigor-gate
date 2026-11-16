@@ -40,7 +40,7 @@ Globs are relative POSIX paths. `*` matches within one segment. `**` must be a w
 front or in the middle it matches zero or more directories, at the end it matches one or more
 path segments. Every other character is literal (no `?`, no `[...]`). Matching is case sensitive.
 
-### `suppressions --repo R --base B --head H [--approvals DIR] [--allowed-signers F] [--out F]`
+### `suppressions --repo R --base B --head H [--approvals DIR] [--out F]`
 Scans every **added** line (zero-context patch, files forced to text so attributes cannot hide
 them) of every non-deleted changed path against the table in `gate/rigor_lib/patterns.py`; that
 file is the only place patterns live. Rules: `forbidden-pattern` (path, line, pattern id),
@@ -89,40 +89,33 @@ one `<trace id>.trace` per replayed trace. It parses the output itself and finds
 `oracle-excluded-grew`. Findings carry ids and positions only, never trace text. A malformed bundle, trace, table or result is
 exit 2; keys, formats and the exact semantics are in [oracle.md](oracle.md).
 
-### `approve --kind K --scope S --reason TEXT --repo-sha SHA --key KEYFILE --out DIR`
+### `approve --kind K --scope S --reason TEXT --repo-sha SHA --out DIR`
 Writes `DIR/<sha256>.json` (canonical JSON of kind, scope, reason, repo_sha; named by the hash of
-its bytes) and `DIR/<sha256>.json.sig` made with `ssh-keygen -Y sign -n c-rigor-gate`.
+its bytes). Nothing is signed (U30): the file is the record. `--key` is refused.
 
 ## Approvals
-Kinds: `suppression`, `test-removal`, `ratchet`. Approvals live in a directory outside the
-product repo (`--approvals`); `--allowed-signers` defaults to `gate/allowed_signers`, which the
-owner fills with `<principal> namespaces="c-rigor-gate" <public key>` lines. The driver must never
-point `--allowed-signers` or `--approvals` at anything the product controls.
+An approval is a recorded loosening: it lets one exact finding pass. Kinds: `suppression`, `test-removal`, `ratchet`,
+`equivalent-mutant`, `witness-equivalent-mutant`. Approvals live in a directory outside the product repo
+(`--approvals`); the driver must never point `--approvals` at anything the product controls. Nobody signs an approval
+(U30, owner decision 2026-11-16; `docs/trust.md`): one may be written only inside a task whose contract names it, with
+its reason, and every approval in force is counted and listed in the grade verdict (`core.approvals`, `docs/grade.md`).
 
-An approval counts only if all hold: the file name is the sha256 of its bytes; its signature
-verifies (`ssh-keygen -Y find-principals` then `-Y verify`, namespace `c-rigor-gate`) against
-`allowed_signers`; the JSON has exactly the four keys with valid values; `repo_sha` exists and is an
-ancestor of (or equal to) the graded head; and kind and scope match exactly.
+An approval counts only if all hold: the file name is the sha256 of its bytes; the JSON has exactly the four keys with
+valid values; `repo_sha` exists and is an ancestor of (or equal to) the graded head; and kind and scope match exactly.
+The scope is the content binding: `<path>:<line>-<pattern id>` for a suppression, the test id for a test removal,
+`<file name of --new>:<key>` for a ratchet, the mutant id (bound to the mutated token and the body of its function,
+T058) for an equivalent mutant. An approval covers exactly its kind and scope and nothing else.
 
-Anything else in the approvals directory (unsigned, badly signed, wrong namespace or signer,
-tampered, malformed, orphan signature, stray file) is a `forged-approval` error finding (with a
-`reason`), whether or not it was needed. An approval that is validly signed but for a commit that
-is not an ancestor is simply not applicable, and the violation it was meant to cover still fails.
+Anything else in the approvals directory (tampered so that the name is not the hash, malformed, a `.json.sig` file left
+by the signing gate, stray file) is a `forged-approval` error finding (with a `reason`: `name-mismatch`, `malformed`,
+`signature-file`, `unrecognised-file`), whether or not it was needed. An approval for a commit that is not an ancestor is
+simply not applicable, and the violation it was meant to cover still fails.
 A file named like an approval (`<64 hex>.json` or `.json.sig`) anywhere in the graded tree is an
 `approval-in-repo` finding.
 Gates that take `--approvals` need `--repo` and `--head` (for the ancestry check); the run is exit 2
-without them. Existence of ssh-keygen is only required when the approvals directory is non-empty.
-
-### Signer roles (`gate/signer_roles.toml`, T132)
-`[principal.<name>] kinds = [...]` lists the approval kinds a signer may sign; the name is the principal of
-`allowed_signers` as `ssh-keygen -Y find-principals` reports it. With `--signer-roles FILE` an approval counts only
-if its signer's principal is listed with the approval's kind; otherwise it is a `forged-approval` finding with
-reason `kind-not-allowed-for-signer`. A principal in `allowed_signers` that the file does not list may sign nothing.
-The shipped file gives `orchestrator` the five kinds that exist (`suppression`, `test-removal`, `ratchet`,
-`equivalent-mutant`, `witness-equivalent-mutant`), so it reproduces today's rule. **The flag is off by default and no
-gate passes it yet** (a later task wires it); `approvals.load_approvals(..., roles_path=None, ledger=None)` is the
-library surface. `--ledger DIR` likewise switches on the tighten-only rule of `docs/trust.md`
-(reason `tighten-only`). Both are accepted wherever `--approvals` is.
+without them. The options `--allowed-signers` and `--signer-roles` and the files `gate/allowed_signers` and
+`gate/signer_roles.toml` are gone (U30). `--ledger DIR` switches on the tighten-only rule of `docs/trust.md` (reason
+`tighten-only`); it is accepted wherever `--approvals` is, off by default, and no gate passes it yet.
 
 ### `ledger append|verify|claims`
 `ledger append --ledger DIR --kind K --subject S [--evidence FILE] --at N`, `ledger verify --ledger DIR [--head SHA]`

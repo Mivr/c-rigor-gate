@@ -259,7 +259,7 @@ command log).
 
 ## The event catalogue (`ui-events/1`)
 
-One sealed, versioned TOML file per app (P004 4.3 item 2, 8.5): `products/<product>/ui/<app>.events.toml`. The selftest
+One gate-owned, versioned contract TOML file per app (P004 4.3 item 2; nothing is signed since U30, `docs/trust.md`): `products/<product>/ui/<app>.events.toml`. The selftest
 has three:
 - `selftest/ui_product/toy.events.toml`;
 - `toy_coarse.events.toml`, a deliberately coarse key;

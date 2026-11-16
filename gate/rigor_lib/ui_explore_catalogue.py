@@ -1,6 +1,6 @@
 """The event catalogue and abstraction key of `rigor ui-explore` (U05, P004 4.3 items 2 and 3): a strict TOML loader.
 
-One sealed, versioned file per app (`products/<product>/ui/<app>.events.toml`; the toy's is
+One gate-owned, versioned contract file per app (`products/<product>/ui/<app>.events.toml`; the toy's is
 `selftest/ui_product/toy.events.toml`). Schema `ui-events/1`, documented in docs/ui-explore.md. Every class table is
 required, at least one T1 time event is required, `max_wait_ms` is required and capped in code; an unknown key, a
 missing key, a wrong type, a duplicate id or name, a value out of range, a key with neither fields nor facts, an

@@ -1,4 +1,4 @@
-"""`ui_deviations_baseline`: the two owner-sealed files of `rigor ui-deviations` (strict loaders; any defect is exit 2).
+"""`ui_deviations_baseline`: the two contract files of `rigor ui-deviations` (strict loaders; any defect is exit 2).
 
 `products/<product>/ui/deviations.toml` pins every accepted tag id with its `until` and the sha256 of its canonical fields;
 `products/<product>/ui/deviation-sections.toml` pins, per header, the entry labels the owner has acknowledged

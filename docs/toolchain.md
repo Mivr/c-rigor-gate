@@ -291,5 +291,5 @@ switches, all off unless the files exist:
 - `tools/buck2.local` with `bin=<path>` and `sha256=<hex>`: `tools/buck2` runs that binary after checking that hash.
   Upstream Buck2 `2026-10-15` analyses and builds this repo; it is not the pinned fork build.
 
-Known gaps of such a machine: no `ssh-keygen` means the signing tests of `gate/tests` cannot run; sanitizer modes that
+Known gaps of such a machine: sanitizer modes that
 need the workers' seccomp profile may not start; times are not comparable with the farm.

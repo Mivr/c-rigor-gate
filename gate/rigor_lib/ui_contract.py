@@ -1,9 +1,9 @@
 """The UI contract (`products/<product>/ui/<name>.toml`): a strict loader, the typed pending result, the
 completeness check and the dwell table of the UI gate (P004 section 6.2, docs/ui-contract.md).
 
-The file is owner-sealed. Every entry carries a `provenance`; an entry (or a whole table) the owner has not decided is
-written `pending = "<P004 section 11 question>"` instead of a value, only where the closed lists below allow it, and
-asking for it raises `ContractPending`, never a default. Any defect of the file is exit 2 (InternalError): unknown key,
+The file is a gate-owned contract file (nothing is signed, docs/trust.md). Every entry carries a `provenance`; an entry
+(or a whole table) the owner has not decided is written `pending = "<P004 section 11 question>"` instead of a value,
+only where the closed lists below allow it, and asking for it raises `ContractPending`, never a default. Any defect of the file is exit 2 (InternalError): unknown key,
 missing key, wrong type or range, duplicate row, dangling reference, entry without provenance. What the loader hands
 out is immutable.
 """

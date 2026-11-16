@@ -1,8 +1,9 @@
 # The UI contract (P004 section 6.2, task U10)
 
-One owner-sealed TOML file per product holds everything a UI judge needs as a threshold, timer, policy or exception:
+One gate-owned contract TOML file per product holds everything a UI judge needs as a threshold, timer, policy or exception:
 `products/business-apps/ui/lockers.toml` for the lockers kiosk. A product-owned contract would be the first thing an
-agent edits, so the file is gate-owned and sealed (the signature check is U18, not this task). The loader is
+agent edits, so the file is gate-owned: a reviewed contract file that only a task whose contract names the change may
+loosen or tighten (nothing is signed since U30, `docs/trust.md`). The loader is
 `gate/rigor_lib/ui_contract.py`; it is strict: an unknown key, a missing key, a wrong type, a duplicate row or a
 dangling reference is an `InternalError` (exit 2), never a default.
 

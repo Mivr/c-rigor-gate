@@ -1,5 +1,5 @@
-# The UI contract of the lockers kiosk (docs/ui-contract.md). OWNER-SEALED: changing this file needs the owner's
-# signature (P004 section 8.5). Every entry carries a provenance; `pending = "<n>"` is P004 section 11 question n,
+# The UI contract of the lockers kiosk (docs/ui-contract.md). A CONTRACT FILE: changing it is a loosening or tightening
+# only a task whose contract names it may make (docs/trust.md). Every entry carries a provenance; `pending = "<n>"` is P004 section 11 question n,
 # not yet answered by the owner: a judge that needs it gets `contract-pending`, never a default.
 schema = "ui-contract/1"
 product = "business-apps/lockers"
@@ -488,7 +488,7 @@ id = "language"
 members = ["lang_bg", "lang_en"]
 exactly_one = true
 shown_on = ["welcome", "choose_size", "opened"]
-marks = ["bg", "style"]     # U06 (to sign): another fill, ui-look.md L309; another token, L207
+marks = ["bg", "style"]     # U06 (to accept): another fill, ui-look.md L309; another token, L207
 provenance = "spec:ui-look.md#6.1"
 
 # ---- input policy per layer (ui-rules.md: Presentation and the Rust-derived clarification) -------------------------
@@ -566,7 +566,7 @@ clip = false
 provenance = "spec:ui-look.md#5"
 
 # ---- U06: what the ui-scene and ui-fit judges read from the contract rather than from the scene ---------------------
-# ADDED BY THE U06 AGENT, FOR THE OWNER TO SIGN OR REJECT ROW BY ROW: each row cites the line of ui-look.md that decides
+# ADDED BY THE U06 AGENT, FOR THE OWNER TO ACCEPT OR REJECT ROW BY ROW: each row cites the line of ui-look.md that decides
 # it (`#L<n>`; `/` joins two lines). Nothing here is decided where the spec is silent: the judges then report
 # `contract-incomplete` naming the role.
 
@@ -771,7 +771,7 @@ provenance = "spec:ui-look.md#L220/L290"
 # The line height of each style's font, in px: a REGRESSION BASELINE read from the product under test (the label
 # records of business-apps apps/lockers/lkapp/uimodel/tests/screens.out at f1274bf; the copy in gate/tests/data/
 # ui_judge/), not a spec value. font-shrunk against it catches a font that gets smaller than at that commit; it needs
-# the owner's signature. Styles 11 and 19 do not occur in the transcript and have no row.
+# the owner's review. Styles 11 and 19 do not occur in the transcript and have no row.
 [[style_line]]
 style = "display"
 line_height_px = 229
@@ -849,4 +849,4 @@ style = "btn_lang_off"
 line_height_px = 27
 provenance = "product-baseline:f1274bf"
 
-# No exceptions are sealed yet: an exception is a [[exception]] row (id, rule, target, reason, provenance).
+# No exceptions are accepted yet: an exception is a [[exception]] row (id, rule, target, reason, provenance).

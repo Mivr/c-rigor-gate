@@ -5,7 +5,7 @@ The commands of the first run need the first run's catalogue, sha256 `32c7ed60..
 business-apps/ui/lockers.events.toml`: U05e removed its fixed u2 points.)
 
 `rigor ui-explore` with the `ui-scene` and `ui-fit` judges on the release probe of the real kiosk, with the DRAFT event
-catalogue and key `products/business-apps/ui/lockers.events.toml` (unsigned, for the owner's review, row by row). This
+catalogue and key `products/business-apps/ui/lockers.events.toml` (not accepted yet, for the owner's review, row by row). This
 page records what the machine found, what it cost, and where the gate, the catalogue or the adapter is still wrong.
 Nothing in the gate, the contract or the product was changed. Evidence stayed in `/var/tmp/cache/U23/` (not
 committed); what matters is quoted here.
@@ -302,7 +302,7 @@ business-apps `1acc1cb`, built read-only in the U04a checkout, cached), same con
 `task/U05e`, catalogue sha256 `512f3e41f2f315f9...`. This is also the first INKED run: `--judges
 ui-scene,ui-fit,ui-render`. Evidence in `/var/tmp/cache/U05e/run2/` (not committed).
 
-**The catalogue (still DRAFT, unsigned; every new row has its provenance; fake fixture codes only).**
+**The catalogue (still DRAFT, not accepted yet; every new row has its provenance; fake fixture codes only).**
 - `taps = { scope = "scene", max_per_state = 32, grid_pct = [20, 50, 80], intent_node = "key" }`: every state taps
   its own controls (centre and the contract's 3x3 probe grid, every node's centre first), and its own blank area,
   disabled controls and scrims; the 18 fixed u2 points are gone (the 4 fixed u3 points stay). `intent_node = "key"`:

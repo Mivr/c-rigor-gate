@@ -60,7 +60,7 @@ def add_parser(subparsers):
     parser = subparsers.add_parser("ui-explore", allow_abbrev=False,
                                    help="drive a UI probe along input paths; findings of the ui-explore gate")
     parser.add_argument("--probe", required=True, help="the probe binary of a c_ui_probe target")
-    parser.add_argument("--catalogue", required=True, help="the sealed event catalogue (ui-events/1)")
+    parser.add_argument("--catalogue", required=True, help="the event catalogue, a gate-owned contract file (ui-events/1)")
     parser.add_argument("--strategy", required=True, choices=strategies.STRATEGIES)
     parser.add_argument("--out", required=True, help="findings, one JSON line each")
     parser.add_argument("--contract", help="the UI contract (ui-contract/1) handed to the judges")
