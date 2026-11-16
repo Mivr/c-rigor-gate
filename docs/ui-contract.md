@@ -35,10 +35,15 @@ table `{ value = ..., provenance = "..." }` or `{ pending = "<n>", provenance = 
 | `[[timer]]` | `kind` | `class` (`screen`/`message`), `lifetime_ms` (0 means no limit), `countdown_shown`, `dismiss` (list) |
 | `[[state_class]]` | `id` | `required` (element ids that must be present) |
 | `[[importance]]` | `level` | `roles` |
-| `[[toggle_group]]` | `id` | `members`, `exactly_one`, `shown_on` (state class ids) |
+| `[[toggle_group]]` | `id` | `members` (`[[element]]` ids), `exactly_one`, `shown_on` (state class ids), `marks` (U06: what tells the selected member apart: `bg`, `bg_opa`, `style`) |
 | `[[input_layer]]` | `layer` | `blocks_input_below`, `tap_outside_dismisses`, `accepts_input` |
 | `[[wrap]]` | `scope` | `wrap` (`word`/`char`/`none`), `max_lines` (0 means no cap), `ellipsis`, `clip` |
 | `[[exception]]` | `id` | `rule` (a finding id of P004 3.1 to 3.9, closed list in the loader), `target` (a concrete node id, no wildcard), `reason`, `expires` (a date); the provenance must be `owner:` |
+| `[[style_role]]` (U06) | `style` | `role`: the typographic role of a style no `[[role]]` row names (a colour variant: lockers' action, cancel and language buttons) |
+| `[[role_wrap]]` (U06) | `role` | `scope` (a `[[wrap]]` scope) or `pending = "7"`: the wrap scope the judges use for the role's nodes |
+| `[[layer]]` (U06) | `id` | `role` (`scrim`, `dialog`, `banner`, `snackbar`), `card` (only and always for a scrim: the role of the card it belongs to), `policy` (`pass-through`, `capture-modal-inert`, `capture-and-dismiss`) or `pending = "7"` |
+| `[[element]]` (U06) | `id` | `key`: the scene key of the element's node (the toggle group members) |
+| `[[style_line]]` (U06) | `style` | `line_height_px`: the line height of the style's font (`font-shrunk`) |
 
 References are checked: a style's `scale`, a role's `style`, `role_min.role`, `importance.roles` and
 `toggle_group.shown_on` must name existing entries.
@@ -63,7 +68,8 @@ e.g. `spec:P004#11-q9`).
 
 An entry the owner has not decided is `pending = "<n>"`, `n` a P004 section 11 question number, instead of `value`.
 It never has a default, and **what may be pending is a closed list in the loader** (`PENDING_ENTRIES`,
-`PENDING_TABLES`), each with its question number: any other entry, or the wrong number, is an error. A whole table
+`PENDING_TABLES`, and `PENDING_ROWS` for single rows of `[[role_wrap]]` and `[[layer]]`, U06), each with its question
+number: any other entry, or the wrong number, is an error. A whole table
 is pending through `[pending_tables]`; its rows are then absent and `Contract.rows()` raises.
 
 `Contract.get(section, key)` raises `ContractPending` (not an `InternalError`) for a pending entry. A judge turns it
@@ -79,6 +85,18 @@ ratio (Q5); contrast ratios (Q15); the whole importance table (Q7).
 `dialog` timer keeps the value of ui-rules.md (8000 ms, `spec:` provenance) until the owner decides otherwise.
 
 ## Consistency the loader enforces
+
+U06 adds: a style is named by at most one role (a `[[style_role]]` style is not a `[[role]]` style, and no two roles
+share a style), so a style token has one typographic role; `[[role_wrap]]` names roles and scopes; one `[[layer]]` row
+per role and card; toggle group members are `[[element]]` ids; `[[style_line]]` names styles. `Contract.row_value()`
+raises `ContractPending` for a pending row; `style_by_token()`, `role_of_style()` and `layer_row()` are the judges'
+lookups. Pending rows are listed by `pending_entries()` as `<table>.<id>`.
+
+Pending in the lockers contract since U06 (`spec:P004#11-q7`): the wrap scope of `screen_headline`, `staff_strong`,
+`key_label` and `small_button_label` (ui-look.md 5 decides wrapping per node: each of these roles has a one-line node
+and a wrapped one), and the banner's layer policy, card and scrim (a notice of kind banner dismisses on a tap outside,
+a banner of the persistent set has no tap-outside area; the structural role does not tell them apart). Its
+`[[style_line]]` values are read from the C kiosk's transcript (`oracle:` provenance, owner review pending).
 
 Types and ranges of every value; unique ids; references (style to type scale, role to style, role_min and importance
 to roles, toggle groups to state classes, state class elements to roles or the closed element list); unique style
