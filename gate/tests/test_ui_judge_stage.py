@@ -50,8 +50,10 @@ class ParseTest(unittest.TestCase):
         lines = tree.lines()
         frame = frame_of(lines[:2] + ["taps\tprobe"] + lines[2:])
         self.assertEqual(len(frame.nodes), 5)
+        records = tuple(parse_typed_line(FRAME_FIELDS, line) for line in lines)
+        later = parse_typed_line({"wide": 2}, "wide\t1")        # a record type a later probe might add
         with self.assertRaises(InternalError):
-            frame_of(lines + ["ink\t1\t0\t-\t0\t0\t0\t0"])          # an ink record is no frame fact
+            parse_frame(records + (later,))
 
     def test_the_visible_box_is_cut_by_the_display_and_the_clip_chain(self):
         tree = Tree()
