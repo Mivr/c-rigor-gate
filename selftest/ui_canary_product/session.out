@@ -1,0 +1,220 @@
+ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop identity
+ok open
+ok frame lines 43
+lvprobe	1	14
+frame	320	240	772e21ea
+taps	probe
+node	0	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	0	772e21ea
+node	1	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	1	772e21ea
+node	2	1	1	lv_label	8	8	207	31	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	16	2	2	0	0	1	50	16	50	16	=Canary	-
+fit	2	1	0	83,11,132,23	4,4,211,31	0	0
+region	2	79d65f67
+node	3	1	1	lv_label	8	40	207	63	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	16	2	2	0	0	1	56	16	56	16	=All clear	-
+fit	3	1	0	79,42,135,52	4,36,211,63	0	0
+region	3	af4e05ec
+node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	4	77cf7be2
+node	5	4	2	lv_label	47	117	68	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	16	2	2	0	0	1	22	16	22	16	=OK	-
+fit	5	1	0	47,120,69,129	43,113,72,132	0	0
+region	5	289fd3a6
+node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	6	092d20b4
+node	7	6	2	lv_label	232	117	267	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	16	2	2	0	0	1	36	16	36	16	=Back	-
+fit	7	1	0	233,119,267,129	228,113,271,132	0	0
+region	7	66725856
+node	8	1	1	lv_button	216	8	263	55	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	8	1a9fb16d
+node	9	8	2	lv_label	229	24	250	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	16	2	2	0	0	1	22	16	22	16	=BG	-
+fit	9	1	0	230,27,249,36	225,20,254,39	0	0
+region	9	2a1a15bd
+node	10	1	1	lv_button	272	8	319	55	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	10	1e9ccb7b
+node	11	10	2	lv_label	286	24	305	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	16	2	2	0	0	1	20	16	20	16	=EN	-
+fit	11	1	0	287,27,304,36	282,20,309,39	0	0
+region	11	363a5cf3
+node	12	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	12	772e21ea
+node	13	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	13	772e21ea
+ok semantic lines 6
+title	text	Canary	8	8	200	24	1	-	-	1	-	-	-
+body	text	All clear	8	40	200	24	1	-	-	2	-	-	-
+ok	button	OK	8	100	100	50	1	100:0	-	5	-	-	-
+back	button	Back	200	100	100	50	1	101:0	-	5	-	-	-
+lang_bg	button	BG	216	8	48	48	1	8:0	-	6	-	-	-
+lang_en	button	EN	272	8	48	48	1	8:1	-	7	-	-	-
+ok apply
+ok frame lines 65
+lvprobe	1	15
+frame	320	240	974dcc06
+node	0	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	0	974dcc06
+node	1	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	1	974dcc06
+node	2	1	1	lv_label	8	8	207	31	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	16	2	2	0	0	1	59	16	59	16	=Canary 1	-
+fit	2	1	0	78,11,135,23	4,4,211,31	0	0
+region	2	55e44cd9
+node	3	1	1	lv_label	8	40	207	63	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	16	2	2	0	0	1	56	16	56	16	=All clear	-
+fit	3	1	0	79,42,135,52	4,36,211,63	0	0
+region	3	af4e05ec
+node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	4	6c6f49f8
+node	5	4	2	lv_label	47	117	68	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	16	2	2	0	0	1	22	16	22	16	=OK	-
+fit	5	1	0	47,120,69,129	43,113,72,132	0	0
+region	5	bcc47c01
+node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	6	092d20b4
+node	7	6	2	lv_label	232	117	267	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	16	2	2	0	0	1	36	16	36	16	=Back	-
+fit	7	1	0	233,119,267,129	228,113,271,132	0	0
+region	7	66725856
+node	8	1	1	lv_button	216	8	263	55	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	8	1a9fb16d
+node	9	8	2	lv_label	229	24	250	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	16	2	2	0	0	1	22	16	22	16	=BG	-
+fit	9	1	0	230,27,249,36	225,20,254,39	0	0
+region	9	2a1a15bd
+node	10	1	1	lv_button	272	8	319	55	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	10	1e9ccb7b
+node	11	10	2	lv_label	286	24	305	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	16	2	2	0	0	1	20	16	20	16	=EN	-
+fit	11	1	0	287,27,304,36	282,20,309,39	0	0
+region	11	363a5cf3
+node	12	1	1	lv_obj	60	90	139	159	0	0	-1	-1	0	0	404040	255	255	1	0	0
+region	12	ed96f245
+node	13	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	13	974dcc06
+node	14	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	14	974dcc06
+life	1	deleted	0	2	1	=lv_label
+life	2	deleted	0	3	1	=lv_label
+life	3	deleted	0	4	1	=lv_button
+life	4	deleted	0	5	4	=lv_label
+life	5	deleted	0	6	1	=lv_button
+life	6	deleted	0	7	6	=lv_label
+life	7	deleted	0	8	1	=lv_button
+life	8	deleted	0	9	8	=lv_label
+life	9	deleted	0	10	1	=lv_button
+life	10	deleted	0	11	10	=lv_label
+life	11	created	0	-1	1	=lv_label
+life	12	created	0	-1	1	=lv_label
+life	13	created	0	-1	1	=lv_button
+life	14	created	0	-1	-1	=lv_label
+life	15	created	0	-1	1	=lv_button
+life	16	created	0	-1	-1	=lv_label
+life	17	created	0	-1	1	=lv_button
+life	18	created	0	-1	-1	=lv_label
+life	19	created	0	-1	1	=lv_button
+life	20	created	0	-1	-1	=lv_label
+life	21	created	0	-1	1	=lv_obj
+ok semantic lines 7
+title	text	Canary 1	8	8	200	24	1	-	-	1	-	-	-
+body	text	All clear	8	40	200	24	1	-	-	2	-	-	-
+ok	button	OK	8	100	100	50	1	100:0	-	5	-	-	-
+back	button	Back	200	100	100	50	1	101:0	-	5	-	-	-
+lang_bg	button	BG	216	8	48	48	1	8:0	-	6	-	-	-
+lang_en	button	EN	272	8	48	48	1	8:1	-	7	-	-	-
+cover	panel		60	90	80	70	1	-	-	0	-	-	-
+ok apply
+ok frame lines 77
+lvprobe	1	18
+frame	320	240	bf72513a
+node	0	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	0	bf72513a
+node	1	-1	0	lv_obj	0	0	319	239	0	1	-1	-1	0	0	ffffff	255	255	1	0	0
+region	1	bf72513a
+node	2	1	1	lv_label	8	8	207	31	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	16	2	2	0	0	1	71	16	71	16	=Canary 20	-
+fit	2	1	0	72,11,142,23	4,4,211,31	0	0
+region	2	f2ebb4f8
+node	3	1	1	lv_label	8	40	207	63	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	16	2	2	0	0	1	56	16	56	16	=All clear	-
+fit	3	1	0	79,42,135,52	4,36,211,63	0	0
+region	3	ae81a322
+node	4	1	1	lv_button	8	100	107	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	4	f83289c6
+node	5	4	2	lv_label	47	117	68	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	16	2	2	0	0	1	22	16	22	16	=OK	-
+fit	5	1	0	47,120,69,129	43,113,72,132	0	0
+region	5	9adc7e6e
+node	6	1	1	lv_button	200	100	299	149	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	6	edd19e0e
+node	7	6	2	lv_label	232	117	267	132	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	16	2	2	0	0	1	36	16	36	16	=Back	-
+fit	7	1	0	233,119,267,129	228,113,271,132	0	0
+region	7	7fb57db8
+node	8	1	1	lv_button	216	8	263	55	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	8	fb9485f0
+node	9	8	2	lv_label	229	24	250	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	16	2	2	0	0	1	22	16	22	16	=BG	-
+fit	9	1	0	230,27,249,36	225,20,254,39	0	0
+region	9	ee777e38
+node	10	1	1	lv_button	272	8	319	55	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	10	156ef86f
+node	11	10	2	lv_label	286	24	305	39	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	16	2	2	0	0	1	20	16	20	16	=EN	-
+fit	11	1	0	287,27,304,36	282,20,309,39	0	0
+region	11	a0b2a117
+node	12	1	1	lv_obj	0	0	319	239	0	1	-1	-1	0	0	404040	82	82	1	0	0
+region	12	bf72513a
+node	13	1	1	lv_obj	60	60	259	179	0	1	-1	-1	0	0	404040	255	255	1	0	0
+region	13	295501a1
+node	14	13	2	lv_button	100	120	199	169	0	1	-1	-1	0	0	0d47a1	255	255	1	0	0
+region	14	054b80fb
+node	15	14	3	lv_label	131	137	169	152	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	15	-	16	2	2	0	0	1	39	16	39	16	=Close	-
+fit	15	1	0	131,139,168,149	127,133,173,152	0	0
+region	15	2f91a3ad
+node	16	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	16	bf72513a
+node	17	-1	0	lv_obj	0	0	319	239	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	17	bf72513a
+life	22	deleted	0	2	1	=lv_label
+life	23	deleted	0	3	1	=lv_label
+life	24	deleted	0	4	1	=lv_button
+life	25	deleted	0	5	4	=lv_label
+life	26	deleted	0	6	1	=lv_button
+life	27	deleted	0	7	6	=lv_label
+life	28	deleted	0	8	1	=lv_button
+life	29	deleted	0	9	8	=lv_label
+life	30	deleted	0	10	1	=lv_button
+life	31	deleted	0	11	10	=lv_label
+life	32	deleted	0	12	1	=lv_obj
+life	33	created	0	-1	1	=lv_label
+life	34	created	0	-1	1	=lv_label
+life	35	created	0	-1	1	=lv_button
+life	36	created	0	-1	-1	=lv_label
+life	37	created	0	-1	1	=lv_button
+life	38	created	0	-1	-1	=lv_label
+life	39	created	0	-1	1	=lv_button
+life	40	created	0	-1	-1	=lv_label
+life	41	created	0	-1	1	=lv_button
+life	42	created	0	-1	-1	=lv_label
+life	43	created	0	-1	1	=lv_obj
+life	44	created	0	-1	1	=lv_obj
+life	45	created	0	-1	-1	=lv_button
+life	46	created	0	-1	-1	=lv_label
+ok semantic lines 9
+title	text	Canary 20	8	8	200	24	1	-	-	1	-	-	-
+body	text	All clear	8	40	200	24	1	-	-	2	-	-	-
+ok	button	OK	8	100	100	50	1	100:0	-	5	-	-	-
+back	button	Back	200	100	100	50	1	101:0	-	5	-	-	-
+lang_bg	button	BG	216	8	48	48	1	8:0	-	6	-	-	-
+lang_en	button	EN	272	8	48	48	1	8:1	-	7	-	-	-
+scrim	scrim		0	0	320	240	1	104:0	-	0	-	-	-
+dialog	dialog		60	60	200	120	1	-	-	0	-	-	-
+close	button	Close	100	120	100	50	1	103:0	-	5	-	-	-
+ok hit-test 12
+ok tap 12 12
+ok quit

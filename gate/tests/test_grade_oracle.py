@@ -3,7 +3,6 @@ package and the step with a faked Buck2, and `rigor verify --expect-oracle-sha`.
 
 import os
 import shutil
-import subprocess
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,7 +10,8 @@ from unittest import mock
 
 from rigor_lib import grade_oracle, grade_pipeline, jsonio, oracle_bundle, verdict, verdict_inputs
 from rigor_lib.errors import InternalError
-from tests.helpers import GATE_DIR, TempDirTestCase, base_env, run_rigor
+from tests.gate_repo_fixture import VerdictCase
+from tests.helpers import GATE_DIR, TempDirTestCase
 from tests.test_oracle import gen
 from tests.test_verdict_inputs import Fixture
 
@@ -224,31 +224,10 @@ class Step(TempDirTestCase):
             self.run_step(g)
 
 
-class VerifyExpectation(TempDirTestCase):
-    def setUp(self):
-        super().setUp()
-        self.key = str(self.tmp / "key")
-        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", self.key], check=True, capture_output=True, env=base_env())
-        pub = (self.tmp / "key.pub").read_text().split()
-        self.signers = self.tmp / "signers"
-        self.signers.write_text('signer namespaces="c-rigor-gate-verdict" %s %s\n' % (pub[0], pub[1]))
-        self.verdict = self.tmp / "verdict.json"
-        self.fixture = Fixture(str(self.tmp))
-
+class VerifyExpectation(VerdictCase):
     def make(self, sha):
         self.fixture.file_hashes["oracle_sha256"] = sha
-        core = verdict.build_core(["a"], {"a": {"status": "PASS", "findings": []}})
-        core["uncached"] = False
-        core["inputs"] = self.fixture.inputs()
-        document = {"core": core, "core_sha256": jsonio.sha256_hex(jsonio.canonical_dumps(core)), "metadata": {}}
-        self.verdict.write_bytes(jsonio.canonical_dumps(document))
-        if os.path.exists(str(self.verdict) + ".sig"):
-            os.unlink(str(self.verdict) + ".sig")
-        subprocess.run(["ssh-keygen", "-Y", "sign", "-n", "c-rigor-gate-verdict", "-f", self.key, str(self.verdict)],
-                       check=True, capture_output=True, env=base_env())
-
-    def verify(self, *extra):
-        return run_rigor(["verify", "--verdict", self.verdict, "--allowed-signers", self.signers, *extra])
+        super().make()
 
     def test_expect_oracle_sha(self):
         sha = "ab" * 32

@@ -1,0 +1,267 @@
+# The event catalogue and abstraction key of the lockers kiosk (schema ui-events/1, docs/ui-explore.md).
+#
+# DRAFT by the U23 agent, not accepted yet, for the owner's review. This file is a CONTRACT FILE (P004 4.3 item 2): nothing
+# here is in force until the owner accepts it, row by row. Every row carries its provenance in the comment above or
+# beside it, in these forms:
+#   rules:L<n>   business-apps docs/lockers/ui-rules.md, line n (the product spec of the messages and timers)
+#   model:L<n>   business-apps docs/lockers/ui-model.md, line n (the adapter doc: inputs, fixtures, environment rows)
+#   screens:L<n> business-apps apps/lockers/lkapp/uimodel/tests/screens.out, line n (a semantic or frame record of the
+#                real probe; the key, rect and intent of a node are read there)
+#   probe:U23    measured by the U23 agent on the release probe (lockers_ui_probe at business-apps 1acc1cb), recorded
+#                in docs/ui-lockers-first-run.md
+#   U05e         rows added or changed by the U05e agent (scene taps, the pad's digit map, the boot seeds, the Welcome
+#                prefix); still DRAFT and not accepted, measured in docs/ui-lockers-first-run.md "The second run"
+# The machine-checked provenances (`[ambient]`, `[key] ignore`, `taps`, `[boot]`, `[[prefix]]`) take the UI contract's
+# forms (oracle:, spec:, design:).
+#
+# Inputs reach the adapter as follows (model:L76-L86): an intent is `apply 3 <scene node key> 0` (the node key, never
+# an intent number; a non-zero arg is refused), a wedge line is `apply 2 0 0 <hex>`, an environment row is
+# `apply 1 <id> 0 -`. Only FAKE codes of the adapter's fixtures appear (model:L55: 121212 visitor, 666662 staff,
+# 666661 inactive staff; model:L138: 343434 of the revision-4 list). No real code, token, key or address.
+#
+# Boot seeds (U05e: the `[boot]` table below, run by `--boot-seeds catalogue`; `--seed` still picks one; model:L110-L115,
+# L149-L157). The seed is (r << 4) | flag8 | profile, r the random seed; the runs use r = 7, as the adapter's own
+# sessions do (screens.in):
+#   112 healthy (profile 0)          113 relay board down at boot (1)   114 book file unreadable (2)
+#   115 book file is not a book (3)  116 wall clock never set (4)       117 disk almost full (5)
+#   118 disk full (6)                119 audit directory unwritable (7) 120 healthy + codes offline at boot (flag 8)
+# Origin: `--origin-ms 1000` (the adapter's sessions; model:L61-L63: an origin changes only the trace's mono_ms).
+schema = "ui-events/1"
+product = "business-apps"
+app = "lockers"
+version = 1
+# The longest product timer is the end-of-shift report's 5 min (rules:L42), restarted from the last 250 ms tick
+# (model:L358-L362), so a report shown at t leaves by t + 300250: every wait of one path word is capped there.
+max_wait_ms = 300256
+# The adapter's trace must be fetched at least every 60 s of virtual time (model:L414-L416); the explorer's spans are
+# at most 64 frames anyway (docs/ui-explore.md "Paths and time").
+drain_ms = 60000
+# All eight capabilities: the probe announces them (probe:U23 greeting; model:L303; `identity` since business-apps
+# 3e8c46e, U04g, probe:U05e greeting), and `pointer` makes every tap go through the kiosk's own entry `uil_pointer`
+# (model:L272-L278). U05e: `identity` binds a notice's dismiss intent (its `dismiss` element), which the layer policy
+# needs to judge a tap outside by a sibling replay (docs/ui-explore.md "Taps under a layer").
+requires = ["frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer", "identity"]
+# The kiosk posts `touch` once on every press, at the press's instant, whatever it hits (model:L347-L351, the ambient
+# table model:L370-L384). `next-due` moves by 0 on all 13 screens, so `due_restart_ms` is NOT declared
+# (model:L352-L353). A touch restarts the end-of-shift report's visible countdown (rules:L42, "5 min, countdown on the
+# report"; model:L354-L362 reading fold_core/session.c:262 and :249): its scene role is `countdown` (screens:L2906,
+# node 6 of the report).
+# U05e: the u2 and u3 taps of every state come from its own scene (docs/ui-explore.md "Scene taps"): the centre and the
+# contract's 3x3 probe grid of every enabled interactive node (with --contract; `grid_pct` is the same grid without one,
+# lockers.toml probe_grid_pct), at most 32 per state and class (every node's centre comes first: Welcome has 16
+# interactive nodes, probe:U23). A u1 intent IS the scene node key (model:L76), so `intent_node = "key"` puts the u1
+# inputs under the contract's layer policy too.
+taps = { scope = "scene", max_per_state = 32, grid_pct = [20, 50, 80], intent_node = "key", provenance = "oracle:business-apps docs/lockers/ui-model.md L76 (apply 3 <scene node key> 0) and products/business-apps/ui/lockers.toml probe_grid_pct" }
+ambient = { trace = ["touch"], trace_provenance = "oracle:business-apps docs/lockers/ui-model.md L347-L353 ambient table (uiloop uil_pointer posts touch once per press)", countdown_restart_role = "countdown", countdown_restart_provenance = "oracle:business-apps docs/lockers/ui-model.md L354-L362 (fold_core/session.c:262 restarts the report countdown on touch) and docs/lockers/ui-rules.md L42 (report 5 min countdown)" }
+
+# U05e: the boot seeds of the comment above (model:L110-L115, L149-L157).
+[boot]
+seeds = [112, 113, 114, 115, 116, 117, 118, 119, 120]
+provenance = "oracle:business-apps docs/lockers/ui-model.md L110-L115 and L149-L157 (boot profiles 0-7 and the codes-offline flag, r = 7)"
+
+# U05e: a bfs from Welcome (`--prefix welcome`): the splash has left by 3200 ms after the origin on every healthy seed
+# (probe:U23: `until-change` from the splash stops 5 ms later at the deadline fact's change; the documented paths
+# leave the splash with `at 3200`).
+[[prefix]]
+name = "welcome"
+words = ["at 3200"]
+provenance = "oracle:docs/ui-lockers-first-run.md (U23, the splash ends before at 3200 on seeds 112-120)"
+
+# ---- the abstraction key (docs/ui-explore.md "The abstraction key"; docs/ui-judges.md "an engine limit") ----------
+# Separates: the screen class and every notice of the stack (node keys, roles, rects, flags: the projection lists every
+# record by its node key), the language (the BG/EN buttons' style tokens 20/21 and every button and key label), the
+# entered-digit count (the echo's dot panels 128.. are scene nodes, so the count is exact, 0..64, the pad's maximum,
+# probe:U23), the selection (style, enabled, D) and the text content by its length and its first number (report
+# counters, the locker number, a sync status).
+# Leaves out: `label` as a field, so a countdown's value (role countdown, never selected below) and an absolute wall
+# time ("Приключи в 00:00 UTC" on the report, node 25; the sync-late banner's "00:00") are not in the key: a time text
+# keeps its length and its first digit run is the hour, which is constant within the hour of a session.
+# `label` is NOT ignored: key-too-coarse still compares every label, so a merge the key makes is reported.
+# Leaves out the fact `env-inputs` (the enabled environment rows): with it, every armed row is a new state and a bfs
+# spends its whole state bound on row combinations at the splash before it reaches Welcome (probe:U23, measured with
+# env-inputs keyed: bfs depth 2 = [1, 20, 83] states, every admitted state an armed-row splash). An armed row that
+# changes nothing visible is therefore merged with the healthy state; key-too-coarse still reports it (the
+# normalised record holds every model fact) and walks reach the row-then-visit paths.
+[key]
+fields = ["role", "x", "y", "w", "h", "enabled", "intent", "flags", "style", "importance", "input_policy", "wrap_policy"]
+facts = ["deadline"]
+derived = [
+  # every text node's length in characters (NFC code points): language and phrase, not a countdown (role countdown)
+  { name = "text-length", op = "bucket", role = "text", field = "label", measure = "length", boundaries = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 64, 72] },
+  # every text node's first number: the report's counters (model:L111-L115 "a visit", "a shift"), the locker number
+  # (82, model:L56), a sync status (401); a time text gives its hour only
+  { name = "text-number", op = "bucket", role = "text", field = "label", measure = "digits", boundaries = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 24, 32, 64, 82, 83, 100, 401, 402, 500, 503, 504, 1000] },
+  # buttons: BG/EN, Done, Cancel, Dismiss, and the sizes with their availability ("Средно · Заето", screens:L1156)
+  { name = "button-labels", op = "select", role = "button", field = "label" },
+  # pad keys: the digits and the language of Del/OK (screens:L147-L158)
+  { name = "key-labels", op = "select", role = "key", field = "label" },
+]
+ignore = []
+
+# ---- U1: every intent the scenes publish (model:L76: id = the scene node key, arg 0) ----------------------------
+# Keys read from the real probe's semantic replies: screens:L138 (Welcome, pad 32..43, BG 11, EN 12, self-test
+# banner 296..300), screens:L1156 (Choose size 48, 49, 50, 17), screens:L1301 (Opened, Done 16), screens:L863 (the
+# rejection dialog 320..326), screens:L1870 (the snackbar 320..326), screens:L2545 (banners 264.., 272.., 288..),
+# screens:L2903 (the report, Done 16), probe:U23 (codes offline 280..284; not saved 256..260).
+[u1]
+events = [
+  # the pad digits (screens:L147-L158; rules:L26 the code pad)
+  { id = "digit-0", intent = 42, arg = 0, expect = "accept" },
+  { id = "digit-1", intent = 32, arg = 0, expect = "accept" },
+  { id = "digit-2", intent = 33, arg = 0, expect = "accept" },
+  { id = "digit-3", intent = 34, arg = 0, expect = "accept" },
+  { id = "digit-4", intent = 35, arg = 0, expect = "accept" },
+  { id = "digit-5", intent = 36, arg = 0, expect = "accept" },
+  { id = "digit-6", intent = 37, arg = 0, expect = "accept" },
+  { id = "digit-7", intent = 38, arg = 0, expect = "accept" },
+  { id = "digit-8", intent = 39, arg = 0, expect = "accept" },
+  { id = "digit-9", intent = 40, arg = 0, expect = "accept" },
+  # backspace "Изтрий"/"Del" (intent 2:0) and enter "OK" (3:0) (screens:L156, L158)
+  { id = "backspace", intent = 41, arg = 0, expect = "accept" },
+  { id = "enter", intent = 43, arg = 0, expect = "accept" },
+  # Choose size (rules:L39; screens:L1156): Small 4:0; Medium and Large are disabled with no intent in every state
+  # (the built-in inventory has small lockers only, model:L56), so they are refused everywhere
+  { id = "size-small", intent = 48, arg = 0, expect = "accept" },
+  { id = "size-medium", intent = 49, arg = 0, expect = "refuse" },
+  { id = "size-large", intent = 50, arg = 0, expect = "refuse" },
+  { id = "size-cancel", intent = 17, arg = 0, expect = "accept" },
+  # Done on Opened (6:0, rules:L40) and on the end-of-shift report (7:0, rules:L42): one scene key, 16
+  { id = "done", intent = 16, arg = 0, expect = "accept" },
+  # the dialog's and the snackbar's Dismiss (256:0 / 256:2; rules:L11, L13; screens:L863, L1870)
+  { id = "notice-dismiss", intent = 323, arg = 0, expect = "accept" },
+  # the snackbar's tap-outside scrim (256:2; rules:L13 "a tap outside the card"); the dialog's scrim 320 has no intent
+  # (rules:L11 "the scrim does not dismiss")
+  { id = "notice-scrim", intent = 320, arg = 0, expect = "accept" },
+  # the persistent banners' Dismiss buttons (rules:L12, L59-L66): self-test 299, audit 267, sync 275, codes stale 291,
+  # codes offline 283, not saved 259
+  { id = "banner-selftest-dismiss", intent = 299, arg = 0, expect = "accept" },
+  { id = "banner-audit-dismiss", intent = 267, arg = 0, expect = "accept" },
+  { id = "banner-sync-dismiss", intent = 275, arg = 0, expect = "accept" },
+  { id = "banner-codes-stale-dismiss", intent = 291, arg = 0, expect = "accept" },
+  { id = "banner-codes-offline-dismiss", intent = 283, arg = 0, expect = "accept" },
+  { id = "banner-not-saved-dismiss", intent = 259, arg = 0, expect = "accept" },
+  # the same banners' scrims, which publish the tap-outside intent: by the spec a banner of the persistent set has NO
+  # tap-outside area (rules:L17, L71), so `refuse`; the known product defect (model:L102-L105) makes the press missed
+  { id = "banner-selftest-scrim", intent = 296, arg = 0, expect = "refuse" },
+  { id = "banner-audit-scrim", intent = 264, arg = 0, expect = "refuse" },
+  { id = "banner-sync-scrim", intent = 272, arg = 0, expect = "refuse" },
+  { id = "banner-codes-stale-scrim", intent = 288, arg = 0, expect = "refuse" },
+  { id = "banner-codes-offline-scrim", intent = 280, arg = 0, expect = "refuse" },
+  { id = "banner-not-saved-scrim", intent = 256, arg = 0, expect = "refuse" },
+]
+
+# ---- U2: probe taps (hit query, then a tap through uil_pointer) --------------------------------------------------
+# U05e: none fixed. The 18 fixed points of U23 (screens:L138, L1156, L1301, L2903) meant different controls on
+# different screens (docs/ui-lockers-first-run.md "Triage", the gate limitation); the scene taps above replace them:
+# every state taps its own controls.
+[u2]
+events = []
+
+# ---- U3: complement taps that must change nothing (P004 4.3 item 2) --------------------------------------------
+# Points blank on every screen class (no control in any measured frame), which lie under the dialog's full-window
+# modal scrim when a dialog shows; and the disabled Medium size (model:L316-L322).
+[u3]
+events = [
+  # the adapter's own ambient point (model:L372-L384, "5, 795" on all 13 screens)
+  { id = "blank-bottom-left", x = 5, y = 795 },
+  { id = "blank-top-right", x = 1270, y = 10 },
+  { id = "blank-bottom", x = 640, y = 790 },
+  { id = "disabled-medium", x = 484, y = 488 },
+]
+
+# ---- U4: code macros by boundary class, through the wedge and the pad -------------------------------------------
+# rules:L52 "not valid: empty, not all digits, longer than 64, or 1 to 5 digits"; "not recognised"; fixtures model:L55.
+# The pad (U05e): this adapter takes an intent as the scene node key with arg 0 (model:L76), one key per digit, so every
+# pad macro carries a `digit_map`: "0" is key 42, "1".."9" are keys 32..40 (screens:L147-L158), enter is 43 ("OK"). U23
+# could only type zeros (digit_intent = 42 with the digit as arg); the map types the valid codes too.
+[u4]
+events = [
+  { id = "wedge-empty", boundary = "empty", via = "wedge", hex = "", expect = "accept" },
+  { id = "wedge-one-digit", boundary = "one-digit", via = "wedge", hex = "31", expect = "accept" },
+  { id = "wedge-max-minus-1", boundary = "max-minus-1", via = "wedge", hex = "313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131", expect = "accept" },
+  { id = "wedge-max", boundary = "max", via = "wedge", hex = "31313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131", expect = "accept" },
+  { id = "wedge-max-plus-1", boundary = "max-plus-1", via = "wedge", hex = "3131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131", expect = "accept" },
+  # 121212 the fixture visitor (model:L55)
+  { id = "wedge-visitor", boundary = "valid-visitor", via = "wedge", hex = "313231323132", expect = "accept" },
+  # 666662 the fixture staff code (model:L55)
+  { id = "wedge-staff", boundary = "valid-staff", via = "wedge", hex = "363636363632", expect = "accept" },
+  # 999999 in no list (the adapter's rejection sessions, screens.in)
+  { id = "wedge-unknown", boundary = "unknown", via = "wedge", hex = "393939393939", expect = "accept" },
+  # 666661 the fixture's INACTIVE staff code (model:L55): the nearest fixture to "expired"
+  { id = "wedge-expired", boundary = "expired", via = "wedge", hex = "363636363631", expect = "accept" },
+  # "12a456": not all digits
+  { id = "wedge-non-digit", boundary = "non-digit", via = "wedge", hex = "313261343536", expect = "accept" },
+  # 343434: unknown until row 24 publishes the revision-4 list (model:L138)
+  { id = "wedge-rev4-visitor", boundary = "valid-visitor", via = "wedge", hex = "333433343334", expect = "accept" },
+  { id = "pad-empty", boundary = "empty", via = "pad", digits = "", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-one-digit", boundary = "one-digit", via = "pad", digits = "0", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-max-minus-1", boundary = "max-minus-1", via = "pad", digits = "000000000000000000000000000000000000000000000000000000000000000", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-max", boundary = "max", via = "pad", digits = "0000000000000000000000000000000000000000000000000000000000000000", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-max-plus-1", boundary = "max-plus-1", via = "pad", digits = "00000000000000000000000000000000000000000000000000000000000000000", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  # U05e: the fixture codes through the pad (model:L55): 121212 visitor, 666662 staff, 666661 inactive staff
+  { id = "pad-visitor", boundary = "valid-visitor", via = "pad", digits = "121212", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-staff", boundary = "valid-staff", via = "pad", digits = "666662", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-expired", boundary = "expired", via = "pad", digits = "666661", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+  { id = "pad-unknown", boundary = "unknown", via = "pad", digits = "000000", digit_map = { "0" = { intent = 42, arg = 0 }, "1" = { intent = 32, arg = 0 }, "2" = { intent = 33, arg = 0 }, "3" = { intent = 34, arg = 0 }, "4" = { intent = 35, arg = 0 }, "5" = { intent = 36, arg = 0 }, "6" = { intent = 37, arg = 0 }, "7" = { intent = 38, arg = 0 }, "8" = { intent = 39, arg = 0 }, "9" = { intent = 40, arg = 0 } }, enter_intent = 43, expect = "accept" },
+]
+
+# ---- U5: language (the visitor's BG | EN switch, model:L57; BG 8:0 key 11, EN 8:1 key 12, screens:L143-L144) ----
+[u5]
+events = [
+  { id = "lang-bg", intent = 11, arg = 0, expect = "accept" },
+  { id = "lang-en", intent = 12, arg = 0, expect = "accept" },
+]
+
+# ---- E1: every environment row of the adapter (model:L118-L148, `src/env.c`), `apply 1 <id> 0 -` -----------------
+# Each is enabled while its precondition holds (model:L85-L88); the undo rows 4, 15, 25, 34, 51 only while their row
+# is armed (model:L159), so every row is accepted in some reachable state.
+[e1]
+events = [
+  { id = "env-relay-hang", env = 2, arg = 0, hex = "", expect = "accept" },          # model:L120
+  { id = "env-relay-down", env = 3, arg = 0, hex = "", expect = "accept" },          # model:L121
+  { id = "env-relay-back", env = 4, arg = 0, hex = "", expect = "accept" },          # model:L122
+  { id = "env-relay-silent-reads", env = 5, arg = 0, hex = "", expect = "accept" },  # model:L123
+  { id = "env-relay-drop-flash", env = 6, arg = 0, hex = "", expect = "accept" },    # model:L124
+  { id = "env-relay-ignore-flash", env = 7, arg = 0, hex = "", expect = "accept" },  # model:L125
+  { id = "env-relay-reports-off", env = 8, arg = 0, hex = "", expect = "accept" },   # model:L126
+  { id = "env-relay-half-open", env = 9, arg = 0, hex = "", expect = "accept" },     # model:L127
+  { id = "env-book-save-fails", env = 10, arg = 0, hex = "", expect = "accept" },    # model:L128
+  { id = "env-book-second-save-fails", env = 11, arg = 0, hex = "", expect = "accept" },  # model:L129
+  { id = "env-audit-write-fails", env = 12, arg = 0, hex = "", expect = "accept" },  # model:L130
+  { id = "env-disk-almost-full", env = 13, arg = 0, hex = "", expect = "accept" },   # model:L131
+  { id = "env-disk-full", env = 14, arg = 0, hex = "", expect = "accept" },          # model:L132
+  { id = "env-disk-freed", env = 15, arg = 0, hex = "", expect = "accept" },         # model:L133
+  { id = "env-codes-unreachable", env = 20, arg = 0, hex = "", expect = "accept" },  # model:L134
+  { id = "env-codes-500", env = 21, arg = 0, hex = "", expect = "accept" },          # model:L135
+  { id = "env-codes-304", env = 22, arg = 0, hex = "", expect = "accept" },          # model:L136
+  { id = "env-codes-malformed", env = 23, arg = 0, hex = "", expect = "accept" },    # model:L137
+  { id = "env-codes-rev4", env = 24, arg = 0, hex = "", expect = "accept" },         # model:L138
+  { id = "env-codes-rev3", env = 25, arg = 0, hex = "", expect = "accept" },         # model:L139
+  { id = "env-sync-401", env = 30, arg = 0, hex = "", expect = "accept" },           # model:L140
+  { id = "env-sync-503", env = 31, arg = 0, hex = "", expect = "accept" },           # model:L141
+  { id = "env-sync-unreachable", env = 32, arg = 0, hex = "", expect = "accept" },   # model:L142
+  { id = "env-sync-down", env = 33, arg = 0, hex = "", expect = "accept" },          # model:L143
+  { id = "env-sync-up", env = 34, arg = 0, hex = "", expect = "accept" },            # model:L144
+  { id = "env-relay-late-replies", env = 40, arg = 0, hex = "", expect = "accept" }, # model:L145
+  { id = "env-relay-powered-off", env = 41, arg = 0, hex = "", expect = "accept" },  # model:L146
+  { id = "env-clock-lost", env = 50, arg = 0, hex = "", expect = "accept" },         # model:L147
+  { id = "env-clock-synced", env = 51, arg = 0, hex = "", expect = "accept" },       # model:L148
+]
+
+# ---- T1: virtual time (P004 4.3 item 2 T1; docs/ui-explore.md "Paths and time") ---------------------------------
+[t1]
+events = [
+  { id = "fire-due", kind = "fire-due" },
+  { id = "before-due", kind = "before-due" },
+  { id = "until-change", kind = "until-change" },
+  # one frame, and one kiosk tick (the core ticks every 250 ms, model:L352, L406)
+  { id = "one-frame", kind = "advance", ms = 16 },
+  { id = "one-tick", kind = "advance", ms = 250 },
+  # the product timers (rules:L37-L44): snackbar 4 s, dialog 8 s (and Opened 8 s), choose 30 s, lockout 60 s,
+  # report 5 min (+ one tick: the report restarts from the last tick, model:L358-L362)
+  { id = "timer-snackbar", kind = "advance", ms = 4000 },
+  { id = "timer-dialog", kind = "advance", ms = 8000 },
+  { id = "timer-choose", kind = "advance", ms = 30000 },
+  { id = "timer-lockout", kind = "advance", ms = 60000 },
+  { id = "timer-report", kind = "advance", ms = 300256 },
+]

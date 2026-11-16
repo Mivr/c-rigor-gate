@@ -6,3 +6,5 @@ buck-out/
 selftest/scratch/
 __pycache__/
 *.pyc
+/tools/buck2.local
+/.buckconfig.local

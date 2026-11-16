@@ -486,7 +486,7 @@ def judge(g, run, modules, built, approval_kind=approvals.KIND_EQUIVALENT_MUTANT
     perf_dir = os.path.join(os.path.dirname(run.mutants_reports), PERF_DIR)
     result = rigor_mutants.run(Namespace(
         results=run.mutants_reports, policy=policy, perf_results=perf_dir, approvals=g.args.approvals,
-        repo=g.src, head=g.head, allowed_signers=g.args.allowed_signers), approval_kind,
+        repo=g.src, head=g.head), approval_kind,
         {target_label(modules[i]): kinds for i in built for kinds in [(extra_kinds or {}).get(modules[i].label)] if kinds})
     if used_by_kind is not None:
         used_by_kind.update(result.metadata["approvals_used_by_kind"])

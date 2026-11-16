@@ -1,0 +1,104 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: xx\n"
+"X-Generator: rigor ui-pseudo\n"
+
+msgid "0"
+msgstr "[Йщр]"
+
+msgid "1"
+msgstr "[Йщр]"
+
+msgid "2"
+msgstr "[Йщр]"
+
+msgid "3"
+msgstr "[Йщр]"
+
+msgid "4"
+msgstr "[Йщр]"
+
+msgid "5"
+msgstr "[Йщр]"
+
+msgid "6"
+msgstr "[Йщр]"
+
+msgid "7"
+msgstr "[Йщр]"
+
+msgid "8"
+msgstr "[Йщр]"
+
+msgid "8 s"
+msgstr "[ЙщрЩ уцЩй]"
+
+msgid "9"
+msgstr "[Йщр]"
+
+msgid "Backspace"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "Club kit demo"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Code"
+msgstr "[ЙщрЩуцЩйрЙщр]"
+
+msgid "Code field"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Code not accepted"
+msgstr "[ЙщрЩуцЩйрЙщ рЩуцЩйрЙщрЩ уцЩйрЙщрЩу]"
+
+msgid "Del"
+msgstr "[ЙщрЩуцЩйр]"
+
+msgid "Dismiss"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщр]"
+
+msgid "Dismiss label"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйрЙщ]"
+
+msgid "Door 12 is open"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Info"
+msgstr "[ЙщрЩуцЩйрЙщр]"
+
+msgid "Locker"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "Notice"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "Numpad"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "OK"
+msgstr "[ЙщрЩуц]"
+
+msgid "Ready"
+msgstr "[ЙщрЩуцЩйрЙщрЩуц]"
+
+msgid "Scan or type a code"
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр]"
+
+msgid "Status"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйр]"
+
+msgid "Status panel"
+msgstr "[ЙщрЩуцЩйрЙ щрЩуцЩйрЙ щрЩуцЩйрЙ]"
+
+msgid "Submitted: {0}"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщрЩуц {0}Йщ]"
+
+msgid "That code is not recognised."
+msgstr "[ЙщрЩуцЩйрЙщр ЩуцЩйрЙщрЩуц ЩйрЙщрЩуцЩйр ЙщрЩуцЩйрЙщр]"
+
+msgid "Warning"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщр]"
+
+msgid "Welcome"
+msgstr "[ЙщрЩуцЩйрЙщрЩуцЩйрЙщр]"

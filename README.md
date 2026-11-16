@@ -21,7 +21,7 @@ Status: phase 1 under construction. See [plan/phase1.md](plan/phase1.md).
 | `toolchains/` | Hermetic LLVM + sysroot fetched by sha256; build modes `release`, `san` (ASan+UBSan+LSan), `cov` (MC/DC), `fuzz` (libFuzzer). Sealed flags applied last. |
 | `rules/` | `c_library` / `c_binary` / `c_test` / `c_fuzz` macros: the only rules a product may use. No raw compiler flags. |
 | `ctest/` | Tiny C test framework with fail-closed, machine-readable results. |
-| `gate/` | Python (stdlib-only) driver: task contracts, test-integrity ratchets, suppression scan, signed sign-offs, verdict. |
+| `gate/` | Python (stdlib-only) driver: task contracts, test-integrity ratchets, suppression scan, approvals (recorded loosenings, counted in the verdict; nothing is signed), verdict. |
 | `mutate/` | Source-level C mutation testing, one Buck2 action per mutant. |
 | `canaries/` | Known-bad patches; each must turn the gate red or the gate is reported compromised. |
 | `tripwires/` | Impossible obligations on honest code ([docs](docs/tripwires.md)); a green tripwire means a blind checker. |

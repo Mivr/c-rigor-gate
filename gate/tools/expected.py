@@ -4,8 +4,8 @@
     gate/tools/expected.py add --product P --results DIR [DIR...] [--products-dir products]
 
 Merges every test id found in the `*.jsonl` result files of the DIRs into the product's list
-(sorted, no duplicates). It never removes an id: dropping an expected test needs a signed
-`test-removal` approval and a manual edit. Malformed result files, an unreadable list, or a merge
+(sorted, no duplicates). It never removes an id: dropping an expected test needs a
+`test-removal` approval (counted in the verdict) and a manual edit. Malformed result files, an unreadable list, or a merge
 that would lose an id are errors (exit 2) and leave the list untouched.
 """
 

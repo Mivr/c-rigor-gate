@@ -1,0 +1,3117 @@
+ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop
+ok open
+ok advance 4200
+ok frame lines 132
+lvprobe	1	43
+frame	1280	800	e59ef33f
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	e59ef33f
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	e59ef33f
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	322	55	322	55	=\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	-
+fit	2	1	0	167,253,486,299	11,233,644,305	0	0
+region	2	2009736e
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	2	750	36	531	72	=\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	-
+fit	3	1	0	63,326,593,393	15,313,640,401	0	0
+region	3	3fa57d3b
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	d6a82084
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	5	22b4b5a4
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	d6d62320
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	7	34298815
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	85fa6394
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	438bbfc5
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	6a462529
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	633d20a5
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	1acb628b
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	a95fb2a9
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	be230b37
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	e96ae1b2
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	bd2a0fac
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	8537101c
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	43680f7e
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	30e7dbd3
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	d8039f25
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	784f6a0c
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	8631dca6
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	1dea2e65
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	c9f23657
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	96ab6611
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	ecfca68f
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	3fe41785
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	c05180bf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	7ea4ccf3
+node	30	29	3	lv_label	697	658	811	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	115	36	115	36	=\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	-
+fit	30	1	0	699,662,810,693	688,649,820,693	0	0
+region	30	ce18db73
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	a25d2aac
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	fb223382
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	1bfa80e5
+node	34	33	3	lv_label	1126	658	1170	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	45	36	45	36	=\xd0\x9e\xd0\x9a	-
+fit	34	1	0	1127,663,1171,687	1117,649,1179,693	0	0
+region	34	aab303b1
+node	35	1	1	lv_obj	24	24	631	131	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	edc0bfcf
+node	36	35	2	lv_obj	24	24	631	131	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	36	edc0bfcf
+node	37	36	3	lv_label	32	84	623	123	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	1	377	36	377	36	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	-
+fit	37	1	0	33,89,409,119	24,75,631,123	0	0
+region	37	ed17bb37
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	df279f0a
+node	39	38	4	lv_label	478	38	610	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	39	1	0	478,43,609,73	469,32,619,73	0	0
+region	39	ccc94bad
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	288	45	288	45	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	-
+fit	40	1	0	61,39,349,76	49,24,458,79	0	0
+region	40	808c21b3
+node	41	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	41	e59ef33f
+node	42	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	42	e59ef33f
+ok semantic lines 25
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	24	246	608	60	1	-	-	2	-	-	-
+4	text	\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	20	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	21	-	-	-
+13	panel	\xd0\x92\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd0\xbd\xd0\xb8 \xd1\x86\xd0\xb8\xd1\x84\xd1\x80\xd0\xb8: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	\xd0\x9e\xd0\x9a	1058	592	181	168	1	3:0	-	15	-	-	-
+296	scrim		24	24	608	108	1	262:0	N	2	-	-	-
+297	banner		24	24	608	108	1	-	N	2	-	-	-
+298	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	32	84	592	40	1	-	-	13	-	-	-
+299	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	32	160	48	1	262:0	-	15	-	-	-
+300	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	60	32	388	48	1	-	-	12	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok frame lines 132
+lvprobe	1	43
+frame	1280	800	706965dd
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	706965dd
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	706965dd
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	210	55	210	55	=Welcome	-
+fit	2	1	0	223,254,432,290	11,233,644,305	0	0
+region	2	96359b8d
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	1	505	36	505	36	=Scan a code, or enter it on the pad.	-
+fit	3	1	0	76,326,577,357	15,313,640,401	0	0
+region	3	f9f96f72
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	81c92a20
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	5	1b396fd5
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	49e7d195
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	7	255ec7fc
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	afd0b607
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	438bbfc5
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	203531f1
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	633d20a5
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	1acb628b
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	a95fb2a9
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	be230b37
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	e96ae1b2
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	bd2a0fac
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	8537101c
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	43680f7e
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	30e7dbd3
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	d8039f25
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	784f6a0c
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	8631dca6
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	1dea2e65
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	c9f23657
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	96ab6611
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	ecfca68f
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	3fe41785
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	c05180bf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	d9e9c3ef
+node	30	29	3	lv_label	729	658	778	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	50	36	50	36	=Del	-
+fit	30	1	0	731,662,777,687	720,649,787,693	0	0
+region	30	73f83e65
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	a25d2aac
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	fb223382
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	0a083f1f
+node	34	33	3	lv_label	1124	658	1171	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	48	36	48	36	=OK	-
+fit	34	1	0	1125,663,1172,687	1115,649,1180,693	0	0
+region	34	e4f0b8a7
+node	35	1	1	lv_obj	24	24	631	131	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	db610087
+node	36	35	2	lv_obj	24	24	631	131	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	36	db610087
+node	37	36	3	lv_label	32	84	623	123	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	1	173	36	173	36	=Self-test OK	-
+fit	37	1	0	33,88,205,113	24,75,631,123	0	0
+region	37	2970ffa4
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	9f508df5
+node	39	38	4	lv_label	483	38	605	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	39	1	0	485,42,605,67	474,32,614,73	0	0
+region	39	b2b4e75a
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	156	45	156	45	=Self-test	-
+fit	40	1	0	61,38,216,68	49,24,458,79	0	0
+region	40	514cb82b
+node	41	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	41	706965dd
+node	42	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	42	706965dd
+ok semantic lines 25
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	Welcome	24	246	608	60	1	-	-	2	-	-	-
+4	text	Scan a code, or enter it on the pad.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	21	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	20	-	-	-
+13	panel	Digits entered: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	Del	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	OK	1058	592	181	168	1	3:0	-	15	-	-	-
+296	scrim		24	24	608	108	1	262:0	N	2	-	-	-
+297	banner		24	24	608	108	1	-	N	2	-	-	-
+298	text	Self-test OK	32	84	592	40	1	-	-	13	-	-	-
+299	button	Dismiss	464	32	160	48	1	262:0	-	15	-	-	-
+300	text	Self-test	60	32	388	48	1	-	-	12	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok apply
+ok apply
+ok frame lines 148
+lvprobe	1	47
+frame	1280	800	b8412eff
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	b8412eff
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	b8412eff
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	322	55	322	55	=\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	-
+fit	2	1	0	167,253,486,299	11,233,644,305	0	0
+region	2	2009736e
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	2	750	36	531	72	=\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	-
+fit	3	1	0	63,326,593,393	15,313,640,401	0	0
+region	3	3fa57d3b
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	d6a82084
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	5	22b4b5a4
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	d6d62320
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	7	34298815
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	85fa6394
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	8e3761e5
+node	10	9	2	lv_label	284	482	299	497	0	0	-1	-1	0	0	e2e2e9	255	255	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	6ac5182d
+node	11	9	2	lv_label	308	482	323	497	0	0	-1	-1	0	0	e2e2e9	255	255	1	0	0
+label	11	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	11	0	0	-	-	0	0
+region	11	6ac5182d
+node	12	9	2	lv_label	332	482	347	497	0	0	-1	-1	0	0	e2e2e9	255	255	1	0	0
+label	12	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	12	0	0	-	-	0	0
+region	12	6ac5182d
+node	13	9	2	lv_label	356	482	371	497	0	0	-1	-1	0	0	e2e2e9	255	255	1	0	0
+label	13	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	13	0	0	-	-	0	0
+region	13	6ac5182d
+node	14	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	14	0	0	-	-	0	0
+region	14	6a462529
+node	15	14	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	633d20a5
+node	16	15	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	16	1	0	747,111,762,134	736,97,771,141	0	0
+region	16	1acb628b
+node	17	14	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	a95fb2a9
+node	18	17	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	18	1	0	943,111,959,134	933,97,968,141	0	0
+region	18	be230b37
+node	19	14	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	e96ae1b2
+node	20	19	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	20	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	20	bd2a0fac
+node	21	14	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	8537101c
+node	22	21	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	22	1	0	745,295,763,318	736,281,771,325	0	0
+region	22	43680f7e
+node	23	14	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	30e7dbd3
+node	24	23	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	24	1	0	942,295,959,319	933,281,968,325	0	0
+region	24	d8039f25
+node	25	14	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	784f6a0c
+node	26	25	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	26	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	26	8631dca6
+node	27	14	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	1dea2e65
+node	28	27	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	28	1	0	746,479,762,502	736,465,771,509	0	0
+region	28	c9f23657
+node	29	14	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	96ab6611
+node	30	29	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	30	1	0	943,479,959,503	933,465,968,509	0	0
+region	30	ecfca68f
+node	31	14	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	3fe41785
+node	32	31	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	32	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	32	c05180bf
+node	33	14	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	7ea4ccf3
+node	34	33	3	lv_label	697	658	811	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	115	36	115	36	=\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	-
+fit	34	1	0	699,662,810,693	688,649,820,693	0	0
+region	34	ce18db73
+node	35	14	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	35	a25d2aac
+node	36	35	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	36	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	36	1	0	943,663,959,687	933,649,968,693	0	0
+region	36	fb223382
+node	37	14	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	37	1bfa80e5
+node	38	37	3	lv_label	1126	658	1170	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	38	-	36	2	2	0	0	1	45	36	45	36	=\xd0\x9e\xd0\x9a	-
+fit	38	1	0	1127,663,1171,687	1117,649,1179,693	0	0
+region	38	aab303b1
+node	39	1	1	lv_obj	24	24	631	131	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	39	edc0bfcf
+node	40	39	2	lv_obj	24	24	631	131	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	40	edc0bfcf
+node	41	40	3	lv_label	32	84	623	123	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	41	-	36	1	1	0	0	1	377	36	377	36	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	-
+fit	41	1	0	33,89,409,119	24,75,631,123	0	0
+region	41	ed17bb37
+node	42	40	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	42	df279f0a
+node	43	42	4	lv_label	478	38	610	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	43	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	43	1	0	478,43,609,73	469,32,619,73	0	0
+region	43	ccc94bad
+node	44	40	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	44	-	45	1	1	0	0	1	288	45	288	45	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	-
+fit	44	1	0	61,39,349,76	49,24,458,79	0	0
+region	44	808c21b3
+node	45	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	45	b8412eff
+node	46	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	46	b8412eff
+ok semantic lines 29
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	24	246	608	60	1	-	-	2	-	-	-
+4	text	\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	20	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	21	-	-	-
+13	panel	\xd0\x92\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd0\xbd\xd0\xb8 \xd1\x86\xd0\xb8\xd1\x84\xd1\x80\xd0\xb8: 4	24	482	608	72	1	-	-	0	-	-	-
+128	panel		284	482	16	16	1	-	-	7	-	-	-
+129	panel		308	482	16	16	1	-	-	7	-	-	-
+130	panel		332	482	16	16	1	-	-	7	-	-	-
+131	panel		356	482	16	16	1	-	-	7	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	\xd0\x9e\xd0\x9a	1058	592	181	168	1	3:0	-	15	-	-	-
+296	scrim		24	24	608	108	1	262:0	N	2	-	-	-
+297	banner		24	24	608	108	1	-	N	2	-	-	-
+298	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	32	84	592	40	1	-	-	13	-	-	-
+299	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	32	160	48	1	262:0	-	15	-	-	-
+300	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	60	32	388	48	1	-	-	12	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok apply
+ok apply
+ok apply
+ok frame lines 148
+lvprobe	1	47
+frame	1280	800	9e468a1d
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	9e468a1d
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	9e468a1d
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	210	55	210	55	=Welcome	-
+fit	2	1	0	223,254,432,290	11,233,644,305	0	0
+region	2	96359b8d
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	1	505	36	505	36	=Scan a code, or enter it on the pad.	-
+fit	3	1	0	76,326,577,357	15,313,640,401	0	0
+region	3	f9f96f72
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	81c92a20
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	5	1b396fd5
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	49e7d195
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	7	255ec7fc
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	afd0b607
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	8e3761e5
+node	10	9	2	lv_label	284	482	299	497	0	0	-1	-1	0	0	e2e2e9	255	255	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	6ac5182d
+node	11	9	2	lv_label	308	482	323	497	0	0	-1	-1	0	0	e2e2e9	255	255	1	0	0
+label	11	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	11	0	0	-	-	0	0
+region	11	6ac5182d
+node	12	9	2	lv_label	332	482	347	497	0	0	-1	-1	0	0	e2e2e9	255	255	1	0	0
+label	12	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	12	0	0	-	-	0	0
+region	12	6ac5182d
+node	13	9	2	lv_label	356	482	371	497	0	0	-1	-1	0	0	e2e2e9	255	255	1	0	0
+label	13	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	13	0	0	-	-	0	0
+region	13	6ac5182d
+node	14	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	14	0	0	-	-	0	0
+region	14	203531f1
+node	15	14	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	633d20a5
+node	16	15	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	16	1	0	747,111,762,134	736,97,771,141	0	0
+region	16	1acb628b
+node	17	14	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	a95fb2a9
+node	18	17	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	18	1	0	943,111,959,134	933,97,968,141	0	0
+region	18	be230b37
+node	19	14	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	e96ae1b2
+node	20	19	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	20	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	20	bd2a0fac
+node	21	14	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	8537101c
+node	22	21	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	22	1	0	745,295,763,318	736,281,771,325	0	0
+region	22	43680f7e
+node	23	14	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	30e7dbd3
+node	24	23	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	24	1	0	942,295,959,319	933,281,968,325	0	0
+region	24	d8039f25
+node	25	14	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	784f6a0c
+node	26	25	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	26	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	26	8631dca6
+node	27	14	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	1dea2e65
+node	28	27	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	28	1	0	746,479,762,502	736,465,771,509	0	0
+region	28	c9f23657
+node	29	14	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	96ab6611
+node	30	29	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	30	1	0	943,479,959,503	933,465,968,509	0	0
+region	30	ecfca68f
+node	31	14	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	3fe41785
+node	32	31	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	32	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	32	c05180bf
+node	33	14	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	d9e9c3ef
+node	34	33	3	lv_label	729	658	778	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	50	36	50	36	=Del	-
+fit	34	1	0	731,662,777,687	720,649,787,693	0	0
+region	34	73f83e65
+node	35	14	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	35	a25d2aac
+node	36	35	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	36	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	36	1	0	943,663,959,687	933,649,968,693	0	0
+region	36	fb223382
+node	37	14	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	37	0a083f1f
+node	38	37	3	lv_label	1124	658	1171	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	38	-	36	2	2	0	0	1	48	36	48	36	=OK	-
+fit	38	1	0	1125,663,1172,687	1115,649,1180,693	0	0
+region	38	e4f0b8a7
+node	39	1	1	lv_obj	24	24	631	131	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	39	db610087
+node	40	39	2	lv_obj	24	24	631	131	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	40	db610087
+node	41	40	3	lv_label	32	84	623	123	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	41	-	36	1	1	0	0	1	173	36	173	36	=Self-test OK	-
+fit	41	1	0	33,88,205,113	24,75,631,123	0	0
+region	41	2970ffa4
+node	42	40	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	42	9f508df5
+node	43	42	4	lv_label	483	38	605	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	43	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	43	1	0	485,42,605,67	474,32,614,73	0	0
+region	43	b2b4e75a
+node	44	40	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	44	-	45	1	1	0	0	1	156	45	156	45	=Self-test	-
+fit	44	1	0	61,38,216,68	49,24,458,79	0	0
+region	44	514cb82b
+node	45	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	45	9e468a1d
+node	46	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	46	9e468a1d
+ok semantic lines 29
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	Welcome	24	246	608	60	1	-	-	2	-	-	-
+4	text	Scan a code, or enter it on the pad.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	21	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	20	-	-	-
+13	panel	Digits entered: 4	24	482	608	72	1	-	-	0	-	-	-
+128	panel		284	482	16	16	1	-	-	7	-	-	-
+129	panel		308	482	16	16	1	-	-	7	-	-	-
+130	panel		332	482	16	16	1	-	-	7	-	-	-
+131	panel		356	482	16	16	1	-	-	7	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	Del	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	OK	1058	592	181	168	1	3:0	-	15	-	-	-
+296	scrim		24	24	608	108	1	262:0	N	2	-	-	-
+297	banner		24	24	608	108	1	-	N	2	-	-	-
+298	text	Self-test OK	32	84	592	40	1	-	-	13	-	-	-
+299	button	Dismiss	464	32	160	48	1	262:0	-	15	-	-	-
+300	text	Self-test	60	32	388	48	1	-	-	12	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok frame lines 158
+lvprobe	1	51
+frame	1280	800	3c91fc88
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	3c91fc88
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	3c91fc88
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	322	55	322	55	=\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	-
+fit	2	1	0	167,253,486,299	11,233,644,305	0	0
+region	2	4cda255b
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	2	750	36	531	72	=\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	-
+fit	3	1	0	63,326,593,393	15,313,640,401	0	0
+region	3	ad135bae
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	8f6f8585
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	5	f08143e5
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	876f8c89
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	7	89940fc5
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	1fc705be
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	9097187c
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	4f17ee8b
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	49e89d04
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	82279460
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	55069956
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	8029d1ae
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	38311c41
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	b780f937
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	0317d0c1
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	2a6e7626
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	249ff023
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	4c7e144d
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	e5d26e01
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	9628ff41
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	400039b3
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	0c29e3cd
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	99b6facd
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	0c29e3cd
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	9b468f1d
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	51631edf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	a61cf756
+node	30	29	3	lv_label	697	658	811	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	115	36	115	36	=\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	-
+fit	30	1	0	699,662,810,693	688,649,820,693	0	0
+region	30	4fc3046c
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	3cac63d9
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	8a73c319
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	33a23a05
+node	34	33	3	lv_label	1126	658	1170	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	45	36	45	36	=\xd0\x9e\xd0\x9a	-
+fit	34	1	0	1127,663,1171,687	1117,649,1179,693	0	0
+region	34	e6259f45
+node	35	1	1	lv_obj	24	24	631	131	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	0eedff5b
+node	36	35	2	lv_obj	24	24	631	131	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	36	0eedff5b
+node	37	36	3	lv_label	32	84	623	123	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	1	377	36	377	36	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	-
+fit	37	1	0	33,89,409,119	24,75,631,123	0	0
+region	37	a0c6b8e9
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	37a62c84
+node	39	38	4	lv_label	478	38	610	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	39	1	0	478,43,609,73	469,32,619,73	0	0
+region	39	ffb42780
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	288	45	288	45	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	-
+fit	40	1	0	61,39,349,76	49,24,458,79	0	0
+region	40	f50d1c88
+node	41	1	1	lv_label	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	41	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	41	0	0	-	-	0	0
+region	41	3c91fc88
+node	42	1	1	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	000000	82	82	1	0	0
+region	42	3c91fc88
+node	43	42	2	lv_obj	280	238	999	561	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	43	0cbfe62d
+node	44	43	3	lv_label	304	354	975	433	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	44	-	36	2	2	0	0	1	361	36	361	36	=\xd0\xa2\xd0\xbe\xd0\xb7\xd0\xb8 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xbd\xd0\xb5 \xd0\xb5 \xd1\x80\xd0\xb0\xd0\xb7\xd0\xbf\xd0\xbe\xd0\xb7\xd0\xbd\xd0\xb0\xd1\x82.	-
+fit	44	1	0	459,359,817,389	295,345,984,433	0	0
+region	44	f60cf2b4
+node	45	43	3	lv_button	304	490	975	537	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	45	511d2559
+node	46	45	4	lv_label	573	496	705	531	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	46	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	46	1	0	573,501,704,531	564,490,714,531	0	0
+region	46	ccc94bad
+node	47	43	3	lv_label	304	450	975	473	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	47	-	18	2	2	0	0	1	37	18	37	18	=8 \xd1\x81\xd0\xb5\xd0\xba	-
+fit	47	1	0	621,452,659,465	300,446,979,473	0	0
+region	47	62e54f3e
+node	48	43	3	lv_label	304	290	975	337	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	48	-	45	2	2	0	0	1	338	45	338	45	=\xd0\x9a\xd0\xbe\xd0\xb4\xd1\x8a\xd1\x82 \xd0\xbd\xd0\xb5 \xd0\xb5 \xd0\xbf\xd1\x80\xd0\xb8\xd0\xb5\xd1\x82	-
+fit	48	1	0	473,297,808,334	293,279,986,337	0	0
+region	48	643cf38c
+node	49	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	49	3c91fc88
+node	50	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	50	3c91fc88
+ok semantic lines 32
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	24	246	608	60	1	-	-	2	-	-	-
+4	text	\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	20	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	21	-	-	-
+13	panel	\xd0\x92\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd0\xbd\xd0\xb8 \xd1\x86\xd0\xb8\xd1\x84\xd1\x80\xd0\xb8: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	\xd0\x9e\xd0\x9a	1058	592	181	168	1	3:0	-	15	-	-	-
+296	scrim		24	24	608	108	1	262:0	N	2	-	-	-
+297	banner		24	24	608	108	1	-	N	2	-	-	-
+298	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	32	84	592	40	1	-	-	13	-	-	-
+299	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	32	160	48	1	262:0	-	15	-	-	-
+300	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	60	32	388	48	1	-	-	12	-	-	-
+327	panel		0	0	1280	800	0	-	I	0	-	-	-
+320	scrim		0	0	1280	800	1	-	N	1	-	-	-
+321	dialog		280	238	720	324	1	-	N	1	-	-	-
+322	text	\xd0\xa2\xd0\xbe\xd0\xb7\xd0\xb8 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xbd\xd0\xb5 \xd0\xb5 \xd1\x80\xd0\xb0\xd0\xb7\xd0\xbf\xd0\xbe\xd0\xb7\xd0\xbd\xd0\xb0\xd1\x82.	304	354	672	80	1	-	-	13	-	-	-
+323	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	304	490	672	48	1	256:0	-	15	-	-	-
+324	text	\xd0\x9a\xd0\xbe\xd0\xb4\xd1\x8a\xd1\x82 \xd0\xbd\xd0\xb5 \xd0\xb5 \xd0\xbf\xd1\x80\xd0\xb8\xd0\xb5\xd1\x82	304	290	672	48	1	-	-	12	-	-	-
+326	countdown	8 \xd1\x81\xd0\xb5\xd0\xba	304	450	672	24	1	-	-	14	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok frame lines 158
+lvprobe	1	51
+frame	1280	800	e276a10c
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	e276a10c
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	e276a10c
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	210	55	210	55	=Welcome	-
+fit	2	1	0	223,254,432,290	11,233,644,305	0	0
+region	2	cabd1dd6
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	1	505	36	505	36	=Scan a code, or enter it on the pad.	-
+fit	3	1	0	76,326,577,357	15,313,640,401	0	0
+region	3	d250665b
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	89530b47
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	5	3c415467
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	a6f5c265
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	7	89940fc5
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	1fc705be
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	d5d42d04
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	8f7dfb56
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	49e89d04
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	82279460
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	55069956
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	8029d1ae
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	38311c41
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	b780f937
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	bf9ca4fe
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	1e90acbb
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	249ff023
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	4c7e144d
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	e5d26e01
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	9628ff41
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	d678e69d
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	0c29e3cd
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	99b6facd
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	0c29e3cd
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	9b468f1d
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	51631edf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	cc18495a
+node	30	29	3	lv_label	729	658	778	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	50	36	50	36	=Del	-
+fit	30	1	0	731,662,777,687	720,649,787,693	0	0
+region	30	b387dbae
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	3cac63d9
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	8a73c319
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	59512537
+node	34	33	3	lv_label	1124	658	1171	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	48	36	48	36	=OK	-
+fit	34	1	0	1125,663,1172,687	1115,649,1180,693	0	0
+region	34	f600e5f7
+node	35	1	1	lv_obj	24	24	631	131	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	8cd01933
+node	36	35	2	lv_obj	24	24	631	131	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	36	8cd01933
+node	37	36	3	lv_label	32	84	623	123	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	1	173	36	173	36	=Self-test OK	-
+fit	37	1	0	33,88,205,113	24,75,631,123	0	0
+region	37	1ec1b3b9
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	66aebc38
+node	39	38	4	lv_label	483	38	605	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	39	1	0	485,42,605,67	474,32,614,73	0	0
+region	39	94ac1e24
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	156	45	156	45	=Self-test	-
+fit	40	1	0	61,38,216,68	49,24,458,79	0	0
+region	40	fa00db3c
+node	41	1	1	lv_label	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	41	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	41	0	0	-	-	0	0
+region	41	e276a10c
+node	42	1	1	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	000000	82	82	1	0	0
+region	42	e276a10c
+node	43	42	2	lv_obj	280	238	999	561	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	43	7c066985
+node	44	43	3	lv_label	304	354	975	433	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	44	-	36	2	2	0	0	1	406	36	406	36	=That code is not recognised.	-
+fit	44	1	0	437,358,840,389	295,345,984,433	0	0
+region	44	bf87bd1c
+node	45	43	3	lv_button	304	490	975	537	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	45	3d0c81f4
+node	46	45	4	lv_label	578	496	700	531	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	46	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	46	1	0	580,500,700,525	569,490,709,531	0	0
+region	46	b2b4e75a
+node	47	43	3	lv_label	304	450	975	473	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	47	-	18	2	2	0	0	1	21	18	21	18	=8 s	-
+fit	47	1	0	629,452,650,465	300,446,979,473	0	0
+region	47	5f753cb2
+node	48	43	3	lv_label	304	290	975	337	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	48	-	45	2	2	0	0	1	353	45	353	45	=Code not accepted	-
+fit	48	1	0	464,296,814,334	293,279,986,337	0	0
+region	48	c9b888fb
+node	49	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	49	e276a10c
+node	50	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	50	e276a10c
+ok semantic lines 32
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	Welcome	24	246	608	60	1	-	-	2	-	-	-
+4	text	Scan a code, or enter it on the pad.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	21	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	20	-	-	-
+13	panel	Digits entered: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	Del	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	OK	1058	592	181	168	1	3:0	-	15	-	-	-
+296	scrim		24	24	608	108	1	262:0	N	2	-	-	-
+297	banner		24	24	608	108	1	-	N	2	-	-	-
+298	text	Self-test OK	32	84	592	40	1	-	-	13	-	-	-
+299	button	Dismiss	464	32	160	48	1	262:0	-	15	-	-	-
+300	text	Self-test	60	32	388	48	1	-	-	12	-	-	-
+327	panel		0	0	1280	800	0	-	I	0	-	-	-
+320	scrim		0	0	1280	800	1	-	N	1	-	-	-
+321	dialog		280	238	720	324	1	-	N	1	-	-	-
+322	text	That code is not recognised.	304	354	672	80	1	-	-	13	-	-	-
+323	button	Dismiss	304	490	672	48	1	256:0	-	15	-	-	-
+324	text	Code not accepted	304	290	672	48	1	-	-	12	-	-	-
+326	countdown	8 s	304	450	672	24	1	-	-	14	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok frame lines 58
+lvprobe	1	19
+frame	1280	800	7397abb7
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	7397abb7
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	7397abb7
+node	2	1	1	lv_label	24	24	1255	83	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	405	55	405	55	=\xd0\x98\xd0\xb7\xd0\xb1\xd0\xb5\xd1\x80\xd0\xb5\xd1\x82\xd0\xb5 \xd1\x80\xd0\xb0\xd0\xb7\xd0\xbc\xd0\xb5\xd1\x80	-
+fit	2	1	0	440,31,841,77	11,11,1268,83	0	0
+region	2	a4867a86
+node	3	1	1	lv_label	540	100	739	147	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	3	0	0	-	-	0	0
+region	3	d6a82084
+node	4	3	2	lv_button	540	100	635	147	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	4	22b4b5a4
+node	5	4	3	lv_label	570	110	605	136	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	5	1	0	571,114,605,132	564,104,611,136	0	0
+region	5	d6d62320
+node	6	3	2	lv_button	644	100	739	147	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	6	34298815
+node	7	6	3	lv_label	675	110	707	136	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	7	1	0	676,114,707,131	669,104,713,136	0	0
+region	7	85fa6394
+node	8	1	1	lv_label	24	164	1255	183	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	18	2	2	0	0	1	46	18	46	18	=30 \xd1\x81\xd0\xb5\xd0\xba	-
+fit	8	1	0	617,166,664,179	20,160,1259,183	0	0
+region	8	4f7c553e
+node	9	1	1	lv_button	24	200	319	775	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	9	20c2e4b6
+node	10	9	2	lv_label	121	470	221	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	2	2	0	0	1	101	36	101	36	=\xd0\x9c\xd0\xb0\xd0\xbb\xd0\xba\xd0\xbe	-
+fit	10	1	0	123,475,221,499	112,461,230,505	0	0
+region	10	6a6f945c
+node	11	1	1	lv_button	336	200	631	775	0	0	-1	-1	0	0	282a2f	255	255	1	0	0
+region	11	8a3f0760
+node	12	11	2	lv_label	364	470	602	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	239	36	239	36	=\xd0\xa1\xd1\x80\xd0\xb5\xd0\xb4\xd0\xbd\xd0\xbe \xc2\xb7 \xd0\x97\xd0\xb0\xd0\xb5\xd1\x82\xd0\xbe	-
+fit	12	1	0	365,475,602,505	355,461,611,505	0	0
+region	12	d89330a0
+node	13	1	1	lv_button	648	200	943	775	0	0	-1	-1	0	0	282a2f	255	255	1	0	0
+region	13	c5a64dad
+node	14	13	2	lv_label	677	470	913	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	237	36	237	36	=\xd0\x93\xd0\xbe\xd0\xbb\xd1\x8f\xd0\xbc\xd0\xbe \xc2\xb7 \xd0\x97\xd0\xb0\xd0\xb5\xd1\x82\xd0\xbe	-
+fit	14	1	0	679,475,913,499	668,461,922,505	0	0
+region	14	a1051ad5
+node	15	1	1	lv_button	960	200	1255	775	0	1	-1	-1	0	0	3f4759	255	255	1	0	0
+region	15	6d67ef88
+node	16	15	2	lv_label	1062	470	1152	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	91	36	91	36	=\xd0\x9e\xd1\x82\xd0\xba\xd0\xb0\xd0\xb7	-
+fit	16	1	0	1063,475,1152,499	1053,461,1161,505	0	0
+region	16	0b192516
+node	17	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	17	7397abb7
+node	18	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	18	7397abb7
+ok semantic lines 10
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	\xd0\x98\xd0\xb7\xd0\xb1\xd0\xb5\xd1\x80\xd0\xb5\xd1\x82\xd0\xb5 \xd1\x80\xd0\xb0\xd0\xb7\xd0\xbc\xd0\xb5\xd1\x80	24	24	1232	60	1	-	-	2	-	-	-
+9	panel		540	100	200	48	1	-	-	0	-	-	-
+11	button	BG	540	100	96	48	1	8:0	-	20	-	-	-
+12	button	EN	644	100	96	48	1	8:1	-	21	-	-	-
+6	countdown	30 \xd1\x81\xd0\xb5\xd0\xba	24	164	1232	20	1	-	-	10	-	-	-
+48	button	\xd0\x9c\xd0\xb0\xd0\xbb\xd0\xba\xd0\xbe	24	200	296	576	1	4:0	-	16	-	-	-
+49	button	\xd0\xa1\xd1\x80\xd0\xb5\xd0\xb4\xd0\xbd\xd0\xbe \xc2\xb7 \xd0\x97\xd0\xb0\xd0\xb5\xd1\x82\xd0\xbe	336	200	296	576	0	-	D	16	-	-	-
+50	button	\xd0\x93\xd0\xbe\xd0\xbb\xd1\x8f\xd0\xbc\xd0\xbe \xc2\xb7 \xd0\x97\xd0\xb0\xd0\xb5\xd1\x82\xd0\xbe	648	200	296	576	0	-	D	16	-	-	-
+17	button	\xd0\x9e\xd1\x82\xd0\xba\xd0\xb0\xd0\xb7	960	200	296	576	1	5:0	-	18	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok frame lines 58
+lvprobe	1	19
+frame	1280	800	d5f5a94d
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	d5f5a94d
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	d5f5a94d
+node	2	1	1	lv_label	24	24	1255	83	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	320	55	320	55	=Choose a size	-
+fit	2	1	0	481,32,799,68	11,11,1268,83	0	0
+region	2	f4c0cc49
+node	3	1	1	lv_label	540	100	739	147	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	3	0	0	-	-	0	0
+region	3	81c92a20
+node	4	3	2	lv_button	540	100	635	147	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	4	1b396fd5
+node	5	4	3	lv_label	570	110	605	136	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	5	1	0	571,114,605,132	564,104,611,136	0	0
+region	5	49e7d195
+node	6	3	2	lv_button	644	100	739	147	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	6	255ec7fc
+node	7	6	3	lv_label	675	110	707	136	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	7	1	0	676,114,707,131	669,104,713,136	0	0
+region	7	afd0b607
+node	8	1	1	lv_label	24	164	1255	183	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	18	2	2	0	0	1	30	18	30	18	=30 s	-
+fit	8	1	0	625,166,655,179	20,160,1259,183	0	0
+region	8	5bc3c31a
+node	9	1	1	lv_button	24	200	319	775	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	9	b9bfefb1
+node	10	9	2	lv_label	129	470	213	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	2	2	0	0	1	85	36	85	36	=Small	-
+fit	10	1	0	129,474,212,499	120,461,222,505	0	0
+region	10	fdf75cd1
+node	11	1	1	lv_button	336	200	631	775	0	0	-1	-1	0	0	282a2f	255	255	1	0	0
+region	11	ec543efc
+node	12	11	2	lv_label	379	470	587	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	209	36	209	36	=Medium \xc2\xb7 Full	-
+fit	12	1	0	381,474,586,499	370,461,596,505	0	0
+region	12	9a384806
+node	13	1	1	lv_button	648	200	943	775	0	0	-1	-1	0	0	282a2f	255	255	1	0	0
+region	13	76744ad0
+node	14	13	2	lv_label	708	470	882	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	175	36	175	36	=Large \xc2\xb7 Full	-
+fit	14	1	0	710,474,881,505	699,461,891,505	0	0
+region	14	a6b0ca40
+node	15	1	1	lv_button	960	200	1255	775	0	1	-1	-1	0	0	3f4759	255	255	1	0	0
+region	15	432301ef
+node	16	15	2	lv_label	1055	470	1160	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	106	36	106	36	=Cancel	-
+fit	16	1	0	1056,474,1159,499	1046,461,1169,505	0	0
+region	16	5bdb1193
+node	17	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	17	d5f5a94d
+node	18	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	18	d5f5a94d
+ok semantic lines 10
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	Choose a size	24	24	1232	60	1	-	-	2	-	-	-
+9	panel		540	100	200	48	1	-	-	0	-	-	-
+11	button	BG	540	100	96	48	1	8:0	-	21	-	-	-
+12	button	EN	644	100	96	48	1	8:1	-	20	-	-	-
+6	countdown	30 s	24	164	1232	20	1	-	-	10	-	-	-
+48	button	Small	24	200	296	576	1	4:0	-	16	-	-	-
+49	button	Medium \xc2\xb7 Full	336	200	296	576	0	-	D	16	-	-	-
+50	button	Large \xc2\xb7 Full	648	200	296	576	0	-	D	16	-	-	-
+17	button	Cancel	960	200	296	576	1	5:0	-	18	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok advance 6200
+ok frame lines 52
+lvprobe	1	16
+frame	1280	800	5e8fbac9
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	5e8fbac9
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	5e8fbac9
+node	2	1	1	lv_label	24	177	1255	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	2	0	0	-	-	0	0
+region	2	bcdee4c9
+node	3	2	2	lv_label	520	177	639	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	229	2	2	0	0	1	111	229	111	229	=8	-
+fit	3	1	0	530,217,630,359	463,177,696,426	0	0
+region	3	c242d128
+node	4	2	2	lv_label	640	177	759	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	229	2	2	0	0	1	111	229	111	229	=2	-
+fit	4	1	0	650,217,748,357	583,177,816,426	0	0
+region	4	b506d290
+node	5	1	1	lv_label	24	435	1255	474	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	36	2	2	0	0	1	624	36	624	36	=\xd0\x92\xd0\xb0\xd1\x88\xd0\xb5\xd1\x82\xd0\xbe \xd1\x88\xd0\xba\xd0\xb0\xd1\x84\xd1\x87\xd0\xb5 \xd0\xb5 82. \xd0\x97\xd0\xb0\xd0\xbf\xd0\xbe\xd0\xbc\xd0\xbd\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xbe\xd0\xbc\xd0\xb5\xd1\x80\xd0\xb0.	-
+fit	5	1	0	330,439,949,470	15,426,1264,474	0	0
+region	5	0b139c44
+node	6	1	1	lv_label	24	483	1255	502	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	18	2	2	0	0	1	37	18	37	18	=7 \xd1\x81\xd0\xb5\xd0\xba	-
+fit	6	1	0	621,485,659,498	20,479,1259,502	0	0
+region	6	da22ece7
+node	7	1	1	lv_label	540	511	739	558	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	7	0	0	-	-	0	0
+region	7	d6a82084
+node	8	7	2	lv_button	540	511	635	558	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	8	22b4b5a4
+node	9	8	3	lv_label	570	521	605	547	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	9	1	0	571,525,605,543	564,515,611,547	0	0
+region	9	d6d62320
+node	10	7	2	lv_button	644	511	739	558	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	10	34298815
+node	11	10	3	lv_label	675	521	707	547	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	11	1	0	676,525,707,542	669,515,713,547	0	0
+region	11	85fa6394
+node	12	1	1	lv_button	24	567	1255	622	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	12	8be49927
+node	13	12	2	lv_label	585	577	694	612	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	13	-	36	2	2	0	0	1	110	36	110	36	=\xd0\x93\xd0\xbe\xd1\x82\xd0\xbe\xd0\xb2\xd0\xbe	-
+fit	13	1	0	587,582,694,606	576,568,703,612	0	0
+region	13	27dabbf7
+node	14	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	14	5e8fbac9
+node	15	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	15	5e8fbac9
+ok semantic lines 10
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+15	panel		24	177	1232	250	1	-	-	0	-	-	-
+64	text	8	520	177	120	250	1	-	-	1	-	-	-
+65	text	2	640	177	120	250	1	-	-	1	-	-	-
+4	text	\xd0\x92\xd0\xb0\xd1\x88\xd0\xb5\xd1\x82\xd0\xbe \xd1\x88\xd0\xba\xd0\xb0\xd1\x84\xd1\x87\xd0\xb5 \xd0\xb5 82. \xd0\x97\xd0\xb0\xd0\xbf\xd0\xbe\xd0\xbc\xd0\xbd\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xbe\xd0\xbc\xd0\xb5\xd1\x80\xd0\xb0.	24	435	1232	40	1	-	-	4	-	-	-
+6	countdown	7 \xd1\x81\xd0\xb5\xd0\xba	24	483	1232	20	1	-	-	10	-	-	-
+9	panel		540	511	200	48	1	-	-	0	-	-	-
+11	button	BG	540	511	96	48	1	8:0	-	20	-	-	-
+12	button	EN	644	511	96	48	1	8:1	-	21	-	-	-
+16	button	\xd0\x93\xd0\xbe\xd1\x82\xd0\xbe\xd0\xb2\xd0\xbe	24	567	1232	56	1	6:0	-	16	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok apply
+ok advance 6200
+ok frame lines 52
+lvprobe	1	16
+frame	1280	800	7bcbf5db
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	7bcbf5db
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	7bcbf5db
+node	2	1	1	lv_label	24	177	1255	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	2	0	0	-	-	0	0
+region	2	bcdee4c9
+node	3	2	2	lv_label	520	177	639	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	229	2	2	0	0	1	111	229	111	229	=8	-
+fit	3	1	0	530,217,630,359	463,177,696,426	0	0
+region	3	c242d128
+node	4	2	2	lv_label	640	177	759	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	229	2	2	0	0	1	111	229	111	229	=2	-
+fit	4	1	0	650,217,748,357	583,177,816,426	0	0
+region	4	b506d290
+node	5	1	1	lv_label	24	435	1255	474	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	36	2	2	0	0	1	595	36	595	36	=Your locker is 82. Remember the number.	-
+fit	5	1	0	342,439,934,464	15,426,1264,474	0	0
+region	5	edb49b59
+node	6	1	1	lv_label	24	483	1255	502	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	18	2	2	0	0	1	21	18	21	18	=7 s	-
+fit	6	1	0	629,485,650,498	20,479,1259,502	0	0
+region	6	a825d82b
+node	7	1	1	lv_label	540	511	739	558	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	7	0	0	-	-	0	0
+region	7	81c92a20
+node	8	7	2	lv_button	540	511	635	558	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	8	1b396fd5
+node	9	8	3	lv_label	570	521	605	547	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	9	1	0	571,525,605,543	564,515,611,547	0	0
+region	9	49e7d195
+node	10	7	2	lv_button	644	511	739	558	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	10	255ec7fc
+node	11	10	3	lv_label	675	521	707	547	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	11	1	0	676,525,707,542	669,515,713,547	0	0
+region	11	afd0b607
+node	12	1	1	lv_button	24	567	1255	622	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	12	9e1ad1b0
+node	13	12	2	lv_label	599	577	679	612	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	13	-	36	2	2	0	0	1	81	36	81	36	=Done	-
+fit	13	1	0	601,582,679,606	590,568,688,612	0	0
+region	13	ae9edd22
+node	14	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	14	7bcbf5db
+node	15	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	15	7bcbf5db
+ok semantic lines 10
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+15	panel		24	177	1232	250	1	-	-	0	-	-	-
+64	text	8	520	177	120	250	1	-	-	1	-	-	-
+65	text	2	640	177	120	250	1	-	-	1	-	-	-
+4	text	Your locker is 82. Remember the number.	24	435	1232	40	1	-	-	4	-	-	-
+6	countdown	7 s	24	483	1232	20	1	-	-	10	-	-	-
+9	panel		540	511	200	48	1	-	-	0	-	-	-
+11	button	BG	540	511	96	48	1	8:0	-	21	-	-	-
+12	button	EN	644	511	96	48	1	8:1	-	20	-	-	-
+16	button	Done	24	567	1232	56	1	6:0	-	16	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok apply
+ok advance 6200
+ok frame lines 162
+lvprobe	1	52
+frame	1280	800	3f5ccb19
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	3f5ccb19
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	3f5ccb19
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	322	55	322	55	=\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	-
+fit	2	1	0	167,253,486,299	11,233,644,305	0	0
+region	2	3ca12481
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	2	750	36	531	72	=\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	-
+fit	3	1	0	63,326,593,393	15,313,640,401	0	0
+region	3	f61f2812
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	8f6f8585
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	5	f08143e5
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	876f8c89
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	7	89940fc5
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	1fc705be
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	31ed8cdc
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	7df43d91
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	a8db8cdc
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	82279460
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	04313cf2
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	8029d1ae
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	38311c41
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	b780f937
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	ac5ad973
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	4df085db
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	0e84288d
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	4c7e144d
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	e5d26e01
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	9628ff41
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	d53dae49
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	4c7e144d
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	ebbfeca9
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	4c7e144d
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	9b468f1d
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	51631edf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	9ffdb6c2
+node	30	29	3	lv_label	697	658	811	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	115	36	115	36	=\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	-
+fit	30	1	0	699,662,810,693	688,649,820,693	0	0
+region	30	4fc3046c
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	97f89289
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	8a73c319
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	33a23a05
+node	34	33	3	lv_label	1126	658	1170	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	45	36	45	36	=\xd0\x9e\xd0\x9a	-
+fit	34	1	0	1127,663,1171,687	1117,649,1179,693	0	0
+region	34	e6259f45
+node	35	1	1	lv_obj	24	24	631	131	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	0eedff5b
+node	36	35	2	lv_obj	24	24	631	131	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	36	0eedff5b
+node	37	36	3	lv_label	32	84	623	123	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	1	377	36	377	36	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	-
+fit	37	1	0	33,89,409,119	24,75,631,123	0	0
+region	37	a0c6b8e9
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	37a62c84
+node	39	38	4	lv_label	478	38	610	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	39	1	0	478,43,609,73	469,32,619,73	0	0
+region	39	ffb42780
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	288	45	288	45	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	-
+fit	40	1	0	61,39,349,76	49,24,458,79	0	0
+region	40	f50d1c88
+node	41	1	1	lv_label	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	41	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	41	0	0	-	-	0	0
+region	41	3f5ccb19
+node	42	1	1	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	000000	82	82	1	0	0
+region	42	3f5ccb19
+node	43	42	2	lv_obj	280	206	999	593	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	43	7f5973bc
+node	44	43	3	lv_label	304	322	975	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	44	-	36	2	2	0	0	2	785	36	534	72	=\xd0\x9f\xd0\xbe\xd0\xbc\xd0\xbe\xd0\xbb\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbf\xd0\xb5\xd1\x80\xd1\x81\xd0\xbe\xd0\xbd\xd0\xb0\xd0\xbb\xd0\xb0. \xd0\x9c\xd0\xbe\xd0\xb6\xd0\xb5 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8\xd0\xbb\xd0\xb0 \xd0\xb2\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	-
+fit	44	1	0	375,327,907,393	295,313,984,401	0	0
+region	44	673db095
+node	45	43	3	lv_button	304	522	975	569	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	45	511d2559
+node	46	45	4	lv_label	573	528	705	563	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	46	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	46	1	0	573,533,704,563	564,522,714,563	0	0
+region	46	ccc94bad
+node	47	43	3	lv_label	304	482	975	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	47	-	18	2	2	0	0	1	37	18	37	18	=6 \xd1\x81\xd0\xb5\xd0\xba	-
+fit	47	1	0	621,484,659,497	300,478,979,505	0	0
+region	47	71cecda5
+node	48	43	3	lv_label	304	258	975	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	48	-	45	2	2	0	0	1	317	45	317	45	=\xd0\x9d\xd0\xb5\xd1\x89\xd0\xbe \xd1\x81\xd0\xb5 \xd0\xbe\xd0\xb1\xd1\x8a\xd1\x80\xd0\xba\xd0\xb0	-
+fit	48	1	0	483,263,799,302	293,247,986,305	0	0
+region	48	31c3c555
+node	49	43	3	lv_label	304	418	975	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	49	-	18	2	2	0	0	1	379	18	379	18	=\xd0\xa8\xd0\xba\xd0\xb0\xd1\x84\xd1\x87\xd0\xb5 82. \xd0\xa0\xd0\xb5\xd0\xbb\xd0\xb5\xd1\x82\xd0\xbe \xd0\xb5 \xd0\xbe\xd1\x84\xd0\xbb\xd0\xb0\xd0\xb9\xd0\xbd: \xd1\x82\xd0\xb0\xd0\xb1\xd0\xbb\xd0\xbe\xd1\x82\xd0\xbe \xd0\xbd\xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb3\xd0\xbe\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8.	-
+fit	49	1	0	451,420,828,436	300,414,979,465	0	0
+region	49	dec44b20
+node	50	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	50	3f5ccb19
+node	51	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	51	3f5ccb19
+ok semantic lines 33
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	24	246	608	60	1	-	-	2	-	-	-
+4	text	\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	20	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	21	-	-	-
+13	panel	\xd0\x92\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd0\xbd\xd0\xb8 \xd1\x86\xd0\xb8\xd1\x84\xd1\x80\xd0\xb8: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	\xd0\x9e\xd0\x9a	1058	592	181	168	1	3:0	-	15	-	-	-
+296	scrim		24	24	608	108	1	262:0	N	2	-	-	-
+297	banner		24	24	608	108	1	-	N	2	-	-	-
+298	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	32	84	592	40	1	-	-	13	-	-	-
+299	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	32	160	48	1	262:0	-	15	-	-	-
+300	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	60	32	388	48	1	-	-	12	-	-	-
+327	panel		0	0	1280	800	0	-	I	0	-	-	-
+320	scrim		0	0	1280	800	1	-	N	1	-	-	-
+321	dialog		280	206	720	388	1	-	N	1	-	-	-
+322	text	\xd0\x9f\xd0\xbe\xd0\xbc\xd0\xbe\xd0\xbb\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbf\xd0\xb5\xd1\x80\xd1\x81\xd0\xbe\xd0\xbd\xd0\xb0\xd0\xbb\xd0\xb0. \xd0\x9c\xd0\xbe\xd0\xb6\xd0\xb5 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8\xd0\xbb\xd0\xb0 \xd0\xb2\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	304	322	672	80	1	-	-	13	-	-	-
+323	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	304	522	672	48	1	256:0	-	15	-	-	-
+324	text	\xd0\x9d\xd0\xb5\xd1\x89\xd0\xbe \xd1\x81\xd0\xb5 \xd0\xbe\xd0\xb1\xd1\x8a\xd1\x80\xd0\xba\xd0\xb0	304	258	672	48	1	-	-	12	-	-	-
+325	text	\xd0\xa8\xd0\xba\xd0\xb0\xd1\x84\xd1\x87\xd0\xb5 82. \xd0\xa0\xd0\xb5\xd0\xbb\xd0\xb5\xd1\x82\xd0\xbe \xd0\xb5 \xd0\xbe\xd1\x84\xd0\xbb\xd0\xb0\xd0\xb9\xd0\xbd: \xd1\x82\xd0\xb0\xd0\xb1\xd0\xbb\xd0\xbe\xd1\x82\xd0\xbe \xd0\xbd\xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb3\xd0\xbe\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8.	304	418	672	48	1	-	-	14	-	-	-
+326	countdown	6 \xd1\x81\xd0\xb5\xd0\xba	304	482	672	24	1	-	-	14	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok apply
+ok apply
+ok advance 6200
+ok frame lines 162
+lvprobe	1	52
+frame	1280	800	4eb699c0
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	4eb699c0
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	4eb699c0
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	210	55	210	55	=Welcome	-
+fit	2	1	0	223,254,432,290	11,233,644,305	0	0
+region	2	d43c3996
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	1	505	36	505	36	=Scan a code, or enter it on the pad.	-
+fit	3	1	0	76,326,577,357	15,313,640,401	0	0
+region	3	6198105d
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	89530b47
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	5	3c415467
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	a6f5c265
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	7	89940fc5
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	1fc705be
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	bde5d101
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	3d0d5d47
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	a8db8cdc
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	82279460
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	04313cf2
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	8029d1ae
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	38311c41
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	b780f937
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	0af192be
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	dc5694f0
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	a6948f54
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	4c7e144d
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	e5d26e01
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	9628ff41
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	566b81fd
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	4c7e144d
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	ebbfeca9
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	4c7e144d
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	9b468f1d
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	51631edf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	1fb89ab6
+node	30	29	3	lv_label	729	658	778	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	50	36	50	36	=Del	-
+fit	30	1	0	731,662,777,687	720,649,787,693	0	0
+region	30	b387dbae
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	97f89289
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	8a73c319
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	59512537
+node	34	33	3	lv_label	1124	658	1171	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	48	36	48	36	=OK	-
+fit	34	1	0	1125,663,1172,687	1115,649,1180,693	0	0
+region	34	f600e5f7
+node	35	1	1	lv_obj	24	24	631	131	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	8cd01933
+node	36	35	2	lv_obj	24	24	631	131	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	36	8cd01933
+node	37	36	3	lv_label	32	84	623	123	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	1	173	36	173	36	=Self-test OK	-
+fit	37	1	0	33,88,205,113	24,75,631,123	0	0
+region	37	1ec1b3b9
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	66aebc38
+node	39	38	4	lv_label	483	38	605	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	39	1	0	485,42,605,67	474,32,614,73	0	0
+region	39	94ac1e24
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	156	45	156	45	=Self-test	-
+fit	40	1	0	61,38,216,68	49,24,458,79	0	0
+region	40	fa00db3c
+node	41	1	1	lv_label	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	41	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	41	0	0	-	-	0	0
+region	41	4eb699c0
+node	42	1	1	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	000000	82	82	1	0	0
+region	42	4eb699c0
+node	43	42	2	lv_obj	280	206	999	593	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	43	65b74fed
+node	44	43	3	lv_label	304	322	975	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	44	-	36	2	2	0	0	2	728	36	602	72	=Please ask staff for help. A door may have opened.	-
+fit	44	1	0	341,326,941,393	295,313,984,401	0	0
+region	44	db8cd36e
+node	45	43	3	lv_button	304	522	975	569	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	45	3d0c81f4
+node	46	45	4	lv_label	578	528	700	563	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	46	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	46	1	0	580,532,700,557	569,522,709,563	0	0
+region	46	b2b4e75a
+node	47	43	3	lv_label	304	482	975	505	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	47	-	18	2	2	0	0	1	21	18	21	18	=6 s	-
+fit	47	1	0	629,484,650,497	300,478,979,505	0	0
+region	47	e6d7f919
+node	48	43	3	lv_label	304	258	975	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	48	-	45	2	2	0	0	1	436	45	436	45	=Something went wrong	-
+fit	48	1	0	423,264,856,302	293,247,986,305	0	0
+region	48	4d7831a1
+node	49	43	3	lv_label	304	418	975	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	49	-	18	2	2	0	0	1	392	18	392	18	=Locker 82. Relay offline: the relay board did not answer.	-
+fit	49	1	0	445,420,835,436	300,414,979,465	0	0
+region	49	067a3b1b
+node	50	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	50	4eb699c0
+node	51	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	51	4eb699c0
+ok semantic lines 33
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	Welcome	24	246	608	60	1	-	-	2	-	-	-
+4	text	Scan a code, or enter it on the pad.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	21	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	20	-	-	-
+13	panel	Digits entered: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	Del	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	OK	1058	592	181	168	1	3:0	-	15	-	-	-
+296	scrim		24	24	608	108	1	262:0	N	2	-	-	-
+297	banner		24	24	608	108	1	-	N	2	-	-	-
+298	text	Self-test OK	32	84	592	40	1	-	-	13	-	-	-
+299	button	Dismiss	464	32	160	48	1	262:0	-	15	-	-	-
+300	text	Self-test	60	32	388	48	1	-	-	12	-	-	-
+327	panel		0	0	1280	800	0	-	I	0	-	-	-
+320	scrim		0	0	1280	800	1	-	N	1	-	-	-
+321	dialog		280	206	720	388	1	-	N	1	-	-	-
+322	text	Please ask staff for help. A door may have opened.	304	322	672	80	1	-	-	13	-	-	-
+323	button	Dismiss	304	522	672	48	1	256:0	-	15	-	-	-
+324	text	Something went wrong	304	258	672	48	1	-	-	12	-	-	-
+325	text	Locker 82. Relay offline: the relay board did not answer.	304	418	672	48	1	-	-	14	-	-	-
+326	countdown	6 s	304	482	672	24	1	-	-	14	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok apply
+ok advance 5300
+ok frame lines 70
+lvprobe	1	22
+frame	1280	800	dda7e144
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	dda7e144
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	dda7e144
+node	2	1	1	lv_label	24	177	1255	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	2	0	0	-	-	0	0
+region	2	bcdee4c9
+node	3	2	2	lv_label	520	177	639	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	229	2	2	0	0	1	111	229	111	229	=8	-
+fit	3	1	0	530,217,630,359	463,177,696,426	0	0
+region	3	c242d128
+node	4	2	2	lv_label	640	177	759	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	229	2	2	0	0	1	111	229	111	229	=2	-
+fit	4	1	0	650,217,748,357	583,177,816,426	0	0
+region	4	b506d290
+node	5	1	1	lv_label	24	435	1255	474	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	36	2	2	0	0	1	624	36	624	36	=\xd0\x92\xd0\xb0\xd1\x88\xd0\xb5\xd1\x82\xd0\xbe \xd1\x88\xd0\xba\xd0\xb0\xd1\x84\xd1\x87\xd0\xb5 \xd0\xb5 82. \xd0\x97\xd0\xb0\xd0\xbf\xd0\xbe\xd0\xbc\xd0\xbd\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xbe\xd0\xbc\xd0\xb5\xd1\x80\xd0\xb0.	-
+fit	5	1	0	330,439,949,470	15,426,1264,474	0	0
+region	5	0b139c44
+node	6	1	1	lv_label	24	483	1255	502	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	18	2	2	0	0	1	37	18	37	18	=7 \xd1\x81\xd0\xb5\xd0\xba	-
+fit	6	1	0	621,485,659,498	20,479,1259,502	0	0
+region	6	da22ece7
+node	7	1	1	lv_label	540	511	739	558	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	7	0	0	-	-	0	0
+region	7	d6a82084
+node	8	7	2	lv_button	540	511	635	558	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	8	22b4b5a4
+node	9	8	3	lv_label	570	521	605	547	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	9	1	0	571,525,605,543	564,515,611,547	0	0
+region	9	d6d62320
+node	10	7	2	lv_button	644	511	739	558	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	10	34298815
+node	11	10	3	lv_label	675	521	707	547	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	11	1	0	676,525,707,542	669,515,713,547	0	0
+region	11	85fa6394
+node	12	1	1	lv_button	24	567	1255	622	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	12	8be49927
+node	13	12	2	lv_label	585	577	694	612	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	13	-	36	2	2	0	0	1	110	36	110	36	=\xd0\x93\xd0\xbe\xd1\x82\xd0\xbe\xd0\xb2\xd0\xbe	-
+fit	13	1	0	587,582,694,606	576,568,703,612	0	0
+region	13	27dabbf7
+node	14	1	1	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	14	dda7e144
+node	15	14	2	lv_obj	128	626	1151	791	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	15	839e9638
+node	16	15	3	lv_label	152	650	1127	685	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	1	0	1	390	36	390	36	=\xd0\xa0\xd0\xb5\xd0\xb7\xd0\xb5\xd1\x80\xd0\xb2\xd0\xb0\xd1\x86\xd0\xb8\xd1\x8f\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xb7\xd0\xb0\xd0\xbf\xd0\xb8\xd1\x81\xd0\xb0\xd0\xbd\xd0\xb0.	-
+fit	16	1	0	447,655,832,685	143,641,1136,685	0	0
+region	16	0d76e42b
+node	17	15	3	lv_button	549	694	729	741	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	89e4d66d
+node	18	17	4	lv_label	573	694	705	729	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	18	1	0	573,699,704,729	564,694,714,729	0	0
+region	18	ccc94bad
+node	19	15	3	lv_label	621	750	657	767	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	19	-	18	2	2	0	0	1	37	18	37	18	=4 \xd1\x81\xd0\xb5\xd0\xba	-
+fit	19	1	0	621,752,659,765	617,746,661,767	0	0
+region	19	affe7f2e
+node	20	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	20	dda7e144
+node	21	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	21	dda7e144
+ok semantic lines 15
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+15	panel		24	177	1232	250	1	-	-	0	-	-	-
+64	text	8	520	177	120	250	1	-	-	1	-	-	-
+65	text	2	640	177	120	250	1	-	-	1	-	-	-
+4	text	\xd0\x92\xd0\xb0\xd1\x88\xd0\xb5\xd1\x82\xd0\xbe \xd1\x88\xd0\xba\xd0\xb0\xd1\x84\xd1\x87\xd0\xb5 \xd0\xb5 82. \xd0\x97\xd0\xb0\xd0\xbf\xd0\xbe\xd0\xbc\xd0\xbd\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xbe\xd0\xbc\xd0\xb5\xd1\x80\xd0\xb0.	24	435	1232	40	1	-	-	4	-	-	-
+6	countdown	7 \xd1\x81\xd0\xb5\xd0\xba	24	483	1232	20	1	-	-	10	-	-	-
+9	panel		540	511	200	48	1	-	-	0	-	-	-
+11	button	BG	540	511	96	48	1	8:0	-	20	-	-	-
+12	button	EN	644	511	96	48	1	8:1	-	21	-	-	-
+16	button	\xd0\x93\xd0\xbe\xd1\x82\xd0\xbe\xd0\xb2\xd0\xbe	24	567	1232	56	1	6:0	-	16	-	-	-
+320	scrim		0	0	1280	800	1	256:2	N	3	-	-	-
+321	snackbar		360	476	560	300	1	-	N	3	-	-	-
+322	text	\xd0\xa0\xd0\xb5\xd0\xb7\xd0\xb5\xd1\x80\xd0\xb2\xd0\xb0\xd1\x86\xd0\xb8\xd1\x8f\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xb7\xd0\xb0\xd0\xbf\xd0\xb8\xd1\x81\xd0\xb0\xd0\xbd\xd0\xb0.	384	528	512	120	1	-	-	13	-	-	-
+323	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	384	704	512	48	1	256:2	-	15	-	-	-
+326	countdown	4 \xd1\x81\xd0\xb5\xd0\xba	384	664	512	24	1	-	-	14	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok apply
+ok apply
+ok advance 5300
+ok frame lines 70
+lvprobe	1	22
+frame	1280	800	ccff46a4
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	ccff46a4
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	ccff46a4
+node	2	1	1	lv_label	24	177	1255	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	2	0	0	-	-	0	0
+region	2	bcdee4c9
+node	3	2	2	lv_label	520	177	639	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	229	2	2	0	0	1	111	229	111	229	=8	-
+fit	3	1	0	530,217,630,359	463,177,696,426	0	0
+region	3	c242d128
+node	4	2	2	lv_label	640	177	759	426	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	229	2	2	0	0	1	111	229	111	229	=2	-
+fit	4	1	0	650,217,748,357	583,177,816,426	0	0
+region	4	b506d290
+node	5	1	1	lv_label	24	435	1255	474	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	36	2	2	0	0	1	595	36	595	36	=Your locker is 82. Remember the number.	-
+fit	5	1	0	342,439,934,464	15,426,1264,474	0	0
+region	5	edb49b59
+node	6	1	1	lv_label	24	483	1255	502	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	18	2	2	0	0	1	21	18	21	18	=7 s	-
+fit	6	1	0	629,485,650,498	20,479,1259,502	0	0
+region	6	a825d82b
+node	7	1	1	lv_label	540	511	739	558	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	7	0	0	-	-	0	0
+region	7	81c92a20
+node	8	7	2	lv_button	540	511	635	558	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	8	1b396fd5
+node	9	8	3	lv_label	570	521	605	547	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	9	1	0	571,525,605,543	564,515,611,547	0	0
+region	9	49e7d195
+node	10	7	2	lv_button	644	511	739	558	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	10	255ec7fc
+node	11	10	3	lv_label	675	521	707	547	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	11	1	0	676,525,707,542	669,515,713,547	0	0
+region	11	afd0b607
+node	12	1	1	lv_button	24	567	1255	622	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	12	9e1ad1b0
+node	13	12	2	lv_label	599	577	679	612	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	13	-	36	2	2	0	0	1	81	36	81	36	=Done	-
+fit	13	1	0	601,582,679,606	590,568,688,612	0	0
+region	13	ae9edd22
+node	14	1	1	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	14	ccff46a4
+node	15	14	2	lv_obj	128	626	1151	791	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	15	0fb7b106
+node	16	15	3	lv_label	152	650	1127	685	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	1	0	1	276	36	276	36	=Reservation saved.	-
+fit	16	1	0	504,654,775,679	143,641,1136,685	0	0
+region	16	ff10399c
+node	17	15	3	lv_button	554	694	724	741	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	06acf27a
+node	18	17	4	lv_label	578	694	700	729	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	18	1	0	580,698,700,723	569,694,709,729	0	0
+region	18	b2b4e75a
+node	19	15	3	lv_label	629	750	649	767	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	19	-	18	2	2	0	0	1	21	18	21	18	=4 s	-
+fit	19	1	0	629,752,650,765	625,746,653,767	0	0
+region	19	0e4aa0b2
+node	20	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	20	ccff46a4
+node	21	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	21	ccff46a4
+ok semantic lines 15
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+15	panel		24	177	1232	250	1	-	-	0	-	-	-
+64	text	8	520	177	120	250	1	-	-	1	-	-	-
+65	text	2	640	177	120	250	1	-	-	1	-	-	-
+4	text	Your locker is 82. Remember the number.	24	435	1232	40	1	-	-	4	-	-	-
+6	countdown	7 s	24	483	1232	20	1	-	-	10	-	-	-
+9	panel		540	511	200	48	1	-	-	0	-	-	-
+11	button	BG	540	511	96	48	1	8:0	-	21	-	-	-
+12	button	EN	644	511	96	48	1	8:1	-	20	-	-	-
+16	button	Done	24	567	1232	56	1	6:0	-	16	-	-	-
+320	scrim		0	0	1280	800	1	256:2	N	3	-	-	-
+321	snackbar		360	476	560	300	1	-	N	3	-	-	-
+322	text	Reservation saved.	384	528	512	120	1	-	-	13	-	-	-
+323	button	Dismiss	384	704	512	48	1	256:2	-	15	-	-	-
+326	countdown	4 s	384	664	512	24	1	-	-	14	-	-	-
+ok open
+ok advance 4200
+ok frame lines 150
+lvprobe	1	49
+frame	1280	800	0031b97d
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	0031b97d
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	0031b97d
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	322	55	322	55	=\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	-
+fit	2	1	0	167,253,486,299	11,233,644,305	0	0
+region	2	7fc45ad7
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	2	750	36	531	72	=\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	-
+fit	3	1	0	63,326,593,393	15,313,640,401	0	0
+region	3	a524008b
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	d6a82084
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	5	22b4b5a4
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	d6d62320
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	7	34298815
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	85fa6394
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	438bbfc5
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	6a462529
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	633d20a5
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	1acb628b
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	a95fb2a9
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	be230b37
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	e96ae1b2
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	bd2a0fac
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	8537101c
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	43680f7e
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	30e7dbd3
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	d8039f25
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	784f6a0c
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	8631dca6
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	1dea2e65
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	c9f23657
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	96ab6611
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	ecfca68f
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	3fe41785
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	c05180bf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	7ea4ccf3
+node	30	29	3	lv_label	697	658	811	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	115	36	115	36	=\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	-
+fit	30	1	0	699,662,810,693	688,649,820,693	0	0
+region	30	ce18db73
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	a25d2aac
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	fb223382
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	1bfa80e5
+node	34	33	3	lv_label	1126	658	1170	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	45	36	45	36	=\xd0\x9e\xd0\x9a	-
+fit	34	1	0	1127,663,1171,687	1117,649,1179,693	0	0
+region	34	aab303b1
+node	35	1	1	lv_obj	24	24	631	219	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	d70f2c4a
+node	36	35	2	lv_obj	24	24	631	219	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	36	d70f2c4a
+node	37	36	3	lv_label	32	132	623	211	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	2	748	36	472	72	=\xd0\x9a\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x82\xd0\xb5 \xd1\x81\xd0\xb0 \xd0\xbe\xd1\x84\xd0\xbb\xd0\xb0\xd0\xb9\xd0\xbd: \xd0\xbf\xd0\xbe\xd0\xbb\xd0\xb7\xd0\xb2\xd0\xb0 \xd1\x81\xd0\xb5 \xd1\x81\xd0\xbf\xd0\xb8\xd1\x81\xd1\x8a\xd0\xba\xd1\x8a\xd1\x82 \xd0\xbe\xd1\x82 23:00	-
+fit	37	1	0	33,136,504,197	24,123,631,211	0	0
+region	37	fe48c51e
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	e7c59dc5
+node	39	38	4	lv_label	478	38	610	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	39	1	0	478,43,609,73	469,32,619,73	0	0
+region	39	ccc94bad
+node	40	36	3	lv_label	60	32	447	127	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	2	406	45	241	90	=\xd0\x9a\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x82\xd0\xb5 \xd1\x81\xd0\xb0 \xd0\xbe\xd1\x84\xd0\xbb\xd0\xb0\xd0\xb9\xd0\xbd	-
+fit	40	1	0	61,39,302,121	49,24,458,127	0	0
+region	40	63f91bb5
+node	41	1	1	lv_obj	24	236	631	343	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	41	edc0bfcf
+node	42	41	2	lv_obj	24	236	631	343	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	42	edc0bfcf
+node	43	42	3	lv_label	32	296	623	335	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	43	-	36	1	1	0	0	1	377	36	377	36	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	-
+fit	43	1	0	33,301,409,331	24,287,631,335	0	0
+region	43	ed17bb37
+node	44	42	3	lv_button	464	244	623	291	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	44	df279f0a
+node	45	44	4	lv_label	478	250	610	285	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	45	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	45	1	0	478,255,609,285	469,244,619,285	0	0
+region	45	ccc94bad
+node	46	42	3	lv_label	60	244	447	291	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	46	-	45	1	1	0	0	1	288	45	288	45	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	-
+fit	46	1	0	61,251,349,288	49,236,458,291	0	0
+region	46	808c21b3
+node	47	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	47	0031b97d
+node	48	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	48	0031b97d
+ok semantic lines 30
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	24	246	608	60	1	-	-	2	-	-	-
+4	text	\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	20	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	21	-	-	-
+13	panel	\xd0\x92\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd0\xbd\xd0\xb8 \xd1\x86\xd0\xb8\xd1\x84\xd1\x80\xd0\xb8: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	\xd0\x9e\xd0\x9a	1058	592	181	168	1	3:0	-	15	-	-	-
+280	scrim		24	24	608	196	1	260:0	N	2	-	-	-
+281	banner		24	24	608	196	1	-	WN	2	-	-	-
+282	text	\xd0\x9a\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x82\xd0\xb5 \xd1\x81\xd0\xb0 \xd0\xbe\xd1\x84\xd0\xbb\xd0\xb0\xd0\xb9\xd0\xbd: \xd0\xbf\xd0\xbe\xd0\xbb\xd0\xb7\xd0\xb2\xd0\xb0 \xd1\x81\xd0\xb5 \xd1\x81\xd0\xbf\xd0\xb8\xd1\x81\xd1\x8a\xd0\xba\xd1\x8a\xd1\x82 \xd0\xbe\xd1\x82 23:00	32	132	592	80	1	-	-	13	-	-	-
+283	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	32	160	48	1	260:0	-	15	-	-	-
+284	text	\xd0\x9a\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x82\xd0\xb5 \xd1\x81\xd0\xb0 \xd0\xbe\xd1\x84\xd0\xbb\xd0\xb0\xd0\xb9\xd0\xbd	60	32	388	96	1	-	-	12	-	-	-
+296	scrim		24	236	608	108	1	262:0	N	2	-	-	-
+297	banner		24	236	608	108	1	-	N	2	-	-	-
+298	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd0\xb5 \xd0\xbd\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4	32	296	592	40	1	-	-	13	-	-	-
+299	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	244	160	48	1	262:0	-	15	-	-	-
+300	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	60	244	388	48	1	-	-	12	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok frame lines 150
+lvprobe	1	49
+frame	1280	800	0fa7a586
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	0fa7a586
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	0fa7a586
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	210	55	210	55	=Welcome	-
+fit	2	1	0	223,254,432,290	11,233,644,305	0	0
+region	2	b0afcb88
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	1	505	36	505	36	=Scan a code, or enter it on the pad.	-
+fit	3	1	0	76,326,577,357	15,313,640,401	0	0
+region	3	f9f96f72
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	81c92a20
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	5	1b396fd5
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	49e7d195
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	7	255ec7fc
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	afd0b607
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	438bbfc5
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	203531f1
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	633d20a5
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	1acb628b
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	a95fb2a9
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	be230b37
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	e96ae1b2
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	bd2a0fac
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	8537101c
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	43680f7e
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	30e7dbd3
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	d8039f25
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	784f6a0c
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	8631dca6
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	1dea2e65
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	c9f23657
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	96ab6611
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	ecfca68f
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	3fe41785
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	c05180bf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	d9e9c3ef
+node	30	29	3	lv_label	729	658	778	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	50	36	50	36	=Del	-
+fit	30	1	0	731,662,777,687	720,649,787,693	0	0
+region	30	73f83e65
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	a25d2aac
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	fb223382
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	0a083f1f
+node	34	33	3	lv_label	1124	658	1171	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	48	36	48	36	=OK	-
+fit	34	1	0	1125,663,1172,687	1115,649,1180,693	0	0
+region	34	e4f0b8a7
+node	35	1	1	lv_obj	24	24	631	171	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	dced7fe2
+node	36	35	2	lv_obj	24	24	631	171	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	36	dced7fe2
+node	37	36	3	lv_label	32	84	623	163	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	2	605	36	569	72	=Codes offline: using the list saved at 23:00	-
+fit	37	1	0	33,88,598,149	24,75,631,163	0	0
+region	37	e26250c7
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	a6e0a6d6
+node	39	38	4	lv_label	483	38	605	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	39	1	0	485,42,605,67	474,32,614,73	0	0
+region	39	b2b4e75a
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	250	45	250	45	=Codes offline	-
+fit	40	1	0	61,38,309,68	49,24,458,79	0	0
+region	40	e946d00b
+node	41	1	1	lv_obj	24	188	631	295	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	41	db610087
+node	42	41	2	lv_obj	24	188	631	295	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	42	db610087
+node	43	42	3	lv_label	32	248	623	287	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	43	-	36	1	1	0	0	1	173	36	173	36	=Self-test OK	-
+fit	43	1	0	33,252,205,277	24,239,631,287	0	0
+region	43	2970ffa4
+node	44	42	3	lv_button	464	196	623	243	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	44	9f508df5
+node	45	44	4	lv_label	483	202	605	237	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	45	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	45	1	0	485,206,605,231	474,196,614,237	0	0
+region	45	b2b4e75a
+node	46	42	3	lv_label	60	196	447	243	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	46	-	45	1	1	0	0	1	156	45	156	45	=Self-test	-
+fit	46	1	0	61,202,216,232	49,188,458,243	0	0
+region	46	514cb82b
+node	47	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	47	0fa7a586
+node	48	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	48	0fa7a586
+ok semantic lines 30
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	Welcome	24	246	608	60	1	-	-	2	-	-	-
+4	text	Scan a code, or enter it on the pad.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	21	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	20	-	-	-
+13	panel	Digits entered: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	Del	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	OK	1058	592	181	168	1	3:0	-	15	-	-	-
+280	scrim		24	24	608	148	1	260:0	N	2	-	-	-
+281	banner		24	24	608	148	1	-	WN	2	-	-	-
+282	text	Codes offline: using the list saved at 23:00	32	84	592	80	1	-	-	13	-	-	-
+283	button	Dismiss	464	32	160	48	1	260:0	-	15	-	-	-
+284	text	Codes offline	60	32	388	48	1	-	-	12	-	-	-
+296	scrim		24	188	608	108	1	262:0	N	2	-	-	-
+297	banner		24	188	608	108	1	-	N	2	-	-	-
+298	text	Self-test OK	32	248	592	40	1	-	-	13	-	-	-
+299	button	Dismiss	464	196	160	48	1	262:0	-	15	-	-	-
+300	text	Self-test	60	196	388	48	1	-	-	12	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok advance 301500
+ok frame lines 186
+lvprobe	1	61
+frame	1280	800	da10bf96
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	da10bf96
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	da10bf96
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	322	55	322	55	=\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	-
+fit	2	1	0	167,253,486,299	11,233,644,305	0	0
+region	2	2aeeeacd
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	2	750	36	531	72	=\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	-
+fit	3	1	0	63,326,593,393	15,313,640,401	0	0
+region	3	40b7e98c
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	0f1ba7e4
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	5	d78acf2c
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	3bbd180d
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	7	e0ae6626
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	4eafa4f6
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	c8b19625
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	6a462529
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	633d20a5
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	1acb628b
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	a95fb2a9
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	be230b37
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	e96ae1b2
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	bd2a0fac
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	8537101c
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	43680f7e
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	30e7dbd3
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	d8039f25
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	784f6a0c
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	8631dca6
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	1dea2e65
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	c9f23657
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	96ab6611
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	ecfca68f
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	3fe41785
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	c05180bf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	7ea4ccf3
+node	30	29	3	lv_label	697	658	811	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	115	36	115	36	=\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	-
+fit	30	1	0	699,662,810,693	688,649,820,693	0	0
+region	30	ce18db73
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	a25d2aac
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	fb223382
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	1bfa80e5
+node	34	33	3	lv_label	1126	658	1170	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	45	36	45	36	=\xd0\x9e\xd0\x9a	-
+fit	34	1	0	1127,663,1171,687	1117,649,1179,693	0	0
+region	34	aab303b1
+node	35	1	1	lv_obj	24	24	631	171	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	7017ff2a
+node	36	35	2	lv_obj	24	24	631	171	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	36	7017ff2a
+node	37	36	3	lv_label	32	84	623	163	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	2	698	36	568	72	=\xd0\x94\xd0\xbd\xd0\xb5\xd0\xb2\xd0\xbd\xd0\xb8\xd0\xba: \xd0\xb5\xd0\xb4\xd0\xbd\xd0\xbe \xd1\x81\xd1\x8a\xd0\xb1\xd0\xb8\xd1\x82\xd0\xb8\xd0\xb5 \xd0\xbd\xd0\xb5 \xd0\xbc\xd0\xbe\xd0\xb6\xd0\xb0 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xb7\xd0\xb0\xd0\xbf\xd0\xb8\xd1\x88\xd0\xb5.	-
+fit	37	1	0	32,88,600,149	24,75,631,163	0	0
+region	37	2bd1e424
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	e7c59dc5
+node	39	38	4	lv_label	478	38	610	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	39	1	0	478,43,609,73	469,32,619,73	0	0
+region	39	ccc94bad
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	168	45	168	45	=\xd0\x94\xd0\xbd\xd0\xb5\xd0\xb2\xd0\xbd\xd0\xb8\xd0\xba	-
+fit	40	1	0	60,39,229,75	49,24,458,79	0	0
+region	40	bb2f56af
+node	41	1	1	lv_obj	24	188	631	335	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	41	bc5e580f
+node	42	41	2	lv_obj	24	188	631	335	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	42	bc5e580f
+node	43	42	3	lv_label	32	248	623	327	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	43	-	36	1	1	0	0	1	565	36	565	36	=\xd0\xa1\xd0\xb8\xd0\xbd\xd1\x85\xd1\x80\xd0\xbe\xd0\xbd\xd0\xb8\xd0\xb7\xd0\xb8\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb5\xd1\x82\xd0\xbe \xd0\xb5 \xd0\xbe\xd1\x82\xd1\x85\xd0\xb2\xd1\x8a\xd1\x80\xd0\xbb\xd0\xb5\xd0\xbd\xd0\xbe: 401	-
+fit	43	1	0	33,253,596,283	24,239,631,327	0	0
+region	43	e91addb1
+node	44	42	3	lv_button	464	196	623	243	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	44	e7c59dc5
+node	45	44	4	lv_label	478	202	610	237	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	45	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	45	1	0	478,207,609,237	469,196,619,237	0	0
+region	45	ccc94bad
+node	46	42	3	lv_label	60	196	447	243	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	46	-	45	1	1	0	0	1	334	45	334	45	=\xd0\xa1\xd0\xb8\xd0\xbd\xd1\x85\xd1\x80\xd0\xbe\xd0\xbd\xd0\xb8\xd0\xb7\xd0\xb8\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb5	-
+fit	46	1	0	61,203,393,240	49,188,458,243	0	0
+region	46	37eaceef
+node	47	1	1	lv_obj	24	352	631	499	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	47	481e5869
+node	48	47	2	lv_obj	24	352	631	499	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	48	481e5869
+node	49	48	3	lv_label	32	412	623	491	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	49	-	36	1	1	0	0	2	910	36	564	72	=\xd0\x9a\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5: \xd1\x81\xd0\xbf\xd0\xb8\xd1\x81\xd1\x8a\xd0\xba\xd1\x8a\xd1\x82 \xd1\x81 \xd0\xbf\xd0\xbe\xd0\xb7\xd0\xb2\xd0\xbe\xd0\xbb\xd0\xb5\xd0\xbd\xd0\xb8 \xd0\xba\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5 \xd0\xbd\xd0\xb5 \xd0\xbc\xd0\xbe\xd0\xb6\xd0\xb0 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xbe\xd0\xb1\xd0\xbd\xd0\xbe\xd0\xb2\xd0\xb8.	-
+fit	49	1	0	34,417,596,483	24,403,631,491	0	0
+region	49	4af919d3
+node	50	48	3	lv_button	464	360	623	407	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	50	e7c59dc5
+node	51	50	4	lv_label	478	366	610	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	51	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	51	1	0	478,371,609,401	469,360,619,401	0	0
+region	51	ccc94bad
+node	52	48	3	lv_label	60	360	447	407	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	52	-	45	1	1	0	0	1	143	45	143	45	=\xd0\x9a\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5	-
+fit	52	1	0	62,367,202,403	49,352,458,407	0	0
+region	52	ee991013
+node	53	1	1	lv_obj	24	516	631	663	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	53	a06d3257
+node	54	53	2	lv_obj	24	516	631	663	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	54	a06d3257
+node	55	54	3	lv_label	32	576	623	655	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	55	-	36	1	1	0	0	2	596	36	468	72	=\xd0\x9f\xd0\xb0\xd0\xbf\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd1\x81 \xd0\xb4\xd0\xb0\xd0\xbd\xd0\xbd\xd0\xb8 \xd0\xbd\xd0\xb5 \xd0\xbc\xd0\xbe\xd0\xb6\xd0\xb5 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xb7\xd0\xb0\xd0\xbf\xd0\xb8\xd1\x81\xd0\xb2\xd0\xb0	-
+fit	55	1	0	32,581,500,641	24,567,631,655	0	0
+region	55	b51299b2
+node	56	54	3	lv_button	464	524	623	571	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	56	e7c59dc5
+node	57	56	4	lv_label	478	530	610	565	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	57	-	36	2	2	0	0	1	133	36	133	36	=\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	-
+fit	57	1	0	478,535,609,565	469,524,619,565	0	0
+region	57	ccc94bad
+node	58	54	3	lv_label	60	524	447	571	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	58	-	45	1	1	0	0	1	288	45	288	45	=\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	-
+fit	58	1	0	61,531,349,568	49,516,458,571	0	0
+region	58	1052305c
+node	59	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	59	da10bf96
+node	60	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	60	da10bf96
+ok semantic lines 40
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xb5 \xd0\xb4\xd0\xbe\xd1\x88\xd0\xbb\xd0\xb8	24	246	608	60	1	-	-	2	-	-	-
+4	text	\xd0\xa1\xd0\xba\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x80\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5 \xd0\xba\xd0\xbe\xd0\xb4 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb3\xd0\xbe \xd0\xb2\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbd\xd0\xb0 \xd0\xba\xd0\xbb\xd0\xb0\xd0\xb2\xd0\xb8\xd0\xb0\xd1\x82\xd1\x83\xd1\x80\xd0\xb0\xd1\x82\xd0\xb0.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	20	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	21	-	-	-
+13	panel	\xd0\x92\xd1\x8a\xd0\xb2\xd0\xb5\xd0\xb4\xd0\xb5\xd0\xbd\xd0\xb8 \xd1\x86\xd0\xb8\xd1\x84\xd1\x80\xd0\xb8: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	\xd0\x98\xd0\xb7\xd1\x82\xd1\x80\xd0\xb8\xd0\xb9	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	\xd0\x9e\xd0\x9a	1058	592	181	168	1	3:0	-	15	-	-	-
+264	scrim		24	24	608	148	1	258:0	N	2	-	-	-
+265	banner		24	24	608	148	1	-	WN	2	-	-	-
+266	text	\xd0\x94\xd0\xbd\xd0\xb5\xd0\xb2\xd0\xbd\xd0\xb8\xd0\xba: \xd0\xb5\xd0\xb4\xd0\xbd\xd0\xbe \xd1\x81\xd1\x8a\xd0\xb1\xd0\xb8\xd1\x82\xd0\xb8\xd0\xb5 \xd0\xbd\xd0\xb5 \xd0\xbc\xd0\xbe\xd0\xb6\xd0\xb0 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xb7\xd0\xb0\xd0\xbf\xd0\xb8\xd1\x88\xd0\xb5.	32	84	592	80	1	-	-	13	-	-	-
+267	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	32	160	48	1	258:0	-	15	-	-	-
+268	text	\xd0\x94\xd0\xbd\xd0\xb5\xd0\xb2\xd0\xbd\xd0\xb8\xd0\xba	60	32	388	48	1	-	-	12	-	-	-
+272	scrim		24	188	608	148	1	259:0	N	2	-	-	-
+273	banner		24	188	608	148	1	-	WN	2	-	-	-
+274	text	\xd0\xa1\xd0\xb8\xd0\xbd\xd1\x85\xd1\x80\xd0\xbe\xd0\xbd\xd0\xb8\xd0\xb7\xd0\xb8\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb5\xd1\x82\xd0\xbe \xd0\xb5 \xd0\xbe\xd1\x82\xd1\x85\xd0\xb2\xd1\x8a\xd1\x80\xd0\xbb\xd0\xb5\xd0\xbd\xd0\xbe: 401	32	248	592	80	1	-	-	13	-	-	-
+275	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	196	160	48	1	259:0	-	15	-	-	-
+276	text	\xd0\xa1\xd0\xb8\xd0\xbd\xd1\x85\xd1\x80\xd0\xbe\xd0\xbd\xd0\xb8\xd0\xb7\xd0\xb8\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb5	60	196	388	48	1	-	-	12	-	-	-
+288	scrim		24	352	608	148	1	261:0	N	2	-	-	-
+289	banner		24	352	608	148	1	-	WN	2	-	-	-
+290	text	\xd0\x9a\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5: \xd1\x81\xd0\xbf\xd0\xb8\xd1\x81\xd1\x8a\xd0\xba\xd1\x8a\xd1\x82 \xd1\x81 \xd0\xbf\xd0\xbe\xd0\xb7\xd0\xb2\xd0\xbe\xd0\xbb\xd0\xb5\xd0\xbd\xd0\xb8 \xd0\xba\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5 \xd0\xbd\xd0\xb5 \xd0\xbc\xd0\xbe\xd0\xb6\xd0\xb0 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xbe\xd0\xb1\xd0\xbd\xd0\xbe\xd0\xb2\xd0\xb8.	32	412	592	80	1	-	-	13	-	-	-
+291	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	360	160	48	1	261:0	-	15	-	-	-
+292	text	\xd0\x9a\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5	60	360	388	48	1	-	-	12	-	-	-
+296	scrim		24	516	608	148	1	262:0	N	2	-	-	-
+297	banner		24	516	608	148	1	-	WN	2	-	-	-
+298	text	\xd0\x9f\xd0\xb0\xd0\xbf\xd0\xba\xd0\xb0\xd1\x82\xd0\xb0 \xd1\x81 \xd0\xb4\xd0\xb0\xd0\xbd\xd0\xbd\xd0\xb8 \xd0\xbd\xd0\xb5 \xd0\xbc\xd0\xbe\xd0\xb6\xd0\xb5 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xb7\xd0\xb0\xd0\xbf\xd0\xb8\xd1\x81\xd0\xb2\xd0\xb0	32	576	592	80	1	-	-	13	-	-	-
+299	button	\xd0\x97\xd0\xb0\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8	464	524	160	48	1	262:0	-	15	-	-	-
+300	text	\xd0\xa1\xd0\xb0\xd0\xbc\xd0\xbe\xd0\xbf\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xba\xd0\xb0	60	524	388	48	1	-	-	12	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok apply
+ok advance 301500
+ok frame lines 186
+lvprobe	1	61
+frame	1280	800	b5edb3f7
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	b5edb3f7
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	b5edb3f7
+node	2	1	1	lv_label	24	246	631	305	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	55	2	2	0	0	1	210	55	210	55	=Welcome	-
+fit	2	1	0	223,254,432,290	11,233,644,305	0	0
+region	2	006db2d6
+node	3	1	1	lv_label	24	322	631	401	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	36	2	2	0	0	1	505	36	505	36	=Scan a code, or enter it on the pad.	-
+fit	3	1	0	76,326,577,357	15,313,640,401	0	0
+region	3	d63cd42d
+node	4	1	1	lv_label	228	418	427	465	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	4	0	0	-	-	0	0
+region	4	693e2fa5
+node	5	4	2	lv_button	228	418	323	465	0	1	-1	-1	0	0	282a2f	255	255	1	0	0
+region	5	7dd0dc81
+node	6	5	3	lv_label	258	428	293	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	27	2	2	0	0	1	36	27	36	27	=BG	-
+fit	6	1	0	259,432,293,450	252,422,299,454	0	0
+region	6	1e8c65c5
+node	7	4	2	lv_button	332	418	427	465	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	7	94134641
+node	8	7	3	lv_label	363	428	395	454	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	27	2	2	0	0	1	33	27	33	27	=EN	-
+fit	8	1	0	364,432,395,449	357,422,401,454	0	0
+region	8	cb6f4c9f
+node	9	1	1	lv_label	24	482	631	553	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	9	0	0	-	-	0	0
+region	9	a5a39c92
+node	10	1	1	lv_label	648	24	1255	775	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	10	0	0	-	-	0	0
+region	10	203531f1
+node	11	10	2	lv_button	664	40	844	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	11	633d20a5
+node	12	11	3	lv_label	745	106	762	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	36	2	2	0	0	1	18	36	18	36	=1	-
+fit	12	1	0	747,111,762,134	736,97,771,141	0	0
+region	12	1acb628b
+node	13	10	2	lv_button	861	40	1041	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	13	a95fb2a9
+node	14	13	3	lv_label	942	106	959	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	36	2	2	0	0	1	18	36	18	36	=2	-
+fit	14	1	0	943,111,959,134	933,97,968,141	0	0
+region	14	be230b37
+node	15	10	2	lv_button	1058	40	1238	207	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	15	e96ae1b2
+node	16	15	3	lv_label	1139	106	1156	141	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	16	-	36	2	2	0	0	1	18	36	18	36	=3	-
+fit	16	1	0	1139,111,1156,135	1130,97,1165,141	0	0
+region	16	bd2a0fac
+node	17	10	2	lv_button	664	224	844	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	17	8537101c
+node	18	17	3	lv_label	745	290	762	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	36	2	2	0	0	1	18	36	18	36	=4	-
+fit	18	1	0	745,295,763,318	736,281,771,325	0	0
+region	18	43680f7e
+node	19	10	2	lv_button	861	224	1041	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	19	30e7dbd3
+node	20	19	3	lv_label	942	290	959	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	20	-	36	2	2	0	0	1	18	36	18	36	=5	-
+fit	20	1	0	942,295,959,319	933,281,968,325	0	0
+region	20	d8039f25
+node	21	10	2	lv_button	1058	224	1238	391	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	21	784f6a0c
+node	22	21	3	lv_label	1139	290	1156	325	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	22	-	36	2	2	0	0	1	18	36	18	36	=6	-
+fit	22	1	0	1140,295,1156,319	1130,281,1165,325	0	0
+region	22	8631dca6
+node	23	10	2	lv_button	664	408	844	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	23	1dea2e65
+node	24	23	3	lv_label	745	474	762	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	24	-	36	2	2	0	0	1	18	36	18	36	=7	-
+fit	24	1	0	746,479,762,502	736,465,771,509	0	0
+region	24	c9f23657
+node	25	10	2	lv_button	861	408	1041	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	25	96ab6611
+node	26	25	3	lv_label	942	474	959	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	26	-	36	2	2	0	0	1	18	36	18	36	=8	-
+fit	26	1	0	943,479,959,503	933,465,968,509	0	0
+region	26	ecfca68f
+node	27	10	2	lv_button	1058	408	1238	575	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	27	3fe41785
+node	28	27	3	lv_label	1139	474	1156	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	28	-	36	2	2	0	0	1	18	36	18	36	=9	-
+fit	28	1	0	1140,479,1156,503	1130,465,1165,509	0	0
+region	28	c05180bf
+node	29	10	2	lv_button	664	592	844	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	29	d9e9c3ef
+node	30	29	3	lv_label	729	658	778	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	30	-	36	2	2	0	0	1	50	36	50	36	=Del	-
+fit	30	1	0	731,662,777,687	720,649,787,693	0	0
+region	30	73f83e65
+node	31	10	2	lv_button	861	592	1041	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	31	a25d2aac
+node	32	31	3	lv_label	942	658	959	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	32	-	36	2	2	0	0	1	18	36	18	36	=0	-
+fit	32	1	0	943,663,959,687	933,649,968,693	0	0
+region	32	fb223382
+node	33	10	2	lv_button	1058	592	1238	759	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	33	0a083f1f
+node	34	33	3	lv_label	1124	658	1171	693	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	34	-	36	2	2	0	0	1	48	36	48	36	=OK	-
+fit	34	1	0	1125,663,1172,687	1115,649,1180,693	0	0
+region	34	e4f0b8a7
+node	35	1	1	lv_obj	24	24	631	171	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	35	0a7bff29
+node	36	35	2	lv_obj	24	24	631	171	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	36	0a7bff29
+node	37	36	3	lv_label	32	84	623	163	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	37	-	36	1	1	0	0	1	565	36	565	36	=Audit log: an event could not be written.	-
+fit	37	1	0	32,88,594,119	24,75,631,163	0	0
+region	37	2379a0eb
+node	38	36	3	lv_button	464	32	623	79	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	38	a6e0a6d6
+node	39	38	4	lv_label	483	38	605	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	39	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	39	1	0	485,42,605,67	474,32,614,73	0	0
+region	39	b2b4e75a
+node	40	36	3	lv_label	60	32	447	79	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	40	-	45	1	1	0	0	1	171	45	171	45	=Audit log	-
+fit	40	1	0	60,38,229,76	49,24,458,79	0	0
+region	40	b4ae63e0
+node	41	1	1	lv_obj	24	188	631	295	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	41	84e47411
+node	42	41	2	lv_obj	24	188	631	295	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	42	84e47411
+node	43	42	3	lv_label	32	248	623	287	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	43	-	36	1	1	0	0	1	267	36	267	36	=Sync rejected: 401	-
+fit	43	1	0	33,252,298,283	24,239,631,287	0	0
+region	43	46a2fdc6
+node	44	42	3	lv_button	464	196	623	243	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	44	a6e0a6d6
+node	45	44	4	lv_label	483	202	605	237	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	45	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	45	1	0	485,206,605,231	474,196,614,237	0	0
+region	45	b2b4e75a
+node	46	42	3	lv_label	60	196	447	243	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	46	-	45	1	1	0	0	1	95	45	95	45	=Sync	-
+fit	46	1	0	61,203,155,240	49,188,458,243	0	0
+region	46	3644a88d
+node	47	1	1	lv_obj	24	312	631	459	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	47	515df048
+node	48	47	2	lv_obj	24	312	631	459	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	48	515df048
+node	49	48	3	lv_label	32	372	623	451	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	49	-	36	1	1	0	0	2	743	36	588	72	=Codes: the allowed-code list could not be refreshed.	-
+fit	49	1	0	33,376,620,437	24,363,631,451	0	0
+region	49	34543577
+node	50	48	3	lv_button	464	320	623	367	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	50	a6e0a6d6
+node	51	50	4	lv_label	483	326	605	361	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	51	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	51	1	0	485,330,605,355	474,320,614,361	0	0
+region	51	b2b4e75a
+node	52	48	3	lv_label	60	320	447	367	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	52	-	45	1	1	0	0	1	121	45	121	45	=Codes	-
+fit	52	1	0	61,326,180,356	49,312,458,367	0	0
+region	52	6c922d21
+node	53	1	1	lv_obj	24	476	631	583	0	1	-1	-1	0	0	000000	0	0	1	0	0
+region	53	c6728dfe
+node	54	53	2	lv_obj	24	476	631	583	0	1	-1	-1	0	0	ffb4ab	255	255	1	0	0
+region	54	c6728dfe
+node	55	54	3	lv_label	32	536	623	575	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	55	-	36	1	1	0	0	1	407	36	407	36	=Data directory is not writable	-
+fit	55	1	0	34,540,438,571	24,527,631,575	0	0
+region	55	e7ae2343
+node	56	54	3	lv_button	464	484	623	531	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	56	a6e0a6d6
+node	57	56	4	lv_label	483	490	605	525	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	57	-	36	2	2	0	0	1	123	36	123	36	=Dismiss	-
+fit	57	1	0	485,494,605,519	474,484,614,525	0	0
+region	57	b2b4e75a
+node	58	54	3	lv_label	60	484	447	531	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	58	-	45	1	1	0	0	1	156	45	156	45	=Self-test	-
+fit	58	1	0	61,490,216,520	49,476,458,531	0	0
+region	58	5e96da93
+node	59	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	59	b5edb3f7
+node	60	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	60	b5edb3f7
+ok semantic lines 40
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	Welcome	24	246	608	60	1	-	-	2	-	-	-
+4	text	Scan a code, or enter it on the pad.	24	322	608	80	1	-	-	5	-	-	-
+9	panel		228	418	200	48	1	-	-	0	-	-	-
+11	button	BG	228	418	96	48	1	8:0	-	21	-	-	-
+12	button	EN	332	418	96	48	1	8:1	-	20	-	-	-
+13	panel	Digits entered: 0	24	482	608	72	1	-	-	0	-	-	-
+14	panel		648	24	608	752	1	-	-	0	-	-	-
+32	key	1	664	40	181	168	1	1:1	-	15	-	-	-
+33	key	2	861	40	181	168	1	1:2	-	15	-	-	-
+34	key	3	1058	40	181	168	1	1:3	-	15	-	-	-
+35	key	4	664	224	181	168	1	1:4	-	15	-	-	-
+36	key	5	861	224	181	168	1	1:5	-	15	-	-	-
+37	key	6	1058	224	181	168	1	1:6	-	15	-	-	-
+38	key	7	664	408	181	168	1	1:7	-	15	-	-	-
+39	key	8	861	408	181	168	1	1:8	-	15	-	-	-
+40	key	9	1058	408	181	168	1	1:9	-	15	-	-	-
+41	key	Del	664	592	181	168	1	2:0	-	15	-	-	-
+42	key	0	861	592	181	168	1	1:0	-	15	-	-	-
+43	key	OK	1058	592	181	168	1	3:0	-	15	-	-	-
+264	scrim		24	24	608	148	1	258:0	N	2	-	-	-
+265	banner		24	24	608	148	1	-	WN	2	-	-	-
+266	text	Audit log: an event could not be written.	32	84	592	80	1	-	-	13	-	-	-
+267	button	Dismiss	464	32	160	48	1	258:0	-	15	-	-	-
+268	text	Audit log	60	32	388	48	1	-	-	12	-	-	-
+272	scrim		24	188	608	108	1	259:0	N	2	-	-	-
+273	banner		24	188	608	108	1	-	WN	2	-	-	-
+274	text	Sync rejected: 401	32	248	592	40	1	-	-	13	-	-	-
+275	button	Dismiss	464	196	160	48	1	259:0	-	15	-	-	-
+276	text	Sync	60	196	388	48	1	-	-	12	-	-	-
+288	scrim		24	312	608	148	1	261:0	N	2	-	-	-
+289	banner		24	312	608	148	1	-	WN	2	-	-	-
+290	text	Codes: the allowed-code list could not be refreshed.	32	372	592	80	1	-	-	13	-	-	-
+291	button	Dismiss	464	320	160	48	1	261:0	-	15	-	-	-
+292	text	Codes	60	320	388	48	1	-	-	12	-	-	-
+296	scrim		24	476	608	108	1	262:0	N	2	-	-	-
+297	banner		24	476	608	108	1	-	WN	2	-	-	-
+298	text	Data directory is not writable	32	536	592	40	1	-	-	13	-	-	-
+299	button	Dismiss	464	484	160	48	1	262:0	-	15	-	-	-
+300	text	Self-test	60	484	388	48	1	-	-	12	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok advance 6000
+ok frame lines 76
+lvprobe	1	21
+frame	1280	800	d5bab163
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	d5bab163
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	d5bab163
+node	2	1	1	lv_label	24	24	423	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	45	2	2	0	0	1	326	45	326	45	=\xd0\x9a\xd1\x80\xd0\xb0\xd0\xb9 \xd0\xbd\xd0\xb0 \xd1\x81\xd0\xbc\xd1\x8f\xd0\xbd\xd0\xb0\xd1\x82\xd0\xb0	-
+fit	2	1	0	63,29,388,68	13,13,434,73	0	0
+region	2	c4bf82bc
+node	3	1	1	lv_label	24	82	423	101	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	18	2	2	0	0	1	55	18	55	18	=298 \xd1\x81\xd0\xb5\xd0\xba	-
+fit	3	1	0	196,84,252,97	20,78,427,101	0	0
+region	3	2a31efad
+node	4	1	1	lv_label	24	110	423	129	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	18	2	2	0	0	1	170	18	170	18	=\xd0\x9f\xd1\x80\xd0\xb8\xd0\xba\xd0\xbb\xd1\x8e\xd1\x87\xd0\xb8 \xd0\xb2 00:00 UTC	-
+fit	4	1	0	140,112,308,128	20,106,427,129	0	0
+region	4	3f140ccf
+node	5	1	1	lv_label	24	138	423	167	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	27	2	2	0	0	1	175	27	175	27	=\xd0\x9e\xd1\x81\xd0\xb2\xd0\xbe\xd0\xb1\xd0\xbe\xd0\xb4\xd0\xb5\xd0\xbd\xd0\xb8: 0	-
+fit	5	1	0	136,141,311,164	18,132,429,167	0	0
+region	5	6af8b38b
+node	6	1	1	lv_label	24	176	423	195	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	18	2	2	0	0	1	136	18	136	18	=\xd0\x9e\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb5\xd0\xbd\xd0\xb8 \xd0\xb2\xd1\x80\xd0\xb0\xd1\x82\xd0\xb8: 0	-
+fit	6	1	0	156,178,292,194	20,172,427,195	0	0
+region	6	d518d926
+node	7	1	1	lv_label	24	204	423	223	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	18	2	2	0	0	1	161	18	161	18	=\xd0\x9e\xd1\x82\xd1\x85\xd0\xb2\xd1\x8a\xd1\x80\xd0\xbb\xd0\xb5\xd0\xbd\xd0\xb8 \xd0\xba\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5: 0	-
+fit	7	1	0	143,206,304,222	20,200,427,223	0	0
+region	7	0259df84
+node	8	1	1	lv_label	24	232	423	251	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	18	2	2	0	0	1	105	18	105	18	=\xd0\x91\xd0\xbb\xd0\xbe\xd0\xba\xd0\xb8\xd1\x80\xd0\xbe\xd0\xb2\xd0\xba\xd0\xb8: 0	-
+fit	8	1	0	172,234,276,250	20,228,427,251	0	0
+region	8	d0d02c5d
+node	9	1	1	lv_label	24	260	423	279	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	18	2	2	0	0	1	137	18	137	18	=\xd0\xa0\xd0\xb5\xd0\xbb\xd0\xb5 \xd0\xb1\xd0\xb5\xd0\xb7 \xd0\xb2\xd1\x80\xd1\x8a\xd0\xb7\xd0\xba\xd0\xb0: 0	-
+fit	9	1	0	156,262,292,278	20,256,427,279	0	0
+region	9	1a01fe00
+node	10	1	1	lv_label	24	288	423	307	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	18	2	2	0	0	1	115	18	115	18	=\xd0\xa1\xd1\x82\xd0\xb0\xd1\x80\xd1\x82\xd0\xb8\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x8f: 1	-
+fit	10	1	0	166,290,281,306	20,284,427,307	0	0
+region	10	b2c97642
+node	11	1	1	lv_label	440	24	839	35	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	11	0	0	-	-	0	0
+region	11	e4ec1645
+node	12	1	1	lv_label	440	44	839	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	27	2	2	0	0	1	131	27	131	27	=\xd0\x9f\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xb5\xd0\xbd\xd0\xb8	-
+fit	12	1	0	575,48,704,70	434,38,845,73	0	0
+region	12	e194c1bf
+node	13	1	1	lv_label	856	24	1255	35	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	13	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	13	0	0	-	-	0	0
+region	13	e4ec1645
+node	14	1	1	lv_label	856	44	1255	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	27	2	2	0	0	1	131	27	131	27	=\xd0\x91\xd0\xbb\xd0\xbe\xd0\xba\xd0\xb8\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8	-
+fit	14	1	0	991,48,1120,70	850,38,1261,73	0	0
+region	14	f5eb0e4d
+node	15	1	1	lv_label	864	539	1247	558	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	15	-	18	2	2	0	0	2	445	18	329	36	=\xd0\x9b\xd0\xb8\xd1\x86\xd0\xb5\xd0\xbd\xd0\xb7\xd0\xb8\xd1\x82\xd0\xb5 \xd0\xb7\xd0\xb0 \xd0\xbe\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb5\xd0\xbd \xd0\xba\xd0\xbe\xd0\xb4 \xd1\x81\xd0\xb0 \xd0\xb2 \xd0\xba\xd0\xbe\xd0\xbc\xd0\xbf\xd0\xbb\xd0\xb5\xd0\xba\xd1\x82\xd0\xb0 \xd0\xbd\xd0\xb0 \xd0\xbf\xd1\x80\xd0\xb8\xd0\xbb\xd0\xbe\xd0\xb6\xd0\xb5\xd0\xbd\xd0\xb8\xd0\xb5\xd1\x82\xd0\xbe.	-
+fit	15	1	0	891,541,1220,575	860,535,1251,558	0	1
+region	15	ae24e15a
+node	16	1	1	lv_button	24	705	1255	752	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	16	33ce53bb
+node	17	16	2	lv_label	599	715	679	741	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	17	-	27	2	2	0	0	1	81	27	81	27	=\xd0\x93\xd0\xbe\xd1\x82\xd0\xbe\xd0\xb2\xd0\xbe	-
+fit	17	1	0	600,719,679,737	593,709,685,741	0	0
+region	17	fab552da
+node	18	1	1	lv_label	24	761	1255	780	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	18	2	2	0	0	1	115	18	115	18	=\xd0\xa8\xd0\xba\xd0\xb0\xd1\x84\xd1\x87\xd0\xb5\xd1\x82\xd0\xb0 1.0.0	-
+fit	18	1	0	583,763,697,779	20,757,1259,780	0	0
+region	18	da942f51
+node	19	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	19	d5bab163
+node	20	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	20	d5bab163
+ok semantic lines 17
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	\xd0\x9a\xd1\x80\xd0\xb0\xd0\xb9 \xd0\xbd\xd0\xb0 \xd1\x81\xd0\xbc\xd1\x8f\xd0\xbd\xd0\xb0\xd1\x82\xd0\xb0	24	24	400	50	1	-	-	3	-	-	-
+6	countdown	298 \xd1\x81\xd0\xb5\xd0\xba	24	82	400	20	1	-	-	10	-	-	-
+25	text	\xd0\x9f\xd1\x80\xd0\xb8\xd0\xba\xd0\xbb\xd1\x8e\xd1\x87\xd0\xb8 \xd0\xb2 00:00 UTC	24	110	400	20	1	-	-	9	-	-	-
+20	text	\xd0\x9e\xd1\x81\xd0\xb2\xd0\xbe\xd0\xb1\xd0\xbe\xd0\xb4\xd0\xb5\xd0\xbd\xd0\xb8: 0	24	138	400	30	1	-	-	8	-	-	-
+21	text	\xd0\x9e\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb5\xd0\xbd\xd0\xb8 \xd0\xb2\xd1\x80\xd0\xb0\xd1\x82\xd0\xb8: 0	24	176	400	20	1	-	-	9	-	-	-
+26	text	\xd0\x9e\xd1\x82\xd1\x85\xd0\xb2\xd1\x8a\xd1\x80\xd0\xbb\xd0\xb5\xd0\xbd\xd0\xb8 \xd0\xba\xd0\xbe\xd0\xb4\xd0\xbe\xd0\xb2\xd0\xb5: 0	24	204	400	20	1	-	-	9	-	-	-
+27	text	\xd0\x91\xd0\xbb\xd0\xbe\xd0\xba\xd0\xb8\xd1\x80\xd0\xbe\xd0\xb2\xd0\xba\xd0\xb8: 0	24	232	400	20	1	-	-	9	-	-	-
+28	text	\xd0\xa0\xd0\xb5\xd0\xbb\xd0\xb5 \xd0\xb1\xd0\xb5\xd0\xb7 \xd0\xb2\xd1\x80\xd1\x8a\xd0\xb7\xd0\xba\xd0\xb0: 0	24	260	400	20	1	-	-	9	-	-	-
+29	text	\xd0\xa1\xd1\x82\xd0\xb0\xd1\x80\xd1\x82\xd0\xb8\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8\xd1\x8f: 1	24	288	400	20	1	-	-	9	-	-	-
+30	panel		440	24	400	12	1	-	-	1	-	-	-
+31	text	\xd0\x9f\xd1\x80\xd0\xbe\xd0\xb2\xd0\xb5\xd1\x80\xd0\xb5\xd0\xbd\xd0\xb8	440	44	400	30	1	-	-	8	-	-	-
+192	panel		856	24	400	12	1	-	-	3	-	-	-
+193	text	\xd0\x91\xd0\xbb\xd0\xbe\xd0\xba\xd0\xb8\xd1\x80\xd0\xb0\xd0\xbd\xd0\xb8	856	44	400	30	1	-	-	8	-	-	-
+8	text	\xd0\x9b\xd0\xb8\xd1\x86\xd0\xb5\xd0\xbd\xd0\xb7\xd0\xb8\xd1\x82\xd0\xb5 \xd0\xb7\xd0\xb0 \xd0\xbe\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb5\xd0\xbd \xd0\xba\xd0\xbe\xd0\xb4 \xd1\x81\xd0\xb0 \xd0\xb2 \xd0\xba\xd0\xbe\xd0\xbc\xd0\xbf\xd0\xbb\xd0\xb5\xd0\xba\xd1\x82\xd0\xb0 \xd0\xbd\xd0\xb0 \xd0\xbf\xd1\x80\xd0\xb8\xd0\xbb\xd0\xbe\xd0\xb6\xd0\xb5\xd0\xbd\xd0\xb8\xd0\xb5\xd1\x82\xd0\xbe.	864	539	384	20	1	-	-	10	-	-	-
+16	button	\xd0\x93\xd0\xbe\xd1\x82\xd0\xbe\xd0\xb2\xd0\xbe	24	705	1232	48	1	7:0	-	17	-	-	-
+24	text	\xd0\xa8\xd0\xba\xd0\xb0\xd1\x84\xd1\x87\xd0\xb5\xd1\x82\xd0\xb0 1.0.0	24	761	1232	20	1	-	-	10	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok apply
+ok advance 6000
+ok frame lines 76
+lvprobe	1	21
+frame	1280	800	51a79b74
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	51a79b74
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	51a79b74
+node	2	1	1	lv_label	24	24	423	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	45	2	2	0	0	1	217	45	217	45	=End of shift	-
+fit	2	1	0	117,30,332,60	13,13,434,73	0	0
+region	2	605697fc
+node	3	1	1	lv_label	24	82	423	101	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	18	2	2	0	0	1	39	18	39	18	=298 s	-
+fit	3	1	0	204,84,243,97	20,78,427,101	0	0
+region	3	0b437545
+node	4	1	1	lv_label	24	110	423	129	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	18	2	2	0	0	1	129	18	129	18	=Ended 00:00 UTC	-
+fit	4	1	0	160,112,287,125	20,106,427,129	0	0
+region	4	4fa19e39
+node	5	1	1	lv_label	24	138	423	167	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	27	2	2	0	0	1	132	27	132	27	=Released: 0	-
+fit	5	1	0	159,141,290,160	18,132,429,167	0	0
+region	5	8ae24841
+node	6	1	1	lv_label	24	176	423	195	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	6	-	18	2	2	0	0	1	118	18	118	18	=Doors opened: 0	-
+fit	6	1	0	166,178,283,194	20,172,427,195	0	0
+region	6	3371ab25
+node	7	1	1	lv_label	24	204	423	223	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	7	-	18	2	2	0	0	1	128	18	128	18	=Rejected codes: 0	-
+fit	7	1	0	161,206,288,222	20,200,427,223	0	0
+region	7	a0ec20dd
+node	8	1	1	lv_label	24	232	423	251	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	8	-	18	2	2	0	0	1	81	18	81	18	=Lockouts: 0	-
+fit	8	1	0	184,234,264,247	20,228,427,251	0	0
+region	8	28d2cb45
+node	9	1	1	lv_label	24	260	423	279	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	9	-	18	2	2	0	0	1	102	18	102	18	=Relay down: 0	-
+fit	9	1	0	174,262,275,278	20,256,427,279	0	0
+region	9	707cc557
+node	10	1	1	lv_label	24	288	423	307	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	10	-	18	2	2	0	0	1	88	18	88	18	=App starts: 1	-
+fit	10	1	0	180,290,268,306	20,284,427,307	0	0
+region	10	a722faf4
+node	11	1	1	lv_label	440	24	839	35	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	11	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	11	0	0	-	-	0	0
+region	11	e4ec1645
+node	12	1	1	lv_label	440	44	839	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	12	-	27	2	2	0	0	1	112	27	112	27	=Inspected	-
+fit	12	1	0	585,47,695,70	434,38,845,73	0	0
+region	12	257051a0
+node	13	1	1	lv_label	856	24	1255	35	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	13	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	13	0	0	-	-	0	0
+region	13	e4ec1645
+node	14	1	1	lv_label	856	44	1255	73	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	14	-	27	2	2	0	0	1	93	27	93	27	=Blocked	-
+fit	14	1	0	1010,47,1101,66	850,38,1261,73	0	0
+region	14	96f6eebb
+node	15	1	1	lv_label	864	539	1247	558	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	15	-	18	2	2	0	0	1	352	18	352	18	=Open source licenses are packaged with this app.	-
+fit	15	1	0	880,541,1231,557	860,535,1251,558	0	0
+region	15	be507564
+node	16	1	1	lv_button	24	705	1255	752	0	1	-1	-1	0	0	2b4678	255	255	1	0	0
+region	16	45fc4a0b
+node	17	16	2	lv_label	610	715	669	741	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	17	-	27	2	2	0	0	1	60	27	60	27	=Done	-
+fit	17	1	0	611,719,670,737	604,709,675,741	0	0
+region	17	7f552c4b
+node	18	1	1	lv_label	24	761	1255	780	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	18	-	18	2	2	0	0	1	95	18	95	18	=Lockers 1.0.0	-
+fit	18	1	0	593,763,687,776	20,757,1259,780	0	0
+region	18	376c1bfe
+node	19	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	19	51a79b74
+node	20	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	20	51a79b74
+ok semantic lines 17
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+3	text	End of shift	24	24	400	50	1	-	-	3	-	-	-
+6	countdown	298 s	24	82	400	20	1	-	-	10	-	-	-
+25	text	Ended 00:00 UTC	24	110	400	20	1	-	-	9	-	-	-
+20	text	Released: 0	24	138	400	30	1	-	-	8	-	-	-
+21	text	Doors opened: 0	24	176	400	20	1	-	-	9	-	-	-
+26	text	Rejected codes: 0	24	204	400	20	1	-	-	9	-	-	-
+27	text	Lockouts: 0	24	232	400	20	1	-	-	9	-	-	-
+28	text	Relay down: 0	24	260	400	20	1	-	-	9	-	-	-
+29	text	App starts: 1	24	288	400	20	1	-	-	9	-	-	-
+30	panel		440	24	400	12	1	-	-	1	-	-	-
+31	text	Inspected	440	44	400	30	1	-	-	8	-	-	-
+192	panel		856	24	400	12	1	-	-	3	-	-	-
+193	text	Blocked	856	44	400	30	1	-	-	8	-	-	-
+8	text	Open source licenses are packaged with this app.	864	539	384	20	1	-	-	10	-	-	-
+16	button	Done	24	705	1232	48	1	7:0	-	17	-	-	-
+24	text	Lockers 1.0.0	24	761	1232	20	1	-	-	10	-	-	-
+ok open
+ok advance 4200
+ok frame lines 26
+lvprobe	1	8
+frame	1280	800	49cbfdb6
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	49cbfdb6
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	49cbfdb6
+node	2	1	1	lv_label	24	290	1255	301	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	2	0	0	-	-	0	0
+region	2	ed8ca045
+node	3	1	1	lv_label	24	318	1255	377	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	55	2	2	0	0	1	384	55	384	55	=\xd0\x9d\xd0\xb5\xd1\x89\xd0\xbe \xd1\x81\xd0\xb5 \xd0\xbe\xd0\xb1\xd1\x8a\xd1\x80\xd0\xba\xd0\xb0	-
+fit	3	1	0	451,325,832,371	11,305,1268,377	0	0
+region	3	2808aa02
+node	4	1	1	lv_label	24	394	1255	433	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	2	2	0	0	1	649	36	649	36	=\xd0\x9f\xd0\xbe\xd0\xbc\xd0\xbe\xd0\xbb\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbf\xd0\xb5\xd1\x80\xd1\x81\xd0\xbe\xd0\xbd\xd0\xb0\xd0\xbb\xd0\xb0. \xd0\x9d\xd0\xb8\xd1\x89\xd0\xbe \xd0\xbd\xd0\xb5 \xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb5\xd0\xbd\xd0\xbe.	-
+fit	4	1	0	317,399,961,429	15,385,1264,433	0	0
+region	4	8340245f
+node	5	1	1	lv_label	24	450	1255	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	27	2	2	0	0	1	436	27	436	27	=\xd0\xa0\xd0\xb5\xd0\xbb\xd0\xb5\xd1\x82\xd0\xbe \xd0\xb5 \xd0\xbe\xd1\x84\xd0\xbb\xd0\xb0\xd0\xb9\xd0\xbd: \xd1\x82\xd0\xb0\xd0\xb1\xd0\xbb\xd0\xbe\xd1\x82\xd0\xbe \xd0\xbd\xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb3\xd0\xbe\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8.	-
+fit	5	1	0	423,453,856,476	18,444,1261,509	0	0
+region	5	b2e7e837
+node	6	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	6	49cbfdb6
+node	7	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	7	49cbfdb6
+ok semantic lines 5
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+2	panel		24	290	1232	12	1	-	-	3	-	-	-
+3	text	\xd0\x9d\xd0\xb5\xd1\x89\xd0\xbe \xd1\x81\xd0\xb5 \xd0\xbe\xd0\xb1\xd1\x8a\xd1\x80\xd0\xba\xd0\xb0	24	318	1232	60	1	-	-	2	-	-	-
+4	text	\xd0\x9f\xd0\xbe\xd0\xbc\xd0\xbe\xd0\xbb\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbf\xd0\xb5\xd1\x80\xd1\x81\xd0\xbe\xd0\xbd\xd0\xb0\xd0\xbb\xd0\xb0. \xd0\x9d\xd0\xb8\xd1\x89\xd0\xbe \xd0\xbd\xd0\xb5 \xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb5\xd0\xbd\xd0\xbe.	24	394	1232	40	1	-	-	4	-	-	-
+5	text	\xd0\xa0\xd0\xb5\xd0\xbb\xd0\xb5\xd1\x82\xd0\xbe \xd0\xb5 \xd0\xbe\xd1\x84\xd0\xbb\xd0\xb0\xd0\xb9\xd0\xbd: \xd1\x82\xd0\xb0\xd0\xb1\xd0\xbb\xd0\xbe\xd1\x82\xd0\xbe \xd0\xbd\xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb3\xd0\xbe\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb8.	24	450	1232	60	1	-	-	7	-	-	-
+ok open
+ok advance 4200
+ok frame lines 26
+lvprobe	1	8
+frame	1280	800	7731f0f6
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	7731f0f6
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	7731f0f6
+node	2	1	1	lv_label	24	290	1255	301	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	2	0	0	-	-	0	0
+region	2	ed8ca045
+node	3	1	1	lv_label	24	318	1255	377	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	55	2	2	0	0	1	384	55	384	55	=\xd0\x9d\xd0\xb5\xd1\x89\xd0\xbe \xd1\x81\xd0\xb5 \xd0\xbe\xd0\xb1\xd1\x8a\xd1\x80\xd0\xba\xd0\xb0	-
+fit	3	1	0	451,325,832,371	11,305,1268,377	0	0
+region	3	2808aa02
+node	4	1	1	lv_label	24	394	1255	433	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	2	2	0	0	1	649	36	649	36	=\xd0\x9f\xd0\xbe\xd0\xbc\xd0\xbe\xd0\xbb\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbf\xd0\xb5\xd1\x80\xd1\x81\xd0\xbe\xd0\xbd\xd0\xb0\xd0\xbb\xd0\xb0. \xd0\x9d\xd0\xb8\xd1\x89\xd0\xbe \xd0\xbd\xd0\xb5 \xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb5\xd0\xbd\xd0\xbe.	-
+fit	4	1	0	317,399,961,429	15,385,1264,433	0	0
+region	4	8340245f
+node	5	1	1	lv_label	24	450	1255	509	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	27	2	2	0	0	1	39	27	39	27	=?40	-
+fit	5	1	0	620,454,659,472	18,444,1261,509	0	0
+region	5	02327c9b
+node	6	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	6	7731f0f6
+node	7	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	7	7731f0f6
+ok semantic lines 5
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+2	panel		24	290	1232	12	1	-	-	3	-	-	-
+3	text	\xd0\x9d\xd0\xb5\xd1\x89\xd0\xbe \xd1\x81\xd0\xb5 \xd0\xbe\xd0\xb1\xd1\x8a\xd1\x80\xd0\xba\xd0\xb0	24	318	1232	60	1	-	-	2	-	-	-
+4	text	\xd0\x9f\xd0\xbe\xd0\xbc\xd0\xbe\xd0\xbb\xd0\xb5\xd1\x82\xd0\xb5 \xd0\xbf\xd0\xb5\xd1\x80\xd1\x81\xd0\xbe\xd0\xbd\xd0\xb0\xd0\xbb\xd0\xb0. \xd0\x9d\xd0\xb8\xd1\x89\xd0\xbe \xd0\xbd\xd0\xb5 \xd0\xb5 \xd0\xbe\xd1\x82\xd0\xb2\xd0\xbe\xd1\x80\xd0\xb5\xd0\xbd\xd0\xbe.	24	394	1232	40	1	-	-	4	-	-	-
+5	text	\xd0\x93\xd1\x80\xd0\xb5\xd1\x88\xd0\xba\xd0\xb0 \xd0\xb2 \xd0\xbf\xd0\xb0\xd0\xbc\xd0\xb5\xd1\x82\xd1\x82\xd0\xb0: \xd0\xba\xd0\xbd\xd0\xb8\xd0\xb3\xd0\xb0\xd1\x82\xd0\xb0 \xd1\x81 \xd1\x80\xd0\xb5\xd0\xb7\xd0\xb5\xd1\x80\xd0\xb2\xd0\xb0\xd1\x86\xd0\xb8\xd0\xb8 \xd0\xbd\xd0\xb5 \xd0\xbc\xd0\xbe\xd0\xb6\xd0\xb0 \xd0\xb4\xd0\xb0 \xd1\x81\xd0\xb5 \xd0\xb7\xd0\xb0\xd0\xbf\xd0\xb8\xd1\x88\xd0\xb5 \xd0\xb8\xd0\xbb\xd0\xb8 \xd0\xb7\xd0\xb0\xd1\x80\xd0\xb5\xd0\xb4\xd0\xb8.	24	450	1232	60	1	-	-	7	-	-	-
+ok open
+ok advance 4200
+ok apply
+ok advance 13200
+ok apply
+ok advance 22200
+ok apply
+ok advance 31200
+ok apply
+ok advance 40200
+ok apply
+ok advance 49200
+ok frame lines 26
+lvprobe	1	8
+frame	1280	800	ec11b86a
+node	0	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	ffffff	0	0	1	0	0
+region	0	ec11b86a
+node	1	-1	0	lv_obj	0	0	1279	799	0	1	-1	-1	0	0	111318	255	255	1	0	0
+region	1	ec11b86a
+node	2	1	1	lv_label	24	295	1255	306	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	2	-	36	0	0	0	0	1	0	36	0	36	=	-
+fit	2	0	0	-	-	0	0
+region	2	ed8ca045
+node	3	1	1	lv_label	24	323	1255	382	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	3	-	55	2	2	0	0	1	391	55	391	55	=\xd0\x9c\xd0\xbe\xd0\xbb\xd1\x8f, \xd0\xb8\xd0\xb7\xd1\x87\xd0\xb0\xd0\xba\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5	-
+fit	3	1	0	447,330,834,374	11,310,1268,382	0	0
+region	3	fc2baa1b
+node	4	1	1	lv_label	24	399	1255	438	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	4	-	36	2	2	0	0	1	569	36	569	36	=\xd0\xa2\xd0\xb2\xd1\x8a\xd1\x80\xd0\xb4\xd0\xb5 \xd0\xbc\xd0\xbd\xd0\xbe\xd0\xb3\xd0\xbe \xd0\xbe\xd0\xbf\xd0\xb8\xd1\x82\xd0\xb8, \xd0\xbc\xd0\xbe\xd0\xbb\xd1\x8f, \xd0\xb8\xd0\xb7\xd1\x87\xd0\xb0\xd0\xba\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5.	-
+fit	4	1	0	355,403,921,434	15,390,1264,438	0	0
+region	4	81c56c2a
+node	5	1	1	lv_label	24	455	1255	504	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+label	5	-	45	2	2	0	0	1	115	45	115	45	=51 \xd1\x81\xd0\xb5\xd0\xba	-
+fit	5	1	0	583,462,697,491	13,444,1266,504	0	0
+region	5	1f841423
+node	6	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	6	ec11b86a
+node	7	-1	0	lv_obj	0	0	1279	799	0	0	-1	-1	0	0	ffffff	0	0	1	0	0
+region	7	ec11b86a
+ok semantic lines 5
+1	root		0	0	1280	800	1	-	-	0	-	-	-
+2	panel		24	295	1232	12	1	-	-	4	-	-	-
+3	text	\xd0\x9c\xd0\xbe\xd0\xbb\xd1\x8f, \xd0\xb8\xd0\xb7\xd1\x87\xd0\xb0\xd0\xba\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5	24	323	1232	60	1	-	-	2	-	-	-
+4	text	\xd0\xa2\xd0\xb2\xd1\x8a\xd1\x80\xd0\xb4\xd0\xb5 \xd0\xbc\xd0\xbd\xd0\xbe\xd0\xb3\xd0\xbe \xd0\xbe\xd0\xbf\xd0\xb8\xd1\x82\xd0\xb8, \xd0\xbc\xd0\xbe\xd0\xbb\xd1\x8f, \xd0\xb8\xd0\xb7\xd1\x87\xd0\xb0\xd0\xba\xd0\xb0\xd0\xb9\xd1\x82\xd0\xb5.	24	399	1232	40	1	-	-	4	-	-	-
+6	countdown	51 \xd1\x81\xd0\xb5\xd0\xba	24	455	1232	50	1	-	-	6	-	-	-
+ok quit

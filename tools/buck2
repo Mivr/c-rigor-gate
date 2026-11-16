@@ -4,6 +4,13 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bin="${BUCK2_BIN:-/usr/local/bin/buck2}"
 want="$(tr -d '[:space:]' < "$here/buck2.version")"
+# Owner-sanctioned (2026-11-15) development override for a machine without the pinned client and
+# without the farm: an untracked tools/buck2.local with two lines, `bin=<path>` and `sha256=<hex>`.
+# The binary is still hash-checked. A verdict never comes from such a machine (docs/toolchain.md).
+if [ -f "$here/buck2.local" ]; then
+  bin="$(sed -n 's/^bin=//p' "$here/buck2.local")"
+  want="$(sed -n 's/^sha256=//p' "$here/buck2.local")"
+fi
 have="$(sha256sum "$bin" | cut -d' ' -f1)"
 if [ "$have" != "$want" ]; then
   echo "tools/buck2: sha256 of $bin is $have, expected $want" >&2

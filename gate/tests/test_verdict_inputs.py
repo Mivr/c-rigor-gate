@@ -10,7 +10,7 @@ import subprocess
 from types import SimpleNamespace
 from unittest import mock
 
-from rigor_lib import grade_context, jsonio, verdict, verdict_inputs, witness_bundle
+from rigor_lib import grade_context, jsonio, verdict, verdict_inputs, verdict_verify, witness_bundle
 from rigor_lib.errors import InternalError
 from tests.helpers import GATE_DIR, TempDirTestCase, base_env
 
@@ -20,10 +20,10 @@ BUCK_TEXT = ('fetched_tree(\n    name = "llvm",\n    url = "u",\n    sha256 = "%
 LLVM, SYSROOT, BUCK2 = "1" * 64, "2" * 64, "3" * 64
 FILE_HASHES = {key: jsonio.sha256_hex(key.encode()) for key in
                ("task_sha256", "product_toml_sha256", "policy_sha256", "expected_tests_sha256",
-                "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256", "allowed_signers_sha256",
+                "expected_tests_previous_sha256", "ram_budget_sha256", "approvals_sha256",
                 "order_sha256", "witness_sha256", "perf_sha256", "fuzz_regressions_sha256", "sim_spec_sha256",
                 "sim_regressions_sha256", "sim_salt_id", "oracle_sha256", "oracle_policy_sha256", "oracle_normalise_sha256",
-                "oracle_excluded_sha256")}
+                "oracle_excluded_sha256", "architecture_sha256", "decoupling_sha256", "decoupling_baseline_sha256")}
 WITNESS_FIXTURE = GATE_DIR / "tests" / "fixtures" / "witness" / "good"
 
 
@@ -40,6 +40,7 @@ class Fixture:
         self.tier = "nightly"
         self.file_hashes = dict(FILE_HASHES)
         self.sim_digest = None
+        self.product_dir = None
 
     def grading(self):
         buck = (BUCK_TEXT % (self.llvm, self.sysroot)).encode()
@@ -57,7 +58,7 @@ class Fixture:
             documents["sim"] = {"metadata": {"seed_digest": self.sim_digest}}
         g = SimpleNamespace(tree=self.tree, work=self.root, gate_sha=self.gate_sha, gate_clean=self.gate_clean,
                             product=SimpleNamespace(name=self.name), args=SimpleNamespace(uncached=self.uncached, approvals=None, tier=self.tier),
-                            inputs=dict(self.file_hashes))
+                            inputs=dict(self.file_hashes, product_dir=self.product_dir))
         return g, documents
 
     def inputs(self):
@@ -105,6 +106,7 @@ class EveryInputChangesTheHash(TempDirTestCase):
         cases["product"] = lambda f: setattr(f, "name", "other")
         cases["uncached"] = lambda f: setattr(f, "uncached", True)
         cases["tier"] = lambda f: setattr(f, "tier", "merge")
+        cases["product_dir"] = lambda f: setattr(f, "product_dir", "products/prod")
         cases["buckconfig_sha256"] = lambda f: setattr(f, "buckconfig", "5" * 64)
         cases["llvm_sha256"] = lambda f: setattr(f, "llvm", "6" * 64)
         cases["sysroot_sha256"] = lambda f: setattr(f, "sysroot", "7" * 64)
@@ -162,6 +164,10 @@ class EveryInputChangesTheHash(TempDirTestCase):
             self.assertEqual(verdict_inputs.missing_inputs(broken), [key], key)
         for key in verdict_inputs.OPTIONAL_KEYS:
             self.assertEqual(verdict_inputs.missing_inputs(dict(inputs, **{key: None})), [])
+        for value in ("/abs", "../x", "a/../b", ".", 5):
+            self.assertEqual(verdict_inputs.missing_inputs(dict(inputs, product_dir=value)), ["product_dir"], value)
+        for value in (None, "products/prod", "canaries/x"):
+            self.assertEqual(verdict_inputs.missing_inputs(dict(inputs, product_dir=value)), [], value)
 
 
 class Snapshot(TempDirTestCase):
@@ -201,6 +207,26 @@ class Snapshot(TempDirTestCase):
             self.assertIn("/inputs/", path)
             self.assertTrue(os.path.exists(path))
         self.assertEqual(pathlib.Path(os.path.dirname(args.product), "policy.toml").read_text(), "policy.toml\n")
+
+    def test_every_product_configuration_file_is_bound(self):
+        """U30 fix-up: a raised baseline or an edited architecture changes a bound input."""
+        args, hashes = self.snapshot()
+        for name, key in verdict_inputs.PRODUCT_FILE_KEYS.items():
+            self.assertEqual(hashes[key], jsonio.sha256_hex((name + "\n").encode()), name)
+        self.assertEqual(set(verdict_inputs.PRODUCT_FILES) - set(verdict_inputs.PRODUCT_FILE_KEYS), {"sim-salt.public"})
+        self.assertIsNone(hashes["product_dir"])   # a scratch directory outside the gate checkout
+
+    def test_a_product_directory_inside_the_gate_checkout_is_named(self):
+        self.assertEqual(verdict_inputs.gate_relative(str(GATE_DIR.parent / "products" / "selftest")), "products/selftest")
+        self.assertIsNone(verdict_inputs.gate_relative(str(GATE_DIR.parent)))
+        self.assertIsNone(verdict_inputs.gate_relative(str(self.product_dir)))
+
+    def test_the_approvals_digest_in_place_equals_the_snapshot_digest(self):
+        (self.approvals / "notes.txt").write_text("x")
+        os.symlink("elsewhere", self.approvals / "link")
+        os.mkdir(self.approvals / "sub")
+        _, hashes = self.snapshot()
+        self.assertEqual(verdict_inputs.approvals_digest(str(self.approvals)), hashes["approvals_sha256"])
 
     def test_changing_the_original_after_the_snapshot_changes_nothing(self):
         args, hashes = self.snapshot()
@@ -410,7 +436,7 @@ class DirtyGate(TempDirTestCase):
 
 class Constants(TempDirTestCase):
     def test_pass_constant_matches_the_verdict_module(self):
-        self.assertEqual(verdict_inputs._PASS, verdict.STATUS_PASS)
+        self.assertEqual(verdict_verify._PASS, verdict.STATUS_PASS)
 
     def test_order_parse_equals_order_read(self):
         path = str(GATE_DIR / "order.txt")

@@ -110,9 +110,9 @@ second approval of another kind.
 | `witness-copy-weak-tests` | role test-author; `util` is stubbed and has a real witness, `core` is a copy, and the author dropped the positive `core_sign` checks | `mutants-witness`: witness-survived-mutant (the copy is still judged; the head's approval kind is accepted for it, and no approval of either kind exists for a survivor of weakened tests) |
 | `foreign-test-scope` (control) | role implementer; only `util/util_core_test.c` changes (a test of util's package that lists `//core:core`), and the bundle has no entry for `core` | none: PASS. W = {`//util:util`}; with the old, wider W it was `witness-missing` for the L3 `core` |
 
-The canary pack carries no signed approvals (the runner passes no `--approvals`), so "an approved survivor of a copy
+The canary pack carries no approvals (the runner passes no `--approvals`), so "an approved survivor of a copy
 passes in a test-author grade" has no canary: `gate/tests/test_mutants.py` `HeadKindForOneModuleTest` proves it with
-real signatures, and `test_grade_witness.py` / `test_grade_mutants.py` `Judging` prove the wiring.
+real approval files, and `test_grade_witness.py` / `test_grade_mutants.py` `Judging` prove the wiring.
 
 ## Roles
 

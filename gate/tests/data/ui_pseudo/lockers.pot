@@ -1,0 +1,305 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: bg\n"
+
+msgid "Small"
+msgstr ""
+
+msgid "Small · Full"
+msgstr ""
+
+msgid "Medium"
+msgstr ""
+
+msgid "Medium · Full"
+msgstr ""
+
+msgid "Large"
+msgstr ""
+
+msgid "Large · Full"
+msgstr ""
+
+msgid "Extra large"
+msgstr ""
+
+msgid "Extra large · Full"
+msgstr ""
+
+msgid "Full"
+msgstr ""
+
+msgid "Code not accepted"
+msgstr ""
+
+msgid "Codes unavailable"
+msgstr ""
+
+msgid "No locker free"
+msgstr ""
+
+msgid "Not saved"
+msgstr ""
+
+msgid "Audit log"
+msgstr ""
+
+msgid "Sync"
+msgstr ""
+
+msgid "Codes offline"
+msgstr ""
+
+msgid "Codes"
+msgstr ""
+
+msgid "Self-test"
+msgstr ""
+
+msgid "Something went wrong"
+msgstr ""
+
+msgid "That code is not valid."
+msgstr ""
+
+msgid "That code is not recognised."
+msgstr ""
+
+msgid "The code list is unavailable. Try again shortly."
+msgstr ""
+
+msgid "Every locker is in use. Please ask the staff."
+msgstr ""
+
+msgid "Reservation saved."
+msgstr ""
+
+msgid "Not saved: the door opened, and the reservation was not saved."
+msgstr ""
+
+msgid "Audit log: an event could not be written."
+msgstr ""
+
+msgid "Sync rejected: {0}"
+msgstr ""
+
+msgid "Sync: events not uploaded since {0}"
+msgstr ""
+
+msgid "Codes offline: using the list saved at {0}"
+msgstr ""
+
+msgid "Codes: the allowed-code list could not be refreshed."
+msgstr ""
+
+msgid "Please ask staff for help. A door may have opened."
+msgstr ""
+
+msgid "Please ask staff for help. A door was opened."
+msgstr ""
+
+msgid "Please ask staff for help. Nothing was opened."
+msgstr ""
+
+msgid "Locker {0}. {1}"
+msgstr ""
+
+msgid "Relay busy: a relay was already on, so nothing was pulsed."
+msgstr ""
+
+msgid "Kiosk busy: another kiosk process holds the relay lock; only one kiosk may drive a board."
+msgstr ""
+
+msgid "Relay lock unavailable: {0}"
+msgstr ""
+
+msgid "Relay safety stop: a relay stayed on and was forced off."
+msgstr ""
+
+msgid "Relay offline: the relay board did not answer."
+msgstr ""
+
+msgid "Relay error: the locker opener failed."
+msgstr ""
+
+msgid "Storage error: the reservation book could not be saved or loaded."
+msgstr ""
+
+msgid "Codes unavailable: the allowed-code list could not be read."
+msgstr ""
+
+msgid "Book rejected: the opening was not recorded."
+msgstr ""
+
+msgid "Locker missing: that locker is not in the inventory."
+msgstr ""
+
+msgid "None"
+msgstr ""
+
+msgid "{0} opened"
+msgstr ""
+
+msgid "{0} opened, was uncertain"
+msgstr ""
+
+msgid "{0} uncertain"
+msgstr ""
+
+msgid "{0} failed: {1}"
+msgstr ""
+
+msgid "{0} failed: {1}, was uncertain"
+msgstr ""
+
+msgid "{0} failed: {1}: {2}"
+msgstr ""
+
+msgid "{0} failed: {1}: {2}, was uncertain"
+msgstr ""
+
+msgid "relay busy"
+msgstr ""
+
+msgid "kiosk busy"
+msgstr ""
+
+msgid "relay lock unavailable"
+msgstr ""
+
+msgid "relay safety stop"
+msgstr ""
+
+msgid "relay offline"
+msgstr ""
+
+msgid "relay error"
+msgstr ""
+
+msgid "storage error"
+msgstr ""
+
+msgid "codes unavailable"
+msgstr ""
+
+msgid "book rejected"
+msgstr ""
+
+msgid "locker missing"
+msgstr ""
+
+msgid "Relay board not reachable"
+msgstr ""
+
+msgid "A relay is still on"
+msgstr ""
+
+msgid "No active codes"
+msgstr ""
+
+msgid "Data directory is not writable"
+msgstr ""
+
+msgid "Free space could not be read"
+msgstr ""
+
+msgid "Disk almost full"
+msgstr ""
+
+msgid "Reservation book could not be loaded"
+msgstr ""
+
+msgid "{0} uncertain entries are blocking lockers"
+msgstr ""
+
+msgid "Clock looks wrong"
+msgstr ""
+
+msgid "Sync: {0} events still waiting"
+msgstr ""
+
+msgid "Sync: {0} events still waiting, last upload {1}"
+msgstr ""
+
+msgid "Your locker is {0}. Remember the number."
+msgstr ""
+
+msgid "Locker {0} is open"
+msgstr ""
+
+msgid "{0} s"
+msgstr ""
+
+msgid "Ended {0}:{1} UTC"
+msgstr ""
+
+msgid "Released: {0}"
+msgstr ""
+
+msgid "Audit log or reservation book: a write failed during this shift."
+msgstr ""
+
+msgid "End of shift"
+msgstr ""
+
+msgid "Lockers {0}"
+msgstr ""
+
+msgid "BG"
+msgstr ""
+
+msgid "EN"
+msgstr ""
+
+msgid "Please wait"
+msgstr ""
+
+msgid "Too many attempts, please wait."
+msgstr ""
+
+msgid "Self-test OK"
+msgstr ""
+
+msgid "Lockers"
+msgstr ""
+
+msgid "Welcome"
+msgstr ""
+
+msgid "Scan a code, or enter it on the pad."
+msgstr ""
+
+msgid "Choose a size"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Done"
+msgstr ""
+
+msgid "Doors opened: {0}"
+msgstr ""
+
+msgid "Rejected codes: {0}"
+msgstr ""
+
+msgid "Lockouts: {0}"
+msgstr ""
+
+msgid "Relay down: {0}"
+msgstr ""
+
+msgid "App starts: {0}"
+msgstr ""
+
+msgid "Inspected"
+msgstr ""
+
+msgid "Blocked"
+msgstr ""
+
+msgid "Open source licenses are packaged with this app."
+msgstr ""
+

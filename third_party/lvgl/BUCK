@@ -1,4 +1,4 @@
-load("@gate//rules:third_party.bzl", "c_third_party")
+load("@gate//rules:third_party.bzl", "c_third_party", "c_third_party_private_headers")
 load(":files.bzl", "LVGL_FILES")
 
 # LVGL 9.6.0, release tarball pinned by sha256. See docs/third-party.md.
@@ -159,3 +159,16 @@ export_file(name = "gate_lv_conf.h", visibility = ["//third_party/..."])
 export_file(name = "lvgl_gate.h", visibility = ["//third_party/..."])
 
 export_file(name = "lvgl_gate.c", visibility = ["//third_party/..."])
+
+# U02: LVGL's private headers for the gate's renderer observer gate//ui/lvprobe only (docs/ui-lvprobe.md,
+# docs/third-party.md "Private headers for gate code"). Every header of the manifest at its own path (the private
+# headers include each other and the public tree by relative path). The probe reads lv_obj_class_t.name,
+# lv_obj_t layout bits, lv_label_t (text_size, recolor, expand, dots), lv_draw_task_t (clip_area, the task list
+# of its own layer), lv_draw_glyph_dsc_t.letter_coords, lv_layer_t, lv_display_t (screens, render mode, buffers,
+# dirty areas) and lv_indev_t (click streak, timestamps). Facts: :lvgl_private_headers_symbols.
+c_third_party_private_headers(
+    name = "lvgl_private_headers",
+    lib = "lvgl",
+    files = LVGL_FILES,
+    visibility = ["//ui/..."],
+)

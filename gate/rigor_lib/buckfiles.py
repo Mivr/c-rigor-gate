@@ -21,7 +21,29 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk")
+UI_LOAD_PATH = "@gate//rules:ui.bzl"
+UI_MACRO = "c_ui_probe"
+# U03: `c_ui_probe(name, model)` builds the probe binary of a UI model adapter (`model`, a `:name` of the
+# package or a `//pkg:name` label: checked as a dep). An adapter (and anything else that includes ui/model/model.h) may
+# name the gate's header library `gate//ui/model:model`; the gate's probe library is never nameable (the macro adds it).
+UI_KEYWORDS = ("name", "model")
+UI_MODEL_LABEL = "gate//ui/model:model"
+# The package `ui/model` is the gate's: a product has no such package (the product layout refuses it too), and no dep
+# label may name it in the product's own cell spelling (`//ui/model:...`).
+UI_RESERVED_DIR = "ui/model"
+UI_RESERVED_LABEL = re.compile(r"//ui/model[/:]")
+UI_MODEL_MACROS = ("c_library", "c_binary", "c_test")
+# U05c: `c_ui_probe_session(name, probe, session, expected)` runs the probe of a `c_ui_probe` declared in the SAME BUCK
+# file (`probe`, a `:name`, why=`probe` otherwise) on `session` and compares with `expected`: two different plain files
+# of the package (relative, no `.`/`..` segment, no label, glob or backslash; why=`file` otherwise). Nothing may depend on
+# it (it is a test). It runs no product script: the runner is the gate's.
+UI_SESSION_MACRO = "c_ui_probe_session"
+UI_SESSION_KEYWORDS = ("name", "probe", "session", "expected")
+UI_SESSION_FILE = re.compile(r"[A-Za-z0-9_+-][A-Za-z0-9_.+-]*(/[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)*")
+UI_MACROS = (UI_MACRO, UI_SESSION_MACRO)
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk") + UI_MACROS
+# What each permitted load statement may import: one statement per file, in any order.
+LOADS = {LOAD_PATH: tuple(m for m in MACROS if m not in UI_MACROS), UI_LOAD_PATH: UI_MACROS}
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 # T135: `c_fuzz` takes `corpus` (the form `srcs` has on a `c_fuzz`: string literals, never a glob; the macro checks the paths)
@@ -67,7 +89,8 @@ REQUIRE_MACROS = ("c_library", "c_binary", TEST_MACRO)
 # T2G1: nothing may depend on a `c_sim` or on a target its macro derives: the world and its runner are for the simulation only.
 SIM_MACRO = "c_sim"
 SIM_DERIVED = re.compile(r"(__bin|__shard[0-9]+|__soak|__facts_unit|_facts|_facts_san|_facts_msan|_facts_tsan)?")
-TEST_DERIVED = ("", "_facts", "_facts_san", "_facts_msan", "_facts_tsan", "_results", "_coverage", "__lib", "__map", "_check")
+TEST_DERIVED = ("", "_facts", "_facts_san", "_facts_msan", "_facts_tsan", "_results", "_coverage", "__lib", "__map", "_check",
+                "__ui_probe")
 
 # Names Buck2 reads as build configuration, besides the exact `BUCK`.
 FORBIDDEN_NAMES = ("TARGETS", "PACKAGE", ".buckconfig", ".buckconfig.local", ".buckroot",
@@ -159,11 +182,13 @@ def _dep_problem(node, allowed, test_allowed, macro):
         label = element.value
         if label == facts_rt.LABEL and macro in REQUIRE_MACROS:
             continue
+        if label == UI_MODEL_LABEL and macro in UI_MODEL_MACROS:
+            continue
         if label in allowed or (macro == TEST_MACRO and label in test_allowed):
             continue
         if label in test_allowed:
             problem = "test-only-dep"
-        elif not DEP_LABEL.fullmatch(label) or GATE_THIRD_PARTY.match(label):
+        elif not DEP_LABEL.fullmatch(label) or GATE_THIRD_PARTY.match(label) or UI_RESERVED_LABEL.match(label):
             return "dep"
     return problem
 
@@ -171,14 +196,18 @@ def _dep_problem(node, allowed, test_allowed, macro):
 def load_findings(path, node):
     call = node.value
     ok = (len(call.args) >= 1 and not call.keywords and all(_is_string(a) for a in call.args)
-          and call.args[0].value == LOAD_PATH
-          and all(a.value in MACROS for a in call.args[1:]))
+          and call.args[0].value in LOADS
+          and all(a.value in LOADS[call.args[0].value] for a in call.args[1:]))
     if ok:
         return []
     return [finding("bad-load", path=path, line=node.lineno)]
 
 
 def _known_keywords(macro):
+    if macro == UI_MACRO:
+        return UI_KEYWORDS
+    if macro == UI_SESSION_MACRO:
+        return UI_SESSION_KEYWORDS
     if macro == APK_MACRO:
         return APK_KEYWORDS
     if macro == CATALOG_MACRO:
@@ -197,6 +226,12 @@ def _value_ok(macro, keyword):
         return _is_string_dict(node)
     if macro == EMBED_MACRO and arg == "max_bytes":
         return _is_int(node)
+    if macro == UI_MACRO and arg == "model":
+        return _is_string(node)
+    if macro == UI_SESSION_MACRO and arg == "probe":
+        return _is_string(node) and APK_SO_LABEL.fullmatch(node.value) is not None and "__" not in node.value
+    if macro == UI_SESSION_MACRO and arg in ("session", "expected"):
+        return _is_string(node) and _session_file_ok(node.value)
     if macro == "c_fuzz" and arg == "runs":
         return _is_int(node)
     if macro == "c_sim" and arg in ("seeds", "run_ms", "shards"):
@@ -218,6 +253,23 @@ def _value_ok(macro, keyword):
     return _is_value(node) or (macro in GLOB_MACROS and arg in GLOB_KEYWORDS and _is_glob_value(node))
 
 
+def _session_file_ok(value):
+    """One plain file of the package: relative, no `.` or `..` segment (UI_SESSION_FILE has no empty segment either)."""
+    return UI_SESSION_FILE.fullmatch(value) is not None and all(p not in (".", "..") for p in value.split("/"))
+
+
+def _session_findings(path, node):
+    """Every keyword is given (why=`missing`), and `session` and `expected` name two different files (each is checked
+    by `_value_ok`)."""
+    given = [k.arg for k in node.value.keywords]
+    if any(k not in given for k in UI_SESSION_KEYWORDS):
+        return [finding("bad-argument", path=path, line=node.lineno, why="missing")]
+    files = [k.value.value for k in node.value.keywords if k.arg in ("session", "expected") and _is_string(k.value)]
+    if len(files) == 2 and files[0] == files[1]:
+        return [finding("bad-argument", path=path, line=node.lineno, why="file")]
+    return []
+
+
 def call_findings(path, node, allowed, test_allowed):
     call = node.value
     if not isinstance(call.func, ast.Name) or call.func.id not in MACROS:
@@ -234,17 +286,20 @@ def call_findings(path, node, allowed, test_allowed):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
         elif keyword.arg == "runtime" and not _is_string(keyword.value):
             found.append(finding("bad-argument", path=path, line=node.lineno, why="value"))
-        elif keyword.arg in ("deps", "exported_deps", "runtime"):
-            value = keyword.value if keyword.arg != "runtime" else ast.List(elts=[keyword.value])
+        elif keyword.arg in ("deps", "exported_deps", "runtime") or (macro == UI_MACRO and keyword.arg == "model"):
+            value = keyword.value if keyword.arg in ("deps", "exported_deps") else ast.List(elts=[keyword.value])
             why = _dep_problem(value, allowed, test_allowed, macro)
             if why is not None:
                 found.append(finding("bad-argument", path=path, line=node.lineno, why=why))
+    if macro == UI_SESSION_MACRO:
+        found.extend(_session_findings(path, node))
     return found
 
 
 def _dep_strings(call):
     """The labels a macro call depends on: `deps`, and the `runtime` of a `c_catalog`."""
-    return _keyword_strings(call, "deps") + _keyword_strings(call, "exported_deps") + (_keyword_strings(call, "runtime") if call.func.id == CATALOG_MACRO else [])
+    return _keyword_strings(call, "deps") + _keyword_strings(call, "exported_deps") + (_keyword_strings(call, "runtime") if call.func.id == CATALOG_MACRO else []) \
+        + (_keyword_strings(call, "model") if call.func.id == UI_MACRO else [])
 
 
 def _keyword_strings(call, name):
@@ -299,21 +354,27 @@ def sim_target_findings(calls, sims):
     return found
 
 
-def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None):
-    found, loads = [], 0
+def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None, probes=None):
+    found, loads = [], []
     for node in tree.body:
         is_call = isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
         if is_call and isinstance(node.value.func, ast.Name) and node.value.func.id == "load":
-            loads += 1
             found.extend(load_findings(path, node))
-            if loads > 1:
+            first = node.value.args[0].value if node.value.args and _is_string(node.value.args[0]) else None
+            if loads and (first not in LOADS or first in loads):   # a second load is one more of the permitted files
                 found.append(finding("extra-load", path=path, line=node.lineno))
+            loads.append(first)
         elif is_call:
             found.extend(call_findings(path, node, allowed, test_allowed))
             if tests is not None and isinstance(node.value.func, ast.Name) and node.value.func.id in MACROS:
                 directory = os.path.dirname(path)
-                if node.value.func.id in (TEST_MACRO, ANDROID_MACRO, APK_MACRO):
+                if node.value.func.id in (TEST_MACRO, ANDROID_MACRO, APK_MACRO) + UI_MACROS:
                     tests.extend((directory, n) for n in _keyword_strings(node.value, "name"))
+                if probes is not None and node.value.func.id == UI_MACRO:
+                    probes[0].update((path, n) for n in _keyword_strings(node.value, "name"))
+                if probes is not None and node.value.func.id == UI_SESSION_MACRO:
+                    probes[1].extend((path, node.lineno, n) for n in _keyword_strings(node.value, "probe")
+                                     if APK_SO_LABEL.fullmatch(n) and "__" not in n)   # else why=value already
                 if apks is not None and node.value.func.id == ANDROID_MACRO:
                     apks[0].update((path, n) for n in _keyword_strings(node.value, "name"))
                 if apks is not None and node.value.func.id == APK_MACRO:
@@ -328,12 +389,12 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
     return found
 
 
-def build_file_findings(path, data, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None):
+def build_file_findings(path, data, allowed, test_allowed, tests=None, calls=None, apks=None, sims=None, probes=None):
     try:
         tree = ast.parse(data.decode("utf-8"), filename=path, mode="exec")
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         return [finding("parse-error", path=path)]
-    return statement_findings(path, tree, allowed, test_allowed, tests, calls, apks, sims)
+    return statement_findings(path, tree, allowed, test_allowed, tests, calls, apks, sims, probes)
 
 
 def default_labels(file_name):
@@ -347,30 +408,41 @@ def apk_so_findings(sos, refs):
             for path, line, label in refs if (path, label[1:]) not in sos]
 
 
+def session_probe_findings(probes, refs):
+    """`c_ui_probe_session(probe = ":x")` must name a `c_ui_probe` declared in the same BUCK file: `probes` is the set of
+    (path, name) of every c_ui_probe, `refs` the (path, line, probe) of every session."""
+    return [finding("bad-argument", path=path, line=line, why="probe")
+            for path, line, label in refs if (path, label[1:]) not in probes]
+
+
 def walk_findings(root, allowed=None, test_allowed=None):
     """`allowed`: exact cell-prefixed dep labels (default: the gate's own `third_party/ALLOWED_LABELS`);
     `test_allowed`: those only a `c_test` may name (default: `third_party/ALLOWED_TEST_LABELS`)."""
     allowed = default_labels(facts_third_party.ALLOWED_FILE) if allowed is None else allowed
     test_allowed = (default_labels(facts_third_party.TEST_ALLOWED_FILE) if test_allowed is None
                     else test_allowed)
-    found, tests, calls, apks, sims = [], [], [], (set(), []), []
+    found, tests, calls, apks, sims, probes = [], [], [], (set(), []), [], (set(), [])
     for directory, subdirs, files in os.walk(root, followlinks=False):
         subdirs.sort()
         for name in sorted(files):
             full = os.path.join(directory, name)
             shown = os.path.relpath(full, root).replace(os.sep, "/")
-            if os.path.islink(full):
+            if shown == UI_RESERVED_DIR or shown.startswith(UI_RESERVED_DIR + "/"):
+                found.append(finding("reserved-package", path=shown))   # `ui/model` is the gate's package, not a product's
+            elif os.path.islink(full):
                 found.append(finding("symlink", path=shown))
             elif forbidden_name(name):
                 found.append(finding("forbidden-file", path=shown))
             elif name == BUILD_FILE:
-                found.extend(build_file_findings(shown, jsonio.read_bytes(full), allowed, test_allowed, tests, calls, apks, sims))
+                found.extend(build_file_findings(shown, jsonio.read_bytes(full), allowed, test_allowed, tests, calls, apks,
+                                                 sims, probes))
         for name in subdirs:
             if os.path.islink(os.path.join(directory, name)):
                 found.append(finding("symlink", path=os.path.relpath(
                     os.path.join(directory, name), root).replace(os.sep, "/")))
     found.extend(test_target_findings(calls, tests))
     found.extend(apk_so_findings(*apks))
+    found.extend(session_probe_findings(*probes))
     found.extend(sim_target_findings(calls, sims))
     return found
 

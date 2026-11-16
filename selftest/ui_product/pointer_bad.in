@@ -1,0 +1,21 @@
+open 1000 1
+apply 3 674 0 -
+frame
+tap 57 57
+semantic
+open 1000 1
+apply 3 675 0 -
+frame
+tap 57 57
+trace
+open 1000 1
+tap 57 57
+frame
+tap 999 1
+tap 57
+tap 57 57 1
+tap -1 5
+tap 057 57
+tap 57 57
+trace
+quit

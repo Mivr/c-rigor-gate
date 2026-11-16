@@ -6,7 +6,7 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim android
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim android ui
 # "all" is shorthand for every one of them.
 
 # ---- 0. The Android shared object rule (first match wins, so these come before `rules/**` and `examples/**`) -------
@@ -31,6 +31,61 @@ selftests = ["android", "toolchain"]
 [[rule]]
 glob = "toolchains/jdk.manifest"
 selftests = ["android", "toolchain"]
+# U03: the UI model interface, the probe main, `c_ui_probe` and their selftest (selftest/ui.sh).
+[[rule]]
+glob = "rules/ui.bzl"
+selftests = ["ui", "product_checks"]
+[[rule]]
+glob = "ui/**"
+selftests = ["ui", "third_party"]
+[[rule]]
+glob = "selftest/ui.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_product/**"
+selftests = ["ui"]
+# U05a: the probe's frame facts, run by selftest/ui.sh.
+[[rule]]
+glob = "selftest/ui_frame.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_frame_product/**"
+selftests = ["ui"]
+# U05: the explorer driver (`rigor ui-explore`); only the ui selftest runs it.
+[[rule]]
+glob = "gate/rigor_lib/ui_explore*"
+selftests = ["ui"]
+# U05d: the declared countdown restart's selftest (selftest/ui_restart.sh, run by selftest/ui.sh) runs the unit tests'
+# stub probe and imports its catalogue and real-frame helpers from the explorer's tests (test_ui_explore_restart*,
+# which import test_ui_explore_helpers and test_ui_explore_taps).
+[[rule]]
+glob = "selftest/ui_restart.sh"
+selftests = ["ui"]
+# U05e: the scene taps, layer policy, pad map, boot seeds and cost selftest (selftest/ui_taps.sh, run by selftest/ui.sh)
+# runs the scene stub (gate/tests/data/ui_explore/stub_scene.py) with the canary contract.
+[[rule]]
+glob = "selftest/ui_taps.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "gate/tests/data/ui_explore/**"
+selftests = ["ui"]
+[[rule]]
+glob = "gate/tests/test_ui_explore_*.py"
+selftests = ["ui"]
+# U06: the ui-scene and ui-fit judges, their canary product and selftest (selftest/ui_judges.sh, run by selftest/ui.sh).
+[[rule]]
+glob = "gate/rigor_lib/ui_judge_*"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_judges.sh"
+selftests = ["ui"]
+[[rule]]
+glob = "selftest/ui_canary_product/**"
+selftests = ["ui"]
+# U09: the ui-time judge's selftest (selftest/ui_time.sh, run by selftest/ui.sh) on the timed canary.
+[[rule]]
+glob = "selftest/ui_time.sh"
+selftests = ["ui"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"
@@ -77,11 +132,14 @@ selftests = ["trajectory_real"]
 
 # ---- 3. The kernel library, by family ---------------------------------------------------------------------------------
 [[rule]]
+glob = "gate/rigor_lib/facts_symbols*"
+selftests = ["product_checks", "grade", "canaries", "require", "ui"]
+[[rule]]
 glob = "gate/rigor_lib/facts*"
 selftests = ["product_checks", "grade", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/buckfiles.py"
-selftests = ["product_checks", "grade", "canaries", "require"]
+selftests = ["product_checks", "grade", "canaries", "require", "ui"]
 # The byte-array generator of `c_embed` (T112): its selftest is selftest/embed.sh, run with the ctest group.
 [[rule]]
 glob = "gate/rigor_lib/bin2c.py"
@@ -129,26 +187,31 @@ selftests = ["product_checks", "profiles"]
 [[rule]]
 glob = "gate/rigor_lib/policy_check.py"
 selftests = ["product_checks", "profiles"]
-# T132: the ledger library and the signer roles file; only `rigor ledger` and the optional approvals arguments use them.
+# T132: the ledger library; only `rigor ledger` and the optional approvals arguments use it.
 [[rule]]
 glob = "gate/rigor_lib/ledger.py"
 selftests = ["grade"]
-[[rule]]
-glob = "gate/signer_roles.toml"
-selftests = ["grade", "canaries"]
 # T131: the guard judge reads facts, structure facts and policy only; its selftest is the require one.
 [[rule]]
 glob = "gate/rigor_lib/guards_gate.py"
 selftests = ["require"]
+# U17a: the pseudo-locale generator runs in the unit tests and in `c_catalog_pseudo` actions only (no existing selftest).
+[[rule]]
+glob = "gate/rigor_lib/ui_pseudo.py"
+selftests = []
+# U13: the deviation-tag scanner runs in the unit tests and as `rigor ui-deviations` only (no selftest uses it).
+[[rule]]
+glob = "gate/rigor_lib/ui_deviations.py"
+selftests = []
+[[rule]]
+glob = "gate/rigor_lib/ui_deviations_*.py"
+selftests = []
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
-selftests = ["grade", "product_checks", "structure", "mutate", "canaries"]
+selftests = ["grade", "product_checks", "structure", "mutate", "canaries", "ui"]
 [[rule]]
 glob = "gate/order.txt"
-selftests = ["grade", "canaries"]
-[[rule]]
-glob = "gate/allowed_signers"
 selftests = ["grade", "canaries"]
 [[rule]]
 glob = "gate/tools/**"

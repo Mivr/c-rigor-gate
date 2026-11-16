@@ -1,0 +1,21 @@
+load("@gate//rules:c.bzl", "c_library", "c_test")
+
+# Tests of gate//ui/lvprobe through its public header, on gate LVGL with a memory display (U02).
+# `testkit` is the shared setup (pool, display, open probe), a monospace test font with solid glyphs and helpers that
+# read LVGL's own state (pool bytes, the display's layer list) to check the probe against it.
+c_library(
+    name = "testkit",
+    srcs = ["testkit.c"],
+    headers = ["testkit.h"],
+    deps = ["gate//ctest:ctest", "gate//third_party/lvgl:lvgl", "gate//third_party/lvgl:lvgl_private_headers"],
+    exported_deps = ["//ui/lvprobe:lvprobe"],
+)
+
+[
+    c_test(
+        name = name,
+        srcs = [name + ".c"],
+        deps = [":testkit", "//ui/lvprobe:lvprobe", "gate//third_party/lvgl:lvgl", "gate//third_party/lvgl:lvgl_private_headers"],
+    )
+    for name in ["lvprobe_diff_test", "lvprobe_hit_test", "lvprobe_ink2_test", "lvprobe_ink_test", "lvprobe_io_test", "lvprobe_label_test", "lvprobe_observe_test", "lvprobe_walk_test"]
+]

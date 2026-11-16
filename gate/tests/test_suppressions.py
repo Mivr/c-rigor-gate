@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from rigor_lib import patterns
-from tests.helpers import Repo, Signer, TempDirTestCase, read_json, run_rigor
+from tests.helpers import Repo, TempDirTestCase, read_json, run_rigor
 
 # One red sample per pattern id (text that must be flagged) and green near-misses.
 RED = {
@@ -314,21 +314,18 @@ class BinaryArtifactTests(SuppressionCase):
 class SuppressionApprovalTests(SuppressionCase):
     def setUp(self):
         super().setUp()
-        self.signer = Signer(self.tmp / "keys")
-        self.allowed = self.signer.write_allowed_signers(self.tmp / "allowed_signers")
         self.dir = self.sub("approvals")
         self.repo.write("src/a.c", "int a; // NOLINT\nint b;\nint c;\nint d;\nint e;\nint f;\n")
         self.head = self.repo.commit("work")
 
-    def approve(self, scope, kind="suppression", repo_sha=None, signer=None):
+    def approve(self, scope, kind="suppression", repo_sha=None):
         outcome = run_rigor(["approve", "--kind", kind, "--scope", scope, "--reason", "ok",
-                             "--repo-sha", repo_sha or self.base, "--key",
-                             (signer or self.signer).key, "--out", self.dir])
+                             "--repo-sha", repo_sha or self.base, "--out", self.dir])
         self.assertExit(outcome, 0)
+        return outcome.stdout.strip()
 
     def grade_with_approvals(self):
-        return self.grade(["--approvals", self.dir, "--allowed-signers", self.allowed],
-                          head=self.head)
+        return self.grade(["--approvals", self.dir], head=self.head)
 
     def test_without_approvals_it_fails(self):
         outcome, _ = self.grade(head=self.head)
@@ -368,9 +365,10 @@ class SuppressionApprovalTests(SuppressionCase):
         self.assertExit(outcome, 1)
         self.assertEqual(self.triples(result), [("forbidden-pattern", "src/a.c", 1, "nolint")])
 
-    def test_approval_signed_by_unlisted_key_is_forged_and_does_not_cover(self):
-        attacker = Signer(self.tmp / "evil", name="evil")
-        self.approve(scope_of("src/a.c", 1, "nolint"), signer=attacker)
+    def test_a_signature_file_left_in_the_approvals_is_forged_and_fails(self):
+        path = self.approve(scope_of("src/a.c", 2, "nolint"))
+        with open(path + ".sig", "wb") as handle:
+            handle.write(b"old signature\n")
         outcome, result = self.grade_with_approvals()
         self.assertExit(outcome, 1)
         rules = sorted(f["rule"] for f in result["findings"])
@@ -400,23 +398,22 @@ class SuppressionApprovalTests(SuppressionCase):
         self.assertExit(outcome, 1)
         self.assertIn(("approval-in-repo", name, None, None), self.triples(result))
 
-    def test_missing_ssh_keygen_with_approvals_is_exit_2(self):
+    def test_a_signers_file_option_is_refused(self):
         self.approve(scope_of("src/a.c", 1, "nolint"))
         outcome = run_rigor(["suppressions", "--repo", self.repo.root, "--base", self.base,
                              "--head", self.head, "--approvals", self.dir,
-                             "--allowed-signers", self.allowed], path=str(self.sub("nobin")))
+                             "--allowed-signers", self.tmp / "signers"])
         self.assertExit(outcome, 2)
 
     def test_missing_approvals_directory_is_exit_2(self):
-        outcome, _ = self.grade(["--approvals", self.tmp / "nope",
-                                 "--allowed-signers", self.allowed], head=self.head)
+        outcome, _ = self.grade(["--approvals", self.tmp / "nope"], head=self.head)
         self.assertExit(outcome, 2)
 
-    def test_default_allowed_signers_is_the_gate_file_and_trusts_nobody(self):
+    def test_an_approval_needs_no_signer_and_is_listed_as_used(self):
         self.approve(scope_of("src/a.c", 1, "nolint"))
         outcome, result = self.grade(["--approvals", self.dir], head=self.head)
-        self.assertExit(outcome, 1)
-        self.assertIn("forged-approval", [f["rule"] for f in result["findings"]])
+        self.assertExit(outcome, 0)
+        self.assertEqual(len(result["metadata"]["approvals_used"]), 1)
 
 
 class SuppressionErrorTests(SuppressionCase):
@@ -458,7 +455,7 @@ class TreeScanTests(SuppressionCase):
         entries = [e for e in grade_tree.list_tree(str(self.repo.root), head)
                    if e.path.decode() in graded]
         args = Namespace(repo=str(self.repo.root), base=base or self.base, head=head,
-                         approvals=None, allowed_signers=None)
+                         approvals=None)
         return suppressions.run(args, entries)
 
     def triples_of(self, result):
@@ -487,8 +484,6 @@ class TreeScanTests(SuppressionCase):
         self.assertEqual(self.run_scan(head, set(), base=graded_base).findings, [])
 
     def test_approved_ancestor_hit_is_not_a_finding(self):
-        signer = Signer(self.tmp / "keys")
-        allowed = signer.write_allowed_signers(self.tmp / "allowed_signers")
         approvals_dir = self.sub("approvals")
         self.repo.write("src/a.c", "int a;\nint b; // NOLINT\n")
         graded_base = self.repo.commit("ungraded ancestor")
@@ -496,13 +491,13 @@ class TreeScanTests(SuppressionCase):
         head = self.repo.commit("work")
         outcome = run_rigor(["approve", "--kind", "suppression", "--scope",
                              scope_of("src/a.c", 2, "nolint"), "--reason", "ok",
-                             "--repo-sha", self.base, "--key", signer.key, "--out", approvals_dir])
+                             "--repo-sha", self.base, "--out", approvals_dir])
         self.assertExit(outcome, 0)
         from argparse import Namespace
         from rigor_lib import grade_tree, suppressions
         entries = [e for e in grade_tree.list_tree(str(self.repo.root), head)
                    if e.path == b"src/a.c"]
         result = suppressions.run(Namespace(repo=str(self.repo.root), base=graded_base, head=head,
-                                            approvals=approvals_dir, allowed_signers=allowed), entries)
+                                            approvals=approvals_dir), entries)
         self.assertEqual(result.findings, [])
         self.assertEqual(len(result.metadata["approvals_used"]), 1)

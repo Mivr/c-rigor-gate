@@ -2,11 +2,11 @@
 
 ```
 gate/rigor grade --product-repo R --base B --head H --task TASK.toml --product products/<p>/product.toml \
-                 [--approvals DIR] [--witness DIR] [--oracle DIR] [--sign-key KEY] [--tier merge|nightly] [--uncached] [--allow-dirty-gate] --work DIR --out verdict.json
+                 [--approvals DIR] [--witness DIR] [--oracle DIR] [--tier merge|nightly] [--uncached] [--allow-dirty-gate] --work DIR --out verdict.json
 ```
 Exit 0 = overall PASS, 1 = FAIL, 2 = internal error (the verdict, if written, is FAIL). `--work` is
 emptied (`src`, `tree`, `results`, `test-results`, `facts`, `mutants-reports`, `mutants-perf`) at the start, so re-grading into the same `--work` never reads or collides with a previous run's files; `R` must be a local directory.
-A stale `verdict.json` and `.sig` are removed first, so a crash can never leave an old PASS.
+A stale `verdict.json` is removed first, so a crash can never leave an old PASS. Nothing is signed (U30, `docs/trust.md`).
 
 ## The gate list
 `gate/rigor_lib/grade_pipeline.py` (`GATES`) is the only place gates are registered, in run order,
@@ -39,7 +39,7 @@ A gate that fails by findings does not stop the others (except as noted for `bui
 | `perf` | the cost counts of the perf targets of the policy and of the perf bundle, judged against their complexity classes (T090, `docs/perf.md` "Judging"). Findings `perf-class-exceeded`, `perf-counter-unavailable`, `perf-record-bad`, `perf-build-failed`; a product without perf targets passes with info `no-perf-targets`, role `test-author` with `not-applicable`. NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. It writes `gate-perf/` into the tree, builds the `<name>_perf` targets in the release platform and removes the package again. |
 | `mutants` | mutation testing of every product module the policy puts at L2 or above (below). NOT_RUN unless `assemble`, `buckfiles`, `build` and both `tests-*` passed. In role `test-author`: PASS with info `not-applicable` (mutating stubs only gives `baseline-red`). |
 | `witness-tests`, `mutants-witness` | the witness gates (T039; `docs/witness.md`, P002), below. |
-| verdict | `rigor verdict` over `gate/order.txt`, plus `inputs`; with `--sign-key` (and a clean gate), `ssh-keygen -Y sign -n c-rigor-gate-verdict` writes `verdict.json.sig`. |
+| verdict | `rigor verdict` over `gate/order.txt`, plus `inputs`, `unused_approvals` and `approvals` (the count and list of approvals in force, below). |
 
 ## Fuzz in the pipeline (T129, P003 §7.2, G23)
 The `fuzz` gate runs after `tests-stub` and before `perf`. It needs `assemble`, `buckfiles`, `build` and both `tests-*` to have
@@ -463,8 +463,9 @@ the same `core_sha256`, whether the build was cold or fully cached; changing any
 | `product` | `name` from `product.toml` |
 | `task_sha256`, `product_toml_sha256`, `policy_sha256`, `expected_tests_sha256` | sha256 of the exact bytes of `--task`, `product.toml`, `policy.toml`, `expected-tests.json` |
 | `expected_tests_previous_sha256` | the same for `expected-tests.previous.json`; `null` if the file does not exist |
+| `ram_budget_sha256`, `architecture_sha256`, `decoupling_sha256`, `decoupling_baseline_sha256`, `fuzz_regressions_sha256` | sha256 of `ram-budget.toml`, `architecture.toml`, `decoupling.toml`, `decoupling-baseline.toml`, `fuzz-regressions.json` beside `policy.toml`; `null` if absent (the architecture and decoupling keys since the U30 fix-up: every product configuration file the grade reads is bound, `verdict_inputs.PRODUCT_FILE_KEYS`) |
+| `product_dir` | the directory of `--product` relative to the gate checkout (`products/selftest`, `canaries/<id>`), or `null` when it lies outside it; `rigor verify` reads the product files from there |
 | `approvals_sha256` | digest of the approvals bundle (sorted name, kind, content hash of every entry); `null` without `--approvals` |
-| `allowed_signers_sha256` | `gate/allowed_signers` as read at the start |
 | `order_sha256` | the bytes of `gate/order.txt` the verdict was built from |
 | `buckconfig_sha256` | the generated `.buckconfig` (from the `assemble` manifest) |
 | `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | `toolchains/BUCK`, the LLVM and sysroot archive pins in it, and the Buck2 binary pin (`tools/buck2.version`), all from the assembled tree and checked against the manifest |
@@ -475,9 +476,20 @@ the same `core_sha256`, whether the build was cold or fully cached; changing any
 | `uncached` | the `--uncached` flag (also kept as `core.uncached`) |
 | `tier` | `merge` or `nightly` (`--tier`, T137); a verdict of one tier never has the `core_sha256` of the other |
 
+**Approvals in force (U30).** `core.approvals` is `{"count": N, "in_force": [...]}`: every *valid* approval (well formed,
+named by its hash, `repo_sha` an ancestor of the head) with its `kind`, exact `scope`, `reason`, `repo_sha` and `stem`, sorted by stem;
+`{"count": 0, "in_force": []}` without `--approvals`. Nobody signs an approval, so this is where a reader sees every
+approval the grade could honour: a change that adds an approval (an equivalent mutant, a suppression, a removed test, a
+raised ratchet) raises `count` and is never silent. Other loosenings (a raised baseline, a relaxed threshold, an edited
+expected list) are not approvals: they change a bound product input (above) and are not counted (`docs/trust.md`, known
+gaps). `rigor grade` (and `rigor lane-mutants`) refuse (exit 2) an `--approvals` directory whose real path is inside the
+product repository, the work directory, the `--witness`, `--oracle` or `--perf` bundle or the directory holding `--task`:
+an approval there would be in force although the graded side could have written it. `rigor grade` prints `approvals in force (loosenings): N` and `rigor
+verify` prints the count and each entry. It is hashed with the rest of `core`.
+
 **Unused approvals (T068).** `core.unused_approvals` is a verdict-level list (hashed with the rest of `core`, so it cannot
-be dropped silently; always present, `[]` without `--approvals`). After all gates ran, every *valid* approval (signed,
-allowed signer, `repo_sha` an ancestor of the head) whose stem is in no gate's `approvals_used` becomes one finding
+be dropped silently; always present, `[]` without `--approvals`). After all gates ran, every *valid* approval (well
+formed, `repo_sha` an ancestor of the head) whose stem is in no gate's `approvals_used` becomes one finding
 `{"rule": "unused-approval", "severity": "info", "kind", "stem", "scope", "reason"}`, sorted by stem. Typical cause: a
 body edit changed a mutant id (T058), so an old `equivalent-mutant` approval names nothing. It grants nothing and does
 not affect `overall`; it is housekeeping. Approvals that failed validation are reported by their gates
@@ -492,36 +504,65 @@ gates read and a later edit of the originals changes nothing. The commits, buckc
 results the grade itself wrote. A missing optional file hashes as `null`; a required input that is `null` in a PASS is
 an internal error (exit 2), and in a FAIL it is just `null`.
 
-**Signers and order from the snapshot (T071).** `gate/allowed_signers` and `gate/order.txt` are copied to
-`<work>/inputs/allowed_signers` and `<work>/inputs/order.txt` with the other inputs, before any gate runs, and hashed
-from the copies (`allowed_signers_sha256`, `order_sha256`; the keys and their meaning are unchanged). `args.allowed_signers`
-and `args.order_file` point at the copies: every step that loads approvals (suppressions, tests, mutants, witness),
-the unused-approval report and the verdict's gate order read only those. A file that cannot be copied is an internal
-error (exit 2) before `clone`. `verdict.metadata.order_file` is now the snapshot path. Standalone `rigor approvals`,
-`tests`, `mutants`, `suppressions` and `verify` still read `gate/allowed_signers` (or `--allowed-signers`) directly.
+**Order from the snapshot (T071).** `gate/order.txt` is copied to `<work>/inputs/order.txt` with the other inputs,
+before any gate runs, and hashed from the copy (`order_sha256`). `args.order_file` points at the copy: the verdict's
+gate order is read only from it. A file that cannot be copied is an internal error (exit 2) before `clone`.
+`verdict.metadata.order_file` is the snapshot path. (Until U30 the signers file `gate/allowed_signers` was snapshotted
+the same way and bound as `allowed_signers_sha256`; both are gone.)
 
 **Dirty gate.** Tracked files of the gate checkout that differ from `HEAD` make `rigor grade` exit 2. With
-`--allow-dirty-gate` it grades, records `gate_clean = false`, never signs the verdict, and `rigor verify` rejects it.
+`--allow-dirty-gate` it grades, records `gate_clean = false`, and `rigor verify` rejects it.
 
 ## `rigor verify`: what a merge bot runs
 ```
-gate/rigor verify --verdict verdict.json --allowed-signers SIGNERS \
-    --expect-head <40-hex head> --expect-gate <40-hex gate commit> --expect-policy-sha <sha256 of policy.toml> \
-    [--require-uncached] [--require-tier merge|nightly] [--signature verdict.json.sig] \
+gate/rigor verify --verdict verdict.json --expect-head <40-hex head> --expect-gate <40-hex gate commit> \
+    --expect-policy-sha <sha256 of policy.toml> (--expect-product-dir products/<name> | --product-dir DIR) \
+    [--expect-task-sha <sha256 of TASK.toml>] [--gate-repo <gate checkout>] [--approvals DIR] \
+    [--require-uncached] [--require-tier merge|nightly] \
     [--expect-sim-salt-id <sha256 of the salt>] [--expect-sim-spec-sha <sha256 of sim.toml>] [--expect-oracle-sha <oracle_sha256>]
 ```
-Exit 0 only for a trustworthy PASS; exit 1 prints every reason it was rejected (`REJECTED: ...`); exit 2 is an
-internal error (unreadable file, no `ssh-keygen`). It checks, in order: the SSH signature over the exact file bytes
-(`ssh-keygen -Y verify`, namespace `c-rigor-gate-verdict`; `SIGNERS` must allow that namespace, the approvals
-`gate/allowed_signers` does not), then `core_sha256` recomputed from `core`, `overall == PASS`, every required input
-present and well formed, `gate_clean == true`, `core.uncached == inputs.uncached`, and the `--expect-*` values.
-`--require-tier TIER` rejects a verdict graded at another tier (`tier is merge, expected nightly`); the tier of the verdict is
-printed on every run (`rigor verify: tier merge`), also when it is rejected.
+Nothing is signed (U30, `docs/trust.md`). Exit 0 only for a consistent PASS; exit 1 prints every reason it was rejected
+(`REJECTED: ...`); exit 2 is an internal error (unreadable file) or a usage error (no `--expect-head`, `--expect-gate` or
+`--expect-policy-sha`; neither `--expect-product-dir` nor `--product-dir`; the removed `--allowed-signers` and
+`--signature`). The head, the gate commit, the policy and the product directory are mandatory: without
+`--expect-gate` a verdict graded by any commit in the gate object store (an unmerged branch with a weakened gate) would be
+consistent, and without `--expect-product-dir` a verdict for one product could name another committed product
+directory (a canary's) whose files all recompute cleanly. It checks, in order: `core_sha256` recomputed from `core`; `overall == PASS`; a verdict of the signing gate (its
+inputs bind `allowed_signers_sha256`) is refused by name (`written by a gate that signed verdicts ... grade again with this
+gate`; a `.sig` beside it is never read); every input present and well formed, `gate_clean == true`,
+`core.uncached == inputs.uncached`; the recomputed bindings below; `core.approvals` well formed (`count` equal to the
+entries, sorted by stem, each with kind, scope, reason, `repo_sha` and stem, none without a bound approvals bundle); last
+the `--expect-*` values. The tier, `product_dir` and the approvals in force are printed on every run, also when the
+verdict is rejected.
 `--expect-policy-sha` is the sha256 of the policy file the merge bot trusts (`sha256sum products/<p>/policy.toml`).
-Trust is keyed on `core_sha256` only together with these expectations.
+
+**Each binding, and how `verify` checks it** (`gate/rigor_lib/verdict_recompute.py`):
+
+| Binding | Checked how |
+|---|---|
+| `head` | must equal `--expect-head` |
+| `gate_sha` | must equal `--expect-gate` and be a commit of `--gate-repo` (default: the checkout `verify` runs from) |
+| `order_sha256` and the gate list of `core` | recomputed from `gate/order.txt` at `gate_sha`; the list must be exactly that order (no `--only`, no reordering) with every gate PASS; an entry that is not an object is rejected |
+| `toolchain_buck_sha256`, `llvm_sha256`, `sysroot_sha256`, `buck2_sha256` | recomputed from `toolchains/BUCK` and its pins and `tools/buck2.version` at `gate_sha` |
+| `buckconfig_sha256` | recomputed: the generated `.buckconfig` of the grading tree from the gate's `.buckconfig` at `gate_sha` |
+| `product_dir` | must equal `--expect-product-dir`; or, with `--product-dir DIR` (a grade whose product directory was outside the gate checkout), must be null |
+| product configuration (`product_toml_sha256`, `policy_sha256`, `expected_tests*`, `ram_budget_sha256`, `architecture_sha256`, `decoupling*`, `fuzz_regressions_sha256`, `sim_spec_sha256`, `sim_regressions_sha256`, `oracle_policy/normalise/excluded_sha256`) | recomputed from `inputs.product_dir` at `gate_sha`; when the grade's product directory was outside the gate checkout (`product_dir` null) `--product-dir DIR` is required and the files are read from it (and refused when `product_dir` is set). A file present on one side only is a mismatch |
+| `approvals_sha256` and `core.approvals.in_force` | with `--approvals DIR`: the bundle digest recomputed from DIR, and every approval in force must be the file `<stem>.json` there, of that hash, with the listed kind, scope, reason and `repo_sha`. One-directional: a well-formed approval in DIR that the verdict does not list is printed (`in DIR, not listed in the verdict (their applicability is not checked here)`), not rejected, because whether it applied (its `repo_sha` an ancestor of the head) needs the product repository, which `verify` does not read. Without `--approvals`: the shape and count only |
+| `task_sha256` | `--expect-task-sha` (the merge bot hashes the contract it trusts) |
+| `policy_sha256`, `witness_sha256`, `oracle_sha256`, `perf_sha256`, `sim_salt_id`, `sim_spec_sha256` | also the matching `--expect-*` values when given |
+| `gate_clean`, `tier`, `uncached`, `base`, `merge_base`, `sim_seed_digest`, `product`, every gate's status, findings count and findings digest, `unused_approvals` | **self-reported**: not recomputable without running the grade. `gate_clean` must be true, `tier` and `uncached` checked against `--require-*` |
+
+**What `verify` proves, and what it does not.** It proves that `core` hashes to `core_sha256`; that the verdict is about
+the head and the gate commit the caller names; that the gate list, the toolchain pins, the generated `.buckconfig` and
+the product configuration it binds are those of that gate commit (or of `--product-dir`); and, with `--approvals`, that
+the approvals it lists in force are those files. It does **not** prove that the self-reported part is true, who ran the
+grade, or that a grade ran at all: anyone can write a `core` with every gate PASS that matches all recomputable bindings
+and hash it. A verdict is trusted because anyone can run the grade again from the same inputs and compare `core_sha256`
+(the grade is deterministic: "Verdict determinism and bound inputs" above), not because of who signed it. A merge bot that
+must not trust the writer of the verdict file re-grades and compares, or grades itself.
 
 ## Sealed environment
-`rigor grade` replaces its own environment, and gives Buck2, git and ssh-keygen only:
+`rigor grade` replaces its own environment, and gives Buck2 and git only:
 `HOME=<work>/home` (created empty, wiped at the start), `TMPDIR=<work>/tmp`,
 `PATH=/usr/local/bin:/usr/bin:/bin`, `LANG=C.UTF-8`. No `BUCK*`, `XDG_*`, `PYTHON*`, `LD_*`, `SSH_*`,
 proxy or `GIT_*` variable is inherited. Found by experiment: Buck2 reads `$HOME/.buckconfig.local` and
@@ -578,15 +619,14 @@ grade` kills it again if anything escaped (and before reusing a work directory).
   other namespaces is not found. Pass commit ids on a branch.
 - The product's `BUCK` files are still the product's. They can define arbitrary rules in the root
   cell; restricting them to `load("@gate//rules:...")` is the BUCK guard of T004.
-- `sign-key` must not need a passphrase.
 - Self-test: `selftest/grade.sh` (property, witness and test-author steps, see below; RE farm). Unit tests: `selftest/gate.sh`.
 
-`gate/tools/expected.py add --product P --results DIR...` merges test ids from result files into `products/<P>/expected-tests.json` (sorted, add-only; removal needs a signed `test-removal` approval and a manual edit).
+`gate/tools/expected.py add --product P --results DIR...` merges test ids from result files into `products/<P>/expected-tests.json` (sorted, add-only; removal needs a `test-removal` approval, which the verdict counts, and a manual edit).
 
 ## What `selftest/grade.sh` checks, and where its red cases went (T053)
 `selftest/grade.sh` keeps the properties of the pipeline that need one product graded several ways: the cold run (a fresh
-nonce, so every action executes), the warm run (nothing executes, same `core_sha256`, signature verifies under the
-verdict namespace only), the hostile inherited environment (same `core_sha256`), `--uncached` (nothing cached, flag in the
+nonce, so every action executes), the warm run (nothing executes, same `core_sha256`, `rigor verify` accepts it for the graded
+head and rejects it for another), the hostile inherited environment (same `core_sha256`), `--uncached` (nothing cached, flag in the
 verdict), the internal error (exit 2, FAIL verdict) and all action-count, daemon-leak and verdict-field assertions.
 After the cold run, warm, hostile, uncached and internal-error run in parallel, each in its own work subdir with its own
 Buck2 daemon, so the wall time is the cold run plus the slowest of them. The witness steps (T039) and the test-author

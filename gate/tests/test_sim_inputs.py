@@ -3,12 +3,10 @@ and expects."""
 
 import os
 
-import subprocess
-
-from rigor_lib import jsonio, sim_policy, verdict, verdict_inputs
+from rigor_lib import jsonio, sim_policy, verdict_inputs
 from rigor_lib.errors import InternalError
-from tests.helpers import TempDirTestCase, base_env, run_rigor
-from tests.test_verdict_inputs import Fixture
+from tests.gate_repo_fixture import VerdictCase
+from tests.helpers import TempDirTestCase
 
 PUBLIC = "0a0b\n"
 HIDDEN = "ffee01\n"
@@ -67,51 +65,25 @@ class SaltSnapshot(TempDirTestCase):
         self.assertEqual(sim_policy.load_salt(str(self.tmp / "salt"))[1], self.snapshot(hidden=HIDDEN)[0])
 
 
-class VerifySim(TempDirTestCase):
-    SPEC = "a" * 64
+class VerifySim(VerdictCase):
+    SPEC_TEXT = b"[sim]\nspec = 1\n"
+    SPEC = jsonio.sha256_hex(SPEC_TEXT)   # sim.toml is a product file: verify recomputes its binding
     SALT = "b" * 64
 
-    def setUp(self):
-        super().setUp()
-        self.key = str(self.tmp / "key")
-        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", self.key], check=True,
-                       capture_output=True, env=base_env())
-        pub = (self.tmp / "key.pub").read_text().split()
-        self.signers = self.tmp / "signers"
-        self.signers.write_text('signer namespaces="c-rigor-gate-verdict" %s %s\n' % (pub[0], pub[1]))
-        self.verdict = self.tmp / "verdict.json"
-        self.fixture = Fixture(str(self.tmp))
-
-    def make(self, mutate_core=None):
-        core = verdict.build_core(["a"], {"a": {"status": "PASS", "findings": []}})
-        core["uncached"] = False
-        core["inputs"] = self.fixture.inputs()
-        if mutate_core:
-            mutate_core(core)
-        document = {"core": core, "core_sha256": jsonio.sha256_hex(jsonio.canonical_dumps(core)), "metadata": {}}
-        self.verdict.write_bytes(jsonio.canonical_dumps(document))
-        sig = str(self.verdict) + ".sig"
-        if os.path.exists(sig):
-            os.unlink(sig)
-        subprocess.run(["ssh-keygen", "-Y", "sign", "-n", "c-rigor-gate-verdict", "-f", self.key, str(self.verdict)],
-                       check=True, capture_output=True, env=base_env())
-
-    def verify(self, *extra):
-        return run_rigor(["verify", "--verdict", self.verdict, "--allowed-signers", self.signers, *extra])
-
-    def assertRejected(self, outcome, text):
-        self.assertEqual(outcome.code, 1, outcome.stdout + outcome.stderr)
-        self.assertIn(text, outcome.stdout)
-
     def make_sim(self, **inputs):
+        self.product_files["sim.toml"] = self.SPEC_TEXT
+        inputs.pop("sim_spec_sha256", None)
         self.fixture.file_hashes.update(inputs)
         self.make()
 
     def no_sim(self):
-        self.fixture.file_hashes.update(sim_spec_sha256=None, sim_salt_id=None, sim_regressions_sha256=None)
+        self.product_files.pop("sim.toml", None)
+        self.product_files.pop("sim-regressions.json", None)
+        self.fixture.file_hashes.update(sim_salt_id=None)
 
     def test_the_simulation_inputs_are_printed(self):
-        self.fixture.file_hashes.update(sim_spec_sha256=self.SPEC, sim_salt_id=self.SALT)
+        self.product_files["sim.toml"] = self.SPEC_TEXT
+        self.fixture.file_hashes.update(sim_salt_id=self.SALT)
         self.fixture.sim_digest = "c" * 64
         self.make()
         outcome = self.verify()

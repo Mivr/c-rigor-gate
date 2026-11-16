@@ -1,0 +1,157 @@
+open 1000 112
+advance 4200
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 12 0 -
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 32 0 -
+apply 3 33 0 -
+apply 3 34 0 -
+apply 3 35 0 -
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 12 0 -
+apply 3 32 0 -
+apply 3 33 0 -
+apply 3 34 0 -
+apply 3 35 0 -
+frame
+semantic
+open 1000 112
+advance 4200
+apply 2 0 0 393939393939
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 12 0 -
+apply 2 0 0 393939393939
+frame
+semantic
+open 1000 112
+advance 4200
+apply 2 0 0 313231323132
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 12 0 -
+apply 2 0 0 313231323132
+frame
+semantic
+open 1000 112
+advance 4200
+apply 2 0 0 313231323132
+apply 3 48 0 -
+advance 6200
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 12 0 -
+apply 2 0 0 313231323132
+apply 3 48 0 -
+advance 6200
+frame
+semantic
+open 1000 112
+advance 4200
+apply 1 2 0 -
+apply 2 0 0 313231323132
+apply 3 48 0 -
+advance 6200
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 12 0 -
+apply 1 2 0 -
+apply 2 0 0 313231323132
+apply 3 48 0 -
+advance 6200
+frame
+semantic
+open 1000 112
+advance 4200
+apply 1 11 0 -
+apply 2 0 0 313231323132
+apply 3 48 0 -
+advance 5300
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 12 0 -
+apply 1 11 0 -
+apply 2 0 0 313231323132
+apply 3 48 0 -
+advance 5300
+frame
+semantic
+open 1000 120
+advance 4200
+frame
+semantic
+open 1000 120
+advance 4200
+apply 3 12 0 -
+frame
+semantic
+open 1000 119
+advance 4200
+apply 1 20 0 -
+apply 1 30 0 -
+advance 301500
+frame
+semantic
+open 1000 119
+advance 4200
+apply 3 12 0 -
+apply 1 20 0 -
+apply 1 30 0 -
+advance 301500
+frame
+semantic
+open 1000 112
+advance 4200
+apply 2 0 0 363636363632
+advance 6000
+frame
+semantic
+open 1000 112
+advance 4200
+apply 3 12 0 -
+apply 2 0 0 363636363632
+advance 6000
+frame
+semantic
+open 1000 113
+advance 4200
+frame
+semantic
+open 1000 114
+advance 4200
+frame
+semantic
+open 1000 112
+advance 4200
+apply 2 0 0 393939393939
+advance 13200
+apply 2 0 0 393939393939
+advance 22200
+apply 2 0 0 393939393939
+advance 31200
+apply 2 0 0 393939393939
+advance 40200
+apply 2 0 0 393939393939
+advance 49200
+frame
+semantic
+quit

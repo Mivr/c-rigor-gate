@@ -337,6 +337,27 @@ Why `tree_input`: LVGL's sources include each other by relative path (`../misc/l
 action cannot get single files as input. Every LVGL compile action gets the whole unpacked tree (`-I$(location
 :lvgl_src)`); the tree is one cached artifact, and a change of the pin invalidates everything anyway.
 
+#### Private headers for gate code (U02)
+
+`c_third_party_private_headers(name, lib, files, visibility)` (rules/third_party.bzl) gives gate-owned code the
+private headers of a `c_third_party` library: every `.h` of the manifest `files`, at its own path, from `:<lib>_src`,
+exported `-isystem` like `:<lib>_headers` (whose forced configuration it re-exports). It is header-only: no sources, no
+flags, nothing to link, so the library's objects and computed exports are unchanged. `visibility` must be `//ui/...`
+or a package pattern below it (`//ui/<dir>/...`): never `PUBLIC`, never `//...`, never another tree; and the label is
+not in `ALLOWED_LABELS`, so no product can name it (`buckfiles` refuses any other `gate//` label). Its facts are
+`<name>_symbols`: a facts file of kind `c_third_party` with no units (it exports nothing), the same shape as
+`<lib>_symbols` and, like it, built in the release mode only, so a gate `c_library` that depends on it has facts for
+every dependency. All headers are exported, not a hand-picked subset, because the private headers include
+each other and the public tree by relative path (`src/core/lv_obj_private.h` -> `../lvgl_public.h` ->
+`../include/lvgl/lvgl.h`).
+
+The one user is `gate//third_party/lvgl:lvgl_private_headers`, visible to `//ui/...`: the renderer observer
+`gate//ui/lvprobe` (docs/ui-lvprobe.md) reads structures LVGL 9.6 has no public getter for (`lv_obj_class_t.name`,
+the `lv_obj_t` layout bits, `lv_label_t`, `lv_draw_task_t`, `lv_draw_glyph_dsc_t`, `lv_display_t`, `lv_indev_t`) and
+calls functions declared only in private headers (`lv_draw_cleanup_task`, `lv_text_get_size_attributes`,
+`lv_obj_get_ext_draw_size`), all already exported by `:lvgl`. A grader that judges a gate `c_library` with this
+dependency must trust `<name>_symbols` the way it trusts `<lib>_symbols` (the gate's grader has no such module today).
+
 ### Configuration (`third_party/lvgl/gate_lv_conf.h`)
 
 Every option that must be off is set to 0 in the file; the rest takes the library's defaults.

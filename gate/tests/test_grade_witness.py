@@ -96,7 +96,7 @@ class Setup(TempDirTestCase):
         (self.sub("p") / "policy.toml").write_text(POLICY, encoding="utf-8")
         (self.tmp / "p" / "expected-tests.json").write_text('{"ids": ["a"]}', encoding="utf-8")
         args = SimpleNamespace(task=str(self.tmp / "task.toml"), product=str(self.tmp / "p" / "product.toml"),
-                               uncached=False, approvals=None, allowed_signers="signers")
+                               uncached=False, approvals=None)
         done = {"assemble": "PASS", "buckfiles": "PASS"}
         done.update(status or {})
         return SimpleNamespace(args=args, work=str(work), tree=str(work / "tree"), results=str(work / "results"),

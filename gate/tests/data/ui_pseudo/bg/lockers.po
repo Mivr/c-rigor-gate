@@ -1,0 +1,305 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: bg\n"
+
+msgid "Small"
+msgstr "Малко"
+
+msgid "Small · Full"
+msgstr "Малко · Заето"
+
+msgid "Medium"
+msgstr "Средно"
+
+msgid "Medium · Full"
+msgstr "Средно · Заето"
+
+msgid "Large"
+msgstr "Голямо"
+
+msgid "Large · Full"
+msgstr "Голямо · Заето"
+
+msgid "Extra large"
+msgstr "Много голямо"
+
+msgid "Extra large · Full"
+msgstr "Много голямо · Заето"
+
+msgid "Full"
+msgstr "Заето"
+
+msgid "Code not accepted"
+msgstr "Кодът не е приет"
+
+msgid "Codes unavailable"
+msgstr "Кодовете не са налични"
+
+msgid "No locker free"
+msgstr "Няма свободно шкафче"
+
+msgid "Not saved"
+msgstr "Не е записано"
+
+msgid "Audit log"
+msgstr "Дневник"
+
+msgid "Sync"
+msgstr "Синхронизиране"
+
+msgid "Codes offline"
+msgstr "Кодовете са офлайн"
+
+msgid "Codes"
+msgstr "Кодове"
+
+msgid "Self-test"
+msgstr "Самопроверка"
+
+msgid "Something went wrong"
+msgstr "Нещо се обърка"
+
+msgid "That code is not valid."
+msgstr "Този код не е валиден."
+
+msgid "That code is not recognised."
+msgstr "Този код не е разпознат."
+
+msgid "The code list is unavailable. Try again shortly."
+msgstr "Списъкът с кодове не е наличен. Опитайте след малко."
+
+msgid "Every locker is in use. Please ask the staff."
+msgstr "Всички шкафчета са заети. Помолете персонала."
+
+msgid "Reservation saved."
+msgstr "Резервацията е записана."
+
+msgid "Not saved: the door opened, and the reservation was not saved."
+msgstr "Не е записано: вратата се отвори, а резервацията не беше запазена."
+
+msgid "Audit log: an event could not be written."
+msgstr "Дневник: едно събитие не можа да се запише."
+
+msgid "Sync rejected: {0}"
+msgstr "Синхронизирането е отхвърлено: {0}"
+
+msgid "Sync: events not uploaded since {0}"
+msgstr "Синхронизиране: събитията не са изпратени от {0}"
+
+msgid "Codes offline: using the list saved at {0}"
+msgstr "Кодовете са офлайн: ползва се списъкът от {0}"
+
+msgid "Codes: the allowed-code list could not be refreshed."
+msgstr "Кодове: списъкът с позволени кодове не можа да се обнови."
+
+msgid "Please ask staff for help. A door may have opened."
+msgstr "Помолете персонала. Може да се е отворила врата."
+
+msgid "Please ask staff for help. A door was opened."
+msgstr "Помолете персонала. Една врата е отворена."
+
+msgid "Please ask staff for help. Nothing was opened."
+msgstr "Помолете персонала. Нищо не е отворено."
+
+msgid "Locker {0}. {1}"
+msgstr "Шкафче {0}. {1}"
+
+msgid "Relay busy: a relay was already on, so nothing was pulsed."
+msgstr "Релето е заето: едно реле вече беше включено, затова нямаше импулс."
+
+msgid "Kiosk busy: another kiosk process holds the relay lock; only one kiosk may drive a board."
+msgstr "Киоскът е зает: друг процес държи ключа на релето; само един киоск може да управлява таблото."
+
+msgid "Relay lock unavailable: {0}"
+msgstr "Ключът на релето не е наличен: {0}"
+
+msgid "Relay safety stop: a relay stayed on and was forced off."
+msgstr "Защитно спиране: едно реле остана включено и беше изключено принудително."
+
+msgid "Relay offline: the relay board did not answer."
+msgstr "Релето е офлайн: таблото не отговори."
+
+msgid "Relay error: the locker opener failed."
+msgstr "Грешка в релето: отварянето не успя."
+
+msgid "Storage error: the reservation book could not be saved or loaded."
+msgstr "Грешка в паметта: книгата с резервации не можа да се запише или зареди."
+
+msgid "Codes unavailable: the allowed-code list could not be read."
+msgstr "Кодовете не са налични: списъкът не можа да се прочете."
+
+msgid "Book rejected: the opening was not recorded."
+msgstr "Книгата отказа: отварянето не е записано."
+
+msgid "Locker missing: that locker is not in the inventory."
+msgstr "Шкафчето липсва: този номер го няма в списъка."
+
+msgid "None"
+msgstr "Няма"
+
+msgid "{0} opened"
+msgstr "{0} отворено"
+
+msgid "{0} opened, was uncertain"
+msgstr "{0} отворено, беше несигурно"
+
+msgid "{0} uncertain"
+msgstr "{0} несигурно"
+
+msgid "{0} failed: {1}"
+msgstr "{0} неуспешно: {1}"
+
+msgid "{0} failed: {1}, was uncertain"
+msgstr "{0} неуспешно: {1}, беше несигурно"
+
+msgid "{0} failed: {1}: {2}"
+msgstr "{0} неуспешно: {1}: {2}"
+
+msgid "{0} failed: {1}: {2}, was uncertain"
+msgstr "{0} неуспешно: {1}: {2}, беше несигурно"
+
+msgid "relay busy"
+msgstr "релето е заето"
+
+msgid "kiosk busy"
+msgstr "киоскът е зает"
+
+msgid "relay lock unavailable"
+msgstr "ключът на релето не е наличен"
+
+msgid "relay safety stop"
+msgstr "защитно спиране"
+
+msgid "relay offline"
+msgstr "релето е офлайн"
+
+msgid "relay error"
+msgstr "грешка в релето"
+
+msgid "storage error"
+msgstr "грешка в паметта"
+
+msgid "codes unavailable"
+msgstr "кодовете не са налични"
+
+msgid "book rejected"
+msgstr "книгата отказа"
+
+msgid "locker missing"
+msgstr "шкафчето липсва"
+
+msgid "Relay board not reachable"
+msgstr "Таблото с релета не отговаря"
+
+msgid "A relay is still on"
+msgstr "Едно реле още е включено"
+
+msgid "No active codes"
+msgstr "Няма активни кодове"
+
+msgid "Data directory is not writable"
+msgstr "Папката с данни не може да се записва"
+
+msgid "Free space could not be read"
+msgstr "Свободното място не можа да се прочете"
+
+msgid "Disk almost full"
+msgstr "Дискът е почти пълен"
+
+msgid "Reservation book could not be loaded"
+msgstr "Книгата с резервации не можа да се зареди"
+
+msgid "{0} uncertain entries are blocking lockers"
+msgstr "{0} несигурни записа блокират шкафчета"
+
+msgid "Clock looks wrong"
+msgstr "Часовникът изглежда грешен"
+
+msgid "Sync: {0} events still waiting"
+msgstr "Синхронизиране: {0} събития още чакат"
+
+msgid "Sync: {0} events still waiting, last upload {1}"
+msgstr "Синхронизиране: {0} събития още чакат, последно качване {1}"
+
+msgid "Your locker is {0}. Remember the number."
+msgstr "Вашето шкафче е {0}. Запомнете номера."
+
+msgid "Locker {0} is open"
+msgstr "Шкафче {0} е отворено"
+
+msgid "{0} s"
+msgstr "{0} сек"
+
+msgid "Ended {0}:{1} UTC"
+msgstr "Приключи в {0}:{1} UTC"
+
+msgid "Released: {0}"
+msgstr "Освободени: {0}"
+
+msgid "Audit log or reservation book: a write failed during this shift."
+msgstr "Дневник или книга с резервации: запис не успя през тази смяна."
+
+msgid "End of shift"
+msgstr "Край на смяната"
+
+msgid "Lockers {0}"
+msgstr "Шкафчета {0}"
+
+msgid "BG"
+msgstr "BG"
+
+msgid "EN"
+msgstr "EN"
+
+msgid "Please wait"
+msgstr "Моля, изчакайте"
+
+msgid "Too many attempts, please wait."
+msgstr "Твърде много опити, моля, изчакайте."
+
+msgid "Self-test OK"
+msgstr "Самопроверката е наред"
+
+msgid "Lockers"
+msgstr "Шкафчета"
+
+msgid "Welcome"
+msgstr "Добре дошли"
+
+msgid "Scan a code, or enter it on the pad."
+msgstr "Сканирайте код или го въведете на клавиатурата."
+
+msgid "Choose a size"
+msgstr "Изберете размер"
+
+msgid "Cancel"
+msgstr "Отказ"
+
+msgid "Done"
+msgstr "Готово"
+
+msgid "Doors opened: {0}"
+msgstr "Отворени врати: {0}"
+
+msgid "Rejected codes: {0}"
+msgstr "Отхвърлени кодове: {0}"
+
+msgid "Lockouts: {0}"
+msgstr "Блокировки: {0}"
+
+msgid "Relay down: {0}"
+msgstr "Реле без връзка: {0}"
+
+msgid "App starts: {0}"
+msgstr "Стартирания: {0}"
+
+msgid "Inspected"
+msgstr "Проверени"
+
+msgid "Blocked"
+msgstr "Блокирани"
+
+msgid "Open source licenses are packaged with this app."
+msgstr "Лицензите за отворен код са в комплекта на приложението."
+

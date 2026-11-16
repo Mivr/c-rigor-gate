@@ -1,0 +1,43 @@
+open 1000 1
+frame
+semantic
+trace
+hit-test 53 45
+trace
+crop 140 100 8 2
+ink
+frame
+tap 53 45
+trace
+next-due
+semantic
+frame
+apply 3 4 0 -
+frame
+apply 3 5 0 -
+frame
+apply 3 7 0 -
+frame
+apply 3 8 0 -
+frame
+apply 3 2 0 -
+frame
+trace
+hit-test 53 45
+trace
+tap 53 45
+trace
+apply 3 1 0 -
+trace
+apply 3 3 0 -
+frame
+hit-test 53 45
+apply 3 1 0 -
+trace
+apply 3 10 0 -
+frame
+trace
+open 1000 1
+frame
+ink 6
+quit

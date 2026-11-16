@@ -1,0 +1,347 @@
+# The UI contract of the U06 canary product (docs/ui-contract.md, docs/ui-judges.md). A selftest fixture, not a sealed
+# product contract: every value the ui-scene and ui-fit judges read is decided here (the lockers contract leaves some
+# pending), so each canary state shows exactly its defect. The panel is a 10 inch 320x240 display: 40 ppi, so
+# 1 mm = 40 / 25.4 px (touch 14 mm = 22.05 px, probe disc 7.5 mm = 11.81 px, spacing 1 mm = 1.57 px, 3 mm = 4.72 px).
+schema = "ui-contract/1"
+product = "selftest/canary"
+
+[window]
+width_px  = { value = 320, provenance = "spec:ui-look.md#1" }
+height_px = { value = 240, provenance = "spec:ui-look.md#1" }
+unit_px   = { value = 8, provenance = "spec:ui-look.md#1" }
+pad_px    = { value = 8, provenance = "spec:ui-look.md#1" }
+gap_px    = { value = 8, provenance = "spec:ui-look.md#1" }
+
+[panel]
+diagonal_in         = { value = 10, provenance = "owner:Q9" }
+viewing_distance_mm = { value = 500, provenance = "owner:Q9" }
+
+[type_scale]
+display  = { value = 40, provenance = "spec:ui-look.md#1" }
+headline = { value = 24, provenance = "spec:ui-look.md#1" }
+title    = { value = 20, provenance = "spec:ui-look.md#1" }
+body     = { value = 14, provenance = "spec:ui-look.md#1" }
+staff    = { value = 12, provenance = "spec:ui-look.md#1" }
+caption  = { value = 10, provenance = "spec:ui-look.md#1" }
+
+[reading]
+rate_wpm = { value = 175, provenance = "owner:Q11" }
+
+[clock]
+tick_ms = { value = 250, provenance = "spec:P004#3.5" }
+
+[policy]
+error_dialog      = { value = "fixed", provenance = "owner:Q11" }
+target_population = { value = "inclusive", provenance = "owner:Q10" }
+
+[thresholds]
+keypad_key_min_mm             = { value = 20, provenance = "literature:3.10/keypad_key_min_mm" }
+button_recommended_mm         = { value = 19, provenance = "literature:3.10/button_recommended_mm" }
+button_floor_mm               = { value = 16.5, provenance = "literature:3.10/button_floor_mm" }
+touch_min_mm                  = { value = 14, provenance = "literature:3.10/touch_min_mm" }
+touch_min_dp                  = { value = 48, provenance = "literature:3.10/touch_min_dp" }
+hit_overlap_allowed           = { value = false, provenance = "literature:3.10/hit_overlap_allowed" }
+spacing_hard_mm               = { value = 1, provenance = "literature:3.10/spacing_hard_mm" }
+spacing_recommended_mm        = { value = 3, provenance = "literature:3.10/spacing_recommended_mm" }
+probe_grid_pct                = { value = [20, 50, 80], provenance = "design:P004#3.10-probe_grid_pct" }
+probe_disc_radius_mm          = { value = 7.5, provenance = "literature:3.10/probe_disc_radius_mm" }
+feedback_rendered_frames_max  = { value = 5, provenance = "literature:3.10/feedback_rendered_frames_max" }
+feedback_target_frames        = { value = 2, provenance = "design:P004#3.10-feedback_target_frames" }
+frame_hz                      = { value = 60, provenance = "design:P004#3.10-frame_hz" }
+busy_indicator_ms             = { value = 1000, provenance = "literature:3.10/busy_indicator_ms" }
+busy_progress_cancel_ms       = { value = 10000, provenance = "literature:3.10/busy_progress_cancel_ms" }
+dwell_base_ms                 = { value = 1000, provenance = "design:P004#3.10-dwell_base_ms" }
+dwell_floor_ms                = { value = 3500, provenance = "design:P004#3.10-dwell_floor_ms" }
+dwell_chars_per_word          = { value = 5.6, provenance = "design:P004#3.10-dwell_chars_per_word" }
+flicker_floor_ms              = { value = 500, provenance = "design:P004#3.10-flicker_floor_ms" }
+legibility_xheight_deg        = { value = 0.2, provenance = "literature:3.10/legibility_xheight_deg" }
+contrast_text                 = { value = 4.5, provenance = "literature:3.10/contrast_text" }
+contrast_large                = { value = 3, provenance = "literature:3.10/contrast_large" }
+pseudo_expansion_overall_pct  = { value = 40, provenance = "literature:3.10/pseudo_expansion_overall_pct" }
+relational_geometry_tol_px    = { value = 1, provenance = "design:P004#3.10-relational_geometry_tol_px" }
+pixel_tolerance               = { value = 0, provenance = "literature:3.10/pixel_tolerance" }
+hierarchy_ratio_k             = { value = 1.25, provenance = "design:P004#3.10-hierarchy_ratio_k" }
+
+# Style tokens: the scene's `style` field (ui-look.md 4.2 style: a token per style; the role through [[role]] or
+# [[style_role]]).
+[[style]]
+id = "title"
+token = 1
+scale = "title"
+weight = 600
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "body"
+token = 2
+scale = "body"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "caption"
+token = 3
+scale = "caption"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "btn"
+token = 5
+scale = "body"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "lang_on"
+token = 6
+scale = "caption"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "lang_off"
+token = 7
+scale = "caption"
+weight = 600
+usage = "button"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "small_body"
+token = 8
+scale = "caption"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[style]]
+id = "big_body"
+token = 9
+scale = "headline"
+weight = 400
+usage = "text"
+provenance = "spec:ui-look.md#4.2"
+[[role]]
+id = "title"
+style = "title"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "body"
+style = "body"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "caption"
+style = "caption"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "key_label"
+style = "btn"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[role]]
+id = "small_button_label"
+style = "lang_on"
+align = "centre"
+provenance = "spec:ui-look.md#4.1"
+[[style_role]]
+style = "lang_off"
+role = "small_button_label"
+provenance = "spec:ui-look.md#4.1"
+[[style_role]]
+style = "small_body"
+role = "body"
+provenance = "spec:ui-look.md#4.1"
+[[style_role]]
+style = "big_body"
+role = "body"
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "title"
+font_px_min = 20
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "body"
+font_px_min = 14
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "caption"
+font_px_min = 10
+touch_dp_min = 0
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "key_label"
+font_px_min = 14
+touch_dp_min = 48
+provenance = "spec:ui-look.md#4.1"
+[[role_min]]
+role = "small_button_label"
+font_px_min = 10
+touch_dp_min = 48
+provenance = "spec:ui-look.md#4.1"
+
+[[timer]]
+kind = "dialog"
+class = "message"
+lifetime_ms = 8000
+countdown_shown = true
+dismiss = ["dismiss", "countdown"]
+provenance = "spec:ui-rules.md#timers"
+
+[[state_class]]
+id = "main"
+required = ["title"]
+provenance = "spec:ui-look.md#3.2"
+[[state_class]]
+id = "detail"
+required = ["title", "body"]     # U24: v-missing shows this class without its body text
+provenance = "spec:ui-look.md#3.2"
+
+[[importance]]
+level = 1
+roles = ["title"]
+provenance = "owner:Q7"
+[[importance]]
+level = 2
+roles = ["body", "key_label", "small_button_label"]
+provenance = "owner:Q7"
+[[importance]]
+level = 3
+roles = ["caption"]
+provenance = "owner:Q7"
+
+[[toggle_group]]
+id = "language"
+members = ["lang_bg", "lang_en"]
+exactly_one = true
+shown_on = ["main"]
+marks = ["bg", "style"]
+provenance = "spec:ui-rules.md#language"
+
+# The input layers by structural role (U06 R8: blocks_input_below = capture-modal-inert, else pass-through).
+[[input_layer]]
+layer = "dialog"
+blocks_input_below = true
+tap_outside_dismisses = false
+accepts_input = true
+provenance = "spec:ui-rules.md#presentation"
+[[input_layer]]
+layer = "snackbar"
+blocks_input_below = false
+tap_outside_dismisses = true
+accepts_input = true
+provenance = "spec:ui-rules.md#presentation"
+[[input_layer]]
+layer = "banner"
+blocks_input_below = false
+tap_outside_dismisses = false
+accepts_input = true
+provenance = "spec:ui-rules.md#presentation"
+
+[[wrap]]
+scope = "default"
+wrap = "word"
+max_lines = 0
+ellipsis = false
+clip = false
+provenance = "spec:ui-look.md#5"
+[[wrap]]
+scope = "single_line"
+wrap = "none"
+max_lines = 1
+ellipsis = false
+clip = false
+provenance = "spec:ui-look.md#5"
+[[wrap]]
+scope = "elided"
+wrap = "word"
+max_lines = 1
+ellipsis = true
+clip = false
+provenance = "spec:ui-look.md#5"
+[[wrap]]
+scope = "clipped"
+wrap = "none"
+max_lines = 1
+ellipsis = false
+clip = true
+provenance = "spec:ui-look.md#5"
+
+# The wrap scope of each typographic role; `caption` has none (the canary v-wrap shows a caption).
+[[role_wrap]]
+role = "title"
+scope = "single_line"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "body"
+scope = "default"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "key_label"
+scope = "single_line"
+provenance = "spec:ui-look.md#5"
+[[role_wrap]]
+role = "small_button_label"
+scope = "single_line"
+provenance = "spec:ui-look.md#5"
+
+
+# The scene keys of the toggle group's members.
+[[element]]
+id = "lang_bg"
+key = "lang_bg"
+provenance = "spec:ui-look.md#4.2"
+[[element]]
+id = "lang_en"
+key = "lang_en"
+provenance = "spec:ui-look.md#4.2"
+
+# The canary draws every style with Montserrat 14: a line of 16 px (v-shrunk draws one text with a 10 px font); a
+# baseline of the canary itself.
+[[style_line]]
+style = "title"
+line_height_px = 16
+provenance = "product-baseline:abd8895"
+[[style_line]]
+style = "body"
+line_height_px = 16
+provenance = "product-baseline:abd8895"
+[[style_line]]
+style = "caption"
+line_height_px = 16
+provenance = "product-baseline:abd8895"
+[[style_line]]
+style = "btn"
+line_height_px = 16
+provenance = "product-baseline:abd8895"
+[[style_line]]
+style = "lang_on"
+line_height_px = 16
+provenance = "product-baseline:abd8895"
+[[style_line]]
+style = "lang_off"
+line_height_px = 16
+provenance = "product-baseline:abd8895"
+[[style_line]]
+style = "small_body"
+line_height_px = 16
+provenance = "product-baseline:abd8895"
+[[style_line]]
+style = "big_body"
+line_height_px = 16
+provenance = "product-baseline:abd8895"
+
+# U24: the tables of the identity checks (docs/ui-contract.md). The title is ONE value (v-split draws it as two text
+# nodes); the canary's msgids are catalogue keys, and every title and body text comes from the catalogue.
+[[value]]
+id = "title"
+element = "title"
+provenance = "spec:P004#3.1"
+[[catalogue]]
+id = "canary"
+msgids = "key"
+text_roles = ["title", "body"]
+provenance = "spec:P004#3.1"

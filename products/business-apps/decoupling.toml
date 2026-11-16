@@ -1,7 +1,7 @@
 # Decoupling declarations for business-apps (gate decoupling, docs/decoupling.md). Gate-owned.
 # The entries are layers of architecture.toml; its [testkit] modules are the fakes and test kits.
 [modules]
-contract = ["app-contract"]
+contract = ["app-contract", "fiscal-contract"]
 # app-ui is listed by package: lkui/catalog is a generated message catalog (c_catalog: const text tables, no
 # behaviour), so it is data that every layer may use directly, like a library. A new lkui package must be added here.
 # app-reactors is listed by package too: lkrx/catalog is the event catalogue's const tables (LK_EV_TYPES, and LK_WIRING
@@ -15,8 +15,9 @@ component = ["//apps/lockers/lkrx/boot:*", "//apps/lockers/lkrx/codes:*", "//app
              "//apps/lockers/lkrx/shift:*", "//apps/lockers/lkrx/sync:*", "//apps/lockers/lkrx/view:*",
              "//apps/lockers/lkrx/visit:*",
              "app-adapters", "app-sim",
+             "fiscal-adapters", "fiscal-sim", "//apps/fiscal/dtrun/loop:*",
              "//apps/lockers/lkui/input:*", "//apps/lockers/lkui/notices:*", "//apps/lockers/lkui/screens:*"]
-composition = ["app-root"]
+composition = ["app-root", "//apps/fiscal/dtapp/**"]
 # lkrx/vstate (a value module, not a component) is frozen: other packages depend on its header (manager, 2026-11-12).
 frozen = ["//apps/lockers/lkrx/vstate:vstate"]
 
@@ -28,4 +29,4 @@ may_use = ["lib-base", "//lib/rt/ev:ev", "//apps/lockers/lk/types:types", "//app
 
 [tests]
 # Packages without a module whose tests run the real folds and reactors together (P007 test moves, manager 2026-11-12).
-integration = ["//apps/lockers/itest/**"]
+integration = ["//apps/lockers/itest/**", "//apps/fiscal/itest/**"]

@@ -108,6 +108,8 @@ dependency, be in `allow` or in `deny_exempt`. Findings:
 | `mutable-global-export` | defines an external object in a writable data/bss section, listed or not (T033; error at L3 and above, info at L2) |
 | `system-lib-not-allowed` | a `c_library` declares `system_libs = [..]` and its policy entry does not list the library (T095; field `lib`) |
 | `system-lib-not-declared` | the policy entry lists a `system_libs` entry the module's `c_library` does not declare (T095; field `lib`) |
+| `ui-model-symbol` | a product module defines or references any symbol starting with `uim_` (U03; the prefix is reserved by the gate itself, whatever the policy says, a `trusted` entry included), except the `model` of a `c_ui_probe` (exactly one target) and the gate's probe library `gate//ui/model:probe` (labels compared exactly); fields `symbol`, `unit`, `use` (`defined` or `referenced`). docs/ui-model.md, "Confinement" |
+| `ui-probe-shape` | a target that depends on `gate//ui/model:probe` has other than exactly one dependency besides the gate's two UI libraries (field `models`); nothing is exempt for it |
 | `mutable-data` | a module without `allow_mutable_data` defines any writable static data, `static` locals included (T089; below) |
 | `ram-over-budget` / `ram-unbudgeted` | a binary links more writable bytes than its `ram-budget.toml` entry, or has no entry (T089; below) |
 
@@ -276,6 +278,20 @@ f-strings), `bad-statement` (assignment, `def`, `if`, `for`, import, bare expres
 (also non-UTF-8 and NUL), `forbidden-file` (any file Buck2 could read as configuration: `*.bzl`, `*.bxl`,
 `BUCK.*` such as `BUCK.v2` which wins over `BUCK`, `TARGETS*`, `PACKAGE*`, `.buckconfig*`, `.buckroot`,
 `.buckignore`, `.buckjavaversion`, and `buck`/`Buck` spellings), `symlink` (any symlink anywhere).
+
+The UI macros come from the second permitted load, `load("@gate//rules:ui.bzl", ...)`, naming only `c_ui_probe` and
+`c_ui_probe_session` (docs/ui-model.md). `c_ui_probe(name, model)` (U03). `c_ui_probe_session(name, probe, session,
+expected)` (U05c): exactly these four keywords, all of them, string literals; `probe` is `":x"` of a `c_ui_probe` declared
+in the same BUCK file (why `probe` otherwise, `value` for any other form, `__` included); `session` and `expected` are
+two different plain relative files of the package (why `value`: no label, glob, `.`/`..` segment, empty segment, absolute
+path or backslash; why `file`: the same file twice); a missing keyword is why `missing`. Nothing may depend on a session,
+on a probe or on the probe's mark `<probe>__ui_probe` (why `test-target`). The rule kind behind the macro,
+`ui_probe_session_run`, is not loadable by a product (`bad-load`) and is no macro (`bad-call`).
+
+**A `c_ui_probe_session` IS ENFORCED BY `buck2 test` ONLY, NOT YET BY `rigor grade`:** the grade's `build` gate collects
+only `ctest_results` targets. Follow-up: `kind(ui_probe_session_run, //...)` in `grade_build.result_targets`, the tests
+gate seeing the id `ui_probe_session/<pkg>:<name>`, and a selftest step in which a failing session fails a grade
+(docs/ui-model.md, "`c_ui_probe_session`").
 
 ## Builtins (T014)
 The symbol deny list and `-Wframe-larger-than` are keyed on symbols and static frames; a compiler builtin
