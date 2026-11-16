@@ -5,12 +5,14 @@ a probe without `ink`."""
 import unittest
 from types import SimpleNamespace
 
-from rigor_lib.ui_explore_grammar import FRAME_FIELDS, INK_FIELDS, parse_typed_line
+from rigor_lib.ui_explore_grammar import FRAME_FIELDS, INK_FIELDS, parse_record, parse_typed_line
 from rigor_lib.ui_explore_probe import ProbeError
-from rigor_lib.ui_explore_run import InkPlan, Run, Step, before_inputs, ink_step
+from rigor_lib.ui_explore_catalogue import load as load_catalogue
+from rigor_lib.ui_explore_key import key_hash, projection
+from rigor_lib.ui_explore_run import InkPlan, Run, Step, base_key, before_inputs, ink_step
 from rigor_lib.ui_explore_words import inputs
 from tests.helpers import TempDirTestCase, run_rigor
-from tests.test_ui_explore_helpers import TOY
+from tests.test_ui_explore_helpers import STUB_OPEN_SEMANTIC, TOY
 from tests.test_ui_judge_helpers import CANARY_CONTRACT
 
 
@@ -122,6 +124,29 @@ class InkStepTest(unittest.TestCase):
             item = Step(1, "tap")
             inputs(TapSession(INK_OK, frame_of("b")), item, before_inputs(before), [("tap", tap)], None)
             self.assertEqual((item.applies[-1], item.noop and item.noop["changed"]), want)
+
+    def test_after_a_moved_ink_wait_change_leaves_the_key_of_a_fresh_observation(self):
+        catalogue = load_catalogue(TOY)
+        fresh = (parse_record("semantic", STUB_OPEN_SEMANTIC[0]),)
+
+        class KeySession:
+            now = 1000
+
+            def records(self, name):
+                return fresh
+
+            def next_due(self):
+                return None
+
+            def env_inputs(self):
+                return ()
+        want = key_hash(projection({"semantic": fresh, "due": None, "env": ()}, 1000, catalogue.key))
+        for moved, expected in ((True, want), (False, "stale")):
+            before = stepped(0, "stale", "a")
+            before.obs["ink_moved"] = moved
+            item = Step(1, "wait-change", key_before="stale")
+            self.assertEqual(base_key(KeySession(), item, before, catalogue), expected)
+        self.assertNotEqual(want, "stale")
 
     def test_no_plan_or_an_unwanted_step_takes_no_ink(self):
         item = stepped(0, "k", "c1")

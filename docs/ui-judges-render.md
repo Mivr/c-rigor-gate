@@ -51,7 +51,9 @@ The tap-node evidence image of a step (`_evidence`) is read BEFORE its ink (fix-
 An input word after a step whose frame moved under its ink compares against a FRESH snapshot taken just before it
 (`ui_explore_run.before_inputs`; `inputs` snapshots when given None), not against that step's stale observation: its
 noop, missed and countdown-restart verdicts never blame the input for what moved during the ink (a rare case: one extra
-observation's commands).
+observation's commands). The same holds for the key a `wait-change` word or a t1 until-change event waits to leave
+(`ui_explore_run.base_key`, fix-up 3): after a moved ink it is the key of a fresh observation (semantic, deadline, env
+inputs), not the stale step's.
 
 **Cost measured on the canary** (36 states, one checksum each, replay of `canary.paths.json`, this 4-CPU host, three
 runs each): `--judges ui-scene,ui-fit` 1.23 to 1.34 s, 1138 probe commands; `--judges ui-scene,ui-fit,ui-render` 1.48
@@ -96,7 +98,13 @@ design).
   A label lvprobe reports `clipped` carries `observed.clipped`. One cause, one finding: when ui-fit is SELECTED and
   reports that label's `text-clipped` (its scope does not declare `clip`), the clipped label is ui-fit's and a counted
   not-applicable here; with ui-render alone, or under a `clip` scope, it is reported here (the canary's `v-clipped`
-  label, pushed out of its button, is ui-fit's in the three-judge run).
+  label, pushed out of its button, is ui-fit's in the three-judge run). The rule mirrors every early return of
+  ui-fit's label rule (a shown label with a non-empty own text, measured). An owner exception on `text-clipped` for a
+  target turns ui-fit's finding into info while ui-render still counts that label not-applicable: the exception
+  covers the one cause, and nothing else reports it. A label with NO visible box (fix-up 3) is judged only when it is
+  not in a scrolling viewport (`ui_judge_geom._in_viewport`: a list row scrolled out of view paints nothing by
+  design) and ui-scene, when selected, would not report it `node-out-of-bounds`; otherwise it is a counted
+  not-applicable.
   Excluded: scene-hidden (`H`) and rendered-hidden nodes (`flag-mismatch` when the two disagree); panels (below).
 - **`contrast-low`** (part `below-large`). For a shown text-bearing node with a typographic role and a non-empty drawn
   text, the ink of the label that carries its text (the label itself, or a button's or key's label child), unless R7
@@ -313,6 +321,10 @@ gave the same answer either way; the test now uses a `#000` fill and the break f
 | fix-up 2: R7 counted | the not-applicable not counted | render 1 (error) |
 | fix-up 2: exception rules | the two ids removed | render 1 |
 | fix-up 2: a fresh snapshot after a moved ink | the stale observation compared | render_explore 1 |
+| fix-up 3: a scrolled-out label not judged | the viewport test removed | render 1 |
+| fix-up 3: ui-scene's out-of-bounds owns an off-display label | the ui-scene rule removed | render 1 |
+| fix-up 3: ui-fit owns only a label it judges | the `own_text` condition removed | render 1 |
+| fix-up 3: wait-change after a moved ink | the stale key | render_explore 1 |
 
 The harness that applied them is not part of the repository (it lived in the task's scratch directory). On the canary
 the selftest sees every implemented check fire in its own variant.

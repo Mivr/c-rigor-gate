@@ -147,6 +147,36 @@ class InkChecksTest(unittest.TestCase):
         self.assertEqual(clipped(2, ("ui-render",)), ([("body", "node", True)], [], 0))     # a pure text node
         self.assertEqual(clipped(2, both), ([], ["body"], 1))
 
+    def test_a_label_without_a_visible_box_scrolled_out_or_out_of_bounds(self):
+        semantic, tree = base()
+        listing = tree.node(0, "lv_obj", (8, 150, 207, 200), bg=0)
+        tree.nodes[listing]["scroll"] = 0
+        row = tree.label(listing, "Row 9", (8, 300, 207, 323), clip=listing, clipped=1)
+        tree.nodes[row]["scroll"] = listing                                    # scrolled out of the list
+        semantic += [sem("list", "panel", "", (8, 150, 200, 51)), sem("row", "text", "Row 9", (8, 300, 200, 24),
+                                                                        style="body")]
+        for gates in (("ui-render",), ("ui-fit", "ui-render")):
+            found = judged(semantic, tree, {row: (0, BLACK_ON_WHITE)}, gates=gates, finish=True)
+            self.assertEqual(render(found, "invisible-node"), [], gates)
+        semantic, tree = base()
+        off = tree.label(0, "Off", (330, 10, 400, 30))                       # off the display
+        semantic.append(sem("off", "text", "Off", (330, 10, 71, 21), style="body"))
+        found = judged(semantic, tree, {off: (0, BLACK_ON_WHITE)}, gates=("ui-scene", "ui-render"))
+        self.assertEqual(render(found, "invisible-node"), [])
+        self.assertIn(("node-out-of-bounds", ["off", "window"]),
+                      [(f["check"], [f["observed"]["key"], f["observed"]["part"]]) for f in found
+                       if f["check"] == "node-out-of-bounds"])
+        self.assertEqual(render(judged(semantic, tree, {off: (0, BLACK_ON_WHITE)}), "invisible-node"),
+                         [("invisible-node", "off", "node", "error")])
+
+    def test_ui_fit_owns_only_a_clipped_label_it_judges(self):
+        semantic, tree = base()                       # the scene's text is drawn as an empty label: ui-fit skips it
+        tree.nodes[2]["label"]["text"] = b""
+        tree.nodes[2]["fit"]["clipped"] = 1
+        found = judged(semantic, tree, {2: (0, BLACK_ON_WHITE)}, gates=("ui-fit", "ui-render"))
+        self.assertEqual(render(found, "invisible-node"), [("invisible-node", "body", "node", "error")])
+        self.assertEqual([f for f in found if f["check"] == "text-clipped"], [])
+
     def test_a_cover_that_does_not_hide_the_ink_is_no_finding(self):
         semantic, tree = base()
         tree.node(0, "lv_obj", (0, 30, 230, 70), bg=255)                      # opaque, but the body's ink is 100

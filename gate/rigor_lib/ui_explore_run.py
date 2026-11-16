@@ -134,7 +134,7 @@ def _do_word(session, step, run, catalogue, before):
     elif word == SETTLE:
         words_mod.fire_due(session, step, run, catalogue, False)
     elif word == WAIT_CHANGE:
-        words_mod.until_change(session, step, run, catalogue, step.key_before)
+        words_mod.until_change(session, step, run, catalogue, base_key(session, step, before, catalogue))
     elif _DOMAIN.fullmatch(word):
         session.domain_at(int(word.split(" ")[1]))
         step.outcome.append("domain-at")
@@ -143,9 +143,21 @@ def _do_word(session, step, run, catalogue, before):
     else:
         event = catalogue.by_id(word)
         if event.cls == "t1":
-            words_mod.time_event(session, step, run, event, catalogue, step.key_before)
+            waits = event.get("kind") not in ("fire-due", "before-due", "advance", "at")     # until-change
+            base = base_key(session, step, before, catalogue) if waits else step.key_before
+            words_mod.time_event(session, step, run, event, catalogue, base)
         else:
             words_mod.inputs(session, step, before_inputs(before), words_mod.input_sends(session, event), catalogue)
+
+
+def base_key(session, step, before, catalogue):
+    """The abstraction key a wait-change word (or a t1 until-change) waits to leave: the step before's own key, or,
+    when that step's frame moved under its ink (U07), the key of a fresh observation (semantic, deadline, env inputs,
+    as until_change reads them), since the step's observation is then stale."""
+    if before is None or not before.obs.get("ink_moved"):
+        return step.key_before
+    obs = {"semantic": session.records("semantic"), "due": session.next_due(), "env": session.env_inputs()}
+    return key_hash(projection(obs, session.now, catalogue.key))
 
 
 def before_inputs(before):
