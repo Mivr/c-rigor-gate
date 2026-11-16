@@ -115,7 +115,8 @@ class PatchChainTest(unittest.TestCase):
     def test_patches_that_contradict_the_records_are_a_finding_and_judge_nothing(self):
         found, _runner = judge_run(Sim(lie=True), [[OPEN, "show", "at 500"]])
         lies = [f for f in found if f["check"] == "patches-inconsistent"]
-        self.assertIn([OPEN, "show", "at 500"], [f["path"] for f in lies])      # the path, and its probing runs
+        self.assertIn([OPEN, "show", "at 500"], [f["path"] for f in lies])      # the path
+        self.assertTrue(any(len(f["path"]) > 3 for f in lies), lies)              # and a probing run after its prefix
         self.assertTrue(all("did not show" in f["observed"]["why"] for f in lies))
 
 

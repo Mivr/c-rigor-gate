@@ -25,9 +25,10 @@ class ScriptSim(Sim):
     """`go` starts a script of elements (key, role, text, start ms, end ms or None, countdown) relative to its instant;
     the class is the role of the last message shown, else `main`."""
 
-    def __init__(self, script, flip=False, flip_after=2, **kw):
+    def __init__(self, script, flip=False, flip_after=2, flip_text=None, flip_only=None, **kw):
         Sim.__init__(self, **kw)
-        self.script, self.flip, self.flip_after = script, flip, flip_after
+        self.script, self.flip, self.flip_after, self.flip_text = script, flip, flip_after, flip_text
+        self.flip_only = flip_only        # the one run (its number) that differs, else every run after flip_after
 
     def _input(self, word, now, st):
         if word == "go":
@@ -37,11 +38,12 @@ class ScriptSim(Sim):
     def scene(self, t, st):
         nodes, cls = {"1": ("text", "Title")}, "main"
         go = st.get("go")
-        flip = self.flip and len(self.runs) > self.flip_after       # a product that differs on later runs
+        flip = self.flip and (len(self.runs) > self.flip_after if self.flip_only is None
+                              else len(self.runs) == self.flip_only)   # a product that differs on later runs
         for key, role, text, start, stop, counts in self.script if go is not None else ():
-            if go + start <= t and (stop is None or t < go + stop) and not flip:
+            if go + start <= t and (stop is None or t < go + stop) and not (flip and self.flip_text is None):
                 nodes[key] = (role, "")
-                nodes[key + "t"] = ("text", text)
+                nodes[key + "t"] = ("text", self.flip_text if flip and self.flip_text else text)
                 if counts:
                     nodes[key + "c"] = ("countdown", "%d s" % -(-(go + start + 4000 - t) // 1000))
                 cls = role
@@ -110,6 +112,12 @@ class InsideTest(unittest.TestCase):
         self.assertEqual((len(short), len(flash)), (1, 1))
         self.assertLessEqual(short[0]["observed"]["shown_at_most_ms"], 200)
 
+    def test_the_samples_are_refined_until_every_key_is_seen(self):
+        sim = ScriptSim([("50", "banner", "Not saved", 420, 440, False)])    # 20 ms: between the first even samples
+        found, _runner, _j = judge_run(sim, [[OPEN, "go", "at 1100"]])
+        self.assertEqual(len([f for f in found if f["check"] == "notice-lifetime-short"]), 1)
+        self.assertNotIn("lifetime-undecided", errors(found))
+
     def test_a_key_never_sampled_is_undecided(self):
         sim = ScriptSim([("50", "banner", "Blip", 333, 334, False)])     # one ms inside a 100 000 ms step
         found, _runner, _j = judge_run(sim, [[OPEN, "go", "at 100000"]])
@@ -130,6 +138,12 @@ class InsideTest(unittest.TestCase):
         diverged = [f for f in found if f["check"] == "probe-diverged"]
         self.assertEqual(len(diverged), 1)
         self.assertEqual(examined(found)["totals"]["notice-lifetime-short"], 0)     # no lifetime decided from it
+
+    def test_another_instance_at_the_end_of_the_step_is_a_divergence(self):
+        # only the appearance's bisection run (run 2) shows another banner at the step's end
+        sim = ScriptSim([("50", "banner", "Saved", 400, None, False)], flip=True, flip_text="Other", flip_only=2)
+        found, _runner, _j = judge_run(sim, [[OPEN, "go", "at 1100"]])
+        self.assertEqual(len([f for f in found if f["check"] == "probe-diverged"]), 1)
 
     def test_hidden_steps_count_against_the_probe_cap(self):
         import rigor_lib.ui_judge_time as judge_mod

@@ -244,16 +244,19 @@ and no probe left.
 
 ## Each check seen failing against a broken judge
 
-A copy of `gate/` with one rule broken (`/var/tmp/cache/U09/mut/run2.sh`, not committed): the canary checks against
-the selftest's own assertion block, the others against `test_ui_judge_time` and `test_ui_judge_time_probe`. Every row
-failed:
+A copy of `gate/` with one rule broken (`/var/tmp/cache/U09/mut/run3.sh` and `run4.sh`, not committed): the canary
+checks against the selftest's own assertion block (with `--evidence`, as the selftest runs it; the unmutated copy
+passes it), the others against `test_ui_judge_time`, `test_ui_judge_time_probe` and `test_ui_judge_time_fixup2`.
+`zero` and `increase` are each found two ways (labels and patches; patches and step-end values), so both ways were
+broken together for the canary row. Every row failed:
 
 | Broken | How | Failed |
 |---|---|---|
 | `notice-lifetime-short` | the short bound minus 100 000 | the selftest (v-early, v-wordy) |
 | `notice-lifetime-long` | the long bound plus 100 000 | the selftest (v-never) |
 | `flash` | `< threshold` to `< 0` | the selftest (v-flash, v-blink) |
-| `countdown-wrong` start / zero / stalled / increase / absent | each part's test to False (absent: not recorded) | the selftest (v-start; v-zero; v-skip, v-never; v-up, v-bump; v-bare) |
+| `countdown-wrong` start / zero / stalled / increase | each part's test to False | the selftest (v-start; v-zero; v-skip, v-never; v-up, v-bump) |
+| `countdown-wrong` absent on the path | not judged | `test_a_removed_countdown_leaves_the_screen_shown_and_is_absent` |
 | `invisible-auto-transition` | the class comparison to False | the selftest (v-silent) |
 | `dwell-below-reading-time` | `if lifetime >= least` to `if True` | the selftest (v-wordy) |
 | `clock-origin-divergence` | the semantic comparison to constants | the selftest (the id: the identity part then diverges first) |
@@ -267,6 +270,18 @@ failed:
 | a screen under a message | not carried | `test_a_screen_continues_under_a_message` |
 | origin `time` / `due` | not compared | `test_time_and_deadline_relative_to_the_origin` |
 | countdown `M:SS` | read as its first run | `test_countdown_formats` |
+| (fix-up 2) sampling inside a step until every key is seen | only the undecided edges refined | `test_the_samples_are_refined_until_every_key_is_seen` |
+| (fix-up 2) `hidden-unsampled` | not reported | `test_a_key_never_sampled_is_undecided` |
+| (fix-up 2) instances followed by their nodes | every node always held | `test_a_replacement_across_steps_is_a_new_appearance` |
+| (fix-up 2) a new instance is a new appearance | only a new kind | `test_ids_are_keyed_by_the_state_of_the_first_appearance`, `test_an_appearance_inside_a_time_step_is_bisected_to_decide` |
+| (fix-up 2) carry checks roles and labels | keys only | `test_not_carried_when_the_screen_underneath_changed`, `test_no_carry_to_a_successor_screen_with_a_superset_of_keys` |
+| (fix-up 2) samples change at most once | always monotone | `test_monotone` |
+| (fix-up 2) the instance at the step's end in the appearance run | not checked | `test_another_instance_at_the_end_of_the_step_is_a_divergence` |
+| (fix-up 2) a re-sampled instant must agree | not checked | `test_a_diverging_inside_run` |
+| (fix-up 2) increase from step-end values | off | `test_increase_by_a_node_made_again` |
+| (fix-up 2) patch chain and increases on probing runs | path only | `test_patches_that_contradict_the_records_are_a_finding_and_judge_nothing` |
+| (fix-up 2) the origin fill inside the budget handling | not run there | `test_a_cut_during_the_origin_fill_is_a_cut_run` |
+| (fix-up 2) flash undecided | dropped | `test_flash_needs_no_input_between_and_ignores_countdowns` |
 
 ## Deviations and limits
 
