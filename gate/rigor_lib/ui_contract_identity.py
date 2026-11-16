@@ -2,11 +2,14 @@
 loader (ui_contract) takes their schema from `table_specs`, accepts them absent (no row: the check they feed has nothing
 to judge) and runs `check` after its own checks.
 
-| Table | Id | Keys |
-|---|---|---|
-| `[[value]]` | `id` | `element`: the element id whose shown nodes make ONE value (lockers: the locker number, the entered code); optional `max_nodes` (1..64, 1 when absent): how many nodes may carry it |
-| `[[catalogue]]` | `id` | `msgids` (`key`: a msgid is a catalogue key, never display text; `source-text`: a msgid is the source language's text, as gettext's), `text_roles`: the typographic roles whose text must come from the catalogue (a msgid on every node) |
-| `[[identity_literal]]` | `msgid` | a msgid whose formatted text is the msgid itself in every language (raw-text does not report it) |
+Tables (docs/ui-contract.md):
+- `[[value]]` (id `id`): `element`, the element id whose drawn nodes make ONE value (lockers: the locker number, the
+  entered code); optional `max_nodes` (1..64, 1 when absent): how many nodes may be it.
+- `[[catalogue]]` (id `id`, at most one row): `msgids` (`key`: a msgid is a catalogue key, never display text;
+  `source-text`: a msgid is the source language's text, as gettext's) and `text_roles`, the typographic roles whose
+  text must come from the catalogue (a msgid on every node).
+- `[[identity_literal]]` (id `msgid`): a msgid whose formatted text is the msgid itself in every language (raw-text
+  does not report it).
 """
 
 from rigor_lib.errors import InternalError
@@ -38,10 +41,14 @@ def check(tables):
     seen = set()
     for row in tables["value"]:
         if row["element"] not in known:
-            _fail("[[value]] %r: element %r is no [[role]], [[element]] or extra element id" % (row["id"], row["element"]))
+            _fail("[[value]] %r: element %r is no [[role]], [[element]] or extra element id"
+                  % (row["id"], row["element"]))
         if row["element"] in seen:
             _fail("[[value]] %r: element %r already makes another value" % (row["id"], row["element"]))
         seen.add(row["element"])
+    if len(tables["catalogue"]) > 1:
+        _fail("[[catalogue]] has %d rows: one catalogue declaration per contract (its msgid form and text roles)"
+              % len(tables["catalogue"]))
     for row in tables["catalogue"]:
         for role in row["text_roles"]:
             if role not in roles:
@@ -53,8 +60,8 @@ def max_nodes(row):
 
 
 def msgids_are_keys(contract):
-    """Whether label == msgid is decidable from identity alone: the contract has a catalogue and every catalogue's
-    msgids are keys (for `source-text` msgids a label equal to its msgid is right in the source language)."""
+    """Whether label == msgid is decidable from identity alone: the contract's one catalogue row has key msgids (for
+    `source-text` msgids a label equal to its msgid is right in the source language)."""
     rows = contract.rows("catalogue")
     return bool(rows) and all(row["msgids"] == "key" for row in rows)
 

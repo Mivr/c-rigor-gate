@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from rigor_lib import jsonio
 from rigor_lib.errors import InternalError
 from rigor_lib import ui_explore_words as words_mod
+from rigor_lib.ui_explore_grammar import check_identity_keys
 from rigor_lib.ui_explore_key import key_hash, projection
 from rigor_lib.ui_explore_probe import FRAME_MS, NOT_A_REPLY, ORIGIN_MAX_MS, TAP_CAPS, ProbeError, Session
 
@@ -22,8 +23,8 @@ _DOMAIN = re.compile(r"domain-at (0|[1-9][0-9]{0,4})")
 _AT = re.compile(r"at (0|[1-9][0-9]{0,15})")
 SETTLE, WAIT_CHANGE = "settle", "wait-change"
 # the parts of a step in the order the explorer reads them: run-twice names the first that differs
-PARTS = ("domain", "outcome", "frame", "semantic", "patches", "trace", "due", "env", "identity", "ink", "ink_moved", "now",
-         "error", "missing")
+PARTS = ("domain", "outcome", "frame", "semantic", "patches", "trace", "due", "env", "identity", "ink", "ink_moved",
+         "now", "error", "missing")
 
 
 @dataclass(frozen=True)
@@ -177,12 +178,21 @@ def _observe(session, step, identity=False):
     step.obs["due"] = session.next_due()
     step.obs["env"] = session.env_inputs()
     if identity:
-        step.obs["identity"] = session.identity()
-        keys = {record.fields[0] for record in step.obs["semantic"]}
-        if any(record.fields[1] not in keys for record in step.obs["identity"][1:]):
-            raise ProbeError("contract", "identity", "an identity node line names a key no semantic record of the scene "
-                             "has", "\n".join(record.raw for record in step.obs["identity"])[:400])
+        _identity(session, step)
     step.now = session.now
+
+
+def _identity(session, step):
+    """U24: the step's scene identity, its keys checked against the step's semantic records; then `next-due` and
+    `semantic` again: identity is read only under judging, so a model that changed on it would be graded on another
+    behaviour than it has (fix-up 1: read-only verified, not only documented)."""
+    step.obs["identity"] = session.identity()
+    raw = "\n".join(record.raw for record in step.obs["identity"])[:400]
+    why = check_identity_keys(step.obs["identity"], step.obs["semantic"])
+    if why is not None:
+        raise ProbeError("contract", "identity", why, raw)
+    if session.next_due() != step.obs["due"] or session.records("semantic") != step.obs["semantic"]:
+        raise ProbeError("contract", "identity", "the model changed on `identity` (a read-only call)", raw)
 
 
 INK_CRC_CAP = 4        # U07: the frame checksums of one abstraction key the ink plan inks, in discovery order

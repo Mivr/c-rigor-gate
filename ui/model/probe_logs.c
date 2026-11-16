@@ -1,7 +1,8 @@
 /* The commands `semantic`, `patches`, `trace` and (U24) `identity` (docs/ui-model.md): `ok <name> lines <n>` and the
- * n records verbatim, each checked by the record grammar (probe_records.c; identity: probe_identity.c). `semantic` is read-only: its failure does not poison. A file of
- * its own (U05c: out of probe_main.c, which was at the 500-line limit), so the probe's unit test, which links the
- * grammar check from the probe library, does not pull in the probe's `main`. Static memory only. */
+ * n records verbatim, each checked by the record grammar (probe_records.c; identity: probe_identity.c). `semantic`
+ * is read-only: its failure does not poison. A file of its own (U05c: out of probe_main.c, which was at the 500-line
+ * limit), so the probe's unit test, which links the grammar check from the probe library, does not pull in the probe's
+ * `main`. Static memory only. */
 #include "ui/model/probe.h"
 
 typedef bool (*buffer_fn_t)(uim_t *, uim_buf_t *);

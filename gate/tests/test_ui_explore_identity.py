@@ -1,12 +1,15 @@
 """The scene identity in the explorer (U24, docs/ui-explore.md "Scene identity"): the reply grammar, the capability, the
 `identity` command read once per judged step only when ui-scene needs it and the probe announces it, run-twice over it,
-a reply that breaks the grammar or names a key the scene does not have (probe-internal-error), and `check-blocked`
+a reply that breaks the grammar, names a key the scene does not have or twice, or changes the model
+(probe-internal-error, the last three of kind `contract`), and `check-blocked`
 for a probe without the capability; `requires` may name identity."""
 
 import unittest
 
+from rigor_lib import ui_explore_catalogue as cat
 from rigor_lib import ui_explore_probe as up
-from rigor_lib.ui_explore_grammar import GrammarError, parse_identity
+from rigor_lib.ui_explore_grammar import GrammarError, check_identity_keys, parse_identity, parse_record
+from rigor_lib.ui_explore_run import Config, execute
 from tests import test_ui_explore_helpers as h
 from tests.test_ui_judge_helpers import CANARY_CONTRACT
 
@@ -22,7 +25,8 @@ class GrammarTest(unittest.TestCase):
         records = parse_identity(["state\tmain", "node\tk\ttitle\tm\t2\t=8\t=", "node\tj\t-\tn\t0",
                                   "node\ti\tbody\t-\t0", "node\th\te\\x01\tm\\t1\t1\t=\\xd0\\x99"])
         self.assertEqual([r.fields[0] for r in records], ["state", "node", "node", "node", "node"])
-        self.assertEqual((records[1].values[5], records[1].values[6], records[4].values[5]), (b"=8", b"=", b"=\xd0\x99"))
+        self.assertEqual((records[1].values[5], records[1].values[6], records[4].values[5]),
+                         (b"=8", b"=", b"=\xd0\x99"))
         self.assertEqual(len(parse_identity(["state\tmain", "node\tk\te\tm\t16" + "\t=" * 16])), 2)
 
     def test_every_violation_is_refused(self):
@@ -32,10 +36,18 @@ class GrammarTest(unittest.TestCase):
                       ["state\tmain", "node\tk\te\tm\t0\t=x"], ["state\tmain", "node\tk\te\tm\t1\tx"],
                       ["state\tmain", "node\tk\te\tm\t01\t=x"], ["state\tmain", "node\t\te\tm\t0"],
                       ["state\tmain", "node\tk\te\\q\tm\t0"], ["state\tmain", "label\tk\te\tm\t0"],
-                      ["state\tmain", "node\tk\te\tm\t0", "node\tk\tf\tm\t0"],
                       ["state\tmain", "node\tk\te\tm\t17" + "\t=" * 17], ["state\tmain", "node\tk\te\tm"]):
             with self.subTest(lines=lines), self.assertRaises(GrammarError):
                 parse_identity(lines)
+
+    def test_a_repeated_or_unknown_key_is_the_models_breach_not_the_grammars(self):
+        semantic = [parse_record("semantic", line) for line in h.STUB_OPEN_SEMANTIC]
+        twice = parse_identity(["state\tmain", "node\ttitle\te\tm\t0", "node\ttitle\tf\tm\t0"])
+        ghost = parse_identity(["state\tmain", "node\tghost\te\tm\t0"])
+        good = parse_identity(["state\tmain", "node\ttitle\te\tm\t0", "node\tbutton\tf\tm\t0"])
+        self.assertEqual([check_identity_keys(r, semantic) for r in (twice, ghost, good)],
+                         ["an identity reply that names a node key twice",
+                          "an identity node line names a key no semantic record of the scene has", None])
 
 
 class SessionTest(h.ExploreCase):
@@ -60,6 +72,25 @@ class SessionTest(h.ExploreCase):
         with self.assertRaises(up.ProbeError) as caught:
             session.identity()
         self.assertEqual((caught.exception.kind, caught.exception.command), ("protocol", "identity"))
+
+
+class StepTest(h.ExploreCase):
+    def test_exactly_one_identity_per_observed_step_and_the_model_rechecked_after_it(self):
+        log = self.tmp / "log"
+        config = Config(probe=str(h.stub(self.tmp, "ident", log)), deadline_s=10.0, catalogue=cat.load(h.TOY),
+                        budget=up.Budget(60), identity=True)
+        run = execute(config, [h.OPEN, "tap-press", "fire-due"], settle=True)
+        self.assertIsNone(run.error)
+        observed = [step for step in run.steps if step.key is not None]
+        commands = log.read_text().splitlines()
+        self.assertEqual(commands.count("identity"), len(observed))
+        self.assertTrue(all("identity" in step.obs for step in observed))
+        after = [commands[i + 1:i + 3] for i, c in enumerate(commands) if c == "identity"]
+        self.assertEqual(after, [["next-due", "semantic"]] * len(observed))
+        plain = Config(probe=str(h.stub(self.tmp, "ident", self.tmp / "log2")), deadline_s=10.0,
+                       catalogue=cat.load(h.TOY), budget=up.Budget(60))
+        self.assertFalse(any("identity" in step.obs for step in execute(plain, [h.OPEN, "tap-press"]).steps))
+        self.assertNotIn("identity", (self.tmp / "log2").read_text().splitlines())
 
 
 class CliTest(h.ExploreCase):
@@ -87,10 +118,12 @@ class CliTest(h.ExploreCase):
         self.assertNotIn("identity", commands)
         self.assertEqual(sorted(f["observed"]["check"] for f in h.by_check(found, "check-blocked")),
                          ["raw-text", "required-element-missing", "value-split"])
-        self.assertTrue(all(f["severity"] == "error" and f["state"] is None for f in h.by_check(found, "check-blocked")))
+        blocked = h.by_check(found, "check-blocked")
+        self.assertTrue(all(f["severity"] == "error" and f["state"] is None for f in blocked))
 
     def test_a_bad_reply_or_an_unknown_key_ends_the_run_as_probe_internal_error(self):
-        for mode, kind in (("identbad", "protocol"), ("identkey", "contract")):
+        for mode, kind in (("identbad", "protocol"), ("identkey", "contract"), ("identdup", "contract"),
+                           ("identmut", "contract")):
             with self.subTest(mode=mode):
                 _outcome, found, _commands = self.run_judges(mode)
                 errors = h.by_check(found, "probe-internal-error")

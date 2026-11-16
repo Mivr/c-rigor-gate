@@ -1,8 +1,8 @@
-"""The identity checks of the ui-scene judge (U24, docs/ui-judges.md): required-element-missing, value-split, the identity
-parts of raw-text, `check-blocked` without identity, their verdicts in checks-examined and their vacuity; and the
-contract tables they read ([[value]], [[catalogue]], [[identity_literal]]: docs/ui-contract.md). The scenes are the
-helpers' clean base (title, body, ok) against the canary contract: `main` requires the title, `detail` the title and
-the body; the title is one value; msgids are keys and the title and body roles are catalogue text."""
+"""The identity checks of the ui-scene judge (U24, docs/ui-judges.md): required-element-missing, value-split, the
+identity parts of raw-text, `check-blocked` without identity, their verdicts in checks-examined and their vacuity;
+and the contract tables they read ([[value]], [[catalogue]], [[identity_literal]]: docs/ui-contract.md). The scenes
+are the helpers' clean base (title, body, ok) against the canary contract: `main` requires the title, `detail` the
+title and the body; the title is one value; msgids are keys and the title and body roles are catalogue text."""
 
 import copy
 import unittest
@@ -42,11 +42,13 @@ def of(found, *checks):
 
 
 def ident_checks(found):
-    return of(found, "required-element-missing", "value-split", "raw-text", "check-blocked")
+    return of(found, "required-element-missing", "value-split", "raw-text", "check-blocked", "identity-role-mismatch",
+              "state-class-unstable")
 
 
 def vacuous(found):
-    """The identity checks among the vacuous ones (the base scene leaves overlay-policy and the toggle group vacuous)."""
+    """The identity checks among the vacuous ones (the base scene leaves overlay-policy and the toggle group
+    vacuous)."""
     return [f["observed"]["check"] for f in of(found, "check-vacuous")
             if f["observed"]["check"] in ("required-element-missing", "value-split")]
 
@@ -60,22 +62,24 @@ class RequiredElementTest(unittest.TestCase):
         found = judge(*base(), ident("main"))
         self.assertEqual(ident_checks(found), [])
         examined = of(found, "checks-examined")[0]["observed"]["totals"]
-        self.assertEqual((examined["required-element-missing"], examined["value-split"], examined["raw-text"]),
-                         (1, 1, 2))
+        self.assertEqual((examined["required-element-missing"], examined["value-split"], examined["raw-text"],
+                          examined["identity-role-mismatch"]), (1, 1, 2, 2))
         self.assertEqual(vacuous(found), [])
 
-    def test_a_required_element_no_shown_node_carries_is_missing(self):
-        nodes = (("title", "title", "canary.title"), ("body", "-", "canary.body"))
-        found = of(judge(*base(), ident("detail", nodes)), "required-element-missing")
+    def test_a_required_element_no_scene_node_is_is_missing(self):
+        semantic, tree = base()
+        del semantic[1]                                  # the body is not in the scene (its label is still drawn)
+        nodes = (("title", "title", "canary.title"), ("ok", "-", "canary.ok"))
+        found = of(judge(semantic, tree, ident("detail", nodes)), "required-element-missing")
         self.assertEqual([(f["id"], f["severity"], f["observed"]) for f in found],
                          [(expected_id("ui-scene", "required-element-missing", ["detail", "body"]), "error",
-                           {"stage": "O2", "state_class": "detail", "element": "body", "hidden": []})])
+                           {"stage": "O2", "state_class": "detail", "element": "body", "undrawn": []})])
 
     def test_a_node_hidden_by_its_scene_flag_does_not_count_as_present(self):
         semantic, tree = base()
         semantic[1] = semantic[1].replace("\t1\t-\t-\t", "\t1\t-\tH\t")
         found = of(judge(semantic, tree, ident("detail")), "required-element-missing")
-        self.assertEqual([f["observed"]["hidden"] for f in found], [["body"]])
+        self.assertEqual([f["observed"]["undrawn"] for f in found], [["body"]])
         self.assertEqual(of(judge(*base(), ident("detail")), "required-element-missing"), [])
 
     def test_an_unknown_state_class_is_contract_incomplete_and_no_verdict(self):
@@ -86,10 +90,12 @@ class RequiredElementTest(unittest.TestCase):
         self.assertEqual(vacuous(found), ["required-element-missing"])
 
     def test_an_element_only_a_node_outside_the_vocabulary_carries_reaches_no_verdict(self):
+        # `done` is no role id: its presence is the product's tag, and only an unreadable node carries it
+        done = contract(lambda t: t.replace('required = ["title", "body"]', 'required = ["title", "done"]'))
         semantic, tree = base()
         semantic.append(sem("odd", "label", "x", (8, 180, 20, 20)))
-        nodes = (("title", "title", "canary.title"), ("body", "-", "canary.body"), ("odd", "body", "canary.x"))
-        found = judge(semantic, tree, ident("detail", nodes))
+        nodes = CLEAN + (("odd", "done", "canary.x"),)
+        found = judge(semantic, tree, ident("detail", nodes), the_contract=done)
         self.assertEqual(of(found, "required-element-missing"), [])
         self.assertEqual(of(found, "checks-examined")[0]["observed"]["totals"]["required-element-missing"], 1)
 

@@ -17,7 +17,7 @@
 #define CANARY_W 320
 #define CANARY_H 240
 #define CANARY_NODES 12u
-#define CANARY_VARIANTS 39u
+#define CANARY_VARIANTS 41u
 
 typedef enum { CANARY_LABEL, CANARY_BUTTON, CANARY_PANEL, CANARY_GHOST } canary_kind_t;
 
@@ -62,7 +62,7 @@ lv_display_t *canary_display(void);
 unsigned canary_count(void);
 bool canary_node(unsigned i, canary_node_t *out);
 
-/* U24: the state class of the current variant (`main`, or `detail` for the variant that lacks a required element), and
+/* U24: the state class of the current variant (`main`, or `detail` for the two that lack a drawn required element), and
  * the identity of node `i`: false if `i` is out of range or the node has no identity. */
 const char *canary_state_class(void);
 bool canary_identity(unsigned i, canary_identity_t *out);

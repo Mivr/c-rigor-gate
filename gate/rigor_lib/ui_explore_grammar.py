@@ -123,8 +123,9 @@ def parse_typed_line(types, line):
 def parse_identity(lines):
     """The records of an `identity` reply (U24, model.h "scene identity"): exactly one `state` line first, then `node`
     lines (key, element, msgid, n and n arguments `=...`), no empty field, `-` for none, some identity on every node
-    line, arguments only with a msgid, each key at most once."""
-    out, keys = [], set()
+    line, arguments only with a msgid. A repeated key, and a key the scene does not have, are the product's breach,
+    checked against the step's semantic records by the explorer (`check_identity_keys`)."""
+    out = []
     for index, line in enumerate(lines):
         fields, values = _split(line)
         if "" in fields:
@@ -136,15 +137,23 @@ def parse_identity(lines):
                 or int(fields[4]) > IDENTITY_ARGS_MAX or len(fields) != 5 + int(fields[4]):
             raise GrammarError("an identity record that is not a node line with its counted arguments")
         elif any(not field.startswith("=") for field in fields[5:]) or fields[2:4] == ("-", "-") \
-                or (fields[3] == "-" and fields[4] != "0") or fields[1] in keys:
-            raise GrammarError("an identity node line without identity, with arguments but no msgid or `=`, "
-                               "or a repeated key")
-        if index:
-            keys.add(fields[1])
+                or (fields[3] == "-" and fields[4] != "0"):
+            raise GrammarError("an identity node line without identity, or with arguments but no msgid or `=`")
         out.append(Record(line, fields, values))
     if not out:
         raise GrammarError("an identity reply without its state line")
     return tuple(out)
+
+
+def check_identity_keys(identity, semantic):
+    """None, or why the identity's node keys break the model's contract: a key twice, or one no semantic record of the
+    same scene has (U24)."""
+    keys = [record.fields[1] for record in identity[1:]]
+    if len(set(keys)) != len(keys):
+        return "an identity reply that names a node key twice"
+    if not set(keys) <= {record.fields[0] for record in semantic}:
+        return "an identity node line names a key no semantic record of the scene has"
+    return None
 
 
 def parse_env_inputs(line):

@@ -362,16 +362,3 @@ bool uim_domain_at(uim_t *m, uint16_t i)
     toy_draw();
     return patch(m, "set", "notice", "hidden", "1", "0");
 }
-
-/* No scene identity (U24): `identity` is `err identity unsupported`, the greeting does not announce it. */
-bool uim_identity_supported(void)
-{
-    return false;
-}
-
-bool uim_identity(uim_t *m, uim_buf_t *out)
-{
-    (void)m;
-    out->len = 0;
-    return false;
-}

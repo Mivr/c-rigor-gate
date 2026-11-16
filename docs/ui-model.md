@@ -116,10 +116,13 @@ field, `-` is "none"; two record types told apart by their first field):
 | `node` | `node`, key, element, msgid, n, then n arguments | one line per semantic node that has any identity, in any order, each key at most once and a key of the `uim_semantic` records of the same scene. `element`: the node's element id or `-`; `msgid`: the catalogue key its text was formatted from or `-`; `n`: decimal 0..16 (`UIM_IDENTITY_ARGS_MAX`), then exactly n fields, each `=` followed by the escaped bytes of one formatted argument (`=` alone is an empty argument: the `=` marker, as in the frame's `life` class field, lets an empty argument exist without an empty field) |
 
 A `node` line whose element and msgid are both `-` (no identity), arguments without a msgid, a wrong argument count,
-an argument without `=`, an empty field, a first line that is not the one `state` line, or a second `state` line breaks
-the grammar (`err identity model-contract`; the probe checks every line, `probe_identity.c`). The explorer checks the
-same grammar, a repeated key, and that every key names a semantic record of the step (a probe error of kind
-`contract`, `probe-internal-error`).
+an argument without `=`, an empty field, a first line that is not the one `state` line, a second `state` line, or
+(fix-up 1) a node key twice breaks the interface (`err identity model-contract`; the probe checks every line,
+`probe_identity.c`). The explorer checks the same grammar (a violation of it read from a probe is a protocol error) and
+then, as the model's breach (a probe error of kind `contract`, `probe-internal-error`): a key twice, a key no semantic
+record of the step has, and (fix-up 1) a model that `identity` changed: after every `identity` it reads `next-due` and
+`semantic` again and compares them with the step's observation, so read-only is verified, not only documented
+(identity is read only under judging, and a model that changed on it would be graded on another behaviour).
 
 **What each means, and what a product may not do.**
 - The **state class** is the product's name for the class of screen shown, from its UI spec, the same for every state of
@@ -459,6 +462,9 @@ policy, layering and RAM budget, as `gate//rt:require` is, is a separate task.
 * `tools/validate.sh` learned the `ui` name (one case and the lane order) so that a selected `ui` runs.
 * The `model-contract` cases for a NULL display, an env input of the wrong kind, `n > UIM_ENV_MAX` and a changed buffer
   are implemented in the probe but not driven by the toy (the record grammar, the two-TAB overflow and `due <= now` are).
-* U24: the identity grammar is driven by the probe's unit test (`//ui/model:probe_test`, every violation above) and the
-  explorer's stub, not by a C adapter that breaks it: no selftest product writes a bad identity reply. The toy drives
-  `err identity unsupported` (selftest/ui.sh), the canary the supported path (`identity.in`, `identity.out`).
+* U24: the identity grammar is driven by the probe's unit test (`//ui/model:probe_test`, every violation above), by the
+  explorer's stub, and (fix-up 1) end to end by a toy build whose identity breaks the interface
+  (`selftest/ui_product/identity_bad.c`, `:probe_identity_bad`): selftest/ui.sh sees a node line without identity and a
+  key twice as `err identity model-contract`, a failing call as `fail identity`, and the next `identity` and `next-due`
+  still answer (neither poisons). The plain toy drives `err identity unsupported`, the canary the supported path
+  (`identity.in`, `identity.out`).

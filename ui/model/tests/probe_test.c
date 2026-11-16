@@ -174,11 +174,15 @@ static void t_an_identity_reply_is_one_state_line_then_node_lines(ctest_t *t)
     CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\\q\tm\t0\n"), -1);  /* a bad escape */
     CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\x01\tm\t0\n"), -1);  /* a raw control byte */
     CHECK_EQ_I64(t, ident("state\tmain\nlabel\tk\te\tm\t0\n"), -1);
+    /* fix-up 1: a key twice is the product's breach; distinct keys that share a prefix are not */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t0\nnode\tj\te\tm\t0\nnode\tk\tf\tn\t0\n"), -1);
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t0\nnode\tkk\te\tm\t0\nnode\tk\\t\te\tm\t0\n"), 4);
     CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t16" SIXTEEN "\n"), 2);    /* UIM_IDENTITY_ARGS_MAX */
     CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t17" SIXTEEN "\t=\n"), -1);
 }
 
-CTEST_SUITE("probe", {"identity", t_an_identity_reply_is_one_state_line_then_node_lines}, {"life_line", t_a_life_line_escapes_its_class_name_and_marks_an_empty_one},
+CTEST_SUITE("probe", {"identity", t_an_identity_reply_is_one_state_line_then_node_lines},
+            {"life_line", t_a_life_line_escapes_its_class_name_and_marks_an_empty_one},
             {"the_field_count_is_exact", t_the_field_count_is_exact_and_a_surplus_tab_is_refused_before_any_mask_is_shifted},
             {"trace_numbers", t_a_trace_record_has_unsigned_numbers_in_fields_one_and_three},
             {"escapes", t_escapes_are_only_for_bytes_without_another_spelling},

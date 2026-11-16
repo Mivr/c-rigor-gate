@@ -209,7 +209,7 @@ def explore(args):
         raise InternalError("--today is only for --judges")
     judges = JudgeSet(args.judges, contract, catalogue.key, args.today) if args.judges is not None else None
     budget = Budget(args.budget_s)
-    config = Config(os.path.abspath(args.probe), args.deadline_ms / 1000.0, catalogue, budget)
+    config = _config(args.probe, args.deadline_ms / 1000.0, catalogue, budget)
     paths = load_paths(args.paths, catalogue, CAPABILITIES) if args.strategy == "replay" else None
     criteria, word = (paths[0], paths[1][0][0]) if paths else \
         (strategies.REQUIRED[args.strategy], strategies.open_word(args.origin_ms, args.seed))
@@ -222,7 +222,7 @@ def explore(args):
         _check_requires(catalogue, caps)
         _check_taps(catalogue, caps, paths)
         strategies.check_cost(catalogue, args, paths, caps)
-        config = Config(config.probe, config.deadline_s, catalogue, budget, caps, _identity(judges, caps))
+        config = _config(config.probe, config.deadline_s, catalogue, budget, caps, _identity(judges, caps))
     _check_judges(judges, caps)
     explorer = strategies.Explorer(config, contract, word, caps or (),
                                    step_judges=[judges.step_judge] if judges else (),
@@ -254,6 +254,12 @@ def explore(args):
     for item in found:
         item.pop(PRIVATE, None)
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
+
+
+def _config(probe, deadline_s, catalogue, budget, caps=None, identity=False):
+    """The run's Config, by keyword (a field added to Config cannot silently swap another)."""
+    return Config(probe=os.path.abspath(probe), deadline_s=deadline_s, catalogue=catalogue, budget=budget, caps=caps,
+                  identity=identity)
 
 
 def _identity(judges, caps):

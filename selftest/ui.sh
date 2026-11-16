@@ -90,6 +90,15 @@ for mode in rel san; do
 done
 echo "  err replies counted; unterminated last line, embedded NUL, input after quit, a 641-byte line: refused, in release and san"
 
+begin "U24 fix-up 1: a scene identity that breaks the interface (probe_identity_bad, release and san): a node line without identity and a key twice are err identity model-contract, a failing call is fail identity; none poisons (the next identity and next-due still answer)"
+build_out probe_idbad_rel "$REL" "$P:probe_identity_bad"
+build_out probe_idbad_san "$SAN" "$P:probe_identity_bad"
+for mode in rel san; do
+  eval "bin=\$probe_idbad_$mode"
+  expect_tail "idbad.$mode" "$bin" 'ok open\nerr identity model-contract\nerr identity model-contract\nfail identity\nok identity lines 2\nstate\ttoy\nnode\tbutton\t-\ttoy.press\t0\nok next-due none\nok quit\n' 'open 0 1\nidentity\nidentity\nidentity\nidentity\nnext-due\nquit\n'
+  head -1 "$out/t.idbad.$mode" | grep -q ' crop identity$' || fail "$CUR: the greeting does not announce identity ($mode)" "$out/t.idbad.$mode"
+done
+
 begin "the probe's own unit tests (record grammar, surplus TABs, escapes, flags, frame-seam bytes, strict numbers) pass in release and san"
 for plat in "$REL" "$SAN"; do
   run "$out/unit.log" test --target-platforms "$plat" //ui/model:probe_test || fail "$CUR: //ui/model:probe_test failed in $plat" "$out/unit.log"

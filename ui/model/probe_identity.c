@@ -4,7 +4,8 @@
  * call (the probe's imports are a checked list, selftest/ui_product/probe_imports.expected). */
 #include "ui/model/probe.h"
 
-enum { FIELDS_MAX = 5u + UIM_IDENTITY_ARGS_MAX };
+/* The shortest node line, `node\tk\te\tm\t0\n`, has 13 bytes: no reply has more node keys than KEYS_MAX. */
+enum { FIELDS_MAX = 5u + UIM_IDENTITY_ARGS_MAX, KEYS_MAX = UIM_BUF_MAX / 13u + 1u };
 
 typedef struct {
     const char *at;
@@ -62,6 +63,35 @@ static bool count_of(const field_t *f, size_t *out)
     return value <= UIM_IDENTITY_ARGS_MAX;
 }
 
+static bool same_field(const field_t *a, const field_t *b)
+{
+    size_t i = 0;
+    if (a->len != b->len) {
+        return false;
+    }
+    for (i = 0; i < a->len; i++) {
+        if (a->at[i] != b->at[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* The key of node line number `n` (keys[0..n) are the earlier ones; the escaped spelling is canonical, so equal keys
+ * are equal bytes): false when it repeats one (fix-up 1: a repeated key is the product's breach). O(n^2) over at most
+ * KEYS_MAX keys of one reply. */
+static bool key_new(field_t *keys, size_t n, const field_t *key)
+{
+    size_t i = 0;
+    for (i = 0; i < n; i++) {
+        if (same_field(&keys[i], key)) {
+            return false;
+        }
+    }
+    keys[n] = *key;
+    return true;
+}
+
 static bool state_ok(const field_t *f, size_t count)
 {
     return count == 2u && is_word(&f[0], "state") && !is_word(&f[1], "-");
@@ -89,6 +119,7 @@ static bool node_ok(const field_t *f, size_t count)
 
 long probe_check_identity(const char *buf, size_t len)
 {
+    static field_t keys[KEYS_MAX];
     field_t f[FIELDS_MAX];
     size_t start = 0;
     size_t i = 0;
@@ -102,7 +133,8 @@ long probe_check_identity(const char *buf, size_t len)
             continue;
         }
         count = split_fields(buf + start, i - start, f, FIELDS_MAX);
-        if (lines == 0 ? !state_ok(f, count) : !node_ok(f, count)) {
+        if (lines == 0 ? !state_ok(f, count)
+                       : !node_ok(f, count) || (size_t)lines > KEYS_MAX || !key_new(keys, (size_t)lines - 1u, &f[1])) {
             return -1;
         }
         lines++;

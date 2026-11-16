@@ -14,7 +14,9 @@ enum { V_CLEAN, V_OCCLUDED, V_OVERLAY, V_SMALL, V_SPACING, V_BOUNDS, V_OVERLAP, 
        /* U07 fix-up 1 */
        V_COVERED, V_BTN_TEXT, V_FILL,
        /* U24: one variant per identity check of the ui-scene judge (docs/ui-judges.md, "Canaries") */
-       V_MISSING, V_SPLIT, V_RAW_MSGID };
+       V_MISSING, V_SPLIT, V_RAW_MSGID,
+       /* U24 fix-up 1: a required element in the scene but not drawn; a role tag the node does not have */
+       V_UNDRAWN, V_TAG };
 enum { N_TITLE, N_BODY, N_OK, N_BACK, N_BG, N_EN };
 /* Style tokens of canary.toml: title 1, body 2, caption 3, button 5, language on 6 / off 7, a small and a big body. */
 enum { T_TITLE = 1, T_BODY = 2, T_CAPTION = 3, T_BUTTON = 5, T_LANG_ON = 6, T_LANG_OFF = 7, T_SMALL = 8, T_BIG = 9 };
@@ -59,6 +61,7 @@ static const char *const g_titles[CANARY_VARIANTS] = {
     "Canary 15", "Canary 16", "Canary 17", "Canary 18", "Canary 19", "Canary 20", "Canary 21", "Canary 22",
     "Canary 23", "Canary 24", "Canary 25", "Canary 26", "Canary 27", "Canary 28", "Canary 29", "Canary 30",
     "Canary 31", "Canary 32", "Canary 33", "Canary 34", "Canary 35", "Canary 36", "Canary", "Canary 38",
+    "Canary 39", "Canary 40",
 };
 
 /* The clean scene: a title, a body text, two buttons and the BG/EN switch, every rect in display pixels. */
@@ -172,7 +175,7 @@ static void render_defect(lv_obj_t *label)
         lv_obj_set_style_text_color(label, lv_color_hex(0xBBBBBBu), 0);   /* light grey on white: 1.9:1 */
     } else if (g_variant == V_CLICK) {
         lv_obj_set_clickable(label, true);   /* a text without an intent that takes taps */
-    } else if (g_variant == V_HIDDEN) {
+    } else if (g_variant == V_HIDDEN || g_variant == V_UNDRAWN) {
         lv_obj_set_hidden(label, true);      /* hidden in LVGL, shown in the scene */
     } else if (g_variant == V_LONG) {
         lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_CLIP);  /* the scope `default` wraps */
@@ -346,7 +349,7 @@ static const struct {
 
 const char *canary_state_class(void)
 {
-    return g_variant == V_MISSING ? "detail" : "main";
+    return g_variant == V_MISSING || g_variant == V_UNDRAWN ? "detail" : "main";
 }
 
 bool canary_identity(unsigned i, canary_identity_t *out)
@@ -357,7 +360,10 @@ bool canary_identity(unsigned i, canary_identity_t *out)
     }
     for (row = 0; row < sizeof g_identity / sizeof g_identity[0]; row++) {
         if (strcmp(g_identity[row].key, g_nodes[i].key) == 0) {
-            out->element = g_identity[row].element;
+            /* V_WRAP draws the body as a caption (it is one); V_TAG tags the title as the body, a role it lacks */
+            out->element = row == 2u && g_variant == V_WRAP  ? "caption"
+                           : row == 0u && g_variant == V_TAG ? "body"
+                                                             : g_identity[row].element;
             out->msgid = g_identity[row].msgid;
             /* the title is "Canary {0}" with the variant's number (the clean "Canary" has no argument) */
             out->arg = row == 1u ? g_nodes[i].text : row == 0u && strlen(g_nodes[i].text) > 7u ? g_nodes[i].text + 7

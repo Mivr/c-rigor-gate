@@ -224,7 +224,8 @@ its `ms`; of `at`, min(offset, `max_wait_ms`).
 **Scene identity (U24).** With `--judges` naming `ui-scene` and a probe that announces `identity`, the explorer sends
 one `identity` command per completed step of BOTH runs of a path (read last in the step's observation, after
 `env-inputs`; never during a wait, never for the pseudo steps `ink`, `evidence` and `quit`), so the cost is one round
-trip per judged step. Measured on the canary probe (release build, 6 identity lines, this 4-CPU host under load): 2000
+trip per judged step, plus (fix-up 1) a `next-due` and a `semantic` read again right after it, which verify that the
+call left the model as it was: three round trips per judged step in all. Measured on the canary probe (release build, 6 identity lines, this 4-CPU host under load): 2000
 `identity` commands in one session took 10 ms of probe time over the 6 ms of an `open` alone, about 5 us each, the
 same as 2000 `semantic` commands (10 ms); in the canary selftest it is one more line exchange beside the seven of
 every step. Without `ui-scene` (`--judges ui-fit,ui-render`) no `identity` is sent (selftest/ui_judges.sh checks the
@@ -537,7 +538,8 @@ evidence stays `{"<name>.json": data}`. Images are evidence only: run-twice does
   until-change and `base_key` read `semantic`, `next-due` and `env-inputs` between deadlines), so a key fact would make
   `identity` a read of every step and of every wait, need `requires = ["identity"]` in every catalogue that uses it, and
   change the waits' observation; a later engine task may add it.
-- **U24: an identity node line that names a key the step's semantic records do not have** ends the run as
+- **U24: an identity node line that names a key the step's semantic records do not have, a key twice, or a model that
+  `identity` changed** (a `next-due` or `semantic` read again after it that differs from the step's) ends the run as
   `probe-internal-error` (kind `contract`, command `identity`), like any other breach the gate sees.
 - **P004 3.7's finding names are used where the task contract named others:**
   - `probe-internal-error`, with `observed.kind` `protocol`, `fail`, `contract` or `crash`, for the contract's

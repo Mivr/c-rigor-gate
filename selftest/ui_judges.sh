@@ -116,6 +116,10 @@ WANT = {
     "v-missing": [("ui-scene", "required-element-missing", ["detail", "body"], False)],
     "v-split": [("ui-scene", "value-split", ["title"], False)],
     "v-raw-msgid": [("ui-scene", "raw-text", ["body", "msgid"], False)],
+    # U24 fix-up 1: presence is the gate's (the body is in the scene, hidden in LVGL); a role tag the node lacks
+    "v-undrawn": [("ui-scene", "required-element-missing", ["detail", "body"], False),
+                  ("ui-render", "flag-mismatch", ["body", "hidden"], False)],
+    "v-tag": [("ui-scene", "identity-role-mismatch", ["title"], False)],
 }
 # the part each canary finding must have (a flip of the part is a different defect)
 PARTS = {"v-occluded": "covered", "v-fake-inert": "covered", "v-unreachable": "layer-unreachable",
@@ -134,7 +138,7 @@ assert sorted((f["gate"], f["check"], f["severity"]) for f in run_level) == \
      ("ui-scene", "checks-examined", "info")], run_level
 for f in run_level:
     assert all(n > 0 for n in f["observed"]["totals"].values()), f["observed"]["totals"]
-    assert f["observed"]["states"] == 39
+    assert f["observed"]["states"] == 41
 scene_totals = next(f for f in run_level if f["gate"] == "ui-scene")["observed"]["totals"]
 assert scene_totals["required-element-missing"] > 0 and scene_totals["value-split"] > 0, scene_totals   # U24
 found = [f for f in found if f not in run_level]
@@ -162,10 +166,11 @@ assert {f["severity"] for f in found} == {"error"}
 assert [f["observed"]["against"] for f in found if f["path"][-1] == "v-fill"] == ["own-fill"]
 assert [f["observed"] for f in found if f["path"][-1] == "v-split"] == [
     {"stage": "O2", "value": "title", "element": "title", "nodes": ["title", "title_num"], "max_nodes": 1}]
-assert [f["observed"]["hidden"] for f in found if f["path"][-1] == "v-missing"] == [[]]
+assert [f["observed"]["undrawn"] for f in found if f["path"][-1] == "v-missing"] == [[]]
+assert [f["observed"]["undrawn"] for f in found if f["path"][-1] == "v-undrawn" and "undrawn" in f["observed"]] == [["body"]]
 counts = summary["findings"]
 assert counts["ui-scene.checks-examined"] == 1 and counts["ui-fit.font-shrunk"] == 1 and counts["intent-missed"] == 0
-assert counts["ui-render.checks-examined"] == 1 and counts["ui-render.flag-mismatch"] == 5
+assert counts["ui-render.checks-examined"] == 1 and counts["ui-render.flag-mismatch"] == 6
 assert counts["ui-render.invisible-node"] == 3 and counts["ui-render.ink-unmeasurable"] == 1
 print("  %d canary states, the ids recomputed; nothing in the clean state nor under the correct modal dialog" % len(WANT))
 PY
@@ -205,7 +210,7 @@ import json, sys
 found = [json.loads(line) for line in open(sys.argv[1])]
 blocked = sorted((f["observed"]["check"], f["severity"]) for f in found if f["check"] == "check-blocked")
 assert blocked == [("raw-text", "error"), ("required-element-missing", "error"), ("value-split", "error")], blocked
-assert not [f for f in found if f["check"] in ("required-element-missing", "value-split")]
+assert not [f for f in found if f["check"] in ("required-element-missing", "value-split", "identity-role-mismatch")]
 assert not [f for f in found if f["check"] == "raw-text" and f["observed"]["part"] != "empty"]
 print("  no identity without ui-scene; refused by requires; three check-blocked errors without the capability")
 PY
@@ -229,7 +234,7 @@ for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit
   grep -q "/$ident\"" "$out/rp.json" || fail "$CUR: the replay of $ident does not give $ident" "$out/rp.txt"
   n=$((n + 1))
 done
-[ "$n" = 41 ] || fail "$CUR: $n findings replayed, wanted 41"
+[ "$n" = 44 ] || fail "$CUR: $n findings replayed, wanted 44"
 echo "  $n findings replayed to their ids"
 
 begin "exceptions against --today: a live one turns exactly its finding into info with its expiry; an unused one is exception-unused, an error when its target was visited and info when not; an expired one is an error and changes nothing"
@@ -255,6 +260,13 @@ target = "title"
 reason = "selftest: its target is visited, it matches nothing"
 expires = "2099-12-31"
 provenance = "owner:D2"
+[[exception]]
+id = "x-element"
+rule = "required-element-missing"
+target = "title"
+reason = "selftest: a required element id of a visited state class, it matches nothing"
+expires = "2099-12-31"
+provenance = "owner:D6"
 [[exception]]
 id = "x-unseen"
 rule = "text-overlap"
@@ -288,9 +300,9 @@ bounds = [i for i, f in plain.items() if f["check"] == "node-out-of-bounds"]
 assert exc[bounds[0]] == plain[bounds[0]], "an expired exception changed its finding"
 unused = sorted((f["observed"]["exception"], f["observed"]["expired"], f["observed"]["target_visited"], f["severity"])
                 for f in exc.values() if f["check"] == "exception-unused")
-assert unused == [("x-expired", True, True, "error"), ("x-seen", False, True, "error"),
-                  ("x-unseen", False, False, "info")], unused
-assert len(set(exc) - set(plain)) == 3 and set(plain) - set(exc) == set()
+assert unused == [("x-element", False, True, "error"), ("x-expired", True, True, "error"),
+                  ("x-seen", False, True, "error"), ("x-unseen", False, False, "info")], unused
+assert len(set(exc) - set(plain)) == 4 and set(plain) - set(exc) == set()
 assert all(exc[i] == plain[i] for i in plain if i not in small + invisible), "an exception touched another finding"
 print("  x-small and x-invisible applied (info, expires 2099-12-31); x-seen and x-expired errors, x-unseen info")
 PY

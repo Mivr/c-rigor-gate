@@ -34,6 +34,7 @@ COMMON = ("stage-unmatched", "stage-text-mismatch", "stage-unowned-target", "sce
 NODE_CHECKS = {"ui-scene": SCENE_NODE_CHECKS, "ui-fit": FIT_NODE_CHECKS, "ui-render": RENDER_NODE_CHECKS}
 GATES = {gate: checks + COMMON for gate, checks in NODE_CHECKS.items()}
 GATES["ui-scene"] += ui_judge_identity.CHECKS  # U24: judged with the probe's identity only (JudgeSet.node_checks)
+GATES["ui-scene"] += ("state-class-unstable",)  # U24 fix-up 1: two state classes for one abstraction key
 GATES["ui-render"] += ("ink-plan-capped",)    # U07: a state key whose frames took more checksums than the ink plan inks
 ORDER = ("ui-scene", "ui-fit", "ui-render")   # the stage findings belong to the first selected gate in this order
 MODULES = {"ui-scene": ui_judge_scene, "ui-fit": ui_judge_fit, "ui-render": ui_judge_render}
@@ -41,7 +42,7 @@ LAYERS = {"stage-unmatched": "L3", "stage-text-mismatch": "L3", "stage-unowned-t
           "flag-mismatch": "L3", "align-mismatch": "L3", "line-height-mismatch": "L3"}
 INK_GATES = frozenset(("ui-render",))         # the judges that need the probe's `ink` (U07)
 META = frozenset(("scene-vocabulary", "contract-incomplete", "contract-pending", "exception-unused", "checks-examined",
-                  "check-vacuous", "ink-plan-capped", "check-blocked"))
+                  "check-vacuous", "ink-plan-capped", "check-blocked", "state-class-unstable"))
 NA = "n/a:"                                   # U07: the count key of the nodes a check found not applicable
 
 
@@ -161,6 +162,8 @@ class JudgeSet:
         self.examined = {gate: {} for gate in self.gates}       # gate -> state key -> check -> nodes
         self.needs_ink = bool(INK_GATES & set(self.gates))     # the explorer then inks each new state (U07)
         self.identity = None    # U24: whether the probe announces identity (wants_identity); None: not said (no block)
+        self.classes = {}       # U24 fix-up 1: abstraction key -> the state class its first identity named
+        self.unstable = set()   # (key, another class) already reported
 
     def wants_identity(self, caps):
         """Records whether the probe announces `identity` (U24) and whether the explorer must read it: ui-scene is
@@ -179,8 +182,10 @@ class JudgeSet:
         context = Context(self, step)
         names = set(context.by_key) | {context.rendered_name(i)["target"] for i in context.frame.labels
                                        if i not in context.assoc.owner}
-        self.exceptions.see(names)
+        self.exceptions.see(names | ui_judge_identity.seen_names(context))
         out = context.stage_findings(Reporter(self.gates[0], self, step, path))
+        if context.identity is not None and "ui-scene" in self.gates:
+            out += self._unstable(context.identity.state, step, path)
         for gate in self.gates:
             report = Reporter(gate, self, step, path)
             out += MODULES[gate].judge(context, report)
@@ -189,6 +194,19 @@ class JudgeSet:
                 if check in report.counts or not check.startswith(NA):
                     seen[check] = max(seen.get(check, 0), report.counts.get(check, 0))
         return out
+
+    def _unstable(self, state_class, step, path):
+        """`state-class-unstable` (error, identity ["unstable", key]): the state class is the product's claim, and the
+        explorer's abstraction key is the gate's; one key showing two classes in a run means the claim (or the key)
+        does not describe the state. Reported when a second class is first seen for a key."""
+        first = self.classes.setdefault(step.key, state_class)
+        if first == state_class or (step.key, state_class) in self.unstable:
+            return []
+        self.unstable.add((step.key, state_class))
+        report = Reporter("ui-scene", self, step, path)
+        report.add("state-class-unstable", ["unstable", step.key],
+                   {"key": step.key, "classes": sorted({first, state_class})}, stateless=True)
+        return report.found
 
     def finish(self, open_word, capped=()):
         """The run-level findings (path: the open word; state: null); `capped`: the state keys whose frames the

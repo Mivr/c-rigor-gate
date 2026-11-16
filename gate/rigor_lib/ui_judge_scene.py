@@ -21,7 +21,7 @@ from rigor_lib.ui_judge_vocab import PURE_TEXT
 def judge(ctx, report):
     for check in (touch_target_small, font_below_min, hierarchy_violated, raw_text, wrap_policy_undeclared,
                   toggle_group_indistinct, geom.overlay_policy, geom.occluded_target, geom.target_spacing,
-                  geom.node_out_of_bounds, geom.text_overlap, identity.judge):
+                  geom.node_out_of_bounds, geom.text_overlap, identity.judge, identity.other_text):
         check(ctx, report)
     return report.found
 

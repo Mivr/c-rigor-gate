@@ -91,9 +91,7 @@ not meeting the label) does not). The first tap, and the first refused apply, re
     pdecoy       a second lv_label (node 3) shows the same text as the countdown, before and after
     pdouble      a second countdown `count2` (node 3, "58 m" -> "60 m") restarts with the first
 
-U24, scene identity: as facts, announcing `identity` too: `ident` (`state main`, the title: element title, msgid
-toy.title, one argument; the button: a msgid), `identbad` (the title's line has no identity), `identkey` (a node line
-whose key no semantic node has).
+U24, scene identity: as facts, announcing `identity` too; the modes and their replies are in stub_identity.py.
 
 In every mode intent 2 is accepted only while the notice is shown (trace `late`), intent 10 is a pad digit (accepted,
 trace `digit`) and intent 11 the pad's enter (accepted after a digit, trace `enter`). A stub that would sleep exits as
@@ -105,6 +103,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # -I leaves the script's directory off the path
+import stub_identity  # noqa: E402
+
 MODE = sys.argv[1]
 NOTICE_MS = 3000
 FACTS = ("facts", "framebad", "frametype", "tapblocked", "tapdisagree", "noframe", "toolarge", "blankchange", "cropbad",
@@ -112,7 +113,7 @@ FACTS = ("facts", "framebad", "frametype", "tapblocked", "tapdisagree", "noframe
          "prestart", "pindev")
 COUNT = ("pcount", "pskip", "pplus", "ptworun", "ptext", "pnode", "pflag", "pframe", "plife", "pbg", "pfont", "pdecoy",
          "pdouble")
-IDENT = ("ident", "identbad", "identkey")
+IDENT = stub_identity.MODES
 FACTS += COUNT + IDENT
 POINTER = ("ptouch", "pnotouch", "ptwice", "pchange", "prestart") + COUNT
 IDLE_MS = 5000
@@ -404,11 +405,8 @@ def facts(words, model):
         x, w, h = int(words[1]), int(words[3]), int(words[4])
         row = "".join("2196f3ff" if x + i < 2 else "ffffffff" for i in range(w))
         return ["ok crop lines %d" % h] + [row[:-1] if MODE == "cropbad" else row] * h
-    if cmd == "identity" and MODE not in IDENT:
-        return ["err identity unsupported"]
     if cmd == "identity":
-        title = {"ident": "title\ttitle\ttoy.title\t1\t=Toy", "identbad": "title\t-\t-\t0"}.get(MODE, "ghost\tt\t-\t0")
-        return ["ok identity lines 3", "state\tmain", "node\t" + title, "node\tbutton\t-\ttoy.press\t0"]
+        return stub_identity.reply(MODE, model)
     if cmd == "ink":
         return ["ok ink lines 2", "ink\t1\t4\t0,0,1,1\t2196f3\t2196f3\tffffff\tffffff", "noink\t0\tunstable"]
     return None
