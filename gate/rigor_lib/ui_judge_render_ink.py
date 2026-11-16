@@ -115,3 +115,13 @@ def worst_contrast(ink):
             continue
         best = max(best, ratio(text, low if text < low else high))
     return best
+
+
+def against_fill(ink, fill):
+    """The contrast of a text carrier that paints its own exactly opaque, single-colour background `fill`: its ink is
+    the fill (which differs from what is behind it) and the glyphs on it, so its two extremes are the fill, the text
+    colour or a blend of the two; the text colour is the extreme farther from the fill. Result: max over the two ink
+    extremes of their ratio to the fill. An upper bound of the text's contrast (a border, outline or shadow of the
+    label, which the facts do not show, could be the farther extreme), so only a value BELOW a threshold is sound."""
+    base = luminance(fill)
+    return max(ratio(luminance(ink.ink_lo), base), ratio(luminance(ink.ink_hi), base))

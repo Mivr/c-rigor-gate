@@ -30,7 +30,7 @@ def domain_indices(count):
 class Explorer:
     def __init__(self, config, contract, word, caps=(), step_judges=(), run_judges=(), ink=False):
         catalogue = config.catalogue
-        self.ink = InkPlan(set()) if ink else None    # U07: ink each abstract state once, on its first visit
+        self.ink = InkPlan() if ink else None    # U07: ink each (abstract state, frame checksum) once
         self.config, self.contract = config, contract
         self.step_judges = [starvation_judge(catalogue.key), unreachable_judge(catalogue.key),
                             missed_judge(catalogue.key), misrouted_judge(catalogue.key), noop_judge(catalogue.key),

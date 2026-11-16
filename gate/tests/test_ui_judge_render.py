@@ -6,10 +6,12 @@ import copy
 import unittest
 
 from rigor_lib.errors import InternalError
-from rigor_lib.ui_explore_grammar import INK_FIELDS, parse_typed_line
+from rigor_lib.ui_explore_grammar import FRAME_FIELDS, INK_FIELDS, parse_typed_line
+from rigor_lib.ui_explore_probe import ProbeError
 from rigor_lib.ui_explore_judges import PathSoFar
-from rigor_lib.ui_explore_run import InkPlan, Step
+from rigor_lib.ui_explore_run import InkPlan, Run, Step, ink_step
 from rigor_lib.ui_judge_findings import JudgeSet
+from rigor_lib.ui_judge_render_contrast import decide
 from rigor_lib.ui_judge_render_ink import Ink, luminance, ratio, worst_contrast
 from tests.helpers import TempDirTestCase, run_rigor
 from tests.test_ui_judge_helpers import (CANARY_CONTRACT, KEY, OPEN, TODAY, Tree, base, contract, expected_id, pending,
@@ -17,6 +19,17 @@ from tests.test_ui_judge_helpers import (CANARY_CONTRACT, KEY, OPEN, TODAY, Tree
 from tests.test_ui_explore_helpers import TOY
 
 BLACK_ON_WHITE = ("000000", "f0f0f0", "ffffff", "ffffff")
+
+
+def modal():
+    """(semantic, tree) of the base state under a correct modal: a full-window dimmed, clickable scrim with an intent
+    and its opaque dialog card (the canary contract seals `dialog` capture-modal-inert)."""
+    semantic, tree = base()
+    tree.node(0, "lv_obj", (0, 0, 319, 239), clickable=1, bg=82, colour="000000")
+    tree.node(0, "lv_obj", (200, 160, 299, 219), clickable=1, bg=255)
+    semantic += [sem("scrim", "scrim", "", (0, 0, 320, 240), intent="9:0"),
+                 sem("card", "dialog", "", (200, 160, 100, 60))]
+    return semantic, tree
 
 
 def ink_lines(tree, override=None):
@@ -107,21 +120,44 @@ class InkChecksTest(unittest.TestCase):
     def test_invisible_node_a_text_and_a_button_that_paint_nothing(self):
         semantic, tree = base()
         found = judged(semantic, tree, {2: (0, BLACK_ON_WHITE), 3: (0, BLACK_ON_WHITE)})
-        self.assertEqual(render(found), [("invisible-node", "body", None, "error"),
-                                         ("invisible-node", "ok", None, "error")])
-        self.assertIn(expected_id("ui-render", "invisible-node", ["body"]), [f["id"] for f in found])
+        self.assertEqual(render(found), [("invisible-node", "body", "node", "error"),
+                                         ("invisible-node", "ok", "node", "error")])
+        self.assertIn(expected_id("ui-render", "invisible-node", ["body", "node"]), [f["id"] for f in found])
 
-    def test_a_covered_or_hidden_node_is_not_invisible(self):
+    def test_a_button_whose_label_paints_nothing(self):
+        semantic, tree = base()                       # the button's fill is its ink; its label OK paints nothing
+        found = judged(semantic, tree, {4: (0, BLACK_ON_WHITE)})
+        self.assertEqual(render(found), [("invisible-node", "ok", "text", "error")])
+
+    def test_a_clipped_label_that_paints_nothing_is_text_clipped_not_invisible(self):
+        semantic, tree = base()
+        tree.nodes[4]["fit"]["clipped"] = 1
+        self.assertEqual(render(judged(semantic, tree, {4: (0, BLACK_ON_WHITE)}), "invisible-node"), [])
+
+    def test_a_covered_node_is_invisible_and_names_its_cover(self):
         semantic, tree = base()
         tree.node(0, "lv_obj", (0, 30, 230, 70), bg=255)                      # opaque, over the body text
-        self.assertEqual(render(judged(semantic, tree, {2: (0, BLACK_ON_WHITE)}), "invisible-node"), [])
+        found = judged(semantic, tree, {2: (0, BLACK_ON_WHITE)})
+        self.assertEqual(render(found, "invisible-node"), [("invisible-node", "body", "covered", "error")])
+        self.assertEqual(next(f for f in found if f["check"] == "invisible-node")["observed"]["by"]["target"],
+                         "node/lv_obj/0/30/230/70")
         semantic, tree = base()
         tree.node(0, "lv_obj", (0, 30, 230, 70), bg=200)                      # translucent: the body must paint
         self.assertEqual(render(judged(semantic, tree, {2: (0, BLACK_ON_WHITE)}), "invisible-node"),
-                         [("invisible-node", "body", None, "error")])
+                         [("invisible-node", "body", "node", "error")])
         semantic, tree = base()
         semantic[1] = sem("body", "text", "Body text", (8, 40, 200, 24), style="body", flags="H")
         tree.nodes[2]["hidden"] = 1
+        self.assertEqual(render(judged(semantic, tree, {2: (0, BLACK_ON_WHITE)}), "invisible-node"), [])
+
+    def test_under_a_correct_modal_or_inert_nothing_painted_is_not_applicable(self):
+        semantic, tree = modal()
+        found = judged(semantic, tree, {2: (0, BLACK_ON_WHITE), 4: (0, BLACK_ON_WHITE)}, finish=True)
+        self.assertEqual(render(found, "invisible-node") + render(found, "contrast-low"), [])
+        na = next(f for f in found if f["check"] == "checks-examined")["observed"]["not_applicable"]
+        self.assertEqual((na["invisible-node"], na["contrast-low"]), (3, 3))   # title, body, ok under the scrim
+        semantic, tree = base()
+        semantic[1] = sem("body", "text", "Body text", (8, 40, 200, 24), style="body", flags="I")
         self.assertEqual(render(judged(semantic, tree, {2: (0, BLACK_ON_WHITE)}), "invisible-node"), [])
 
     def test_contrast_low_below_the_large_floor(self):
@@ -129,8 +165,44 @@ class InkChecksTest(unittest.TestCase):
         found = judged(semantic, tree, {2: (100, ("bbbbbb", "f0f0f0", "ffffff", "ffffff"))})
         self.assertEqual(render(found), [("contrast-low", "body", "below-large", "error")])
         item = next(f for f in found if f["check"] == "contrast-low")
-        self.assertEqual((item["observed"]["ratio"], item["id"]),
-                         (1.9198, expected_id("ui-render", "contrast-low", ["body", "below-large"])))
+        self.assertEqual((item["observed"]["ratio"], item["observed"]["against"], item["id"]),
+                         (1.9198, "behind", expected_id("ui-render", "contrast-low", ["body", "below-large"])))
+
+    def test_dark_text_under_a_dark_scrim_is_not_a_contrast_finding(self):
+        semantic, tree = modal()
+        dimmed = ("1a1a1a", "404040", "333333", "333333")                     # #222 text under the scrim
+        self.assertEqual(render(judged(semantic, tree, {2: (100, dimmed)}), "contrast-low"), [])
+        semantic, tree = base()
+        self.assertEqual(render(judged(semantic, tree, {2: (100, dimmed)}), "contrast-low"),
+                         [("contrast-low", "body", "below-large", "error")])
+
+    def test_a_text_on_its_own_opaque_fill(self):
+        semantic, tree = base()
+        tree.nodes[2].update(bg=255, colour="000000")                         # #222 text on a #000 fill, on white
+        found = judged(semantic, tree, {2: (300, ("000000", "222222", "ffffff", "ffffff"))})
+        self.assertEqual(render(found), [("contrast-low", "body", "below-large", "error")])
+        item = next(f for f in found if f["check"] == "contrast-low")["observed"]
+        self.assertEqual((item["against"], item["behind"], item["ratio"]), ("own-fill", ["000000"], 1.3199))
+        fooled = Ink(2, None, 300, (8, 40, 207, 63), "000000", "222222", "ffffff", "ffffff", "")
+        self.assertAlmostEqual(worst_contrast(fooled), 21.0)       # against what is behind, the fill passes for text
+        found = judged(semantic, tree, {2: (300, ("000000", "ffffff", "ffffff", "ffffff"))})   # white on black
+        self.assertEqual(render(found), [("ink-unmeasurable", "body", None, "error")])
+        self.assertEqual(next(f for f in found if f["check"] == "ink-unmeasurable")["observed"]["unmeasured"],
+                         [["text", "own-background"]])
+        semantic, tree = base()
+        tree.nodes[2].update(bg=255, grad=1, colour="000000")                 # a gradient: no sound comparison
+        found = judged(semantic, tree, {2: (300, ("000000", "222222", "ffffff", "ffffff"))})
+        self.assertEqual(render(found), [("ink-unmeasurable", "body", None, "error")])
+
+    def test_the_decision_at_the_boundaries(self):
+        self.assertEqual([decide(r, 3, 4.5) for r in (2.999, 3.0, 4.499, 4.5, 4.54)],
+                         ["fail", "between", "between", "pass", "pass"])
+        self.assertEqual([decide(r, None, 4.5) for r in (2.0, 4.5)], [None, "pass"])
+        self.assertEqual([decide(r, 3, None) for r in (2.0, 3.0)], ["fail", None])
+        semantic, tree = base()
+        found = judged(semantic, tree, {2: (100, ("767676", "f0f0f0", "ffffff", "ffffff"))})       # 4.54:1
+        self.assertEqual([f["check"] for f in found if f["gate"] == "ui-render" and f["check"] != "checks-examined"],
+                         [])
 
     def test_between_the_floors_the_large_text_definition_is_missing(self):
         semantic, tree = base()
@@ -140,21 +212,26 @@ class InkChecksTest(unittest.TestCase):
         self.assertEqual([(f["check"], f["observed"]["what"], f["observed"]["name"]) for f in incomplete],
                          [("contract-incomplete", "large-text", "body")])
 
-    def test_pending_thresholds_are_contract_pending_and_no_verdict(self):
-        the_contract = contract(lambda t: pending(t, "contrast_text ", 'contrast_text = { pending = "15", '
+    def test_each_pending_threshold_alone(self):
+        text_pending = contract(lambda t: pending(t, "contrast_text ", 'contrast_text = { pending = "15", '
                                                   'provenance = "literature:3.10/contrast_text" }'))
-        semantic, tree = base()
-        found = judged(semantic, tree, {2: (100, ("bbbbbb", "f0f0f0", "ffffff", "ffffff"))}, the_contract=the_contract,
-                       finish=True)
-        self.assertEqual(render(found, "contrast-low"), [])
-        pendings = [(f["observed"]["check"], f["observed"]["entry"]) for f in found if f["check"] == "contract-pending"]
-        self.assertIn(("contrast-low", "thresholds.contrast_text"), pendings)
-        self.assertIn("contrast-low", [f["observed"]["check"] for f in found if f["check"] == "check-vacuous"])
+        large_pending = contract(lambda t: pending(t, "contrast_large ", 'contrast_large = { pending = "15", '
+                                                   'provenance = "literature:3.10/contrast_large" }'))
+        low, high = ("bbbbbb", "f0f0f0", "ffffff", "ffffff"), BLACK_ON_WHITE
+        for the_contract, colours, want in ((text_pending, low, ["below-large"]), (text_pending, high, []),
+                                            (large_pending, low, []), (large_pending, high, [])):
+            semantic, tree = base()
+            found = judged(semantic, tree, {2: (100, colours)}, the_contract=the_contract, finish=True)
+            self.assertEqual([f["observed"]["part"] for f in found if f["check"] == "contrast-low"], want)
+            self.assertEqual(len([f for f in found if f["check"] == "contract-pending"]), 1)
+        examined = next(f for f in judged(*base(), the_contract=large_pending, finish=True)
+                        if f["check"] == "checks-examined")["observed"]["totals"]
+        self.assertEqual(examined["contrast-low"], 3)                          # black on white passes at 4.5
 
-    def test_unmeasured_ink_is_info_and_no_verdict(self):
+    def test_unmeasured_ink_is_an_error_and_no_verdict(self):
         semantic, tree = base()
         found = judged(semantic, tree, {3: "transformed", 4: "transformed"}, finish=True)
-        self.assertEqual(render(found), [("ink-unmeasurable", "ok", None, "info")])
+        self.assertEqual(render(found), [("ink-unmeasurable", "ok", None, "error")])
         item = next(f for f in found if f["check"] == "ink-unmeasurable")
         self.assertEqual(item["observed"]["unmeasured"], [["node", "transformed"], ["text", "transformed"]])
         found = judged(*base(), moved=True, finish=True)
@@ -162,6 +239,12 @@ class InkChecksTest(unittest.TestCase):
                          ["body", "ok", "title"])
         vacuous = sorted(f["observed"]["check"] for f in found if f["check"] == "check-vacuous")
         self.assertEqual(vacuous, ["contrast-low", "invisible-node"])
+
+    def test_ink_plan_capped_is_a_run_level_info(self):
+        judges = JudgeSet(["ui-render"], contract(), KEY, TODAY)
+        found = [f for f in judges.finish(OPEN, capped=["k1"]) if f["check"] == "ink-plan-capped"]
+        self.assertEqual([(f["severity"], f["state"], f["id"]) for f in found],
+                         [("info", None, expected_id("ui-render", "ink-plan-capped", ["capped", "k1"], True))])
 
     def test_a_step_without_ink_judges_no_ink_and_ui_render_alone_owns_the_stage(self):
         semantic, tree = base()
@@ -231,8 +314,17 @@ class StageChecksTest(unittest.TestCase):
         tree.nodes[2]["label"]["align_drawn"] = 1
         found = judged(semantic, tree, ink=False)
         self.assertEqual(render(found, "align-mismatch"), [("align-mismatch", "body", None, "error")])
-        self.assertEqual(next(f for f in found if f["check"] == "align-mismatch")["observed"]["align_drawn"], "left")
-        tree.nodes[2]["fit"]["unsupported"] = 1                            # no draw task: nothing to compare
+        self.assertEqual(next(f for f in found if f["check"] == "align-mismatch")["observed"]["align"], "left")
+        tree.nodes[2]["fit"]["unsupported"] = 1                            # no draw task, the style auto: n/a
+        found = judged(semantic, tree, ink=False, finish=True)
+        self.assertEqual(render(found, "align-mismatch"), [])
+        self.assertEqual(next(f for f in found if f["check"] == "checks-examined")["observed"]["not_applicable"],
+                         {"align-mismatch": 1})
+        tree.nodes[2]["label"]["align"] = 1                                # not drawn, the style says left
+        found = judged(semantic, tree, ink=False)
+        self.assertEqual([(f["observed"]["align"], f["observed"]["source"]) for f in found
+                          if f["check"] == "align-mismatch"], [("left", "style")])
+        tree.nodes[2]["label"]["align"] = 2
         self.assertEqual(render(judged(semantic, tree, ink=False), "align-mismatch"), [])
 
     def test_line_height_above_the_baseline_and_below_is_font_shrunk(self):
@@ -246,23 +338,111 @@ class StageChecksTest(unittest.TestCase):
         self.assertEqual([f["check"] for f in found if f["observed"].get("key") == "body"], ["font-shrunk"])
 
 
+class ExceptionRulesTest(unittest.TestCase):
+    def test_an_exception_may_name_every_ui_render_check(self):
+        """Every finding id of the ui-render judge an owner may except is in the loader's closed list, and loads."""
+        from rigor_lib import ui_contract
+        from rigor_lib.ui_judge_findings import GATES, META
+        own = set(GATES["ui-render"]) - META - {"stage-unmatched", "stage-text-mismatch", "stage-unowned-target"}
+        row = ('\n[[exception]]\nid = "e1"\nrule = "%s"\ntarget = "body"\nreason = "r"\nexpires = 2099-01-31\n'
+               'provenance = "owner:D99"\n')
+        for rule in sorted(own | {"ink-plan-capped"}):
+            self.assertIn(rule, ui_contract.EXCEPTION_RULES)
+            loaded = ui_contract.loads(CANARY_CONTRACT.read_text() + row % rule)
+            self.assertEqual(loaded.tables["exception"][0]["rule"], rule)
+
+
 class LayerRolesTest(unittest.TestCase):
     def test_the_layer_roles_are_defined_once(self):
         from rigor_lib import ui_judge_contract, ui_judge_vocab
         self.assertIs(ui_judge_vocab.LAYER_ROLES, ui_judge_contract.LAYER_ROLES)
 
 
+def frame_of(crc, extra=()):
+    return tuple(parse_typed_line(FRAME_FIELDS, line) for line in ["lvprobe\t1\t0", "frame\t320\t240\t" + crc]
+                 + list(extra))
+
+
+def stepped(index, key, crc):
+    item = Step(index, "w", key=key)
+    item.obs["frame"] = frame_of(crc)
+    return item
+
+
+INK_OK = (parse_typed_line(INK_FIELDS, "ink\t1\t5\t0,0,1,1\t000000\t000000\tffffff\tffffff"),)
+NOINK = (parse_typed_line(INK_FIELDS, "noink\t1\tunstable"),)
+
+
 class InkPlanTest(unittest.TestCase):
-    def test_each_state_key_is_inked_once_and_the_second_run_inks_the_same_steps(self):
-        plan = InkPlan(set())
-        steps = [Step(i, "w", key=k) for i, k in enumerate("abab")]
-        self.assertEqual([plan.wants(s) for s in steps], [True, True, False, False])
-        later = [Step(i, "w", key=k) for i, k in enumerate("cab")]
-        self.assertEqual([plan.wants(s) for s in later], [True, False, False])
-        for s in steps[:2]:
-            s.obs["ink"] = ()
-        again = InkPlan.again(type("Run", (), {"steps": steps})())
-        self.assertEqual([again.wants(s) for s in steps], [True, True, False, False])
+    def inked(self, plan, item, records=INK_OK, moved=False):
+        wanted = plan.wants(item)
+        if wanted:
+            item.obs.update(ink=records, ink_moved=moved)
+            plan.record(item)
+        return wanted
+
+    def test_each_key_and_checksum_is_inked_once_when_usable_and_retried_once_when_not(self):
+        plan = InkPlan()
+        self.assertEqual([self.inked(plan, stepped(i, k, c)) for i, (k, c) in
+                          enumerate([("a", "c1"), ("b", "c1"), ("a", "c1"), ("a", "c2"), ("a", "c2")])],
+                         [True, True, False, True, False])
+        self.assertEqual([self.inked(plan, stepped(0, "m", "c1"), moved=True) for _ in range(3)], [True, True, False])
+        self.assertEqual([self.inked(plan, stepped(0, "n", "c1"), records=NOINK) for _ in range(3)],
+                         [True, True, False])
+
+    def test_at_most_four_checksums_per_key_then_capped(self):
+        plan = InkPlan()
+        self.assertEqual([self.inked(plan, stepped(i, "d", "c%d" % i)) for i in range(6)],
+                         [True, True, True, True, False, False])
+        self.assertEqual(plan.capped, ["d"])
+        self.assertTrue(self.inked(plan, stepped(0, "d", "c1")) is False)     # an inked checksum stays done
+
+    def test_the_second_run_tries_exactly_the_steps_the_first_tried(self):
+        run = Run([], [stepped(i, "k%d" % i, "c") for i in range(3)])
+        run.inked = [0, 2]
+        again = InkPlan.again(run)
+        self.assertEqual([again.wants(item) for item in run.steps], [True, False, True])
+
+
+class FakeSession:
+    def __init__(self, records, frame, error=None):
+        self.records, self.frame_records, self.error, self.frames = records, frame, error, 0
+
+    def ink(self):
+        if self.error is not None:
+            raise self.error
+        return self.records
+
+    def frame(self):
+        self.frames += 1
+        return self.frame_records
+
+
+class InkStepTest(unittest.TestCase):
+    def test_the_frame_is_taken_again_and_compared_without_its_life_and_taps_lines(self):
+        for again, moved in ((frame_of("c1"), False), (frame_of("c1", ["taps\tprobe"]), False),
+                             (frame_of("c2"), True)):
+            item, plan = stepped(0, "k", "c1"), InkPlan()
+            run, session = Run(["w"], [item]), FakeSession(INK_OK, again)
+            self.assertTrue(ink_step(session, run, item, plan))
+            self.assertEqual((item.obs["ink"], item.obs["ink_moved"], session.frames, run.inked),
+                             (INK_OK, moved, 1, [0]))
+            self.assertEqual((("k", "c1") in plan.done), not moved)
+
+    def test_an_ink_error_ends_the_run_in_a_pseudo_step_and_the_second_run_tries_it_too(self):
+        item = stepped(0, "k", "c1")
+        run = Run(["w"], [item])
+        error = ProbeError("protocol", "ink", "err ink internal")
+        self.assertFalse(ink_step(FakeSession(INK_OK, frame_of("c1"), error), run, item, InkPlan()))
+        self.assertEqual(([s.word for s in run.steps], run.error[0], "ink" in item.obs, run.inked),
+                         (["w", "ink"], 1, False, [0]))
+        self.assertTrue(InkPlan.again(run).wants(item))
+
+    def test_no_plan_or_an_unwanted_step_takes_no_ink(self):
+        item = stepped(0, "k", "c1")
+        session = FakeSession(INK_OK, frame_of("c1"))
+        self.assertTrue(ink_step(session, Run(["w"], [item]), item, None))
+        self.assertEqual((session.frames, "ink" in item.obs), (0, False))
 
 
 class NeedsInkTest(TempDirTestCase):

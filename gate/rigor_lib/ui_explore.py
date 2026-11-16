@@ -242,7 +242,7 @@ def explore(args):
             if done:
                 evaluated.append(criterion)
         if judges is not None:
-            extra.extend(judges.finish(word))
+            extra.extend(judges.finish(word, explorer.ink.capped if explorer.ink else ()))
     extra.extend(not_evaluated(c, explorer.exploration) for c in (args.require or ()) if c not in evaluated)
     if explorer.taps == "indev" and "pointer" not in (caps or ()):
         extra.append(make("taps-injected", ["taps-injected", catalogue.sha256], None, [word],

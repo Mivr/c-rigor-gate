@@ -93,6 +93,7 @@ class Run:
     starved: bool = False
     commands: int = 0
     virtual_ms: int = 0
+    inked: list = field(default_factory=list)      # U07: the indexes of the steps that tried `ink`
 
 
 def _plain(value):
@@ -157,37 +158,65 @@ def _observe(session, step):
     step.now = session.now
 
 
-class InkPlan:
-    """Which steps of a run take `ink` (U07, the ui-render judge): the first run of a path inks every step whose
-    abstraction key no step of the exploration was inked at (`seen`, shared by every path), once per key; the second
-    run inks exactly the same steps (`steps`), so run-twice compares the ink too."""
+INK_CRC_CAP = 4        # U07: the frame checksums of one abstraction key the ink plan inks, in discovery order
+INK_TRIES = 2          # the first ink of a (key, checksum) and one retry when it was not usable
 
-    def __init__(self, seen=None, steps=None):
-        self.seen, self.steps = seen, steps
+
+def frame_crc(frame):
+    return next(record.fields[3] for record in frame if record.fields[0] == "frame")
+
+
+class InkPlan:
+    """Which steps of a run take `ink` (U07, the ui-render judge). The first run of a path inks a step whose
+    (abstraction key, frame checksum) has no usable ink yet in the exploration (state shared by every path), at most
+    INK_TRIES times, and at most INK_CRC_CAP checksums per key (`capped`: the keys that had more, in discovery order).
+    Usable: the frame did not move under the ink and at least one node was measured. The second run inks exactly the
+    steps the first one tried (`steps`, from `Run.inked`), so run-twice compares the ink and its errors too."""
+
+    def __init__(self, steps=None):
+        self.steps = steps
+        self.done, self.tries, self.crcs, self.capped = set(), {}, {}, []
 
     def wants(self, step):
         if self.steps is not None:
             return step.index in self.steps
-        if step.key in self.seen:
+        crc = frame_crc(step.obs["frame"])
+        slot = (step.key, crc)
+        if slot in self.done or self.tries.get(slot, 0) >= INK_TRIES:
             return False
-        self.seen.add(step.key)
+        crcs = self.crcs.setdefault(step.key, [])
+        if crc not in crcs:
+            if len(crcs) >= INK_CRC_CAP:
+                if step.key not in self.capped:
+                    self.capped.append(step.key)
+                return False
+            crcs.append(crc)
+        self.tries[slot] = self.tries.get(slot, 0) + 1
         return True
+
+    def record(self, step):
+        """After the ink of a step of a first run: mark its (key, checksum) done when the ink is usable."""
+        usable = not step.obs.get("ink_moved", True) and any(r.fields[0] == "ink" for r in step.obs.get("ink", ()))
+        if self.steps is None and usable:
+            self.done.add((step.key, frame_crc(step.obs["frame"])))
 
     @staticmethod
     def again(run):
-        return InkPlan(steps={step.index for step in run.steps if "ink" in step.obs})
+        return InkPlan(steps=set(run.inked))
 
 
 def _comparable(frame):
     return [r.raw for r in frame if not r.raw.startswith(("life\t", "taps\t"))]
 
 
-def _ink(session, run, step, plan):
+def ink_step(session, run, step, plan):
     """`ink` of every node of the step's frame, then `frame` again: an ink whose retry settle flushed drops the probe's
     frame (docs/ui-model.md, "Statuses"), and the next word may need one. `ink_moved`: that frame is not the step's,
-    so the ink does not describe it (the judge reads no ink of the step). An error ends the run in a pseudo step."""
+    so the ink does not describe it (the judge reads no ink of the step). The step is recorded in `run.inked` before
+    the ink, so the second run tries the same steps. An error ends the run in a pseudo step `ink`."""
     if plan is None or not plan.wants(step):
         return True
+    run.inked.append(step.index)
     try:
         step.obs["ink"] = session.ink()
         step.obs["ink_moved"] = _comparable(session.frame()) != _comparable(step.obs["frame"])
@@ -197,6 +226,7 @@ def _ink(session, run, step, plan):
                               origin=step.origin))
         run.error = (len(run.steps) - 1, error)
         return False
+    plan.record(step)
     return True
 
 
@@ -217,7 +247,7 @@ def _one(session, run, word, catalogue, plan=None):
         return False
     step.proj = projection(step.obs, step.now, catalogue.key)
     step.key = key_hash(step.proj)
-    return _ink(session, run, step, plan) and _evidence(session, run, step)
+    return ink_step(session, run, step, plan) and _evidence(session, run, step)
 
 
 def _evidence(session, run, step):

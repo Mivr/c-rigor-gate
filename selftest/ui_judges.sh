@@ -98,7 +98,7 @@ WANT = {
     "v-fake-inert": [("ui-scene", "occluded-target", ["ok"], False)],
     "v-unreachable": [("ui-scene", "occluded-target", ["bscrim"], False)],
     # U07: the ui-render judge (docs/ui-judges-render.md, "Canaries")
-    "v-invisible": [("ui-render", "invisible-node", ["body"], False)],
+    "v-invisible": [("ui-render", "invisible-node", ["body", "node"], False)],
     "v-contrast": [("ui-render", "contrast-low", ["body", "below-large"], False)],
     "v-disabled": [("ui-render", "flag-mismatch", ["back", "disabled-clickable"], False)],
     "v-click": [("ui-render", "flag-mismatch", ["body", "clickable"], False)],
@@ -107,12 +107,17 @@ WANT = {
     "v-align": [("ui-render", "align-mismatch", ["body"], False)],
     "v-line": [("ui-render", "line-height-mismatch", ["body"], False)],
     "v-noink": [("ui-render", "ink-unmeasurable", ["ok"], False)],
+    # U07 fix-up 1: a covered text, a button whose label paints nothing, a text on its own fill
+    "v-covered": [("ui-render", "invisible-node", ["title", "covered"], False)],
+    "v-btn-text": [("ui-render", "invisible-node", ["ok", "text"], False)],
+    "v-fill": [("ui-render", "contrast-low", ["body", "below-large"], False)],
 }
 # the part each canary finding must have (a flip of the part is a different defect)
 PARTS = {"v-occluded": "covered", "v-fake-inert": "covered", "v-unreachable": "layer-unreachable",
          "v-overlay": "captures", "v-wrap-contra": "contradicts", "v-contrast": "below-large",
          "v-disabled": "disabled-clickable", "v-click": "clickable", "v-hidden": "hidden", "v-long": "long-mode",
-         "v-line": "above"}
+         "v-line": "above", "v-invisible": "node", "v-covered": "covered", "v-btn-text": "text",
+         "v-fill": "below-large"}
 def fid(gate, check, identity, key, stateless):
     data = json.dumps([gate, check, identity if stateless else [identity, key]], sort_keys=True,
                       separators=(",", ":")).encode() + b"\n"
@@ -124,7 +129,7 @@ assert sorted((f["gate"], f["check"], f["severity"]) for f in run_level) == \
      ("ui-scene", "checks-examined", "info")], run_level
 for f in run_level:
     assert all(n > 0 for n in f["observed"]["totals"].values()), f["observed"]["totals"]
-    assert f["observed"]["states"] == 33
+    assert f["observed"]["states"] == 36
 found = [f for f in found if f not in run_level]
 assert not [f for f in found if f["path"] == paths[0]], [f["id"] for f in found if f["path"] == paths[0]]
 keys = {}
@@ -145,13 +150,33 @@ for path in paths[1:]:
         assert [f["observed"]["part"] for f in here] == [PARTS[event]], (event, [f["observed"] for f in here])
 assert len(set(v for v in keys.values() if v)) == len([v for v in keys.values() if v]), "two canary states share a key"
 assert len(found) == sum(len(w) for w in WANT.values()), "%d findings" % len(found)
-# every finding is an error but the unmeasured ink, which is data (info)
-assert all(f["severity"] == ("info" if f["check"] == "ink-unmeasurable" else "error") for f in found)
+# every finding is an error (an unmeasured ink too: the judge fails closed)
+assert {f["severity"] for f in found} == {"error"}
+assert [f["observed"]["against"] for f in found if f["path"][-1] == "v-fill"] == ["own-fill"]
 counts = summary["findings"]
 assert counts["ui-scene.checks-examined"] == 1 and counts["ui-fit.font-shrunk"] == 1 and counts["intent-missed"] == 0
 assert counts["ui-render.checks-examined"] == 1 and counts["ui-render.flag-mismatch"] == 5
+assert counts["ui-render.invisible-node"] == 3 and counts["ui-render.ink-unmeasurable"] == 1
 print("  %d canary states, the ids recomputed; nothing in the clean state nor under the correct modal dialog" % len(WANT))
 PY
+
+begin "without ui-render no ink command is sent and the ui-scene and ui-fit findings are the same"
+printf '#!/bin/sh\ntee -a "%s" | "%s"\n' "$out/cmds.log" "$probe_rel" > "$out/logged-probe"
+chmod +x "$out/logged-probe"
+JUDGES=ui-scene,ui-fit judge two 1 "$out/logged-probe" "$CONTRACT"
+grep -q '^frame$' "$out/cmds.log" || fail "$CUR: the logging probe saw no frame command" "$out/j.two.txt"
+! grep -q '^ink' "$out/cmds.log" || fail "$CUR: an ink command without ui-render" "$out/cmds.log"
+python3 -I - "$out/j.rel.1.json" "$out/j.two.json" <<'PY' || fail "$CUR: the two-judge findings differ" "$out/j.two.txt"
+import json, sys
+def load(name):
+    """the findings without their evidence list (only the first run wrote evidence)"""
+    return sorted(json.dumps(dict(f, evidence=[]), sort_keys=True) for f in map(json.loads, open(name)))
+three = [f for f in load(sys.argv[1]) if json.loads(f)["gate"] != "ui-render"]
+two = load(sys.argv[2])
+assert three == two, (len(three), len(two))
+print("  no ink command; %d ui-scene and ui-fit findings, identical" % len(two))
+PY
+JUDGES=ui-scene,ui-fit,ui-render
 
 begin "byte-identical findings: two release runs, and release against san"
 judge rel.2 1 "$probe_rel" "$CONTRACT" --evidence "$out/ev.rel.2"
@@ -172,7 +197,7 @@ for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit
   grep -q "/$ident\"" "$out/rp.json" || fail "$CUR: the replay of $ident does not give $ident" "$out/rp.txt"
   n=$((n + 1))
 done
-[ "$n" = 35 ] || fail "$CUR: $n findings replayed, wanted 35"
+[ "$n" = 38 ] || fail "$CUR: $n findings replayed, wanted 38"
 echo "  $n findings replayed to their ids"
 
 begin "exceptions against --today: a live one turns exactly its finding into info with its expiry; an unused one is exception-unused, an error when its target was visited and info when not; an expired one is an error and changes nothing"
@@ -224,7 +249,7 @@ plain, exc = load(sys.argv[1]), load(sys.argv[2])
 small = [i for i, f in plain.items() if f["check"] == "touch-target-small"]
 assert len(small) == 1 and exc[small[0]]["severity"] == "info"
 assert exc[small[0]]["observed"]["exception"] == {"id": "x-small", "expires": "2099-12-31"}
-invisible = [i for i, f in plain.items() if f["check"] == "invisible-node"]
+invisible = [i for i, f in plain.items() if f["check"] == "invisible-node" and f["observed"]["key"] == "body"]
 assert len(invisible) == 1 and exc[invisible[0]]["severity"] == "info"
 assert exc[invisible[0]]["observed"]["exception"] == {"id": "x-invisible", "expires": "2099-12-31"}
 bounds = [i for i, f in plain.items() if f["check"] == "node-out-of-bounds"]

@@ -17,7 +17,7 @@
 #define CANARY_W 320
 #define CANARY_H 240
 #define CANARY_NODES 12u
-#define CANARY_VARIANTS 33u
+#define CANARY_VARIANTS 36u
 
 typedef enum { CANARY_LABEL, CANARY_BUTTON, CANARY_PANEL, CANARY_GHOST } canary_kind_t;
 

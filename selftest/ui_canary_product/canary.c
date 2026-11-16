@@ -9,7 +9,9 @@ enum { V_CLEAN, V_OCCLUDED, V_OVERLAY, V_SMALL, V_SPACING, V_BOUNDS, V_OVERLAP, 
        V_OVERFLOW, V_CLIPPED, V_DOTS, V_UNMEASURABLE, V_GLYPH, V_UNMATCHED, V_TOGGLE, V_TEXT, V_SHRUNK, V_MODAL,
        V_FAKE_INERT, V_UNREACHABLE, V_WRAP_CONTRA,
        /* U07: one variant per check of the ui-render judge (docs/ui-judges-render.md, "Canaries") */
-       V_INVISIBLE, V_CONTRAST, V_DISABLED, V_CLICK, V_HIDDEN, V_LONG, V_ALIGN, V_LINE, V_NOINK };
+       V_INVISIBLE, V_CONTRAST, V_DISABLED, V_CLICK, V_HIDDEN, V_LONG, V_ALIGN, V_LINE, V_NOINK,
+       /* U07 fix-up 1 */
+       V_COVERED, V_BTN_TEXT, V_FILL };
 enum { N_TITLE, N_BODY, N_OK, N_BACK, N_BG, N_EN };
 /* Style tokens of canary.toml: title 1, body 2, caption 3, button 5, language on 6 / off 7, a small and a big body. */
 enum { T_TITLE = 1, T_BODY = 2, T_CAPTION = 3, T_BUTTON = 5, T_LANG_ON = 6, T_LANG_OFF = 7, T_SMALL = 8, T_BIG = 9 };
@@ -53,7 +55,7 @@ static const char *const g_titles[CANARY_VARIANTS] = {
     "Canary 9", "Canary 10", "Canary 11 title far too long for one line", "Canary 12", "Canary 13", "Canary 14",
     "Canary 15", "Canary 16", "Canary 17", "Canary 18", "Canary 19", "Canary 20", "Canary 21", "Canary 22",
     "Canary 23", "Canary 24", "Canary 25", "Canary 26", "Canary 27", "Canary 28", "Canary 29", "Canary 30",
-    "Canary 31", "Canary 32",
+    "Canary 31", "Canary 32", "Canary 33", "Canary 34", "Canary 35",
 };
 
 /* The clean scene: a title, a body text, two buttons and the BG/EN switch, every rect in display pixels. */
@@ -167,6 +169,10 @@ static void render_defect(lv_obj_t *label)
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);   /* the role's alignment is centre */
     } else if (g_variant == V_LINE) {
         lv_obj_set_style_text_font(label, &g_font_tall, 0);
+    } else if (g_variant == V_FILL) {   /* #222 text on the label's own opaque #000 fill: 1.3:1 */
+        lv_obj_set_style_bg_color(label, lv_color_hex(0x000000u), 0);
+        lv_obj_set_style_bg_opa(label, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_color(label, lv_color_hex(0x222222u), 0);
     }
 }
 
@@ -202,6 +208,9 @@ static void build_button(lv_obj_t *parent, const canary_node_t *n, int32_t ox, i
         lv_obj_set_style_bg_color(button, lv_color_hex(on ? 0x2B4678u : 0x282A2Fu), 0);   /* the selection's fill */
     } else {
         lv_obj_set_style_bg_color(button, lv_color_hex(0x0D47A1u), 0);   /* white text on it: 8.6:1 (U07) */
+    }
+    if (g_variant == V_BTN_TEXT && n == &g_nodes[N_OK]) {
+        lv_obj_set_style_text_opa(label, LV_OPA_TRANSP, 0);   /* the button's fill paints, its label nothing */
     }
     if (g_variant == V_NOINK && n == &g_nodes[N_OK]) {
         lv_obj_set_style_transform_scale(button, 257, 0);   /* transformed: lvprobe measures no ink (U07) */
@@ -249,6 +258,15 @@ static void build(void)
                 card_node = n;
             }
         }
+    }
+    if (g_variant == V_COVERED) {   /* an opaque object the scene does not have, over the whole title */
+        lv_obj_t *cover = lv_obj_create(screen);
+        lv_obj_remove_style_all(cover);
+        lv_obj_set_pos(cover, 4, 4);
+        lv_obj_set_size(cover, 208, 32);
+        lv_obj_set_style_bg_color(cover, lv_color_hex(0x808080u), 0);
+        lv_obj_set_style_bg_opa(cover, LV_OPA_COVER, 0);
+        lv_obj_set_clickable(cover, false);
     }
 }
 

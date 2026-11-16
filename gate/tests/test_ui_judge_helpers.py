@@ -97,7 +97,8 @@ class Tree:
             if label is not None:
                 full = "-" if label["full"] is None else "=" + esc(label["full"].encode("utf-8"))
                 drawn = self.align_drawn if label["align_drawn"] is None else label["align_drawn"]
-                out.append("\t".join(["label", str(i), "-", str(label["line_h"]), "0", str(drawn), str(label["long"]),
+                align = str(label.get("align", 0))
+                out.append("\t".join(["label", str(i), "-", str(label["line_h"]), align, str(drawn), str(label["long"]),
                                       "0" if label["full"] is None else "1", str(label["lines"]),
                                       str(label["natural"][0]), str(label["natural"][1]), str(label["laid"][0]),
                                       str(label["laid"][1]), "=" + esc(label["text"]), full]))

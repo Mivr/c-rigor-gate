@@ -8,8 +8,9 @@
   carries a text node's text against its wrap scope (`long-mode`). The other direction, an intent whose rendered node is
   not clickable, is already ui-scene's `stage-unmatched` (the association pairs a node with an intent only with a
   clickable object).
-- `align-mismatch`: the text alignment LVGL draws (`align_drawn`) against the `[[role]]` alignment of the node's
-  typographic role (`align_banner` inside a banner when the role has one).
+- `align-mismatch`: the text alignment LVGL draws (`align_drawn`; for a label it did not draw, the `align` style
+  when it is not auto) against the `[[role]]` alignment of the node's typographic role (`align_banner` inside a banner
+  when the role has one).
 - `line-height-mismatch` (an APPROXIMATION of P004's `font-size-mismatch`, under its own id): the line height of the
   label above the `[[style_line]]` baseline of the owner's style; below it is ui-fit's `font-shrunk`.
 """
@@ -105,19 +106,23 @@ def in_banner(ctx, index):
 
 
 def _align(ctx, report, node, carrier):
-    fit = ctx.frame.fits.get(carrier)
-    if fit is None or fit.unsupported or not fit.drawn:
-        return                                  # no draw task: lvprobe knows no drawn alignment
+    """The drawn alignment (`align_drawn`) of a label lvprobe drew; of one it did not draw (no fit record, not drawn,
+    or unsupported: no draw task), the `align` style when it is not auto; else a counted no-verdict."""
+    fit, label = ctx.frame.fits.get(carrier), ctx.frame.labels[carrier]
+    drawn = fit is not None and not fit.unsupported and fit.drawn
+    got, source = (label.align_drawn, "drawn") if drawn else (label.align, "style")
+    if got == 0:
+        report.not_applicable("align-mismatch")     # auto, not drawn: nothing says how LVGL would resolve it
+        return
     row = ctx.contract.row("role", ctx.role_of(node))
     banner = in_banner(ctx, carrier)
     want = row["align_banner"] if banner and "align_banner" in row else row["align"]
-    label = ctx.frame.labels[carrier]
     report.examined("align-mismatch")
-    if label.align_drawn != ALIGN_CODES[want]:
+    if got != ALIGN_CODES[want]:
         base, records = _who(ctx, node, ctx.assoc.match[node.key], carrier)
-        name = ALIGN_NAMES[label.align_drawn] if 0 <= label.align_drawn < 4 else str(label.align_drawn)
-        report.add("align-mismatch", [node.key], dict(base, align_drawn=name, expected=want, in_banner=banner,
-                                                      typographic_role=ctx.role_of(node)),
+        name = ALIGN_NAMES[got] if 0 <= got < 4 else str(got)
+        report.add("align-mismatch", [node.key], dict(base, align=name, source=source, expected=want,
+                                                      in_banner=banner, typographic_role=ctx.role_of(node)),
                    target=node.key, records=records)
 
 
