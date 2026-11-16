@@ -145,8 +145,15 @@ def _do_word(session, step, run, catalogue, before):
         if event.cls == "t1":
             words_mod.time_event(session, step, run, event, catalogue, step.key_before)
         else:
-            words_mod.inputs(session, step, words_mod.snapshot_of(before.obs), words_mod.input_sends(session, event),
-                             catalogue)
+            words_mod.inputs(session, step, before_inputs(before), words_mod.input_sends(session, event), catalogue)
+
+
+def before_inputs(before):
+    """What an input's change verdicts (noop, missed, the restart rule's frame clause) compare against: the step
+    before's own observation, or None, so that `inputs` takes a fresh snapshot first, when that step's frame moved
+    under its ink (U07): its observation is then stale, the probe's current frame is the one re-taken after the ink,
+    and the input must not be blamed for what moved during the ink."""
+    return None if before.obs.get("ink_moved") else words_mod.snapshot_of(before.obs)
 
 
 def _observe(session, step):

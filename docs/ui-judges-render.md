@@ -43,9 +43,15 @@ When `ui-render` is selected the explorer takes `ink` (every node of the frame) 
 
 After the ink the explorer takes `frame` again: an ink whose retry settle flushed drops the probe's frame
 (docs/ui-model.md, "Statuses") and the next word may need one. If that frame (without `life` and `taps` lines) differs
-from the step's, `ink_moved` is set and the judge reads none of that ink: every node a check needs is
-`ink-unmeasurable` (`frame-moved`). A visit without ink runs no ink check (`checks-examined` keeps per state the largest
-count of a key's visits). An `ink` error ends the run in a pseudo step `ink`, as an evidence error does.
+from the step's, `ink_moved` is set and the judge reads none of that ink: every node a check needs is `ink-unmeasurable`
+(`frame-moved`). A visit without ink runs no ink check (`checks-examined` keeps per state the largest count of a key's
+visits). An `ink` error ends the run in a pseudo step `ink`, as an evidence error does.
+
+The tap-node evidence image of a step (`_evidence`) is read BEFORE its ink (fix-up 2), so it is the step's own frame.
+An input word after a step whose frame moved under its ink compares against a FRESH snapshot taken just before it
+(`ui_explore_run.before_inputs`; `inputs` snapshots when given None), not against that step's stale observation: its
+noop, missed and countdown-restart verdicts never blame the input for what moved during the ink (a rare case: one extra
+observation's commands).
 
 **Cost measured on the canary** (36 states, one checksum each, replay of `canary.paths.json`, this 4-CPU host, three
 runs each): `--judges ui-scene,ui-fit` 1.23 to 1.34 s, 1138 probe commands; `--judges ui-scene,ui-fit,ui-render` 1.48
@@ -154,14 +160,14 @@ design).
 ## Findings
 
 Schema, ids, `observed` and evidence as docs/ui-judges.md ("Findings"); `gate` is `ui-render`. Layer L3 for
-`flag-mismatch`, `align-mismatch` and `line-height-mismatch`, L4 for the ink checks, `meta` for `ink-plan-capped`.
-Every finding is an error but `ink-plan-capped` (info: a fact about the run). `checks-examined` lists the six checks
-and, when any, `not_applicable` per check; `check-vacuous` applies to each of them when `[[role]]` has a row (the
-default rule of docs/ui-judges.md). An exception may name every ui-render finding id but `ink-plan-capped`: `invisible-node`, `contrast-low`,
-`flag-mismatch`, `align-mismatch` were in the loader's closed list `EXCEPTION_RULES`; U07 fix-up 1 adds
-`ink-unmeasurable` and `line-height-mismatch` (`ink-plan-capped` is info and never passes through an exception, so it
-is not in the list; `gate/rigor_lib/ui_contract.py`; a test in
-`test_ui_judge_render.py` loads an exception for each: `test_ui_contract.py` would pass the 500-line limit).
+`flag-mismatch`, `align-mismatch` and `line-height-mismatch`, L4 for the ink checks, `meta` for `ink-plan-capped`. Every
+finding is an error but `ink-plan-capped` (info: a fact about the run). `checks-examined` lists the six checks and, when
+any, `not_applicable` per check; `check-vacuous` applies to each of them when `[[role]]` has a row (the default rule of
+docs/ui-judges.md). An exception may name every ui-render finding id but `ink-plan-capped`: `invisible-node`,
+`contrast-low`, `flag-mismatch`, `align-mismatch` were in the loader's closed list `EXCEPTION_RULES`; U07 fix-up 1 adds
+`ink-unmeasurable` and `line-height-mismatch` (`ink-plan-capped` is info and never passes through an exception, so it is
+not in the list; `gate/rigor_lib/ui_contract.py`; a test in `test_ui_judge_render.py` loads an exception for each:
+`test_ui_contract.py` would pass the 500-line limit).
 
 ## Honesty table (P004 3.3)
 
@@ -242,8 +248,9 @@ aside). Its log names are deterministic (per step and output variable, per platf
 
 ## Each check seen failing against a broken judge
 
-Each break was applied to the code, `gate/tests/test_ui_judge_render.py`, `test_ui_judge_lockers.py`,
-`test_ui_judge_stage.py` and `test_ui_contract.py` were run (failures as listed), and the change was reverted. All 48
+Each break was applied to the code, `gate/tests/test_ui_judge_render.py` (and, from fix-up 2,
+`test_ui_judge_render_explore.py`), `test_ui_judge_lockers.py`, `test_ui_judge_stage.py` and `test_ui_contract.py` were
+run (failures as listed), and the change was reverted. All 48
 breaks of fix-up 1 failed at least one test (one, the gradient case, survived at first because its test's fill colour
 gave the same answer either way; the test now uses a `#000` fill and the break fails it):
 
@@ -297,6 +304,15 @@ gave the same answer either way; the test now uses a `#000` fill and the break f
 | no ink on a later visit | a step without ink judged as inked | render 8, lockers 1 (errors) |
 | exception rules | the fix-up ids removed from `EXCEPTION_RULES` | render 1 |
 | LAYER_ROLES once | a second definition in ui_judge_vocab | render 1 |
+| fix-up 2: part `node` | count 0 not reported | render 4 |
+| fix-up 2: part `text` | the carrier not judged | render 2 |
+| fix-up 2: the ink decides | a count above 0 judged as 0 | render 11 |
+| fix-up 2: clip ownership needs ui-fit selected | left to ui-fit with ui-render alone | render 1 |
+| fix-up 2: a clip scope keeps it ui-render's | left to ui-fit under a `clip` scope | render 1 |
+| fix-up 2: R7 through `Context.inert` | only `I` exempts | render 2 |
+| fix-up 2: R7 counted | the not-applicable not counted | render 1 (error) |
+| fix-up 2: exception rules | the two ids removed | render 1 |
+| fix-up 2: a fresh snapshot after a moved ink | the stale observation compared | render_explore 1 |
 
 The harness that applied them is not part of the repository (it lived in the task's scratch directory). On the canary
 the selftest sees every implemented check fire in its own variant.
