@@ -307,9 +307,10 @@ What a reviewer saw in the real records that no check of these judges covers (re
 | `full-string-shown` | implemented: dots; the comparison with the formatted string is `stage-text-mismatch` | |
 | `font-shrunk` | implemented as a REGRESSION check | `[[style_line]]` is read from the product under test (`product-baseline:f1274bf`) and needs the owner's signature: it catches a font that becomes smaller than at that commit, not one that is already wrong (no spec value exists to compare with: the spec gives sizes, not line heights; font ids are not mapped). It compares line heights, so a smaller font with the same line height is not seen |
 | `value-split` | implemented (U24) with the probe's identity; `check-blocked` without it | counts the DRAWN nodes that are one element (by the gate's role for a role id, else the product's tag); whether nodes of another element id are the digits of the same value is the product's claim. The lockers kiosk has no `[[value]]` row yet (the owner's) and its adapter no identity yet (a product task) |
-| `required-element-missing` | implemented (U24) with the probe's identity; `check-blocked` without it | presence is gate-observed (fix-up 1: associated, shown, a non-empty visible box, a drawn non-empty label); which node IS the element is the gate's role for a role id and the product's tag for any other id (`numpad`, `dismiss`, `done`, ...: a product could tag a wrong but drawn node, which no check sees). "Every report section under the all-sections fixture" (P004 3.1) needs that fixture (a later task) |
+| `required-element-missing` | implemented (U24) with the probe's identity; `check-blocked` without it | presence is gate-observed (fix-up 1: associated, shown, a non-empty visible box, a drawn non-empty label); which node IS the element is the gate's role for a role id, the row's key for an `[[element]]` id, and the product's tag plus a fixed scene role for the extra elements (fix-up 2: `dismiss`/`done`/`cancel` a button, `numpad`/`language_switch`/`size_buttons` a panel over a drawn button or key; a product could still tag a wrong but drawn node of that role, which no check sees). `drawn` does not consider occlusion or opacity: an element covered by another layer or painted transparent counts as drawn (that is ui-render's, `invisible-node`, `covered`). "Every report section under the all-sections fixture" (P004 3.1) needs that fixture (a later task) |
 | state class (`state` of identity) | **the product's claim** | the gate cannot derive the class of a screen; what binds it today: the class must be a `[[state_class]]` row (else `contract-incomplete`), one abstraction key has one class in a run (`state-class-unstable`), and the class's `required` elements must be drawn, the role ids among them by the gate's own role. A product that names a class with fewer requirements than its screen has is not caught (a later oracle task: `ui-parity`'s screen inventory) |
-| `identity-role-mismatch` | implemented (U24 fix-up 1) | only for tags that name a role id; other element ids cannot be checked against the scene |
+| `identity-role-mismatch` | implemented (U24 fix-ups 1, 2) | for tags that name a role id, an `[[element]]` id or an extra element; any other element id cannot be checked against the scene. Deliberately not exceptable (not in `EXCEPTION_RULES`), like `state-class-unstable`: both are breaches of the identity contract |
+| read-only `identity` | verified (fix-up 1) | the explorer re-reads `next-due` and `semantic` after each `identity`, not the frame: a model that changed only what is drawn (O3) on `identity` is not caught |
 | `raw-text` (raw msgid) | implemented (U24) where decidable from identity: `msgid` (label == msgid, key msgids, no identity-literal) and `no-msgid` (catalogue text without a msgid) | **blocked on the catalogue (U17b)** for `source-text` msgids (lockers' gettext catalogues): a label equal to its msgid is raw only in a language where the msgid has a translation; also a label that is another msgid, or the right msgid formatted with the wrong arguments (`render-text-mismatch`, `i18n_format`) |
 | `phrase-too-long` | out of scope | a product build check (P003) |
 | `stage-unmatched`, `stage-text-mismatch`, `stage-unowned-target`, `scene-vocabulary`, `contract-incomplete`, `contract-pending`, `exception-unused`, `checks-examined`, `check-vacuous` | implemented | the judges' own findings |
@@ -363,7 +364,7 @@ state has its own abstraction key:
 | `v-font` | the body text in token 8, a 10 px variant style of the role body (minimum 14) | `ui-scene.font-below-min` (`["body"]`) |
 | `v-hierarchy` | the body text in token 9, a 24 px variant of body (level 2), larger than the 20 px title | `ui-scene.hierarchy-violated` (`["rank"]`) |
 | `v-raw` | the body text empty | `ui-scene.raw-text` (`["body", "empty"]`) |
-| `v-wrap` | the body text in the caption style, a role the contract gives no wrap scope | `ui-scene.contract-incomplete` (`["role-wrap", "caption"]`, per run) |
+| `v-wrap` | the body text drawn in the caption style, a role the contract gives no wrap scope (U24: tagged `caption`, the role it has) | `ui-scene.contract-incomplete` (`["role-wrap", "caption"]`, per run) |
 | `v-wrap-contra` | the body text states the scope `single_line`; the contract's is `default` | `ui-scene.wrap-policy-undeclared` (`["body", "contradicts"]`) |
 | `v-overflow` | a 272 px title in a 200 px single-line rect (LVGL wraps it into two lines that fit) | `ui-fit.text-overflow` (`["title"]`) |
 | `v-clipped` | `ok`'s label pushed 22 px down, past the button's bottom edge | `ui-fit.text-clipped` (`["ok"]`) |
@@ -397,9 +398,7 @@ step's `env-inputs`; a probe that does not announce `identity` (the canary's gre
 by the canary catalogue (`requires`), and under a copy of the catalogue that does not require it the three identity
 checks are `check-blocked` errors and none of them reaches a verdict; no canary probe is left.
 
-## What the lockers adapter must emit (U24)
-
-In [docs/ui-judges-identity.md](ui-judges-identity.md), "What the lockers adapter must emit".
+## What the lockers adapter must emit (U24): see [docs/ui-judges-identity.md](ui-judges-identity.md)
 
 ## Rows this task added to the lockers contract (for the owner to sign or reject, row by row)
 

@@ -8,8 +8,10 @@ msgid and formatted arguments. Contract tables: `[[state_class]]` (required elem
                               id by the product's tag); a class the contract has no row for is `contract-incomplete`
                               (`state-class`)
     value-split               the drawn nodes that are a `[[value]]` element number more than its `max_nodes`
-    identity-role-mismatch    a product tag naming a role id (a `[[role]]` id or a structural role) the node does not
-                              have
+    identity-role-mismatch    a product tag the gate's reading contradicts: a role id the node lacks (part `role`), an
+                              `[[element]]` id on another key than its row's (`element`), an extra element on a node
+                              without its fixed scene role (`constraint`: dismiss/done/cancel a button,
+                              numpad/language_switch/size_buttons a panel with a drawn button or key under it)
     raw-text (identity parts) `msgid`: a shown text node whose label is its msgid byte for byte, the msgid no
                               `[[identity_literal]]`, where the `[[catalogue]]` has key msgids (for source-text
                               msgids the verdict needs the catalogue: not applicable, U17b); `no-msgid`: a shown node
@@ -75,32 +77,78 @@ def drawn(ctx, node):
     return node.role not in TEXT_ROLES or (node.label != b"" and node.key not in ctx.assoc.mismatch)
 
 
+# Fix-up 2: the scene role an extra element of the loader (ui_contract_checks.EXTRA_ELEMENTS) must have, besides the
+# product's tag: a control is a button; a group is a panel with at least one drawn button or key under it (by the
+# rendered tree of its associated node). `countdown`, the seventh extra element, is a structural role (by the role).
+BUTTON_ELEMENTS = frozenset(("dismiss", "done", "cancel"))
+GROUP_ELEMENTS = frozenset(("numpad", "language_switch", "size_buttons"))
+
+
 def carries(ctx, node, element):
     """Whether a node IS the element: a `[[role]]` id by the gate's typographic role of the node, a structural role
-    (`countdown`) by the node's role, any other element id by the product's tag."""
+    (`countdown`) by the node's role, an `[[element]]` id by that row's key (whatever the tags), any other id by the
+    product's tag; an extra element of the loader also by its fixed scene role (`fits`)."""
     if element in _role_ids(ctx.contract):
         return ctx.role_of(node) == element
     if element in STRUCTURAL_ROLES:
         return node.role == element
-    return ctx.identity.element(node.key) == element
+    row = _element_rows(ctx.contract).get(element)
+    tagged = node.key == row["key"] if row is not None else ctx.identity.element(node.key) == element
+    return tagged and fits(ctx, node, element)
+
+
+def fits(ctx, node, element):
+    """The fixed scene role of an extra element (BUTTON_ELEMENTS, GROUP_ELEMENTS); True for any other id."""
+    if element in BUTTON_ELEMENTS:
+        return node.role == "button"
+    if element not in GROUP_ELEMENTS:
+        return True
+    index = ctx.assoc.match.get(node.key)
+    return node.role == "panel" and index is not None and any(
+        other.role in ("button", "key") and drawn(ctx, other) and ctx.assoc.match[other.key] != index
+        and ctx.frame.descends(ctx.assoc.match[other.key], index) for other in ctx.scene)
 
 
 def _role_ids(contract):
     return {row["id"] for row in contract.rows("role")}
 
 
+def _element_rows(contract):
+    return {row["id"]: row for row in contract.rows("element")}
+
+
+def _mismatch_part(ctx, node, element):
+    """(verdict?, the part of a mismatch or None) of a node tagged `element`: `role` for a role id the node lacks,
+    `element` for an `[[element]]` id on another key than its row's, `constraint` for an extra element whose fixed
+    scene role the node lacks. No verdict for another id, nor for a text-bearing node whose typographic role is
+    unresolved (that is contract-incomplete's)."""
+    if element in _role_ids(ctx.contract):
+        if node.role in TEXT_ROLES and ctx.role_of(node) is None:
+            return False, None
+        return True, None if ctx.role_of(node) == element else "role"
+    if element in STRUCTURAL_ROLES:
+        return True, None if node.role == element else "role"
+    row = _element_rows(ctx.contract).get(element)
+    if row is not None and node.key != row["key"]:
+        return True, "element"
+    if element in BUTTON_ELEMENTS or element in GROUP_ELEMENTS:
+        return True, None if fits(ctx, node, element) else "constraint"
+    return row is not None, None
+
+
 def identity_role_mismatch(ctx, report):
-    """A product tag that names a role id (a `[[role]]` id or a structural role) the node does not have: the product's
-    claim contradicts what the gate reads, so the tag is not taken."""
-    roles = _role_ids(ctx.contract)
+    """A product tag the gate's reading of the node contradicts (`_mismatch_part`): the tag is not taken."""
     for node in ctx.scene:
         element = ctx.identity.element(node.key)
-        if element not in roles and element not in STRUCTURAL_ROLES:
+        if element is None:
+            continue
+        verdict, part = _mismatch_part(ctx, node, element)
+        if not verdict:
             continue
         report.examined(ROLE_MISMATCH)
-        if not carries(ctx, node, element):
-            report.add(ROLE_MISMATCH, [node.key],
-                       {"stage": "O2", "key": node.key, "element": element, "role": ctx.role_of(node),
+        if part is not None:
+            report.add(ROLE_MISMATCH, [node.key, part],
+                       {"stage": "O2", "key": node.key, "part": part, "element": element, "role": ctx.role_of(node),
                         "scene_role": node.role}, target=node.key, records=ctx.identity.raw + [node.raw])
 
 
@@ -140,11 +188,13 @@ def value_split(ctx, report):
 
 
 def seen_names(ctx):
-    """The exception targets a state with identity visits: the element ids its class requires and the value ids."""
+    """The exception targets a state with identity visits: the element ids its class requires, and the ids of the
+    values some node of the state is (fix-up 2)."""
     if ctx.identity is None:
         return set()
     row = next((r for r in ctx.contract.rows("state_class") if r["id"] == ctx.identity.state), None)
-    return set(row["required"] if row else ()) | {r["id"] for r in ctx.contract.rows("value")}
+    values = {r["id"] for r in ctx.contract.rows("value") if any(carries(ctx, n, r["element"]) for n in ctx.scene)}
+    return set(row["required"] if row else ()) | values
 
 
 def raw_text(ctx, report, node):
@@ -173,15 +223,15 @@ def no_msgid(ctx, report, node):
 
 
 def other_text(ctx, report):
-    """`no-msgid` over the shown text-bearing nodes raw-text does not otherwise examine (buttons, keys): one verdict
-    per node whose typographic role is catalogue text."""
+    """Both identity parts of raw-text (fix-up 2) over the shown text-bearing nodes raw-text does not otherwise examine
+    (buttons, keys) whose typographic role is catalogue text: one verdict per node."""
     if ctx.identity is None:
         return
     for node in ctx.scene:
         if node.role in TEXT_ROLES and node.role not in PURE_TEXT and not node.hidden \
                 and ctx.role_of(node) in tables.text_roles(ctx.contract):
             report.examined(RAW)
-            no_msgid(ctx, report, node)
+            raw_text(ctx, report, node)
 
 
 def blocked(contract):

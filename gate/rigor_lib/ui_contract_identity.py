@@ -14,6 +14,7 @@ Tables (docs/ui-contract.md):
 
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_contract_checks import EXTRA_ELEMENTS
+from rigor_lib.ui_judge_vocab import STRUCTURAL_ROLES
 
 TABLES = ("value", "catalogue", "identity_literal")
 MAX_NODES = 1                 # [[value]].max_nodes when the row does not give it
@@ -37,6 +38,7 @@ def check(tables):
     """A value names a known element (a role id, an extra element of the loader, an `[[element]]` id), at most one
     value per element; a catalogue's text roles are `[[role]]` ids."""
     roles = {row["id"] for row in tables["role"]}
+    _no_collisions(roles, {row["id"] for row in tables["element"]})
     known = roles | EXTRA_ELEMENTS | {row["id"] for row in tables["element"]}
     seen = set()
     for row in tables["value"]:
@@ -53,6 +55,17 @@ def check(tables):
         for role in row["text_roles"]:
             if role not in roles:
                 _fail("[[catalogue]] %r: text role %r is not a [[role]] id" % (row["id"], role))
+
+
+def _no_collisions(roles, elements):
+    """Fix-up 2: one name, one meaning. The identity checks read a `[[role]]` id by the gate's role of a node, a
+    structural role by the scene role, an `[[element]]` id by its row's key and an extra element by the product's tag
+    and a fixed scene role; a name in two of these sets would be read two ways."""
+    for name, other, what in ((roles & EXTRA_ELEMENTS, "an extra element of the loader", "[[role]]"),
+                              (roles & set(STRUCTURAL_ROLES), "a structural scene role", "[[role]]"),
+                              (elements & roles, "a [[role]] id", "[[element]]")):
+        if name:
+            _fail("%s id %s is also %s" % (what, ", ".join(sorted(name)), other))
 
 
 def max_nodes(row):

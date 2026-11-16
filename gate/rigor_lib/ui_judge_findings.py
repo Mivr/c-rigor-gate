@@ -20,6 +20,7 @@ instead of a verdict, and neither counted nor vacuous.
 from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_identity, ui_judge_render, ui_judge_scene
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_judges import PRIVATE, state_of
+from rigor_lib.ui_explore_key import normalised
 from rigor_lib.ui_judge_context import Context
 
 SCENE_NODE_CHECKS = ("occluded-target", "overlay-policy", "touch-target-small", "target-spacing", "node-out-of-bounds",
@@ -162,8 +163,8 @@ class JudgeSet:
         self.examined = {gate: {} for gate in self.gates}       # gate -> state key -> check -> nodes
         self.needs_ink = bool(INK_GATES & set(self.gates))     # the explorer then inks each new state (U07)
         self.identity = None    # U24: whether the probe announces identity (wants_identity); None: not said (no block)
-        self.classes = {}       # U24 fix-up 1: abstraction key -> the state class its first identity named
-        self.unstable = set()   # (key, another class) already reported
+        self.classes = {}       # U24: (key, normalised observation) -> (its first state class, that step's path)
+        self.unstable = set()   # (key, the two classes) already reported
 
     def wants_identity(self, caps):
         """Records whether the probe announces `identity` (U24) and whether the explorer must read it: ui-scene is
@@ -185,7 +186,7 @@ class JudgeSet:
         self.exceptions.see(names | ui_judge_identity.seen_names(context))
         out = context.stage_findings(Reporter(self.gates[0], self, step, path))
         if context.identity is not None and "ui-scene" in self.gates:
-            out += self._unstable(context.identity.state, step, path)
+            out += self._unstable(context.identity.state, step, path)   # path: the steps before
         for gate in self.gates:
             report = Reporter(gate, self, step, path)
             out += MODULES[gate].judge(context, report)
@@ -196,16 +197,21 @@ class JudgeSet:
         return out
 
     def _unstable(self, state_class, step, path):
-        """`state-class-unstable` (error, identity ["unstable", key]): the state class is the product's claim, and the
-        explorer's abstraction key is the gate's; one key showing two classes in a run means the claim (or the key)
-        does not describe the state. Reported when a second class is first seen for a key."""
-        first = self.classes.setdefault(step.key, state_class)
-        if first == state_class or (step.key, state_class) in self.unstable:
+        """`state-class-unstable` (error, identity ["unstable", key, the two classes sorted]): the state class is the
+        product's claim; the SAME normalised observation (ui_explore_key.normalised: every semantic field and fact but
+        the catalogue's justified ignores) naming two classes means the claim does not describe the state. One
+        abstraction key whose observations differ and whose classes differ is not this finding (`key-too-coarse`
+        reports the key; nothing here). `observed.witness_path`: the path of the first class (fix-up 2)."""
+        record = jsonio.canonical_dumps(normalised(step.obs, step.now, self.catalogue_key))
+        words = [view.word for view in path] + [step.word]
+        first, witness = self.classes.setdefault((step.key, record), (state_class, words))
+        pair = sorted({first, state_class})
+        if first == state_class or (step.key, tuple(pair)) in self.unstable:
             return []
-        self.unstable.add((step.key, state_class))
+        self.unstable.add((step.key, tuple(pair)))
         report = Reporter("ui-scene", self, step, path)
-        report.add("state-class-unstable", ["unstable", step.key],
-                   {"key": step.key, "classes": sorted({first, state_class})}, stateless=True)
+        report.add("state-class-unstable", ["unstable", step.key, pair],
+                   {"key": step.key, "classes": pair, "witness_path": witness}, stateless=True)
         return report.found
 
     def finish(self, open_word, capped=()):

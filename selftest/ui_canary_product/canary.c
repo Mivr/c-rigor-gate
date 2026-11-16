@@ -360,7 +360,7 @@ bool canary_identity(unsigned i, canary_identity_t *out)
     }
     for (row = 0; row < sizeof g_identity / sizeof g_identity[0]; row++) {
         if (strcmp(g_identity[row].key, g_nodes[i].key) == 0) {
-            /* V_WRAP draws the body as a caption (it is one); V_TAG tags the title as the body, a role it lacks */
+            /* V_WRAP draws the body in the caption style, tagged caption; V_TAG tags the title as the body */
             out->element = row == 2u && g_variant == V_WRAP  ? "caption"
                            : row == 0u && g_variant == V_TAG ? "body"
                                                              : g_identity[row].element;

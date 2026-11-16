@@ -13,8 +13,12 @@ from rigor_lib.ui_explore_grammar import parse_identity
 from rigor_lib.ui_explore_judges import PathSoFar
 from rigor_lib.ui_explore_run import Step
 from rigor_lib.ui_judge_findings import JudgeSet
-from tests.test_ui_judge_helpers import KEY, OPEN, TODAY, base, contract, expected_id, sem, step
+from types import SimpleNamespace
 
+from tests.test_ui_judge_helpers import OPEN, TODAY, base, contract, expected_id, sem, step
+
+# the helpers' key with what ui_explore_key.normalised reads (state-class-unstable compares normalised observations)
+KEY = SimpleNamespace(fields=("role",), facts=(), derived=(), ignore=())
 CLEAN = (("title", "title", "canary.title"), ("body", "body", "canary.body"), ("ok", "-", "canary.ok"))
 
 

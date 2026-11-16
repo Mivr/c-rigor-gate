@@ -119,14 +119,14 @@ WANT = {
     # U24 fix-up 1: presence is the gate's (the body is in the scene, hidden in LVGL); a role tag the node lacks
     "v-undrawn": [("ui-scene", "required-element-missing", ["detail", "body"], False),
                   ("ui-render", "flag-mismatch", ["body", "hidden"], False)],
-    "v-tag": [("ui-scene", "identity-role-mismatch", ["title"], False)],
+    "v-tag": [("ui-scene", "identity-role-mismatch", ["title", "role"], False)],
 }
 # the part each canary finding must have (a flip of the part is a different defect)
 PARTS = {"v-occluded": "covered", "v-fake-inert": "covered", "v-unreachable": "layer-unreachable",
          "v-overlay": "captures", "v-wrap-contra": "contradicts", "v-contrast": "below-large",
          "v-disabled": "disabled-clickable", "v-click": "clickable", "v-hidden": "hidden", "v-long": "long-mode",
          "v-line": "above", "v-invisible": "node", "v-covered": "covered", "v-btn-text": "text",
-         "v-fill": "below-large", "v-raw-msgid": "msgid"}
+         "v-fill": "below-large", "v-raw-msgid": "msgid", "v-tag": "role"}
 def fid(gate, check, identity, key, stateless):
     data = json.dumps([gate, check, identity if stateless else [identity, key]], sort_keys=True,
                       separators=(",", ":")).encode() + b"\n"

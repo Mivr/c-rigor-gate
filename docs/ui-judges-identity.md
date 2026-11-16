@@ -11,7 +11,11 @@ are `ui_contract_identity.py`'s, docs/ui-contract.md). Everything of docs/ui-jud
 - **`required-element-missing`** (O2 + O3 + identity, U24). In a state whose identity names class C, every element id
   of C's `[[state_class]].required` that no DRAWN scene node IS. Which nodes are an element (`carries`): for a `[[role]]`
   id, the nodes whose typographic role (the gate's, from the style token) is it; for a structural role (`countdown`),
-  the nodes of that scene role; for any other element id, the nodes the product tags with it. Drawn (`drawn`, fix-up 1:
+  the nodes of that scene role; for an `[[element]]` id, the node at that row's `key` (fix-up 2: whatever the tags);
+  for any other element id, the nodes the product tags with it. An extra element of the loader (the seven names of
+  `ui_contract_checks.EXTRA_ELEMENTS`) is also bound to a fixed scene role (fix-up 2): `dismiss`, `done`, `cancel` must
+  be a `button`; `numpad`, `language_switch`, `size_buttons` a `panel` with at least one drawn button or key under its
+  associated rendered node; `countdown` is a structural role (by the role above). Drawn (`drawn`, fix-up 1:
   presence rests on what the gate observes, never on the product's claim alone): the node is not hidden by its scene
   flag `H`, it is associated with a rendered node, that node is shown (no hidden ancestor) with a non-empty visible box
   (cut by the display and its clip chain), and a text-bearing node (text, button, key, countdown) has a non-empty label
@@ -23,14 +27,30 @@ are `ui_contract_identity.py`'s, docs/ui-contract.md). Everything of docs/ui-jud
 - **`value-split`** (O2 + O3 + identity, U24). For a `[[value]]` row, the DRAWN scene nodes that are its element (the
   same `carries` and `drawn` as above), when there are more than its `max_nodes` (1 when absent): identity
   `[value id]`, observed the sorted keys. A state with no such node is no verdict.
-- **`identity-role-mismatch`** (O2 + identity, U24 fix-up 1, error). A node the product tags with a role id (a
-  `[[role]]` id or a structural role) that is not the node's role as the gate reads it (the typographic role of its
-  style, or its scene role): identity `[key]`, observed the tag, the typographic and the scene role. The tag is not
-  taken for presence (the gate's role is). One verdict per node tagged with a role id; never `check-vacuous` (a
-  product that tags no node with a role id gives it nothing to judge).
-- **`state-class-unstable`** (identity, U24 fix-up 1, error, `state` null, identity `["unstable", key]`). The state
-  class is the product's claim; one abstraction key whose identity named two classes in a run means the claim (or the
-  key) does not describe the state. Reported once per key and further class.
+- **`identity-role-mismatch`** (O2 + identity, U24 fix-ups 1 and 2, error). A product tag the gate's reading of the
+  node contradicts; identity `[key, part]`, observed the part, the tag, the typographic and the scene role. Parts:
+  `role` (a `[[role]]` id or a structural role that is not the node's typographic or scene role), `element` (an
+  `[[element]]` id on another key than its row's), `constraint` (an extra element on a node without its fixed scene
+  role). The tag is not taken for presence. One verdict per node tagged with such an id; none for a text-bearing node
+  whose typographic role is unresolved (its style is the stage's `contract-incomplete`), none for any other id; never
+  `check-vacuous` (a product that tags no node with such an id gives it nothing to judge).
+- **`state-class-unstable`** (identity, U24 fix-ups 1 and 2, error, `state` null, identity `["unstable", key, the two
+  classes sorted]`). The state class is the product's claim; the SAME normalised observation
+  (`ui_explore_key.normalised`: every semantic field and fact but the catalogue's justified ignores) under one key
+  naming two classes means the claim does not describe the state. `observed.witness_path` is the path of the step
+  that named the first class, as `key-too-coarse` does. Observations that differ under one key with different classes
+  give nothing here: that is `key-too-coarse`'s fact (it reports the key). Each pair of classes is its own finding, so
+  three classes give two findings whose ids do not depend on the discovery order of the second and third.
+- **Not exceptable**: `identity-role-mismatch` and `state-class-unstable` are breaches of the identity contract by the
+  product, not judgements of a scene; they are deliberately not in the loader's closed rule list (`EXCEPTION_RULES`),
+  so no `[[exception]]` can name them.
+
+**Name collisions (fix-up 2, the loader).** Because a name is read by its kind (a role id by the gate's role, a
+structural role by the scene role, an `[[element]]` id by its key, an extra element by the tag and its scene role),
+the loader refuses a `[[role]]` id equal to an extra element or a structural scene role, and an `[[element]]` id equal
+to a `[[role]]` id. `products/business-apps/ui/lockers.toml` and the canary contract have no such collision (checked);
+lockers' `[[element]]` ids `done` and `cancel` are also extra elements, which is intended: their carrier is the node at
+their key (16, 17), and it must be a button.
 
 ## What the lockers adapter must emit
 
