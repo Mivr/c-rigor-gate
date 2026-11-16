@@ -215,6 +215,52 @@ modes of any `c_binary`; the grade uses release and san. A product BUCK file loa
 and may name `gate//ui/model:model` (the header) in the `deps` of a library, binary or test; it can never name the probe
 library, in any spelling.
 
+## `c_ui_probe_session` (`rules/ui.bzl`, U05c)
+
+`c_ui_probe_session(name, probe, session, expected)`: a test that runs a product's probe on a checked-in session and
+compares the transcript, so the strongest evidence a product has about its own UI (frames, taps, hit-tests on the real
+app) is enforced by `buck2 test` and needs no product script. `probe` is `":<name>"` of a `c_ui_probe` declared in the
+same BUCK file; `session` (the commands, fed to stdin) and `expected` (the transcript) are two plain files of the
+package (relative paths such as `tests/session.in`; no label, glob, `.`, `..` or absolute path). `rigor buckfiles`
+accepts exactly these four keywords, all given, as string literals (`bad-argument` with why `keyword`, `missing`,
+`value`, `probe` for a probe that is not a `c_ui_probe` of the same file, `file` for one file named twice), and
+nothing may depend on the target (why `test-target`).
+
+The test passes only if all four checks hold, in this order:
+1. the session's last line is exactly `quit` (LF-terminated, nothing after it): a checked session is a clean one, so the
+   exit status it implies is 0 (a session that ends otherwise would exit 1 with `err ? eof-without-quit`, and the strict
+   protocol transcripts such as `bad.in` stay the selftest's own steps);
+2. the probe exits 0 (killed by a signal is a failure);
+3. it writes nothing on stderr (so any sanitizer report fails it);
+4. its stdout is byte-identical to `expected`.
+
+The report names every failed check; for stdout the first differing line with its number and both lines with their LF
+(`stdout line 5 differs: got b'ok frame lines 26\n', want b'oK frame lines 26\n'`; a line longer than 512 bytes says
+how much of it is shown). The probe runs once per mode with the session on stdin and an environment of the sealed
+sanitizer variables of a `c_test` only (rules/ctest.bzl `sanitizer_env_lines`, the hermetic symbolizer, reports on stderr).
+
+**How it is built and how it appears.** `c_ui_probe` also defines `<name>__ui_probe`, a mark that carries only the probe
+binary (`UiProbeInfo`); the session rule accepts nothing else, so it can run no other binary and no product script. The
+run is a cacheable build action of the gate-owned runner `gate//ui/model:probe_session.py` (stdlib Python, `python3 -I
+-B`), compatible with the release and the san platform only: each mode is its own target configuration and its own
+result. The target's default output is the result in the JSON Lines of `ctest` (docs/ctest.md; parsed by
+`gate/rigor_lib/results_parse.py`), one record and the summary:
+
+    {"asserts": 4, "id": "ui_probe_session/selftest.ui_product:session_test", "status": "pass"}
+    {"summary": {"passed": 1, "total": 1}}
+
+The id is `ui_probe_session/<package, "/" written ".">:<name>`; a failed run has `"status": "fail"` and the first failed
+check as `reason`. Sub-targets `[report]` and `[verdict]`. `buck2 test` runs the target as one test (an external-runner
+test labelled `c_ui_probe_session`, like a `c_fuzz` or `c_sim` verdict), listed under its label:
+`✓ Pass: root//selftest/ui_product:session_test` with the report on its stdout, counted in `Pass N. Fail M.`. A later
+expected-tests list holds the id above, one per target (the same id in release and san, as for a `c_test`). The grade's
+`build` gate (gate/rigor_lib/grade_build.py) collects only `kind(ctest_results, //...)` today; collecting these results
+too is a change there (not in U05c's scope).
+
+`selftest/ui.sh` checks both toys' `session.in` with `session_test` targets in release and san (besides its own
+comparison steps); a changed byte of `expected`, a probe that writes to stderr and a session that does not end in `quit`
+each fail it (gate/tests/test_ui_probe_session.py drives the runner with fake probes for every check).
+
 ## Confinement of the `uim_`, `lvprobe_` and `lvp_` symbols (P004 6.3)
 
 The `symbols` gate reserves the prefix itself (`ui-model-symbol`, `gate/rigor_lib/facts_symbols.py`), whatever the

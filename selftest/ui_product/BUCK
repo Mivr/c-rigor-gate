@@ -1,5 +1,5 @@
 load("@gate//rules:c.bzl", "c_library")
-load("@gate//rules:ui.bzl", "c_ui_probe")
+load("@gate//rules:ui.bzl", "c_ui_probe", "c_ui_probe_session")
 
 # The toy LVGL app.
 c_library(
@@ -20,6 +20,9 @@ c_library(
 
 # The probe binary of that model.
 c_ui_probe(name = "probe", model = ":model")
+
+# U05c: the scripted session's transcript as a Buck2 test in release and san, besides selftest/ui.sh's own comparison.
+c_ui_probe_session(name = "session_test", probe = ":probe", session = "session.in", expected = "session.out")
 
 # Ordinary product code that calls a `uim_*` symbol: flagged by the symbols gate.
 c_library(

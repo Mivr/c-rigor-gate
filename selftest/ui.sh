@@ -98,8 +98,18 @@ begin "a failing model call poisons the session (every later command is not-open
 printf 'open 0 1\napply 3 666 0 -\nsemantic\nopen 0 1\napply 3 99 0 -\nsemantic\nquit\n' | "$probe_san" > "$out/poison.txt" 2>&1
 [ "$(sed -n 2,6p "$out/poison.txt" | cut -c1-30)" = "$(printf 'ok open\nfail apply\nerr semantic not-open\nok open\nok apply refused')" ] || fail "$CUR: poison/refusal replies" "$out/poison.txt"
 
-begin "rigor buckfiles accepts the product tree (c_ui_probe, its load, the model header dep)"
+begin "rigor buckfiles accepts the product tree (c_ui_probe, c_ui_probe_session, their load, the model header dep)"
 "${RIGOR[@]}" buckfiles --root "$prod" --out "$out/bf.json" > "$out/bf.txt" 2>&1 || fail "$CUR: buckfiles refuses $prod" "$out/bf.txt"
+"${RIGOR[@]}" buckfiles --root selftest/ui_frame_product --out "$out/bf2.json" > "$out/bf2.txt" 2>&1 || fail "$CUR: buckfiles refuses selftest/ui_frame_product" "$out/bf2.txt"
+
+begin "c_ui_probe_session: both toys' session transcripts pass as Buck2 tests in release and in san, one result each"
+for plat in "$REL" "$SAN"; do
+  run "$out/sess.log" test --target-platforms "$plat" "$P:session_test" //selftest/ui_frame_product:session_test || fail "$CUR: the session tests failed in $plat" "$out/sess.log"
+  grep -Eq "Pass 2\. Fail 0\." "$out/sess.log" || fail "$CUR: the test summary in $plat is not two passes" "$out/sess.log"
+  [ "$(grep -c "c_ui_probe_session root//selftest/ui_\(frame_\)\?product:session_test: PASS" "$out/sess.log")" = 2 ] || fail "$CUR: the session reports in $plat" "$out/sess.log"
+  build_out sess_res "$plat" "$P:session_test"
+  [ "$(cat "$sess_res")" = "$(printf '{"asserts": 4, "id": "ui_probe_session/selftest.ui_product:session_test", "status": "pass"}\n{"summary": {"passed": 1, "total": 1}}')" ] || fail "$CUR: the results file in $plat" "$sess_res"
+done
 
 begin "the symbols gate reserves the uim_, lvprobe_ and lvp_ prefixes: the adapter and the probe pass under an unmodified product-style policy (the gate's lvprobe trusted); product code that references or defines one is flagged"
 for t in model toy misuse misdef lvpuse lvpdef probe; do build_out "f_$t" "$REL" "$P:${t}_facts"; done

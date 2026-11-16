@@ -18,6 +18,12 @@ c_library(
     visibility = ["PUBLIC"],
 )
 
+# The runner of `c_ui_probe_session` (rules/ui.bzl): stdlib Python, run inside the session's Buck2 action.
+export_file(
+    name = "probe_session.py",
+    visibility = ["PUBLIC"],
+)
+
 # The probe's parsing and record checks, through their internal header (gate-owned code).
 c_test(
     name = "probe_test",

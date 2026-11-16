@@ -90,3 +90,82 @@ class UiBuckFiles(test_buckfiles.BuckFilesCase):
                 self.assertEqual(self.check({"ui/model/" + name: C_LOAD + 'c_library(name = "probe")\n'}, 1), ["reserved-package"])
         self.setUp()
         self.assertEqual(self.check({"ui/modelx/BUCK": C_LOAD + 'c_library(name = "probe")\n', "ui/BUCK": C_LOAD}, 0), [])
+
+
+SESSION_LOAD = 'load("@gate//rules:ui.bzl", "c_ui_probe", "c_ui_probe_session")\n'
+SESSION = 'c_ui_probe_session(name = "s", probe = ":probe", session = "session.in", expected = "session.out")\n'
+
+
+class UiSessionBuckFiles(test_buckfiles.BuckFilesCase):
+    """U05c: `c_ui_probe_session(name, probe, session, expected)`, exactly these keywords, a probe of the same file."""
+
+    def bad(self, source, *rules):
+        self.assertEqual(self.check({"BUCK": source}, 1), sorted(rules))
+
+    def why(self, source):
+        """The `why` of each finding, all of them `bad-argument`."""
+        rules = self.check({"BUCK": source}, 1)
+        self.assertEqual(set(rules), {"bad-argument"})
+        return sorted(f["why"] for f in test_buckfiles.read_json(self.tmp / "out.json")["findings"])
+
+    def test_a_session_of_a_probe_of_the_same_file_is_clean(self):
+        self.assertEqual(self.check({"BUCK": C_LOAD + SESSION_LOAD + MODEL + PROBE + SESSION}, 0), [])
+        self.setUp()
+        files = SESSION.replace('"session.in"', '"tests/a-1.in"').replace('"session.out"', '"tests/sub/a_1.out"')
+        self.assertEqual(self.check({"BUCK": C_LOAD + SESSION_LOAD + MODEL + PROBE + files}, 0), [])
+
+    def test_the_session_macro_is_loaded_only_from_the_ui_file(self):
+        self.bad('load("@gate//rules:c.bzl", "c_ui_probe_session")\n' + SESSION, "bad-load", "bad-argument")
+        self.setUp()
+        self.bad('load("@gate//rules:ui.bzl", "c_ui_probe_sessions")\n', "bad-load")
+
+    def test_the_probe_must_be_a_c_ui_probe_of_the_same_build_file(self):
+        head = C_LOAD + SESSION_LOAD + MODEL
+        for probe, why in ((":model", "probe"), (":nope", "probe"), (":probe_facts", "probe"), (":probe__ui_probe", "value"),
+                           ("//x:probe", "value"), ("probe", "value"), (":", "value"), ("root//x:probe", "value")):
+            with self.subTest(probe=probe):
+                self.setUp()
+                self.assertEqual(self.why(head + PROBE + SESSION.replace('":probe"', '"%s"' % probe)), [why])
+        self.setUp()   # a probe of another BUCK file is refused, even of the same name
+        files = {"a/BUCK": C_LOAD + SESSION_LOAD + MODEL + PROBE, "BUCK": SESSION_LOAD + SESSION}
+        self.assertEqual(self.check(files, 1), ["bad-argument"])
+
+    def test_the_files_are_plain_relative_files_of_the_package_and_two_of_them(self):
+        head = C_LOAD + SESSION_LOAD + MODEL + PROBE
+        for value in ("", "/abs.in", "../x.in", "a/../x.in", "./x.in", "a//x.in", "x.in/", ":x", "//p:x", "@c//p:x",
+                      "*.in", "a\\\\x.in", ".hidden", "a/.", "a/..", "x y.in"):
+            with self.subTest(value=value):
+                self.setUp()
+                self.assertEqual(self.why(head + SESSION.replace('"session.in"', '"%s"' % value)), ["value"])
+                self.setUp()
+                self.assertEqual(self.why(head + SESSION.replace('"session.out"', '"%s"' % value)), ["value"])
+        self.setUp()
+        self.assertEqual(self.why(head + SESSION.replace('"session.out"', '"session.in"')), ["file"])
+        for value in ('["session.in"]', "glob([\"*.in\"])", '"a" + "b"', "1", "None"):
+            with self.subTest(value=value):
+                self.setUp()
+                self.assertEqual(self.why(head + SESSION.replace('"session.in"', value)), ["value"])
+
+    def test_exactly_its_keywords(self):
+        head = C_LOAD + SESSION_LOAD + MODEL + PROBE
+        for extra in ('deps = [":model"]', 'visibility = ["PUBLIC"]', 'srcs = ["a.c"]', 'model = ":model"', 'timeout = 1',
+                      'env = {"A": "1"}', 'args = ["-x"]', 'runner = "r.py"'):
+            with self.subTest(extra=extra):
+                self.setUp()
+                self.assertEqual(self.why(head + SESSION.replace(")\n", ", %s)\n" % extra)), ["keyword"])
+        for gone in ('probe = ":probe", ', 'session = "session.in", ', ', expected = "session.out"', 'name = "s", '):
+            with self.subTest(gone=gone):
+                self.setUp()
+                self.assertEqual(self.why(head + SESSION.replace(gone, "")), ["missing"])
+        self.setUp()
+        self.assertEqual(self.why(head + 'c_ui_probe_session("s", ":probe", "session.in", "session.out")\n'),
+                         ["missing", "positional"])
+        self.setUp()
+        self.assertEqual(self.why(head + 'c_ui_probe_session(**{"name": "s"})\n'), ["keyword", "missing"])
+
+    def test_nothing_may_depend_on_a_session_or_the_probe_mark(self):
+        head = C_LOAD + SESSION_LOAD + MODEL + PROBE + SESSION
+        for dep in (":s", ":s_results", ":probe__ui_probe"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                self.assertEqual(self.why(head + 'c_library(name = "x", deps = ["%s"])\n' % dep), ["test-target"])
