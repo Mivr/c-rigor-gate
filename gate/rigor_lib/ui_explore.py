@@ -80,6 +80,9 @@ def add_parser(subparsers):
     parser.add_argument("--boot-seeds", choices=("catalogue",),
                         help="sweep, bfs, walk: run once per seed of the catalogue's [boot] instead of --seed (U05e)")
     parser.add_argument("--prefix", help="bfs: start after the words of the catalogue's [[prefix]] row of this name")
+    parser.add_argument("--strict-paths", action="store_true",
+                        help="a scene word that names no point of its state is an error, not info (U05e: replaying "
+                             "a finding's paths.json to its id)")
     parser.add_argument("--deadline-ms", type=_uint, default=10000, help="deadline of every probe reply (10000)")
     parser.add_argument("--budget-s", type=_uint, default=1800, help="wall-clock budget of the whole run (1800)")
     parser.add_argument("--require", type=_list(r"C[0-9]{1,2}"), help="criteria that must be evaluated, e.g. C1,C8")
@@ -218,10 +221,30 @@ def _seeds(args, explorer, paths, catalogue, prefix):
     for seed in catalogue.boot_seeds:
         detail, found = _strategy(args, explorer, paths, seed, prefix)
         details.append(dict(detail, seed=seed))
-        extra.extend(found)
+        extra.extend((seed, item) for item in found)
         if detail.get("budget_cut"):
-            return {"boot_seeds": details, "budget_cut": True}, extra
-    return {"boot_seeds": details}, extra
+            return {"boot_seeds": details, "budget_cut": True}, _merge_bounds(extra)
+    return {"boot_seeds": details}, _merge_bounds(extra)
+
+
+def _merge_bounds(seeded):
+    """The findings of every seed; the bfs bound findings of several seeds share one id, so they become one, whose
+    `reasons` hold every seed's and whose `per_seed` keeps each (a later seed's budget cut never hides an earlier
+    seed's `state-bound`). The first seed's state and path are kept."""
+    out, bounds = [], {}
+    for seed, item in seeded:
+        if item["check"] != "depth-unsaturated":
+            out.append(item)
+            continue
+        part = dict(item["observed"], seed=seed)
+        if item["id"] not in bounds:
+            bounds[item["id"]] = dict(item, observed=dict(item["observed"], per_seed=[]))
+            out.append(bounds[item["id"]])
+        merged = bounds[item["id"]]["observed"]
+        merged["per_seed"].append({k: part[k] for k in ("seed", "reasons", "states_per_depth", "dropped_states")})
+        merged["reasons"] = [r for r in ("last-depth-adds-states", "state-bound", "budget")
+                             if any(r in p["reasons"] for p in merged["per_seed"])]
+    return out
 
 
 def _prefix(args, catalogue, caps):
@@ -269,6 +292,8 @@ def _launch(args, config, contract, judges, paths, word):
         strategies.check_cost(catalogue, args, paths, caps, prefix)
         config = _config(config.probe, config.deadline_s, catalogue, config.budget, caps, _identity(judges, caps),
                          _scene(catalogue, contract))
+        if config.scene is not None:
+            config.scene.config = config        # the sibling replays of the layer policy run with this config
     return config, caps, greeting, prefix
 
 
@@ -304,16 +329,30 @@ def explore(args):
                 evaluated.append(criterion)
         if judges is not None:
             extra.extend(judges.finish(word, explorer.ink.capped if explorer.ink else ()))
+    extra.extend(_scene_run(args, explorer, catalogue, word, spent))
     extra.extend(not_evaluated(c, explorer.exploration) for c in (args.require or ()) if c not in evaluated)
     if explorer.taps == "indev" and "pointer" not in (caps or ()):
         extra.append(make("taps-injected", ["taps-injected", catalogue.sha256], None, [word],
                           {"taps": "indev", "pointer": False}))
     found = _dedupe(explorer.all_findings() + extra)
+    for item in found:          # U05e: a replay that must reproduce its paths word for word (`--strict-paths`)
+        if args.strict_paths and item["check"] == "scene-word-unbound":
+            item["severity"] = "error"
     if args.evidence:
         _evidence(found, args.evidence, criteria)
     for item in found:
         item.pop(PRIVATE, None)
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
+
+
+def _scene_run(args, explorer, catalogue, word, spent):
+    """U05e: a scene-scoped bfs that completed without sending one scene tap is `scene-taps-vacuous` (error): its taps
+    went missing, not its controls (walk, replay and sweep derive no scene taps by design)."""
+    scene = explorer.config.scene
+    if scene is None or not scene.scoped or spent or args.strategy != "bfs" or explorer.scene_sent:
+        return []
+    return [make("scene-taps-vacuous", ["scene-taps-vacuous", catalogue.sha256], None, [word],
+                 {"sent": 0, "unbound": explorer.scene_unbound})]
 
 
 def _scene(catalogue, contract):
@@ -378,6 +417,8 @@ def _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, foun
             "domain_count": exploration.domain_count, "domain_visited": sorted(exploration.domain_visited),
             "events": events, "outcomes": exploration.outcomes, "taps": explorer.taps,
             "cost": {"probe_commands": explorer.commands, "virtual_ms": explorer.virtual_ms},
+            **({"scene_taps": {"sent": explorer.scene_sent, "unbound": explorer.scene_unbound}}
+               if explorer.config.scene is not None else {}),
             "findings": _counts(found, explorer.config.scene is not None),
             "detail": detail}
 

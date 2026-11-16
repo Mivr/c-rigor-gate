@@ -462,9 +462,9 @@ build_out canary_san "$SAN" "//selftest/ui_canary_product:probe"
 python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" "$probe_ptr_rel" "$probe_ptr_san" "$canary_rel" "$canary_san" <<'PY' || fail "$CUR: probe processes left behind"
 import os, sys, time
 root, binaries = sys.argv[1], {os.path.realpath(os.path.join(sys.argv[1], b)) for b in sys.argv[2:]}
-stub = os.path.join(root, "gate/tests/data/ui_explore/stub_probe.py").encode()
+stubs = [os.path.join(root, "gate/tests/data/ui_explore/%s.py" % name).encode() for name in ("stub_probe", "stub_scene")]
 def live():
-    """Live processes running one of the probe binaries (by /proc/<pid>/exe) or the unit tests' stub probe."""
+    """Live processes running one of the probe binaries (by /proc/<pid>/exe) or one of the unit tests' stub probes."""
     out = []
     for pid in filter(str.isdigit, os.listdir("/proc")):
         try:
@@ -473,7 +473,7 @@ def live():
             exe = os.path.realpath("/proc/%s/exe" % pid)
         except OSError:
             continue
-        if state != "Z" and (exe in binaries or any(stub in part for part in cmd)):
+        if state != "Z" and (exe in binaries or any(stub in part for part in cmd for stub in stubs)):
             out.append(pid)
     return out
 end = time.monotonic() + 5

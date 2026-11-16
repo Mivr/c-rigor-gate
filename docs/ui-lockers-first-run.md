@@ -345,7 +345,12 @@ and the report through the pad.
 
 ## The first run's finding classes, in the second run
 
-| First run class (Triage above) | Second run |
+**Every classification below and in the ui-render triage is the U05e lane's reading, pending the owner's**: "true",
+"product defect" and "gate false positive" are proposals made from the findings and their records, not decisions.
+The table and the bfs counts are of the run at commit `1d21286`, before fix-up 2 (whose `layer_left` rule now also
+judges a covering control's change and a dismiss part by part).
+
+| First run class (Triage above) | Second run (the lane's reading) |
 |---|---|
 | `occluded-target` `layer-unreachable` on the banner scrims | **still there, true**: 296 (self-test) in every Welcome/pad state of the bfs (12) |
 | `intent-missed` on `banner-*-scrim` (u1) | **still there, true**: `banner-selftest-scrim` (7 states), and now ALSO through the scene taps: `tap@296#0`, `tap@296#1` are `intent-missed` and `tap-misrouted` (14 + 14: the scrim's own points press its card, same rect) - the same known defect seen at the rendered input |
@@ -375,9 +380,9 @@ view domain is still missing (sweep refuses), so the fault screens are reached b
 
 `ui-render` (U07) ran on every first visit of a state (ink, then frame again). In the bfs it gave only its two
 `contract-pending` (the run was cut, so no end-of-run findings); the walks and the replay give the rest. Classified
-without fixing anything:
+without fixing anything; the classes are the lane's proposals for the owner:
 
-| ui-render finding | Where | Class |
+| ui-render finding | Where | Proposed class (pending the owner) |
 |---|---|---|
 | `invisible-node` `covered` on BG 11 / EN 12 (by the codes-stale banner card 289, the self-test card 297), on the Welcome headline 3 (by the audit card 265, the sync card 273) and on the report countdown 6 (by 273) | walks: states with two or three persistent banners | **true defect**: the persistent banners are drawn over the screen's own controls and texts (the cause of the first run's stacked-banner `overlay-policy`), now seen in the ink |
 | `invisible-node` `text` on BG 11 / EN 12 | walk: Choose size under the audit and sync banners (`... one-tick > digit-7 > wedge-visitor`) | **true defect**, the same cause: the label `EN` (675,110 33x27) has no ink pixel in the frame, the banner stack is painted over it |
@@ -387,8 +392,8 @@ without fixing anything:
 | `ink-plan-capped` (info) | boot-seed walk | **a fact of the run**: one state had more frame checksums than the ink plan inks (4) |
 
 `flag-mismatch`, `align-mismatch`, `line-height-mismatch` and `ink-unmeasurable` were examined (`checks-examined`: e.g.
-51, 23, 23 and 10 in one state of the replay) and found nothing. No ui-render finding was classified a gate false
-positive.
+51, 23, 23 and 10 in one state of the replay) and found nothing. The lane classified no ui-render finding as a gate
+false positive.
 
 ## Re-running the second run
 
@@ -410,7 +415,9 @@ gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers
   --paths second.json --budget-s 600 --out OUT --summary SUM \
   --judges ui-scene,ui-fit,ui-render --contract products/business-apps/ui/lockers.toml --today 2026-11-16
 # exit 1; 33 findings, no ui-explore error (paths 1-3: the rejection dialog's inert pad, `layer inert`, `layer covered`;
-# path 4: `tap dismissed`; paths 5, 6: the valid codes through the pad):
+# path 4: `tap dismissed`; paths 5, 6: the valid codes through the pad). Since fix-up 2 paths 3 and 4 are judged by a
+# sibling replay (the dismiss is more than the layer leaving: `dismiss` and `notice_cleared` in the trace; the sibling
+# applies the catalogue's notice-dismiss / notice-scrim from the same state and matches): the ids are unchanged.
 # ui-explore.key-too-coarse/75b3512d986f, ui-explore.key-too-coarse/7cff7b31c6af, ui-fit.checks-examined/4e0d1448cc93,
 # ui-fit.text-clipped/971c4b3a0575, ui-fit.text-overflow/6117603b8ff9, ui-render.check-vacuous/56bd3907d221,
 # ui-render.checks-examined/c50bebeacf21, ui-render.contract-pending/0249d3836b00,

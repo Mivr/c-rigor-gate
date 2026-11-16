@@ -77,6 +77,16 @@ def taps(raw):
     return Taps(scope, cap, grid, node)
 
 
+SCENE_CAPS = ("frame-facts", "hit-test", "tap")      # what scene-scoped taps read and send
+
+
+def check_scene_requires(spec, requires):
+    """`taps` scope scene derives its taps from the frame facts and sends them with hit-test and tap: the catalogue
+    must require all three, so a probe without them is refused (exit 2) instead of a run with no scene tap."""
+    if spec is not None and spec.scope == "scene" and not set(SCENE_CAPS) <= set(requires):
+        _fail("taps", "scope \"scene\" needs `requires` to name %s" % ", ".join(SCENE_CAPS))
+
+
 def boot(raw):
     """The boot seeds of `[boot]` (distinct uint64 in file order), or () without one."""
     if raw is None:
@@ -84,7 +94,8 @@ def boot(raw):
     _keys("boot", raw, ("seeds", "provenance"))
     ui_contract.check_provenance("boot.provenance", raw["provenance"])
     seeds = raw["seeds"]
-    if type(seeds) is not list or not 1 <= len(seeds) <= 256 or len(set(seeds)) != len(seeds):
+    if type(seeds) is not list or any(type(seed) is not int for seed in seeds) or not 1 <= len(seeds) <= 256 \
+            or len(set(seeds)) != len(seeds):
         _fail("boot.seeds", "must be 1 to 256 distinct integers")
     return tuple(_int("boot.seeds", seed, 0, 2**63 - 1) for seed in seeds)
 

@@ -13,6 +13,7 @@ from rigor_lib.ui_explore_judges import (CoarseTable, ambient_judge, layer_judge
                                          run_twice_judge, starvation_judge, state_of, unreachable_judge)
 from rigor_lib.ui_explore_probe import ORIGIN_MAX_MS, TAP_CAPS, BudgetSpent
 from rigor_lib.ui_explore_run import InkPlan, run_twice
+from rigor_lib.ui_explore_scene import is_scene_word
 
 STRATEGIES = ("sweep", "bfs", "walk", "replay")
 REQUIRED = {"sweep": ("C1",), "bfs": ("C8",), "walk": ()}   # replay: the criteria of its paths file
@@ -46,6 +47,7 @@ class Explorer:
         self.findings = []
         self.runs = self.commands = self.virtual_ms = 0
         self.taps = None    # the `taps` frame fact of the first frame of the first run (U05c): entry, indev or probe
+        self.scene_sent = self.scene_unbound = 0     # U05e: scene tap words sent, and those that named no point
 
     def run(self, words, settle=True, explore=True):
         """Run `words` twice; returns the steps of the first run."""
@@ -67,6 +69,10 @@ class Explorer:
             self.exploration.domain_count = first.steps[0].obs["domain"]
         if explore:
             self.exploration.record(words, first.steps)
+        if self.config.scene is not None:
+            scene = [s for s in first.steps[:len(words)] if is_scene_word(s.word)]
+            self.scene_unbound += sum(1 for s in scene if "unbound" in s.outcome)
+            self.scene_sent += sum(1 for s in scene if "unbound" not in s.outcome and s.applies)
         return first.steps
 
     def state_words(self, step, path):
@@ -75,8 +81,13 @@ class Explorer:
         scene = self.config.scene
         if scene is None or not scene.scoped:
             return []
-        words, capped = scene.state_words(step)
-        catalogue = self.config.catalogue
+        found, catalogue = scene.state_words(step), self.config.catalogue
+        if found is None:     # never an empty word list in silence: the state's taps could not be derived
+            self.findings.append(make("scene-unreadable", ["scene-unreadable", step.key],
+                                      state_of(step.key, step.proj, catalogue.key, step.origin), list(path),
+                                      {"reason": "the frame facts are not a tree"}))
+            return []
+        words, capped = found
         for cls, count in capped:
             self.findings.append(make("taps-capped", ["taps-capped", step.key, cls],
                                       state_of(step.key, step.proj, catalogue.key, step.origin), list(path),

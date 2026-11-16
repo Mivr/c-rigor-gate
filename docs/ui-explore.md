@@ -44,6 +44,7 @@ rigor ui-explore --probe BIN --catalogue FILE.events.toml --strategy sweep|bfs|w
   replay: --paths FILE (ui-explore-paths/1)
   sweep, bfs, walk: --boot-seeds catalogue in place of --seed (U05e: once per seed of the catalogue's [boot])
   bfs: --prefix NAME (U05e: start after the words of the catalogue's [[prefix]] row NAME)
+  --strict-paths (U05e: a scene word that names no point of its state is an error, not info)
 ```
 
 Exit 0: no finding of severity error. 1: at least one. 2: the gate could not decide. That covers:
@@ -302,10 +303,13 @@ contract's forms is exit 2); a catalogue without them loads and runs exactly as 
   `scene`) caps each class per state; `grid_pct` (1 to 9 increasing integers 0..100, only with `scene`) is the probe grid
   without `--contract` (with one, its `probe_grid_pct` is used); `intent_node` (`"key"` or `"intent"`, optional) says how
   a u1 intent names its scene node (its node key, or its `intent:arg`), which puts u1, u5 and pad-enter inputs under the
-  layer policy ("Taps under a layer");
+  layer policy ("Taps under a layer"). Scope `scene` needs `requires` to name `frame-facts`, `hit-test` and `tap` (exit
+  2 otherwise), so a probe that cannot give the frame facts or take the taps is refused, never run without scene taps;
 - `[boot]` with `seeds` (1 to 256 distinct integers) and `provenance`: the seeds `--boot-seeds catalogue` runs the
   strategy with, once each, in file order, into one exploration; the findings merge by id (a finding's id does not
-  depend on the seed it was found with) and `detail.boot_seeds` lists each seed's detail;
+  depend on the seed it was found with) and `detail.boot_seeds` lists each seed's detail. The bfs bound finding of
+  several seeds shares one id: it becomes one finding whose `reasons` hold every seed's and whose `per_seed` keeps each
+  seed's reasons and depths, so a later seed's budget cut never hides an earlier seed's `state-bound`;
 - `[[prefix]]` rows with `name`, `words` (1 to 256 path words, no `open`) and `provenance`: `--prefix NAME` makes a bfs
   start from the state after `open` and those words, so its bound is spent on UI states; the prefix is in every path.
 
@@ -436,8 +440,10 @@ state's scene and rendered tree (the observation of the step before the tap, rea
 association, docs/ui-judges.md):
 - u2 `tap@<key>#<i>`: for every enabled interactive scene node (an intent, enabled, neither `I` nor `D`) associated with
   a shown rendered node, point 0 is the centre of its visible box and points 1.. the other points of the inset grid
-  (`probe_points`: x1 + floor(w x p / 100) for p in the grid and 50, the same for y), in sorted order; the node it
-  aims at is that rendered node (so `tap-misrouted` names it when another node is pressed);
+  (`probe_points`: x1 + floor(w x p / 100) for p in the grid and 50, the same for y), in sorted order, and then, when
+  the contract gives the ppi and `probe_disc_radius_mm`, the corners of the probe disc's bounding box inside the node
+  (the points R7 uses, `Probe.inert_points`); the node it aims at is that rendered node (so `tap-misrouted` names it
+  when another node is pressed);
 - u3 `blank#<i>`: the centre of every disabled button or key, one point of every shown scrim outside its card (the first
   grid point of the scrim not in the card), then the grid points of the display in no interactive node and no layer;
   duplicates dropped. Judged as every u3 tap: it must change nothing (unless a layer says otherwise, below).
@@ -446,8 +452,22 @@ Order: point index first, then scene order, so every node's centre comes before 
 the centres. Each class is capped at `max_per_state`; a state over the cap is the info finding `taps-capped` (identity:
 the state's key and the class; `observed` the class, the uncapped count and the cap). A bfs sends, in each state, the
 catalogue's sendable events and then that state's own scene words; a walk uses the catalogue's events only. A scene word
-is replayable: in a replay it is resolved in the state it is sent in, and a word that names no point there is the
-outcome `unbound` (no input is sent, no finding). Fixed u2 and u3 rows stay valid beside them.
+is replayable: in a replay it is resolved in the state it is sent in. Fixed u2 and u3 rows stay valid beside them.
+
+Never vacuous in silence (fix-up 2):
+- a state whose frame facts cannot be read as a tree gets no words and the error `scene-unreadable` (identity: the
+  state's key), never an empty list;
+- a scene-scoped bfs that completes without sending one scene tap is the error `scene-taps-vacuous` (identity: the
+  catalogue). Walks, replays and sweeps derive no scene taps by design and are not judged by it; a run the budget cut is
+  not either (nothing is reported as complete);
+- a scene word that names no point of the state it is sent in is the outcome `unbound` (no input is sent) and the
+  finding `scene-word-unbound`: info for a hand-written path, an error with `--strict-paths` (for replaying a finding's
+  `paths.json` to its id, which must not run a shorter path);
+- the summary of a run with `taps` or a contract has `scene_taps`: `sent` and `unbound`.
+
+Deviations from P004 that remain: u3 uses the contract's grid over the display (3 x 3 with the lockers grid) where
+P004 4.3 names an 8 x 6 grid; and the effect of a tap on a live control is judged "something changed", not "exactly
+that node's {intent, arg}", except under a layer (below), because the scene does not say which intent a change was.
 
 **A spent budget, by strategy** (U05e). The budget is measured wall time; the probe's commands stop at its end.
 
@@ -469,28 +489,52 @@ requires exactly the seven capabilities its probe announces, not `identity`.
 **Taps under a layer** (U05e; with `--contract` only; gate/rigor_lib/ui_explore_layers.py). The tap judges read the
 layer context the ui-scene judge reads, shared, not copied (ui_judge_context.Context: the association, every layer's
 sealed `[[input_layer]]` policy, inertness R7 through `inert_target`, the same probe points as `occluded-target`), built
-from the state before the tap. One verdict per tap, in this order:
+from the state before the tap. One verdict per tap, in this order (a layer that both blocks input below and dismisses
+on a tap outside is judged by its dismiss first: a correct dismiss there is `dismissed`, never `blocked-target-live`):
+- **dismiss**: see below;
 - **inert**: the tap's target (a u2 row's aimed node, a scene tap's node) is interactive and inert by R7 (it carries
   `I`, or a later painted capture-modal-inert layer's clickable, dimmed scrim covers all its probe points). The tap must
   have NO effect: nothing changed is `refused` (no `intent-missed`, no `tap-misrouted`); any effect is
   `blocked-target-live` (P004 3.4; `observed` the layer, the target, the changed parts). The outcome records
-  `layer inert <layer>`;
+  `layer inert <layer>`. When the tap pressed an interactive control of that modal layer's own card (its Dismiss drawn
+  over the target's point) the verdict is **covered**: the outcome records `covered by <control>`, and the tap must do
+  exactly what that control can be checked to do, its layer leaving (the rule below): then `ok`; nothing changed is
+  `intent-missed` (`observed.covered`: the control and the aimed node); anything else is `tap-misrouted` naming the
+  control, its intent, the aimed node and the parts that were not the layer leaving or its own intent's effect (the
+  sibling replay below, when the catalogue has the control's intent). Without that event, a card control that
+  legitimately does more than dismiss (a "Retry" that navigates) would be flagged;
 - **dismiss**: the point lies under a scrim (outside its card's visible box), the topmost layer there, and the sealed
-  rows of its card's role say `tap_outside_dismisses = true`. The tap must do exactly that layer's dismiss: the layer's
-  records (the scrim, its card and the scene nodes after the card inside the card's rect) leave the scene and every
-  other semantic record and the env inputs stay as they were: the outcome `dismissed` (counted as accepted). Anything
-  else (nothing, or more, or another change) is `tap-misrouted` with `observed` `expected` (the layer and its intent),
-  `pressed` and `changed`;
+  rows of its card's role say `tap_outside_dismisses = true`. The tap must do exactly that layer's dismiss: the outcome
+  `dismissed` (counted as accepted). Anything else (nothing, or more, or another change) is `tap-misrouted` with
+  `observed` `expected` (the layer and its intent), `pressed`, `changed` and `not_the_dismiss` (the parts below that
+  failed). It is judged on the full change set (the declared ambient events and countdown restart exempt), in two
+  ways. First "exactly the layer leaving" (ui_explore_layers.layer_left), part by part (below). When that fails and the
+  catalogue has the u1/u5 event that applies the layer's own intent (by `taps` `intent_node`: the scrim's key, or its
+  `intent:arg`; for `covered`, the control's), a SIBLING REPLAY decides: the path to this state and that event, in a
+  fresh probe without the layer policy (deterministic, so in both runs alike), and the tap must change exactly what
+  that event changes: semantic, env inputs, next deadline, patches and the trace records' type and time, the declared
+  ambient events set aside on both sides (the lockers adapter posts `touch` for an intent input too) and a
+  countdown-role node's restart exempt (`ui_explore_layers.like_sibling`; the outcome records `judged by sibling`). The
+  parts rule:
+  - semantic: the layer's records (the scrim, its card, the scene nodes after the card inside the card's rect) leave,
+    every other record stays byte for byte, but for the label of a node of the declared `countdown_restart_role` (the
+    tap's own restart);
+  - env inputs: unchanged;
+  - patches: each names a key of the layer, or is `update <key> text` of a countdown-role node;
+  - trace: at most one record besides the declared ambient ones (the dismiss's own event);
+  - next deadline: gone, later than before (the layer's timer cancelled), or the declared `due_restart_ms`;
 - **pass**: the point lies under such a scrim whose layer neither blocks nor dismisses, over an interactive, not inert
-  node below it. A tap that only removed the layer is `tap-swallowed-first` (`observed` the layer and the node below):
+  node below it. A tap that only removed the layer (the same parts as a dismiss) is `tap-swallowed-first` (`observed` the layer and the node below):
   the layer took the tap the control below should have had. Any other outcome is judged as without a contract.
 
 With `taps` `intent_node`, an intent input (u1, u5, and a pad macro's enter) is judged the same way against its scene
 node: inert, an `ok apply missed` is the result `inert` (counted as refused, no `intent-missed`; outcome
-`layer inert <key>`), an accepted one `blocked-target-live`. Without `--contract` none of this runs: the taps and
+`layer inert <key>`), an accepted one `blocked-target-live` (`observed.layer` null: an input has no point). With
+`"intent"`, it is excused only when EVERY scene node publishing that `intent:arg` is inert: a live control sharing the
+intent keeps the `intent-missed`. Without `--contract` none of this runs: the taps and
 inputs are judged exactly as before (the selftest's `nocontract` step and the unit tests show the same dialog taps
-`intent-missed` and `tap-misrouted` without it). The summary counts the three U05e checks only in a run with `taps` or
-a contract, so the summary of a run without them keeps its bytes.
+`intent-missed` and `tap-misrouted` without it). The summary counts the U05e checks only in a run with `taps` or a
+contract, so the summary of a run without them keeps its bytes.
 
 **The abstraction key** (P004 4.3 item 3):
 
@@ -578,6 +622,9 @@ nondeterminism, run-twice and starvation; `meta` otherwise), `severity` (`info` 
 | `blocked-target-live` | U05e, `--contract`: a tap or intent on a target inert under a modal layer (R7) had an effect | `[check, key before, word]` | `word`, `layer`, `target`, `changed` |
 | `tap-swallowed-first` | U05e, `--contract`: a tap under a pass-through layer over a control only removed the layer | `[check, key before, word]` | `word`, `layer`, `below` |
 | `taps-capped` (info) | U05e: a state had more scene taps of a class than `max_per_state` | `["taps-capped", key, class]` | `class`, `count`, `cap` |
+| `scene-unreadable` | U05e: a state of a scene-scoped run whose frame facts are not a tree (no scene taps derivable) | `["scene-unreadable", key]` | `reason` |
+| `scene-taps-vacuous` | U05e: a scene-scoped bfs that completed without sending one scene tap | `["scene-taps-vacuous", sha]` | `sent`, `unbound` |
+| `scene-word-unbound` (info; error with `--strict-paths`) | U05e: a scene word that names no point of its state | `[check, key before, word]` | `word` |
 | `key-too-coarse` | equal keys, different normalised records (every semantic field but justified ignores, plus every model and derived fact) | key | `witness_path`, `differs_in`; both records in `records.json` |
 
 **Output nobody asked for.** Timing decides whether a stray line is caught before a command or read as that command's

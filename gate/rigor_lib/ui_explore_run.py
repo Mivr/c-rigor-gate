@@ -66,6 +66,7 @@ class Step:
     restart: object = None        # a tap whose residual change was a declared countdown restart (U05d)
     blocked: object = None        # U05e: a tap on a target inert under a modal layer (R7) that had an effect
     swallowed: object = None      # U05e: a tap under a pass-through layer that only removed the layer
+    covered: object = None        # U05e: the modal layer's own control that took a tap aimed at an inert target
     image_box: object = None      # (x, y, w, h) of the evidence image of the node a tap pressed
     key: object = None
     proj: object = None
@@ -151,6 +152,8 @@ def _do_word(session, step, run, catalogue, before):
         words_mod.advance_by(session, step, session.origin + int(word.split(" ")[1]), catalogue)
     else:
         event = catalogue.by_id(word)
+        if run.scene is not None:
+            run.scene.path = list(run.words[:step.index])     # U05e: the words to this state, for a sibling replay
         if event is None:
             _scene_tap(session, step, run, catalogue, before)
         elif event.cls == "t1":

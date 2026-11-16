@@ -53,11 +53,11 @@ echo "  $(python3 -I -c 'import json,sys; print(len([w for w in json.load(open(s
 
 begin "the layer policy under --contract: inert under the modal dialog = refused (no intent-missed, no tap-misrouted); an effect there = blocked-target-live; a tap outside the snackbar = dismissed; a wrong dismiss = tap-misrouted; a tap that only removes the pass-through banner = tap-swallowed-first"
 explore dialog dialog 0 'F == [] and S["outcomes"]["tap-go"]["layer inert dscrim"] == 1' "${REPLAY[@]}" --contract "$CONTRACT"
-explore live dialoglive 1 'C == [("blocked-target-live", "tap-go"), ("blocked-target-live", "tap@go#0")]' "${REPLAY[@]}" --contract "$CONTRACT"
+explore live dialoglive 1 'C == [("blocked-target-live", "go"), ("blocked-target-live", "tap-go"), ("blocked-target-live", "tap@go#0")]' "${REPLAY[@]}" --contract "$CONTRACT"
 explore snack snack 0 'F == [] and S["outcomes"]["blank-right"]["tap dismissed"] == 1' "${REPLAY[@]}" --contract "$CONTRACT"
 explore bad snackbad 1 'C == [("tap-misrouted", "blank-right"), ("tap-misrouted", "tap-go"), ("tap-misrouted", "tap@go#0")]' "${REPLAY[@]}" --contract "$CONTRACT"
 explore banner banner 1 'C == [("noop-tap-effect", "blank-right"), ("tap-swallowed-first", "tap-go"), ("tap-swallowed-first", "tap@go#0")]' "${REPLAY[@]}" --contract "$CONTRACT"
-echo "  dialog: no finding; dialoglive: 2 blocked-target-live; snack: dismissed; snackbad: 3 tap-misrouted; banner: 2 tap-swallowed-first"
+echo "  dialog: no finding; dialoglive: 3 blocked-target-live (two taps, one u1); snack: dismissed; snackbad: 3 tap-misrouted; banner: 2 tap-swallowed-first"
 
 begin "without --contract the same dialog taps are judged as before: intent-missed and tap-misrouted"
 explore nocontract dialog 1 'C == [("intent-missed", "go"), ("intent-missed", "tap-go"), ("intent-missed", "tap@go#0"), ("tap-misrouted", "tap-go"), ("tap-misrouted", "tap@go#0")]' "${REPLAY[@]}"
@@ -78,5 +78,5 @@ printf '{"schema": "ui-explore-paths/1", "criteria": [], "paths": [["open 1000 7
 rc=$?
 [ "$rc" = 2 ] && grep -q "one path of this run could take" "$out/refused.txt" || fail "$CUR: wanted exit 2 and the refusal, got $rc" "$out/refused.txt"
 explore cut slow 1 '[f["observed"]["reasons"] for f in F if f["check"] == "depth-unsaturated"] == [["budget"]] and S["budget_spent"] and S["evaluated"] == []' \
-  --strategy bfs --origin-ms 1000 --seed 7 --depth 3 --max-states 50 --budget-s 3
+  --strategy bfs --origin-ms 1000 --seed 7 --depth 3 --max-states 50 --budget-s 8
 echo "  refused: $(grep -o 'one path of this run could take [0-9]* ms' "$out/refused.txt"); the budget cut: depth-unsaturated [budget]"

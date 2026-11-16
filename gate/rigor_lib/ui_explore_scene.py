@@ -25,7 +25,7 @@ from rigor_lib.ui_explore_catalogue import Event
 from rigor_lib import ui_explore_layers as layers
 from rigor_lib.ui_explore_grammar import FRAME_FIELDS, parse_record, parse_typed_line
 from rigor_lib.ui_explore_words import snapshot_of
-from rigor_lib.ui_judge_geom import centre, probe_points
+from rigor_lib.ui_judge_geom import Probe, centre, probe_points
 
 TAP_WORD = re.compile(r"tap@([^\t]{1,1024})#(0|[1-9][0-9]{0,3})")
 BLANK_WORD = re.compile(r"blank#(0|[1-9][0-9]{0,3})")
@@ -62,8 +62,9 @@ class View:
         return self.frame.visible_box(index)
 
 
-def u2_points(view, grid):
-    """[(word, (x, y), rendered index)] of the state's u2 scene taps."""
+def u2_points(view, grid, radius=None):
+    """[(word, (x, y), rendered index)] of the state's u2 scene taps: per node its centre, the grid, then (with the
+    contract's ppi and disc radius) the disc points of P004 3.10 that the R7 check uses (Probe.inert_points)."""
     per_node = []
     for node in view.scene:
         box = view.box(node) if node.interactive else None
@@ -71,6 +72,7 @@ def u2_points(view, grid):
             continue
         mid = centre(box)
         points = [mid] + [p for p in probe_points(box, grid) if p != mid]
+        points += [p for p in Probe(box, grid, radius).inert_points() if p not in points]
         per_node.append([("tap@%s#%d" % (node.key, i), p, view.assoc.match[node.key]) for i, p in enumerate(points)])
     # point i of every node before point i + 1 of any: a cap keeps every node's centre first
     return [items[i] for i in range(max((len(x) for x in per_node), default=0)) for items in per_node if i < len(items)]
@@ -108,35 +110,51 @@ class Scene:
 
     def __init__(self, catalogue, contract):
         self.catalogue, self.contract, self.spec = catalogue, contract, catalogue.taps
+        self.judging, self.config, self.path = True, None, None    # the sibling replay's (sibling below)
         self.grid = self.spec.grid_pct if self.spec is not None else None
+        self.radius = None
         if contract is not None:
             try:
                 self.grid = tuple(contract.get("thresholds", "probe_grid_pct"))
             except ContractPending:
                 pass
+            try:
+                self.radius = contract.mm_to_px(contract.get("thresholds", "probe_disc_radius_mm"))
+            except ContractPending:
+                self.radius = None
 
     @property
     def scoped(self):
         return self.spec is not None and self.spec.scope == "scene"
 
     def points(self, snapshot):
-        """(u2 points, u3 points, the uncapped counts) of the state of a snapshot; ([], [], (0, 0)) when unread."""
-        view = View(snapshot, self.contract)
-        if not self.scoped or not view.ok:
+        """(u2 points, u3 points, the uncapped counts) of the state of a snapshot; ([], [], (0, 0)) without scene
+        scope; None when the state's frame facts cannot be read as a tree (an error finding, never an empty list)."""
+        if not self.scoped:
             return [], [], (0, 0)
-        u2, u3 = u2_points(view, self.grid), u3_points(view, self.grid)
+        view = View(snapshot, self.contract)
+        if not view.ok:
+            return None
+        u2, u3 = u2_points(view, self.grid, self.radius), u3_points(view, self.grid)
         cap = self.spec.max_per_state
         return u2[:cap], u3[:cap], (len(u2), len(u3))
 
     def state_words(self, step):
-        """(the words of a step's state, [(class, uncapped count)] of each class the cap cut)."""
-        u2, u3, counts = self.points(snapshot_of(step.obs))
+        """(the words of a step's state, [(class, uncapped count)] of each class the cap cut), or None when the state
+        cannot be read."""
+        found = self.points(snapshot_of(step.obs))
+        if found is None:
+            return None
+        u2, u3, counts = found
         capped = [(cls, count) for cls, count in zip(("u2", "u3"), counts) if count > self.spec.max_per_state]
         return [word for word, _, _ in u2 + u3], capped
 
     def resolve(self, word, snapshot):
         """(the tap Event of a scene word in the state of `snapshot`, the rendered index it aims at), or None."""
-        u2, u3, _ = self.points(snapshot)
+        found = self.points(snapshot)
+        if found is None:
+            return None
+        u2, u3, _ = found
         for cls, items in (("u2", u2), ("u3", u3)):
             for name, (x, y), aim in items:
                 if name == word:
@@ -148,7 +166,7 @@ class Scene:
         node is inert under R7 in the state before expects no effect: `missed` becomes `inert` (no intent-missed), an
         accepted one is `blocked-target-live`."""
         named = self.spec.intent_node if self.spec is not None else None
-        if self.contract is None or named is None or step.result not in ("ok", "missed"):
+        if self.contract is None or not self.judging or named is None or step.result not in ("ok", "missed"):
             return
         intent, arg = (event.get("intent"), event.get("arg")) if event.cls in ("u1", "u5") else \
             (event.get("enter_intent"), 0) if event.cls == "u4" and event.get("via") == "pad" else (None, None)
@@ -156,16 +174,55 @@ class Scene:
         if ctx is None:
             return
         want = str(intent) if named == "key" else "%d:%d" % (intent, arg)
-        node = next((n for n in ctx.scene if (n.key if named == "key" else n.intent) == want), None)
-        index = ctx.assoc.match.get(node.key) if node is not None else None
-        try:
-            inert = index is not None and node.interactive and ctx.inert_target(node, index)
+        nodes = [n for n in ctx.scene if (n.key if named == "key" else n.intent) == want]
+        try:   # excused only when EVERY node the intent names is inert: a live one sharing it keeps intent-missed
+            inert = bool(nodes) and all(n.key in ctx.assoc.match and n.interactive
+                                        and ctx.inert_target(n, ctx.assoc.match[n.key]) for n in nodes)
         except ContractPending:
             inert = False
         if not inert:
             return
+        node = nodes[0]
         step.outcome.append("layer inert %s" % node.key)
         if step.result == "missed":
             step.applies[-1] = "inert"
         else:
             step.blocked = {"layer": None, "target": node.key, "changed": ["intent"]}
+
+    def intent_event(self, key, intent):
+        """The id of the catalogue's u1 or u5 event that applies a scene node's intent, by `intent_node`, or None."""
+        named = self.spec.intent_node if self.spec is not None else None
+        for event in self.catalogue.events:
+            if event.cls not in ("u1", "u5") or named is None:
+                continue
+            if (named == "key" and str(event.get("intent")) == key and event.get("arg") == 0) or \
+                    (named == "intent" and "%d:%d" % (event.get("intent"), event.get("arg")) == intent):
+                return event.id
+        return None
+
+    def sibling(self, verdict):
+        """What applying the layer's own intent (a dismiss's scrim, a covering control) from the same state does: the
+        path to this state and that intent's catalogue event, run in a fresh probe without the layer policy (so no
+        sibling nests); the step's semantic, env, due, patches and trace, or None when the catalogue has no event for
+        the intent, or the sibling run failed."""
+        from dataclasses import replace
+        from rigor_lib.ui_explore_run import execute
+        key = verdict.target if verdict.kind == "covered" else verdict.layer
+        event = self.intent_event(key, verdict.intent)
+        if event is None or self.config is None or not self.path:
+            return None
+        plain = Scene(self.catalogue, self.contract)
+        plain.judging = False
+        run = execute(replace(self.config, scene=plain, identity=False), self.path + [event])
+        last = run.steps[-1] if run.steps else None
+        if run.error is not None or last is None or last.word != event or last.key is None:
+            return None
+        obs, trace, seen = last.obs, [], set()
+        for record in obs["trace"]:     # an input through the product's pointer entry posts its ambient events too:
+            kind = record.fields[1]     # the first of each declared type is set aside, as on the tap
+            if kind in self.catalogue.ambient and kind not in seen:
+                seen.add(kind)
+                continue
+            trace.append((kind, record.fields[2]))
+        return {"semantic": [r.raw for r in obs["semantic"]], "env": [list(i) for i in obs["env"]], "due": obs["due"],
+                "patches": [r.raw for r in obs["patches"]], "trace": trace}

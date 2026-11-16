@@ -400,6 +400,7 @@ def loads(data):
                         "exercises nothing)")
     requires = _requires(document.get("requires"))
     ambient, restart, countdown = _ambient(document.get("ambient"), requires)
+    ext.check_scene_requires(ext.taps(document.get("taps")), requires)
     return Catalogue(_str("product", document["product"], _NAME), _str("app", document["app"], _NAME),
                      _int("version", document["version"], 1, 2**31 - 1), max_wait, drain, firings, window,
                      _key(document["key"]),

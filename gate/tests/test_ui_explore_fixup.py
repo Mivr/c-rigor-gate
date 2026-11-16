@@ -56,7 +56,7 @@ class IdentityTest(SceneCase):
 class BudgetCutTest(SceneCase):
     def test_a_cut_bfs_runs_no_end_of_run_judge(self):
         _, found, summary = self.run_scene("slow", "--strategy", "bfs", "--origin-ms", "1000", "--seed", "7",
-                                           "--depth", "3", "--max-states", "50", "--budget-s", "4",
+                                           "--depth", "3", "--max-states", "50", "--budget-s", "8",
                                            "--judges", "ui-scene", *ARGS, code=1)
         checks = {item["check"] for item in found}
         self.assertIn("depth-unsaturated", checks)
@@ -89,20 +89,26 @@ class SignalTest(SceneCase):
         self.assertIsNotNone(session._proc.returncode)
 
     def test_sigterm_during_a_run_exits_128_plus_15_and_leaves_no_probe(self):
-        argv = [sys.executable, "-I", "-B", str(RIGOR), "ui-explore", "--probe", str(scene_stub(self.tmp, "slow")),
-                "--catalogue", str(h.REPO / "gate/tests/data/ui_explore/scene.events.toml"), "--out",
-                str(self.tmp / "f.json"), "--strategy", "bfs", "--origin-ms", "1000", "--seed", "7", "--depth", "3",
-                "--max-states", "50", "--budget-s", "120"]
+        """The signal goes only once the run is observably underway (the stub's first `open` made its marker), at
+        three offsets after that; a stub of an earlier round is gone before the next starts."""
         for delay in (0.0, 0.5, 1.3):
             with self.subTest(delay=delay):
+                h.assert_no_stubs()
+                ready = self.tmp / ("ready-%s" % delay)
+                argv = [sys.executable, "-I", "-B", str(RIGOR), "ui-explore", "--probe",
+                        str(scene_stub(self.tmp, "slow", ready)), "--catalogue",
+                        str(h.REPO / "gate/tests/data/ui_explore/scene.events.toml"), "--out", str(self.tmp / "f.json"),
+                        "--strategy", "bfs", "--origin-ms", "1000", "--seed", "7", "--depth", "3", "--max-states",
+                        "50", "--budget-s", "120"]
                 proc = subprocess.Popen(argv, env=base_env(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                end = time.monotonic() + 15
-                while not h.live_stubs() and time.monotonic() < end:     # the handler is in place once a probe runs
+                end = time.monotonic() + 60
+                while not ready.exists() and proc.poll() is None and time.monotonic() < end:
                     time.sleep(0.02)
+                self.assertTrue(ready.exists(), "the run never opened a probe")
                 time.sleep(delay)
                 for _ in range(3):                       # repeated signals land in other places of the run
                     proc.send_signal(signal.SIGTERM)
                     time.sleep(0.05)
-                self.assertEqual(proc.wait(timeout=20), 128 + signal.SIGTERM)
+                self.assertEqual(proc.wait(timeout=30), 128 + signal.SIGTERM)
                 self.assertFalse((self.tmp / "f.json").exists())
         h.assert_no_stubs()

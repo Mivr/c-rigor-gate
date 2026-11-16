@@ -34,6 +34,7 @@ class Verdict:
     target: object     # the aimed scene node's key (inert), the node below (pass), or None
     intent: object     # the layer's dismiss intent (`intent:arg`, `-` when the scrim has none)
     removed: tuple     # the raw semantic records of the layer: the scrim, its card and the nodes inside the card
+    aimed: object = None   # covered: the key of the inert node the tap aimed at
 
 
 def context(contract, snapshot):
@@ -81,7 +82,7 @@ def _inert(ctx, aim, x, y, pressed):
     node = ctx.by_key.get(key)
     if node is None or not node.interactive or not ctx.inert_target(node, aim):
         return None
-    shields = [(n.key, parts) for n, shield, parts, policy in ctx.layers()
+    shields = [(n, parts) for n, shield, parts, policy in ctx.layers()
                if policy == "capture-modal-inert" and shield > aim and _holds(ctx, shield, x, y)]
     layer = shields[-1][0] if shields else None
     cards = [part for _, parts in shields for part in parts[1:]]
@@ -89,8 +90,8 @@ def _inert(ctx, aim, x, y, pressed):
         control = next((n for n, i in ctx.matched() if n.interactive and ctx.frame.descends(pressed, i)
                         and any(ctx.frame.descends(i, card) for card in cards)), None)
         if control is not None:      # a control of the layer's own card took the tap: it is that control's
-            return Verdict("covered", layer, control.key, None, ())
-    return Verdict("inert", layer, node.key, None, ())
+            return Verdict("covered", layer.key, control.key, control.intent, _layer_records(ctx, layer), node.key)
+    return Verdict("inert", layer.key if layer else None, node.key, None, ())
 
 
 def _below(ctx, shield, x, y):
@@ -108,18 +109,74 @@ def verdict(contract, snapshot, x, y, aim, pressed=None):
     if ctx is None:
         return None
     try:
-        found = _inert(ctx, aim, x, y, pressed)
-        if found is not None:
-            return found
         top = _top(ctx, x, y)
         if top is None or top[0].role != "scrim" or (top[2] is not None and _holds(ctx, top[2], x, y)) \
                 or ctx.card_of(top[0]) is None or ctx.card_of(top[0]).role not in CARD_ROLES:
-            return None
+            top = None
+        outside = ctx.tap_outside(top[0]) if top is not None else None
+        if outside:      # first: a layer that dismisses on a tap outside expects that, blocking or not
+            return Verdict("dismiss", top[0].key, None, top[0].intent, _layer_records(ctx, top[0]))
+        found = _inert(ctx, aim, x, y, pressed)
+        if found is not None or top is None:
+            return found
         node, shield, _card, policy = top
-        outside = ctx.tap_outside(node)
-        if outside:
-            return Verdict("dismiss", node.key, None, node.intent, _layer_records(ctx, node))
         below = _below(ctx, shield, x, y) if outside is False and policy == "pass-through" else None
         return None if below is None else Verdict("pass", node.key, below.key, node.intent, _layer_records(ctx, node))
     except ContractPending:
         return None
+
+
+def _plain(lines, role):
+    """Semantic lines with the label of every node of the declared countdown role blanked (its restart is exempt)."""
+    out = []
+    for line in lines:
+        fields = line.split("\t")
+        out.append("\t".join(fields[:2] + [""] + fields[3:]) if role is not None and fields[1] == role else line)
+    return out
+
+
+def layer_left(verdict, before, after, patches, trace, role=None, restart=None):
+    """The parts of a tap's change that are NOT exactly the layer leaving (empty: it is exactly that). Allowed, and
+    nothing else: the layer's semantic records leave and every other record stays (a node of the declared countdown
+    `role` may change its label: the tap's own restart); the env inputs stay; every new patch names a key of the layer,
+    or is an `update <key> text` of a countdown-role node; at most one trace record besides the declared ambient ones
+    (the dismiss's own); the next deadline is gone, later than before (the layer's timer cancelled) or the declared
+    restart. The explorer cannot replay the dismiss intent itself (an adapter may not take it), hence these parts."""
+    keys = {line.split("\t", 1)[0] for line in verdict.removed}
+    counts = {line.split("\t", 2)[0] for line in before["semantic"] if role is not None and line.split("\t")[1] == role}
+    rest = [line for line in before["semantic"] if line not in verdict.removed]
+    bad = []
+    if len(rest) == len(before["semantic"]) or _plain(after["semantic"], role) != _plain(rest, role):
+        bad.append("semantic")
+    if after["env"] != before["env"]:
+        bad.append("env")
+    if any(p.fields[1] not in keys and not (p.fields[0] == "update" and p.fields[2] == "text" and p.fields[1] in counts)
+           for p in patches):
+        bad.append("patches")
+    if len(trace) > 1:
+        bad.append("trace")
+    due, old = after["due"], before["due"]
+    if not (due is None or (old is not None and due >= old) or due == restart):
+        bad.append("due")
+    return bad
+
+
+def like_sibling(sibling, before, after, patches, trace, role=None, restart=None):
+    """The parts of a tap's change that differ from applying the layer's own intent from the same state (a sibling
+    replay, ui_explore_scene.Scene.sibling): semantic (a countdown-role node's label exempt), env, the next deadline (or
+    the declared restart), the patches (a countdown-role node's `update <key> text` exempt) and the trace records' type
+    and time (besides the declared ambient ones, set aside on both sides)."""
+    counts = {line.split("\t", 2)[0] for line in before["semantic"] if role is not None and line.split("\t")[1] == role}
+    own = [p.raw for p in patches if not (p.fields[0] == "update" and p.fields[2] == "text" and p.fields[1] in counts)]
+    bad = []
+    if _plain(after["semantic"], role) != _plain(sibling["semantic"], role):
+        bad.append("semantic")
+    if after["env"] != sibling["env"]:
+        bad.append("env")
+    if own != sibling["patches"]:
+        bad.append("patches")
+    if [(r.fields[1], r.fields[2]) for r in trace] != sibling["trace"]:
+        bad.append("trace")
+    if after["due"] != sibling["due"] and after["due"] != restart:
+        bad.append("due")
+    return bad

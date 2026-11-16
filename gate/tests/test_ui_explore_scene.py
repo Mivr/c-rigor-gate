@@ -27,9 +27,11 @@ def tearDownModule():
     h.assert_no_stubs()
 
 
-def scene_stub(directory, mode):
-    path = Path(directory) / ("scene-" + mode)
-    path.write_text("#!/bin/sh\nUI_STUB_OWNER=%d exec %s -I %s %s\n" % (os.getpid(), sys.executable, STUB, mode))
+def scene_stub(directory, mode, ready=None):
+    """An executable running the scene stub in `mode`; with `ready`, the stub creates that file at its first open."""
+    path = Path(directory) / ("scene-" + mode + ("-ready" if ready else ""))
+    env = "UI_STUB_OWNER=%d " % os.getpid() + ("UI_STUB_READY=%s " % ready if ready else "")
+    path.write_text("#!/bin/sh\n%sexec %s -I %s %s\n" % (env, sys.executable, STUB, mode))
     os.chmod(path, 0o755)
     return path
 
@@ -59,7 +61,7 @@ class SceneTapsTest(SceneCase):
         _, found, summary = self.run_scene("plain", "--strategy", "bfs", "--origin-ms", "1000", "--seed", "7",
                                            "--depth", "1", "--max-states", "50")
         outcomes = summary["outcomes"]
-        for word in GO_WORDS + ["tap@k1#0", "tap@k2#8", "tap@ok#4", "blank#0"]:
+        for word in GO_WORDS + ["tap@51#0", "tap@k2#8", "tap@ok#4", "blank#0"]:
             self.assertIn(word, outcomes)
         self.assertNotIn("tap@off#0", outcomes)          # disabled: no u2 point, its centre is the first u3 point
         self.assertEqual(outcomes["blank#0"], {"pressed lv_button 120,10,219,49 untargeted": 1, "tap refused": 1})
@@ -67,9 +69,14 @@ class SceneTapsTest(SceneCase):
         self.assertEqual(summary["findings"]["taps-capped"], 0)
 
     def test_scene_words_replay_and_an_unknown_point_is_unbound(self):
-        _, found, summary = self.scene_replay("plain", [[OPEN, "tap@go#4", "tap@go#9", "tap@nope#0", "blank#0"]],
-                                              code=0)
-        self.assertEqual(found, [])
+        paths = [[OPEN, "tap@go#4", "tap@go#9", "tap@nope#0", "blank#0"]]
+        _, found, summary = self.scene_replay("plain", paths, code=0)
+        # U05e fix-up 2: an unbound word is a finding (info; an error with --strict-paths), and counted
+        self.assertEqual(sorted((f["check"], f["severity"], f["path"][-1]) for f in found),
+                         [("scene-word-unbound", "info", "tap@go#9"), ("scene-word-unbound", "info", "tap@nope#0")])
+        self.assertEqual(summary["scene_taps"], {"sent": 2, "unbound": 2})
+        _, strict, _ = self.scene_replay("plain", paths, "--strict-paths", code=1)
+        self.assertEqual({f["severity"] for f in strict}, {"error"})
         self.assertEqual(summary["outcomes"]["tap@go#9"], {"unbound": 1})
         self.assertEqual(summary["outcomes"]["tap@go#4"], {"pressed lv_button 10,10,109,49 aimed": 1, "tap ok": 1})
 
@@ -82,9 +89,9 @@ class SceneTapsTest(SceneCase):
         self.assertTrue(all(item["severity"] == "info" and item["path"] == [OPEN] for item in caps))
         self.assertEqual(caps[0]["id"], h.finding_id("taps-capped", ["taps-capped", caps[0]["state"]["key"],
                                                                      caps[0]["observed"]["class"]]))
-        self.assertIn("tap@ok#0", summary["outcomes"])     # every centre first: go, k1, k2, ok, then go's point 1
+        self.assertIn("tap@ok#0", summary["outcomes"])     # every centre first: go, 51, k2, ok, then go's point 1
         self.assertIn("tap@go#1", summary["outcomes"])
-        self.assertNotIn("tap@k1#1", summary["outcomes"])
+        self.assertNotIn("tap@51#1", summary["outcomes"])
 
     def test_scene_words_need_a_scene_scoped_catalogue(self):
         fixed = self.catalogue('scope = "scene", max_per_state = 64, grid_pct = [20, 50, 80], ',
@@ -112,11 +119,14 @@ class LayerPolicyTest(SceneCase):
         # (the card itself, clickable over `k2`, is no control: a tap there stays inert and refused)
         _, found, summary = self.scene_replay("dialog", [[OPEN, "tap@ok#0"], [OPEN, "tap@k2#0"]], contract=True, code=0)
         self.assertEqual((found, summary["outcomes"]["tap@ok#0"]["layer covered dscrim"]), ([], 1))
+        self.assertEqual(summary["outcomes"]["tap@ok#0"]["covered by dclose"], 1)
         self.assertEqual(summary["outcomes"]["tap@k2#0"], {"layer inert dscrim": 1, "tap refused": 1,
                                                            "pressed lv_obj 60,60,259,179 other": 1})
         _, found, _ = self.scene_replay("dialoglive", self.PATHS, contract=True, code=1)
-        self.assertEqual(self.checks(found), [("blocked-target-live", "tap-go"), ("blocked-target-live", "tap@go#0")])
-        self.assertEqual(found[0]["observed"]["layer"], "dscrim")
+        # the u1 `go` accepted under the modal layer is blocked-target-live too (fix-up 2: dialoglive's apply is live)
+        self.assertEqual(self.checks(found), [("blocked-target-live", "go"), ("blocked-target-live", "tap-go"),
+                                              ("blocked-target-live", "tap@go#0")])
+        self.assertEqual([f["observed"]["layer"] for f in found if f["path"][-1] == "tap-go"], ["dscrim"])
 
     def test_a_tap_outside_a_dismissing_layer_expects_exactly_its_dismiss(self):
         _, found, summary = self.scene_replay("snack", self.PATHS, contract=True, code=0)
@@ -161,7 +171,7 @@ class CostTest(SceneCase):
     def test_the_budget_ends_a_bfs_cleanly_with_the_bound_finding(self):
         start = time.monotonic()
         _, found, summary = self.run_scene("slow", "--strategy", "bfs", "--origin-ms", "1000", "--seed", "7",
-                                           "--depth", "3", "--max-states", "50", "--budget-s", "3", code=1)
+                                           "--depth", "3", "--max-states", "50", "--budget-s", "8", code=1)
         self.assertLess(time.monotonic() - start, 30)
         bound = h.by_check(found, "depth-unsaturated")
         self.assertEqual(len(bound), 1)

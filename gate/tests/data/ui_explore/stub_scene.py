@@ -3,25 +3,40 @@ seeds, prefixes, the run-time budget): speaks ui-probe/1 with frame facts for a 
 vocabulary (docs/ui-judges.md), and LVGL's pointer search (the last clickable node in walk order that holds the point).
 
 The base screen: button `go` (10,10 100x40, intent 1:0) adds 1 to the count; button `off` (120,10 100x40) is disabled
-(D, no intent); text `count` shows "N=<n>"; pad keys `k1`, `k2` (10,60 / 60,60, 40x30, intents 5:0 and 5:1 when
-mapped, else 5:<digit>) type a digit, `ok` (110,60 40x30, 6:0) clears the entry and adds 10 to the count. One overlay
-per mode is shown at `open` (or after `apply 3 9 0`):
+(D, no intent); text `count` shows "N=<n>"; pad keys `51` (the key "1", so `apply 3 51 0` names it by key) and `k2`
+(10,60 / 60,60, 40x30, intents 5:0 and 5:1 when mapped, else 5:<digit>) type a digit, `ok` (110,60 40x30, 6:0)
+clears the entry and adds 10 to the count. One overlay per mode is shown at `open` (or after `apply 3 9 0`); closing
+an overlay patches `delete <its scrim key>` and posts `close` (its own button, its intent) or `dismiss` (its scrim):
 
     plain        no overlay
-    slow         no overlay; every `open` takes 0.4 s of wall time (the run-time budget)
+    slow         no overlay; every `open` takes 0.1 s of wall time (the run-time budget)
     dialog       a modal dialog: scrim 0,0 320x240 (clickable, opacity 82, no intent), card 60,60 200x120, its Close
                  button 110,60 100x30 (2:0, drawn over the key `ok`); the card is clickable (over the key `k2`); a tap
                  on the scrim or the card does nothing (correct)
-    dialoglive   as dialog, but a tap on the scrim over `go` still adds 1 (blocked-target-live)
+    dialoglive   as dialog, but a tap on the scrim over `go`, and `apply 3 1 0`, still add 1 (blocked-target-live), and
+                 its Close adds 1 as well as closing
+    dialogdup    as dialog, but its Close publishes go's intent 1:0 (a live control sharing an inert node's intent)
     snack        a snackbar: scrim 0,0 320x240 (clickable, opacity 0, intent 3:0), card 20,180 280x50, its OK button
                  200,190 80x30 (3:0); a tap on the scrim dismisses it (correct: tap outside dismisses)
     snackbad     as snack, but a tap on the scrim does nothing (tap-misrouted: the dismiss was expected)
     snackmore    as snack, but a tap on the scrim also adds 1 (tap-misrouted)
+    snacktwice   as snack, but the dismiss also posts a second trace event `beep` (tap-misrouted)
+    snackdue     as snack, but the dismiss also arms a deadline 500 ms later (tap-misrouted)
+    snackmodal   as snack, with its scrim dimmed (opacity 82): with a contract whose snackbar blocks input below, the
+                 targets under it are inert, and a tap outside the card that dismisses is `dismissed`
+    snackfull    as snack, but closing the snackbar, by its scrim or by `apply 3 3 0`, posts `close` and also adds 1 (more
+                 than the layer leaving, and exactly what its own intent does)
+    snackcount   as snack, and the product's pointer entry (`pointer`): every tap posts `touch`, and the first tap
+                 restarts a countdown `cd` ("298 s" -> "300 s"); the dismiss is still exactly the snackbar's
     banner       a pass-through banner: scrim 0,0 320x240 (clickable, opacity 0, intent 4:0), card 0,200 320x40; a tap
                  on the scrim removes only the banner (tap-swallowed-first over `go`)
+    bannerok     as banner, but a tap on the scrim over `go` also presses `go` (the control below acts)
     keyed        no overlay; the pad's digit keys take `apply 3 <key intent> <arg>` with intents 5:0 / 5:1 only (a
                  digit map), and `apply 3 5 <d>` for another digit is refused
     seeded       no overlay; the seed of `open` is shown as the count (boot seeds)
+    badtree      no overlay; the frame's node 2 claims depth 5 (its records parse, its tree does not)
+
+With UI_STUB_READY set, the stub creates that file at its first `open` (a test's "the run is underway").
 
 In every mode `apply 3 1 0` is `go` (`ok apply missed` while a dialog shows), `apply 3 9 0` shows the mode's overlay
 again, `apply 2 0 0 <hex>` (a wedge line) is refused. Trace types: go, digit, enter, close, dismiss, show.
@@ -32,15 +47,18 @@ import sys
 import time
 
 MODE = sys.argv[1]
-OVERLAY = {"dialog": "dialog", "dialoglive": "dialog", "snack": "snack", "snackbad": "snack", "snackmore": "snack",
-           "banner": "banner"}.get(MODE)
+SNACKS = ("snack", "snackbad", "snackmore", "snacktwice", "snackdue", "snackmodal", "snackcount", "snackfull")
+OVERLAY = dict([(m, "snack") for m in SNACKS], dialog="dialog", dialoglive="dialog", dialogdup="dialog",
+               banner="banner", bannerok="banner").get(MODE)
+SCRIMS = {"dialog": "dscrim", "snack": "sscrim", "banner": "bscrim"}
 W, H = 320, 240
 
 
 class Model:
     def __init__(self, origin, seed):
         self.now, self.count, self.entry, self.overlay = origin, seed if MODE == "seeded" else 0, "", OVERLAY
-        self.trace, self.patches, self.seq = [], [], 0
+        self.trace, self.patches, self.seq, self.due = [], [], 0, None
+        self.cd = 298 if MODE == "snackcount" else None
         self.event("boot")
 
     def event(self, kind):
@@ -58,7 +76,7 @@ class Model:
         self.event(kind)
 
     def close(self, kind):
-        self.patches.append("delete\t%s\t-\t-\t-" % self.overlay)
+        self.patches.append("delete\t%s\t-\t-\t-" % SCRIMS[self.overlay])
         self.overlay = None
         self.event(kind)
 
@@ -74,17 +92,21 @@ def scene(model):
     records = [sem("root", "root", "", (0, 0, W, H)), sem("go", "button", "Go", (10, 10, 100, 40), "1:0", style=5),
                sem("off", "button", "Off", (120, 10, 100, 40), "-", "D", 5, 0),
                sem("count", "text", model.text(), (10, 100, 100, 20), style=2),
-               sem("k1", "key", "1", (10, 60, 40, 30), digit(1), style=5), sem("k2", "key", "2", (60, 60, 40, 30),
+               sem("51", "key", "1", (10, 60, 40, 30), digit(1), style=5), sem("k2", "key", "2", (60, 60, 40, 30),
                                                                                  digit(2), style=5),
                sem("ok", "key", "OK", (110, 60, 40, 30), "6:0", style=5)]
+    if model.cd is not None:
+        records.append(sem("cd", "countdown", "%d s" % model.cd, (200, 100, 100, 20), style=2))
     nodes = [(-1, "lv_obj", (0, 0, W - 1, H - 1), 1, 255, None), (0, "lv_button", (10, 10, 109, 49), 1, 255, None),
              (1, "lv_label", (40, 20, 79, 39), 0, 0, "Go"), (0, "lv_button", (120, 10, 219, 49), 1, 255, None),
              (3, "lv_label", (150, 20, 189, 39), 0, 0, "Off"), (0, "lv_label", (10, 100, 109, 119), 0, 0,
                                                                  model.text())]
-    for key, label, x in (("k1", "1", 10), ("k2", "2", 60), ("ok", "OK", 110)):
+    for key, label, x in (("51", "1", 10), ("k2", "2", 60), ("ok", "OK", 110)):
         parent = len(nodes)
         nodes += [(0, "lv_button", (x, 60, x + 39, 89), 1, 255, None), (parent, "lv_label", (x + 5, 65, x + 34, 84),
                                                                          0, 0, label)]
+    if model.cd is not None:
+        nodes.append((0, "lv_label", (200, 100, 299, 119), 0, 0, "%d s" % model.cd))
     overlay(model, records, nodes)
     return records, nodes
 
@@ -92,7 +114,8 @@ def scene(model):
 def overlay(model, records, nodes):
     if model.overlay == "dialog":
         records += [sem("dscrim", "scrim", "", (0, 0, W, H)), sem("dcard", "dialog", "", (60, 60, 200, 120)),
-                    sem("dclose", "button", "Close", (110, 60, 100, 30), "2:0", style=5)]
+                    sem("dclose", "button", "Close", (110, 60, 100, 30), "1:0" if MODE == "dialogdup" else "2:0",
+                        style=5)]
         nodes += [(0, "lv_obj", (0, 0, W - 1, H - 1), 1, 82, None), (len(nodes), "lv_obj", (60, 60, 259, 179), 1,
                                                                          255, None)]
         nodes += [(len(nodes) - 1, "lv_button", (110, 60, 209, 89), 1, 255, None),
@@ -100,8 +123,8 @@ def overlay(model, records, nodes):
     elif model.overlay == "snack":
         records += [sem("sscrim", "scrim", "", (0, 0, W, H), "3:0"), sem("scard", "snackbar", "", (20, 180, 280, 50)),
                     sem("sok", "button", "OK", (200, 190, 80, 30), "3:0", style=5)]
-        nodes += [(0, "lv_obj", (0, 0, W - 1, H - 1), 1, 0, None), (len(nodes), "lv_obj", (20, 180, 299, 229), 0,
-                                                                        255, None)]
+        nodes += [(0, "lv_obj", (0, 0, W - 1, H - 1), 1, 82 if MODE == "snackmodal" else 0, None),
+                  (len(nodes), "lv_obj", (20, 180, 299, 229), 0, 255, None)]
         nodes += [(len(nodes) - 1, "lv_button", (200, 190, 279, 219), 1, 255, None),
                   (len(nodes), "lv_label", (220, 195, 259, 214), 0, 0, "OK")]
     elif model.overlay == "banner":
@@ -115,7 +138,8 @@ def frame(model):
     depth, out = [], ["lvprobe\t1\t%d" % len(nodes), "frame\t%d\t%d\t%08x" % (W, H, model.count + len(nodes))]
     for index, (parent, cls, box, click, opa, label) in enumerate(nodes):
         depth.append(0 if parent == -1 else depth[parent] + 1)
-        out.append("\t".join(["node", str(index), str(parent), str(depth[index]), cls] + [str(v) for v in box]
+        shown = 5 if MODE == "badtree" and index == 2 else depth[index]
+        out.append("\t".join(["node", str(index), str(parent), str(shown), cls] + [str(v) for v in box]
                              + ["0", str(click), "-1", "-1", "0", "0", "ffffff", str(opa), str(opa), "1", "0", "0"]))
         if label is not None:
             w, h = box[2] - box[0] + 1, box[3] - box[1] + 1
@@ -140,6 +164,11 @@ def tap(model, x, y):
     _, nodes = scene(model)
     index = hit(model, x, y)
     box = nodes[index][2]
+    if MODE == "snackcount":
+        model.event("touch")                        # the pointer entry's own event, at the tap's instant
+        if model.cd == 298:
+            model.patches.append("update\tcd\ttext\t298 s\t300 s")
+            model.cd = 300
     on_go = 10 <= x <= 109 and 10 <= y <= 49
     if index == 0:
         return index
@@ -151,6 +180,8 @@ def tap(model, x, y):
         model.change("enter", 10, "")
     elif box in ((110, 60, 209, 89), (200, 190, 279, 219)):
         model.close("close")
+        if MODE == "dialoglive":           # its Close also presses go: not only its own dismiss
+            model.change("go", 1)
     elif box == (0, 0, W - 1, H - 1):
         scrim(model, on_go)
     return index
@@ -159,19 +190,28 @@ def tap(model, x, y):
 def scrim(model, on_go):
     if MODE == "dialoglive" and on_go:
         model.change("go", 1)
-    elif MODE in ("snack", "snackmore", "banner"):
+    elif MODE == "snackfull":
+        model.close("close")
+        model.change("go", 1)
+    elif MODE in SNACKS + ("banner", "bannerok") and MODE != "snackbad":
         model.close("dismiss")
-        if MODE == "snackmore":
+        if MODE == "snackmore" or MODE == "bannerok" and on_go:
             model.change("go", 1)
+        if MODE == "snacktwice":
+            model.event("beep")
+        if MODE == "snackdue":
+            model.due = model.now + 500
 
 
 def apply(model, kind, ident, arg):
     blocked = model.overlay == "dialog"
     if kind != 3:
         return "ok apply refused"
-    if ident in (1, 5, 6) and blocked:
+    if ident in (1, 5, 6, 51) and blocked and not (MODE == "dialoglive" and ident == 1):
         return "ok apply missed"
-    if ident == 1:
+    if ident == 51 and arg == 0:
+        model.change("digit", entry=model.entry + "1")
+    elif ident == 1:
         model.change("go", 1)
     elif ident == 5 and (arg in (0, 1) if MODE == "keyed" else 0 <= arg <= 9):
         model.change("digit", entry=model.entry + str(arg + 1 if MODE == "keyed" else arg))
@@ -179,6 +219,8 @@ def apply(model, kind, ident, arg):
         model.change("enter", 10, "")
     elif (ident, model.overlay) in ((2, "dialog"), (3, "snack"), (4, "banner")):
         model.close("close")
+        if MODE == "snackfull":
+            model.change("go", 1)
     elif ident == 9 and model.overlay is None and OVERLAY is not None:
         model.overlay = OVERLAY
         model.patches.append("create\t%s\t-\t-\t-" % OVERLAY)
@@ -206,7 +248,9 @@ def handle(words, model):
     cmd = words[0]
     if cmd == "open":
         if MODE == "slow":
-            time.sleep(0.4)
+            time.sleep(0.1)
+        if os.environ.get("UI_STUB_READY") and not os.path.exists(os.environ["UI_STUB_READY"]):
+            open(os.environ["UI_STUB_READY"], "w").close()
         return Model(int(words[1]), int(words[2])), ["ok open"]
     if cmd == "apply":
         return model, [apply(model, int(words[1]), int(words[2]), int(words[3]))]
@@ -214,13 +258,15 @@ def handle(words, model):
         return model, logs(model, cmd)
     if cmd == "advance":
         model.now = int(words[1])
+        model.due = None if model.due is not None and model.now >= model.due else model.due
         return model, ["ok advance %d" % model.now]
     if cmd == "tap":
         index = tap(model, int(words[1]), int(words[2]))
         return model, ["ok tap %d %d" % (index, index)]
     if cmd == "crop":
         return model, ["ok crop lines %d" % int(words[4])] + ["ffffffff" * int(words[3])] * int(words[4])
-    replies = {"domain-count": lambda: ["ok domain-count 0"], "next-due": lambda: ["ok next-due none"],
+    replies = {"domain-count": lambda: ["ok domain-count 0"],
+               "next-due": lambda: ["ok next-due " + ("none" if model.due is None else str(model.due))],
                "env-inputs": lambda: ["ok env-inputs 0"],
                "hit-test": lambda: ["ok hit-test %d" % hit(model, int(words[1]), int(words[2]))],
                "semantic": lambda: ["ok semantic lines %d" % len(scene(model)[0])] + scene(model)[0],
@@ -229,7 +275,7 @@ def handle(words, model):
 
 
 def main():
-    say(["ui-probe/1 ready frame-facts hit-test tap apply-missed crop"])
+    say(["ui-probe/1 ready frame-facts hit-test tap apply-missed crop" + (" pointer" if MODE == "snackcount" else "")])
     model = None
     for raw in sys.stdin:
         words = raw.rstrip("\n").split(" ")

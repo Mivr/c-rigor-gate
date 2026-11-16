@@ -229,10 +229,10 @@ def tap_input(session, step, before, event, catalogue=None, scene=None, aim=None
     node = _pressed(step, nodes, expect, got, event, aim)
     ambient = tap_ambient(session, step, marks, catalogue)
     found = None
-    if scene is not None and scene.contract is not None:
+    if scene is not None and scene.contract is not None and scene.judging:
         found = layers.verdict(scene.contract, before, x, y, aim if aim is not None else aimed_node(nodes, event),
                                None if got == "blocked" else got[0])
-    judged = None if found is None else layer_tap(step, found, (marks, before, after, ambient, catalogue),
+    judged = None if found is None else layer_tap(step, found, (marks, before, after, ambient, catalogue, scene),
                                                   event.cls == "u2" and node is not None)
     if judged is not None:
         result = judged
@@ -262,28 +262,41 @@ def _pressed_name(step):
 
 def layer_tap(step, verdict, judged, pressed_node):
     """The result of a tap the layer policy judges (ui_explore_layers): `refused`, `ok` (with `step.blocked`,
-    `step.misrouted` or `step.swallowed`) or `dismissed`; None to judge it as without a contract."""
-    marks, before, after, ambient, catalogue = judged
-    rest = [line for line in before["semantic"] if line not in verdict.removed]
-    removed_only = after["semantic"] == rest and len(rest) < len(before["semantic"]) and after["env"] == before["env"]
-    if verdict.kind == "pass" and not removed_only:
+    `step.misrouted` or `step.swallowed`), `missed` (a covering control did nothing) or `dismissed`; None to judge
+    it as without a contract. "Exactly the layer leaving" is ui_explore_layers.layer_left on the full change set."""
+    marks, before, after, ambient, catalogue, scene = judged
+    residual = ambient[0] if ambient is not None else step.acc_trace[marks[1]:]
+    role = catalogue.countdown_role if catalogue is not None and ambient is not None else None
+    parts = (before, after, step.acc_patches[marks[0]:], residual, role, ambient[1] if ambient is not None else None)
+    bad = layers.layer_left(verdict, *parts) if verdict.removed else ["semantic"]
+    if bad and verdict.kind in ("dismiss", "covered"):
+        sibling = scene.sibling(verdict) if scene is not None else None
+        if sibling is not None:     # the layer's own intent applied from the same state, in a fresh probe
+            bad = layers.like_sibling(sibling, *parts)
+            step.outcome.append("judged by sibling")
+    if verdict.kind == "pass" and bad:
         return None
     step.misrouted = None
     step.outcome.append("layer %s %s" % (verdict.kind, verdict.layer or "-"))
     if verdict.kind == "pass":
         step.swallowed = {"layer": verdict.layer, "below": verdict.target}
         return "ok"
-    if verdict.kind == "dismiss" and removed_only:
+    if verdict.kind == "dismiss" and not bad:
         return "dismissed"
-    changed = tap_changes(step, marks, before, after, not pressed_node, ambient, catalogue)
     if verdict.kind == "covered":
-        return "ok" if changed else "missed"
+        step.covered = {"control": verdict.target, "aimed": verdict.aimed}
+        step.outcome.append("covered by %s" % verdict.target)
+    changed = tap_changes(step, marks, before, after, not pressed_node, ambient, catalogue)
     if verdict.kind == "inert":
         if changed:
             step.blocked = {"layer": verdict.layer, "target": verdict.target, "changed": changed}
         return "ok" if changed else "refused"
-    step.misrouted = {"expected": {"layer": verdict.layer, "intent": verdict.intent}, "pressed": _pressed_name(step),
-                      "changed": changed}
+    if verdict.kind == "covered" and (not bad or not changed):
+        return "ok" if changed else "missed"
+    expected = {"layer": verdict.layer, "intent": verdict.intent}
+    if verdict.kind == "covered":
+        expected = dict(expected, control=verdict.target, aimed=verdict.aimed)
+    step.misrouted = {"expected": expected, "pressed": _pressed_name(step), "changed": changed, "not_the_dismiss": bad}
     return "ok" if changed else "refused"
 
 
