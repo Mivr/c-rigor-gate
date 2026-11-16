@@ -1,0 +1,215 @@
+{
+ "schema": "ui-explore-paths/1",
+ "criteria": [],
+ "paths": [
+  [
+   "open 1000 112",
+   "at 0"
+  ],
+  [
+   "open 1000 112",
+   "at 3200"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "banner-selftest-dismiss"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en",
+   "banner-selftest-dismiss"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "banner-selftest-dismiss",
+   "digit-1",
+   "digit-2",
+   "digit-3",
+   "digit-4"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en",
+   "banner-selftest-dismiss",
+   "digit-1",
+   "digit-2",
+   "digit-3",
+   "digit-4"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "wedge-unknown"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en",
+   "wedge-unknown"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "wedge-visitor"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en",
+   "wedge-visitor"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "wedge-visitor",
+   "size-small",
+   "at 5200"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en",
+   "wedge-visitor",
+   "size-small",
+   "at 5200"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "env-relay-hang",
+   "wedge-visitor",
+   "size-small",
+   "at 5200"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en",
+   "env-relay-hang",
+   "wedge-visitor",
+   "size-small",
+   "at 5200"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "env-book-second-save-fails",
+   "wedge-visitor",
+   "size-small",
+   "at 4300"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en",
+   "env-book-second-save-fails",
+   "wedge-visitor",
+   "size-small",
+   "at 4300"
+  ],
+  [
+   "open 1000 120",
+   "at 3200"
+  ],
+  [
+   "open 1000 120",
+   "at 3200",
+   "lang-en"
+  ],
+  [
+   "open 1000 119",
+   "at 3200",
+   "env-codes-unreachable",
+   "env-sync-401",
+   "at 300500"
+  ],
+  [
+   "open 1000 119",
+   "at 3200",
+   "lang-en",
+   "env-codes-unreachable",
+   "env-sync-401",
+   "at 300500"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "wedge-staff",
+   "at 5000"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "lang-en",
+   "wedge-staff",
+   "at 5000"
+  ],
+  [
+   "open 1000 113",
+   "at 3200"
+  ],
+  [
+   "open 1000 114",
+   "at 3200"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "wedge-unknown",
+   "at 12200",
+   "wedge-unknown",
+   "at 21200",
+   "wedge-unknown",
+   "at 30200",
+   "wedge-unknown",
+   "at 39200",
+   "wedge-unknown",
+   "at 48200"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "wedge-unknown",
+   "at 12200",
+   "wedge-unknown",
+   "at 21200",
+   "wedge-unknown",
+   "at 30200",
+   "wedge-unknown",
+   "at 39200",
+   "lang-en",
+   "wedge-unknown",
+   "at 48200"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "wedge-visitor",
+   "size-small",
+   "at 5200",
+   "done",
+   "at 5300",
+   "wedge-staff"
+  ],
+  [
+   "open 1000 112",
+   "at 3200",
+   "wedge-visitor",
+   "size-small",
+   "at 5200",
+   "done",
+   "at 5300",
+   "lang-en",
+   "wedge-staff"
+  ]
+ ]
+}
