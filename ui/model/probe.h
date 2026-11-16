@@ -42,6 +42,7 @@ typedef struct {
     uint32_t tick_offset;   /* lv_tick_get() - (uint32_t)now: constant while only uim_step moves the tick */
     bool pointer;           /* uim_pointer_supported() at the greeting: taps go through the product's pointer entry */
     bool product_indev;     /* lvprobe is attached to the product's own pointer indev (not one it created) */
+    bool identity;          /* uim_identity_supported() at the greeting (U24): the `identity` command is served */
 } probe_t;
 
 /* The shape of the records of one call (model.h): field count and which fields are decimal numbers. */
@@ -83,6 +84,12 @@ bool probe_cmd_tap(probe_t *p, char **arg);
 bool probe_cmd_semantic(probe_t *p, char **arg);
 bool probe_cmd_patches(probe_t *p, char **arg);
 bool probe_cmd_trace(probe_t *p, char **arg);
+/* probe_identity.c (U24): `identity` (read-only: neither a failure nor a violation poisons); `err identity
+ * unsupported` from a probe that did not announce the capability. */
+bool probe_cmd_identity(probe_t *p, char **arg);
+/* The number of lines of a payload that is a valid identity reply (model.h: one `state` line first, then `node`
+ * lines), or -1. */
+long probe_check_identity(const char *buf, size_t len);
 /* probe_pixels.c: */
 bool probe_cmd_ink(probe_t *p, char **arg);
 bool probe_cmd_crop(probe_t *p, char **arg);
@@ -109,6 +116,8 @@ const char *probe_node_word(int32_t node, char *buf, size_t cap);   /* `<index>`
 /* The number of lines of a payload that is zero or more valid records, or -1. `spec == NULL`: lines of printable ASCII
  * and TABs only (probe_records.c). */
 long probe_check_records(const probe_spec_t *spec, const char *buf, size_t len);
+/* One field s[0..n) of a record: printable ASCII and the record grammar's escapes, no TAB (probe_records.c). */
+bool probe_field_ok(const char *s, size_t n);
 
 typedef enum { PROBE_ADV_OK, PROBE_ADV_FAILED, PROBE_ADV_CONTRACT } probe_advance_t;
 

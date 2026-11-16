@@ -12,9 +12,12 @@ finding with its check and target into `info`. At the end of the run: `exception
 nothing (error when its target was visited or it expired, info otherwise), one `checks-examined` (info) per judge with
 the verdicts each check reached per state (a node skipped for a pending or missing contract value is no verdict), and
 `check-vacuous` (error) for a check that applies to the contract and reached no verdict in any state.
+U24: the identity checks of ui-scene (ui_judge_identity) are judged only with a probe that announces `identity`; with a
+probe that does not, each one that applies to the contract is one `check-blocked` (error, identity ["blocked", check])
+instead of a verdict, and neither counted nor vacuous.
 """
 
-from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_render, ui_judge_scene
+from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_identity, ui_judge_render, ui_judge_scene
 from rigor_lib.errors import InternalError
 from rigor_lib.ui_explore_judges import PRIVATE, state_of
 from rigor_lib.ui_judge_context import Context
@@ -27,9 +30,10 @@ FIT_NODE_CHECKS = ("text-overflow", "text-clipped", "full-string-shown", "fit-un
 RENDER_NODE_CHECKS = ("invisible-node", "contrast-low", "ink-unmeasurable", "flag-mismatch", "align-mismatch",
                       "line-height-mismatch")
 COMMON = ("stage-unmatched", "stage-text-mismatch", "stage-unowned-target", "scene-vocabulary", "contract-incomplete", "contract-pending",
-          "exception-unused", "checks-examined", "check-vacuous")
+          "exception-unused", "checks-examined", "check-vacuous", "check-blocked")
 NODE_CHECKS = {"ui-scene": SCENE_NODE_CHECKS, "ui-fit": FIT_NODE_CHECKS, "ui-render": RENDER_NODE_CHECKS}
 GATES = {gate: checks + COMMON for gate, checks in NODE_CHECKS.items()}
+GATES["ui-scene"] += ui_judge_identity.CHECKS  # U24: judged with the probe's identity only (JudgeSet.node_checks)
 GATES["ui-render"] += ("ink-plan-capped",)    # U07: a state key whose frames took more checksums than the ink plan inks
 ORDER = ("ui-scene", "ui-fit", "ui-render")   # the stage findings belong to the first selected gate in this order
 MODULES = {"ui-scene": ui_judge_scene, "ui-fit": ui_judge_fit, "ui-render": ui_judge_render}
@@ -37,7 +41,7 @@ LAYERS = {"stage-unmatched": "L3", "stage-text-mismatch": "L3", "stage-unowned-t
           "flag-mismatch": "L3", "align-mismatch": "L3", "line-height-mismatch": "L3"}
 INK_GATES = frozenset(("ui-render",))         # the judges that need the probe's `ink` (U07)
 META = frozenset(("scene-vocabulary", "contract-incomplete", "contract-pending", "exception-unused", "checks-examined",
-                  "check-vacuous", "ink-plan-capped"))
+                  "check-vacuous", "ink-plan-capped", "check-blocked"))
 NA = "n/a:"                                   # U07: the count key of the nodes a check found not applicable
 
 
@@ -59,6 +63,8 @@ def applies(check, contract):
         return bool(contract.rows("input_layer"))
     if check == "toggle-group-indistinct":
         return bool(contract.rows("toggle_group"))
+    if check in ui_judge_identity.CHECKS:
+        return ui_judge_identity.applies(check, contract)
     return bool(contract.rows("role"))
 
 
@@ -154,6 +160,19 @@ class JudgeSet:
         self.exceptions = Exceptions(contract, self.gates, today)
         self.examined = {gate: {} for gate in self.gates}       # gate -> state key -> check -> nodes
         self.needs_ink = bool(INK_GATES & set(self.gates))     # the explorer then inks each new state (U07)
+        self.identity = None    # U24: whether the probe announces identity (wants_identity); None: not said (no block)
+
+    def wants_identity(self, caps):
+        """Records whether the probe announces `identity` (U24) and whether the explorer must read it: ui-scene is
+        selected and the probe has it. Without it, ui-scene's identity checks are `check-blocked` at `finish`."""
+        if "ui-scene" not in self.gates or caps is None:
+            return False
+        self.identity = "identity" in caps
+        return self.identity
+
+    def node_checks(self, gate):
+        """The checks of a gate that count verdicts: with identity, ui-scene's identity checks too."""
+        return NODE_CHECKS[gate] + (ui_judge_identity.CHECKS if gate == "ui-scene" and self.identity else ())
 
     def step_judge(self, step, path, contract):
         del contract
@@ -166,7 +185,7 @@ class JudgeSet:
             report = Reporter(gate, self, step, path)
             out += MODULES[gate].judge(context, report)
             seen = self.examined[gate].setdefault(step.key, {})
-            for check in NODE_CHECKS[gate] + tuple(NA + c for c in NODE_CHECKS[gate]):
+            for check in self.node_checks(gate) + tuple(NA + c for c in self.node_checks(gate)):
                 if check in report.counts or not check.startswith(NA):
                     seen[check] = max(seen.get(check, 0), report.counts.get(check, 0))
         return out
@@ -183,16 +202,19 @@ class JudgeSet:
                              "error" if visited or expired else "info", None, [open_word],
                              {"exception": row["id"], "rule": row["rule"], "target": row["target"],
                               "expires": str(row["expires"]), "expired": expired, "target_visited": visited}))
+        if self.identity is False:
+            out += [_item("ui-scene", "check-blocked", ["blocked", check], "error", None, [open_word],
+                          {"check": check, "needs": "identity"}) for check in ui_judge_identity.blocked(self.contract)]
         for gate in self.gates:
             states = self.examined[gate]
-            totals = {check: sum(s.get(check, 0) for s in states.values()) for check in NODE_CHECKS[gate]}
+            totals = {check: sum(s.get(check, 0) for s in states.values()) for check in self.node_checks(gate)}
             observed = {"states": len(states), "totals": totals,
                         "per_state": {key: states[key] for key in sorted(states)}}
-            skipped = {c: sum(s.get(NA + c, 0) for s in states.values()) for c in NODE_CHECKS[gate]}
+            skipped = {c: sum(s.get(NA + c, 0) for s in states.values()) for c in self.node_checks(gate)}
             if any(skipped.values()):
                 observed["not_applicable"] = {c: n for c, n in skipped.items() if n}
             out.append(_item(gate, "checks-examined", ["examined"], "info", None, [open_word], observed))
-            for check in NODE_CHECKS[gate]:
+            for check in self.node_checks(gate):
                 if states and totals[check] == 0 and applies(check, self.contract):
                     out.append(_item(gate, "check-vacuous", ["vacuous", check], "error", None, [open_word],
                                      {"check": check, "states": len(states)}))

@@ -65,7 +65,8 @@ def add_parser(subparsers):
     parser.add_argument("--contract", help="the UI contract (ui-contract/1) handed to the judges")
     parser.add_argument("--judges", type=_list(r"[a-z][a-z-]{0,31}"),
                         help="judges to run besides the explorer's own: ui-scene,ui-fit,ui-render (they need "
-                             "--contract and --today; ui-render also a probe with ink)")
+                             "--contract and --today; ui-render also a probe with ink; ui-scene reads identity when "
+                             "the probe announces it)")
     parser.add_argument("--today", type=_date, help="the date (YYYY-MM-DD) the contract's exceptions expire against")
     parser.add_argument("--origin-ms", type=_uint)
     parser.add_argument("--seed", type=_uint, help="the seed of every `open`")
@@ -221,7 +222,7 @@ def explore(args):
         _check_requires(catalogue, caps)
         _check_taps(catalogue, caps, paths)
         strategies.check_cost(catalogue, args, paths, caps)
-        config = Config(config.probe, config.deadline_s, catalogue, budget, caps)
+        config = Config(config.probe, config.deadline_s, catalogue, budget, caps, _identity(judges, caps))
     _check_judges(judges, caps)
     explorer = strategies.Explorer(config, contract, word, caps or (),
                                    step_judges=[judges.step_judge] if judges else (),
@@ -253,6 +254,12 @@ def explore(args):
     for item in found:
         item.pop(PRIVATE, None)
     return found, _summary(args, catalogue, explorer, criteria, evaluated, spent, detail, found)
+
+
+def _identity(judges, caps):
+    """U24: whether the explorer reads `identity` after every step: a selected judge needs it (ui-scene) and the probe
+    announces it. Without the capability the judge set reports ui-scene's identity checks as `check-blocked`."""
+    return judges is not None and judges.wants_identity(caps)
 
 
 def _check_judges(judges, caps):

@@ -78,6 +78,8 @@ for mode in rel san; do
   expect_tail "eof.$mode" "$bin" 'ok open\nerr ? eof-without-quit\n' 'open 0 1\n'
   expect_tail "nul.$mode" "$bin" 'err ? malformed\nok quit\n' 'quit\0junk\nquit\n'
   expect_tail "after.$mode" "$bin" 'ok quit\nerr ? after-quit\n' 'quit\njunk\n'
+  # U24: the toy reports no scene identity: no `identity` in its greeting, the command is refused (counted)
+  expect_tail "ident.$mode" "$bin" 'ok open\nerr identity unsupported\nok quit\n' 'open 0 1\nidentity\nquit\n'
   head -c 641 /dev/zero | tr '\0' 'a' > "$out/long.in"; printf '\nquit\n' >> "$out/long.in"
   "$bin" < "$out/long.in" > "$out/t.long.$mode" 2>&1; rc=$?
   [ "$rc" = 1 ] && [ "$(sed -n 2p "$out/t.long.$mode")" = "err ? line-too-long" ] && [ "$(tail -1 "$out/t.long.$mode")" = "ok quit" ] || fail "$CUR: long line ($mode): rc=$rc" "$out/t.long.$mode"
@@ -169,7 +171,7 @@ import sys
 out = sys.argv[1]
 UIM = ["uim_instance", "uim_open", "uim_env_inputs", "uim_apply", "uim_settle", "uim_next_due", "uim_step", "uim_frame",
        "uim_semantic", "uim_patches", "uim_domain_count", "uim_domain_at", "uim_trace", "uim_pointer_supported",
-       "uim_pointer"]
+       "uim_pointer", "uim_identity_supported", "uim_identity"]   # U24: the two required identity symbols
 # The policy of a product: the gate's global block as it is (no uim_ entry of any kind), then the modules.
 text = open("policy/hello.toml").read()
 head = text.split("[module.")[0]
@@ -185,6 +187,7 @@ probe = ["main", "probe_parse_u64", "probe_parse_i32", "probe_parse_text", "prob
          "probe_life_line", "probe_why", "probe_fatal", "probe_refuse", "probe_reply_words", "probe_lv_settle",
          "probe_model_settle", "probe_tick_ok", "probe_point", "probe_point_err", "probe_node_word",
          "probe_cmd_semantic", "probe_cmd_patches", "probe_cmd_trace",
+         "probe_cmd_identity", "probe_check_identity", "probe_field_ok",   # U24
          "PROBE_SPEC_SEMANTIC", "PROBE_SPEC_PATCHES", "PROBE_SPEC_TRACE"]
 libc = open(out + "/probe_imports.actual").read().split()
 q = lambda names: "[" + ", ".join('"%s"' % n for n in names) + "]"

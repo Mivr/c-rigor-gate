@@ -6,12 +6,14 @@ exactly what needs it, never a default.
 Checks on O2 alone: touch-target-small, font-below-min, hierarchy-violated, raw-text, wrap-policy-undeclared.
 Checks on O2 + O3: occluded-target, overlay-policy, target-spacing, node-out-of-bounds, text-overlap (ui_judge_geom),
 toggle-group-indistinct (the members' rendered facts within one state).
-Blocked (docs/ui-judges.md, "Honesty table"): value-split, required-element-missing.
+On O2 + the scene identity (U24, ui_judge_identity): required-element-missing, value-split and raw-text's identity
+parts; without identity they are the judge set's `check-blocked`.
 """
 
 from fractions import Fraction
 
 from rigor_lib import ui_judge_geom as geom
+from rigor_lib import ui_judge_identity as identity
 from rigor_lib.ui_contract import ContractPending
 from rigor_lib.ui_judge_vocab import PURE_TEXT
 
@@ -19,7 +21,7 @@ from rigor_lib.ui_judge_vocab import PURE_TEXT
 def judge(ctx, report):
     for check in (touch_target_small, font_below_min, hierarchy_violated, raw_text, wrap_policy_undeclared,
                   toggle_group_indistinct, geom.overlay_policy, geom.occluded_target, geom.target_spacing,
-                  geom.node_out_of_bounds, geom.text_overlap):
+                  geom.node_out_of_bounds, geom.text_overlap, identity.judge):
         check(ctx, report)
     return report.found
 
@@ -131,14 +133,15 @@ def _ranks(ctx, report, leveled):
 
 
 def raw_text(ctx, report):
-    """O2: a shown node of role `text` or `countdown` whose formatted string is empty. (The raw-msgid half is blocked:
-    the scene has no msgid.)"""
+    """O2: a shown node of role `text` or `countdown` whose formatted string is empty; with the scene identity (U24)
+    also a raw msgid or a missing msgid (ui_judge_identity.raw_text)."""
     for node in ctx.scene:
         if node.role in PURE_TEXT and not node.hidden:
             report.examined("raw-text")
             if node.label == b"":
                 report.add("raw-text", [node.key, "empty"], {"stage": "O2", "key": node.key, "part": "empty"},
                            target=node.key, records=[node.raw])
+            identity.raw_text(ctx, report, node)
 
 
 def wrap_policy_undeclared(ctx, report):

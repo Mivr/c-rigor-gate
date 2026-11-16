@@ -37,8 +37,9 @@ static size_t g_tail_len;   /* bytes of g_payload written after the reply header
 static uim_input_t g_inputs[UIM_ENV_MAX];
 static lvprobe_t g_lv;      /* the lvprobe of the session; its storage is probe_frame.c's */
 
-/* The greeting: the protocol name, `ready` and the capabilities (docs/ui-model.md, "The greeting"); `pointer` last, when
- * the product delivers taps through its own pointer entry (`uim_pointer_supported`). */
+/* The greeting: the protocol name, `ready` and the capabilities (docs/ui-model.md, "The greeting"); `pointer` when the
+ * product delivers taps through its own pointer entry (`uim_pointer_supported`), then `identity` (U24) when it reports
+ * its scene identity (`uim_identity_supported`). */
 static const char GREETING[] = "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop";
 
 /* ---- replies ------------------------------------------------------------------------------------------------- */
@@ -253,6 +254,7 @@ static const command_t g_commands[] = {
     {"domain-count", 0, 0, false, cmd_domain_count},
     {"domain-at", 1, 1, true, cmd_domain_at},
     {"trace", 0, 0, true, probe_cmd_trace},
+    {"identity", 0, 0, true, probe_cmd_identity},
     {"quit", 0, 0, false, cmd_quit},
 };
 
@@ -448,9 +450,10 @@ int main(void)
     p.tick_offset = 0;
     p.pointer = uim_pointer_supported();   /* a constant of the build: the greeting's; every tap checks it again */
     p.product_indev = false;
+    p.identity = uim_identity_supported();   /* a constant of the build, like the pointer; re-read at `identity` */
     g_tail_len = 0;
-    if (p.model == NULL || !fits(snprintf(g_reply, sizeof g_reply, "%s%s", GREETING, p.pointer ? " pointer" : "")) ||
-        !emit()) {
+    if (p.model == NULL || !fits(snprintf(g_reply, sizeof g_reply, "%s%s%s", GREETING, p.pointer ? " pointer" : "",
+                                          p.identity ? " identity" : "")) || !emit()) {
         return 2;
     }
     served = serve(&p);

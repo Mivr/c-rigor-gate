@@ -14,9 +14,10 @@
  *    filesystem, the network, threads and addresses must not influence any output.
  *  - FAILURE POISONS. A call that returns false (or UIM_ERROR) may have changed the model halfway (LVGL cannot be
  *    rolled back): the session is poisoned. The gate calls nothing but `uim_open` afterwards, and `uim_open` restarts
- *    from cold. The exceptions are the two read-only calls `uim_env_inputs` and `uim_semantic`, which never change the
- *    model: a failure of those does not poison. A buffer that is too small is a failure, never a truncation. A breach of
- *    this interface that the gate detects (`model-contract`) poisons the session as well, after those two calls excepted.
+ *    from cold. The exceptions are the read-only calls `uim_env_inputs`, `uim_semantic` and `uim_identity` (U24), which
+ *    never change the model: a failure of those does not poison. A buffer that is too small is a failure, never a
+ *    truncation. A breach of this interface that the gate detects (`model-contract`) poisons the session as well, after
+ *    those read-only calls excepted.
  *  - REFUSAL IS NOT FAILURE. `uim_apply` returns UIM_REFUSED when the input is not enabled in the current state (a
  *    normal outcome of exploration); the model is then unchanged and the session continues. Neither is UIM_MISSED (the
  *    input went through the production path and did not produce its intent: the model may have changed).
@@ -180,5 +181,29 @@ bool uim_pointer_supported(void);
  * False: the sample could not be delivered (also: not supported, or the model is not open); the session is poisoned
  * like any failing call. The probe calls it only when `uim_pointer_supported()`. */
 bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down);
+
+/* ---- scene identity (optional, U24; docs/ui-model.md "Scene identity") -----------------------------------------
+ * What the scene IS, beside what `uim_semantic` says is drawn: the class of the screen shown and, per scene node, the
+ * element of the product's UI spec it is and the catalogue message its text was formatted from. Both functions are
+ * REQUIRED in EVERY adapter (an interface break, as U05c's pointer entry: no weak symbol): a product without identity
+ * returns false from both. `uim_identity_supported()` is a constant of the build (the probe's greeting announces the
+ * capability `identity` when it is true, and every `identity` command reads it again).
+ *
+ * `uim_identity` writes into `out`, by the record grammar above (the same escapes, printable ASCII, TAB separators,
+ * LF ends) but with NO empty field (`-` is "none") and records of two types:
+ *   `state<TAB><class>`: exactly one, the FIRST line: the state class id of the screen shown, the product's name for it
+ *       in its UI spec (lockers: `welcome`, `opened`, ...; a `[[state_class]]` id of the UI contract). Never `-`.
+ *   `node<TAB><key><TAB><element><TAB><msgid><TAB><n><TAB>=<arg 1>...<TAB>=<arg n>`: one line per semantic node that
+ *       has any identity, in any order, each key at most once and a key of the `uim_semantic` records of that scene.
+ *       element: the node's element id, a stable name from the product's UI spec (never derived from the text), or `-`;
+ *       msgid: the catalogue key the node's text was formatted from, or `-` for a text that is not catalogue text;
+ *       n: the number of formatted arguments, decimal 0..UIM_IDENTITY_ARGS_MAX, then that many fields, each `=` and the
+ *       escaped bytes of one argument as formatted (`=` alone is an empty argument). A line with element and msgid both
+ *       `-` (no identity), or arguments without a msgid, is a violation.
+ * Read-only: never changes the model, callable whenever `uim_semantic` is; a failure does not poison. */
+#define UIM_IDENTITY_ARGS_MAX 16u
+
+bool uim_identity_supported(void);
+bool uim_identity(uim_t *m, uim_buf_t *out);
 
 #endif /* UI_MODEL_MODEL_H */

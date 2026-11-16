@@ -1,4 +1,4 @@
-# The `ui-scene` and `ui-fit` judges (U06, P004 3.1, 3.2)
+# The `ui-scene` and `ui-fit` judges (U06, U24, P004 3.1, 3.2)
 
 The third judge, `ui-render` (U07, P004 3.3: what is painted, from lvprobe's ink), has its own page:
 [docs/ui-judges-render.md](ui-judges-render.md). Everything below about findings, pending values, exceptions,
@@ -23,6 +23,7 @@ scene (O2) and the rendered tree (O3), without the oracle. Python, stdlib only:
 | `ui_judge_context.py` | what one step gives the checks; the stage findings; layers and their sealed policy (R8); inertness (R7) |
 | `ui_judge_findings.py` | ids, `contract-pending`, exceptions, `exception-unused`, `checks-examined`, `check-vacuous`, the judge set |
 | `ui_judge_scene.py` | the O2 checks of `ui-scene` and `toggle-group-indistinct` |
+| `ui_judge_identity.py` | U24: the checks on the scene identity (`required-element-missing`, `value-split`, `raw-text`'s identity parts); the tables they read are `ui_contract_identity.py`'s |
 | `ui_judge_geom.py` | the O2 + O3 (geometric) checks of `ui-scene` |
 | `ui_judge_fit.py` | the `ui-fit` checks |
 
@@ -103,7 +104,9 @@ without a scene node are named by class, box and the first 8 hex of the sha256 o
 | `touch-target-small` | ui-scene | O2 | `touch_min_dp`, `[[role_min]].touch_dp_min` of the typographic role; `touch_min_mm` with the ppi |
 | `font-below-min` | ui-scene | O2 | the style's `type_scale` size, `[[role_min]].font_px_min` |
 | `hierarchy-violated` | ui-scene | O2 | the style sizes; `[[importance]]`; `hierarchy_ratio_k` |
-| `raw-text` | ui-scene | O2 | none (roles `text` and `countdown`) |
+| `raw-text` | ui-scene | O2 (+ identity, U24) | none for the empty part (roles `text` and `countdown`); `[[catalogue]]` (`msgids`, `text_roles`), `[[identity_literal]]` for the identity parts |
+| `required-element-missing` (U24) | ui-scene | O2 + identity | `[[state_class]]` (`required`) |
+| `value-split` (U24) | ui-scene | O2 + identity | `[[value]]` (`element`, `max_nodes`) |
 | `wrap-policy-undeclared` | ui-scene | O2 | `[[element]]` `wrap`, `[[role_wrap]]` |
 | `toggle-group-indistinct` | ui-scene | O2 + O3 | `[[toggle_group]]` (members, `marks`), `[[element]]` |
 | `occluded-target` | ui-scene | O2 + O3 | `probe_grid_pct`; the disc: `probe_disc_radius_mm` with the ppi; `touch_min_dp` (a layer's free square) |
@@ -139,8 +142,17 @@ later wiring task can require it to be above 0. A node the check skipped for a p
 whose scope makes the excess intended (`text-overflow` with an ellipsis or clip scope), is no verdict. A check that
 reached no verdict in any visited state while the contract declares what it applies to is `check-vacuous` (error):
 `touch-target-small`, `occluded-target`, `target-spacing` apply when a `[[role_min]]` row has a touch minimum;
-`overlay-policy` when `[[input_layer]]` has a row; `toggle-group-indistinct` when `[[toggle_group]]` has one; every
-other check when `[[role]]` has one.
+`overlay-policy` when `[[input_layer]]` has a row; `toggle-group-indistinct` when `[[toggle_group]]` has one;
+`required-element-missing` when `[[state_class]]` has one and `value-split` when `[[value]]` has one (U24: both only in
+a run whose probe announces `identity`, the only runs that count their verdicts); every other check when `[[role]]` has
+one.
+
+**`check-blocked`** (U24, error, `state` null, identity `["blocked", check]`, observed `{check, needs: "identity"}`):
+in a run whose probe does NOT announce `identity`, once per identity check that applies to the contract
+(`required-element-missing` with a `[[state_class]]` row, `value-split` with a `[[value]]` row, `raw-text` with a
+`[[catalogue]]` row: its identity parts). Never a silent pass: such a run cannot pass the judge. The blocked checks are
+neither counted in `checks-examined` nor `check-vacuous`. A caller of `JudgeSet` that does not say whether the probe
+has identity (the unit tests' direct use) gets neither.
 
 ## Pending values and exceptions
 
@@ -176,7 +188,21 @@ exploration did not reach, so it cannot be called unused.
 - **`hierarchy-violated`** (O2, per state). `single-size` (two or more roles, one size); with the importance table:
   `level` (a level in the scene that is not the contract's; `-` is normal), `levels` (more than 3), `rank` (a node of
   another level larger than the smallest level-1 node); with k too, `ratio` (exact with fractions).
-- **`raw-text`** (O2). A shown node of role `text` or `countdown` whose label is empty.
+- **`raw-text`** (O2). A shown node of role `text` or `countdown` whose label is empty (part `empty`). With the scene
+  identity (U24) also, for such a node: part `msgid`, its label equals its msgid byte for byte and the msgid is no
+  `[[identity_literal]]` row, where every `[[catalogue]]` declares `msgids = "key"` (with `source-text` msgids, as
+  gettext's, a label equal to its msgid is right in the source language and raw in another only when the msgid has a
+  translation there: that needs the catalogue, U17b, so the node is counted not applicable); part `no-msgid`, it has a
+  label and no msgid while its typographic role is in a `[[catalogue]]`'s `text_roles`. One verdict per node, as before.
+- **`required-element-missing`** (O2 + identity, U24). In a state whose identity names class C, every element id of
+  C's `[[state_class]].required` that no shown scene node carries (a node hidden by its scene flag `H` does not count:
+  `observed.hidden` lists such carriers). Identity `[C, element]`, target the element id; the evidence records are the
+  identity records and the hidden carriers. A class with no `[[state_class]]` row is `contract-incomplete`
+  (`state-class`, the class) and no verdict; an element only a node outside the scene vocabulary carries gets no
+  verdict (that node takes part in no check).
+- **`value-split`** (O2 + identity, U24). For a `[[value]]` row, the shown scene nodes carrying its element id, when
+  there are more than its `max_nodes` (1 when absent): identity `[value id]`, observed the sorted keys. A state with no
+  such node is no verdict.
 - **`wrap-policy-undeclared`** (O2 + contract). The declaration lives in the contract (R4, R9): a shown text node takes
   its scope from its `[[element]]` row's `wrap` (by scene key), else its role's `[[role_wrap]]`; a node with neither is
   `contract-incomplete` (`role-wrap`, the role; error, once per run). The check judges every node with a scope and
@@ -284,9 +310,9 @@ What a reviewer saw in the real records that no check of these judges covers (re
 | `text-clipped`, `glyph-missing`, `fit-unmeasurable` | implemented | lvprobe's `clipped` does not model occlusion, corner masks or transforms |
 | `full-string-shown` | implemented: dots; the comparison with the formatted string is `stage-text-mismatch` | |
 | `font-shrunk` | implemented as a REGRESSION check | `[[style_line]]` is read from the product under test (`product-baseline:f1274bf`) and needs the owner's signature: it catches a font that becomes smaller than at that commit, not one that is already wrong (no spec value exists to compare with: the spec gives sizes, not line heights; font ids are not mapped). It compares line heights, so a smaller font with the same line height is not seen |
-| `value-split` | **blocked** | needs (1) a contract table of value elements (`[[value]]`: element id, the phrase whose arguments make the value, e.g. the locker number and the entered code) and (2) an element id per scene node (a 15th semantic field, model.h) so that the nodes of one value can be counted |
-| `required-element-missing` | **blocked** | needs (1) the state class of each step (`[[state_class]]` id: a probe reply or a 15th field of the root record, model.h) and (2) an element id per scene node for the contract's extra elements (`countdown`, `dismiss`, `numpad`, `language_switch`, `size_buttons`, ...); `[[element]]` maps element ids to fixed keys only, which a numpad or a size-button list does not have |
-| `raw-text` (raw msgid) | **blocked** | needs the msgid and the arguments of each text node in the scene (two semantic fields, model.h) to tell a raw msgid from a formatted string |
+| `value-split` | implemented (U24) with the probe's identity; `check-blocked` without it | counts the shown nodes of one element id; whether they are the digits of ONE value is the product's claim (it gives them one element id). The lockers kiosk has no `[[value]]` row yet (the owner's) and its adapter no identity yet (a product task) |
+| `required-element-missing` | implemented (U24) with the probe's identity; `check-blocked` without it | presence by element id in the scene only: a required element drawn but not in the scene, or in the scene and not drawn, is the stage's (`stage-unmatched`) and ui-render's business. "Every report section under the all-sections fixture" (P004 3.1) needs that fixture (a later task) |
+| `raw-text` (raw msgid) | implemented (U24) where decidable from identity: `msgid` (label == msgid, key msgids, no identity-literal) and `no-msgid` (catalogue text without a msgid) | **blocked on the catalogue (U17b)** for `source-text` msgids (lockers' gettext catalogues): a label equal to its msgid is raw only in a language where the msgid has a translation; also a label that is another msgid, or the right msgid formatted with the wrong arguments (`render-text-mismatch`, `i18n_format`) |
 | `phrase-too-long` | out of scope | a product build check (P003) |
 | `stage-unmatched`, `stage-text-mismatch`, `stage-unowned-target`, `scene-vocabulary`, `contract-incomplete`, `contract-pending`, `exception-unused`, `checks-examined`, `check-vacuous` | implemented | the judges' own findings |
 
@@ -294,14 +320,14 @@ What a reviewer saw in the real records that no check of these judges covers (re
 
 | # | Defect | Checks that catch it | Canary reproduces the mechanism? |
 |---|---|---|---|
-| F2 | Pad shows no digits | none here: the content half is `required-element-missing` (blocked) and `ui-parity`; the render half is `ui-render.invisible-node` (the real kiosk now paints its dots) | no |
+| F2 | Pad shows no digits | the content half: `required-element-missing` (U24) once the lockers contract requires the echo of a welcome state with digits (the `code_echo` element; P004 3.1 "the entered-code echo on Welcome when pad_len > 0" needs a state class of its own, the owner's) and `ui-parity`; the render half is `ui-render.invisible-node` (the real kiosk now paints its dots) | the mechanism yes: `v-missing` (a state class without a required element) |
 | F3 | Banner covers key "1"; its scrim swallows the first tap | `overlay-policy` (a layer that takes the taps: sealed, or rendered clickable over a control; an undeclared clickable scrim), `occluded-target` (a card drawn over the key's probe points; `layer-unreachable` for a scrim whose card leaves no free square) | yes: `v-overlay` (a modal layer over an enabled, non-inert button), `v-unreachable`; and on the real frames 13, 14, 17, 18 (rendered clickable scrims over controls) |
-| F5 | "82" as two glyph labels in one font | `font-shrunk` for the font (the real kiosk now draws them at the display style); the split: `value-split` (blocked) | `v-shrunk` for the font, not the split |
+| F5 | "82" as two glyph labels in one font | `font-shrunk` for the font (the real kiosk now draws them at the display style); the split: `value-split` (U24), once the adapter gives both nodes the element `hero_number` and the contract has its `[[value]]` row | `v-shrunk` for the font; `v-split` for the split (the title, one value, as two text nodes) |
 | F6 | Countdown clipped (20 dp row, 36 px line) and in m:ss | `text-clipped`, `text-overflow` (height); the format: blocked (no msgid) | partly: `v-clipped` (a label cut by its parent), `v-overflow` (width); the short row is in the unit tests |
 | F8 | Bulgarian subtitle cut mid-sentence | `text-overflow`, `text-clipped`, `wrap-policy-undeclared` | yes: `v-overflow`, `v-wrap` |
 | F9 | BG/EN toggles show no selected state | `toggle-group-indistinct` (fill and token) | yes: `v-toggle` |
-| F10 | Splash has no version line | none: `required-element-missing` is blocked | no |
-| F11 | Report without columns; clipped caption rows | the clipped rows: `text-clipped`, `text-overflow`; the missing content: blocked | partly, as F6 |
+| F10 | Splash has no version line | `required-element-missing` (U24), once the lockers `splash` row requires a version element (today it requires `screen_headline` only: the owner's) and the adapter reports identity | yes: `v-missing` (the `detail` class without its required body) |
+| F11 | Report without columns; clipped caption rows | the clipped rows: `text-clipped`, `text-overflow`; the missing content: `required-element-missing` (U24) once the `report` row lists the columns and the adapter reports identity | partly, as F6; the missing content as `v-missing` |
 | X2 | "Open source licenses..." row clipped | `text-clipped`, `text-overflow` (found on the real frame 19) | partly, as F6 |
 
 ## The abstraction key (an engine limit, reported, not changed)
@@ -317,7 +343,9 @@ key over frame facts (a later engine task), or a product whose scene states ever
 ## Canaries (`selftest/ui_canary_product/`)
 
 A 320x240 LVGL app (`canary.c`) with a model adapter (`model.c`) built through `c_ui_probe`; it has no pointer entry
-(`uim_pointer_supported()` is false) and no pointer indev of its own, so its taps go through the indev the probe
+(`uim_pointer_supported()` is false) and no pointer indev of its own; it reports its scene identity (U24:
+`uim_identity_supported()` is true; state class `main`, or `detail` for `v-missing`; element ids `title` and `body`,
+msgids `canary.*`, the title's number as its argument; its catalogue `requires` `identity`), so its taps go through the indev the probe
 creates (`taps probe`) and the explorer reports no `taps-injected` (that finding is for a product that HAS its own indev
 but no entry); the app is in the vocabulary of the
 real kiosk: structural roles, style tokens (`canary.toml`'s `[[style]]` with `[[style_role]]` variants), flag letters,
@@ -349,18 +377,58 @@ state has its own abstraction key:
 | `v-text` | the body text drawn as "All clean" for the scene's "All clear" | `ui-scene.stage-text-mismatch` (`["scene", "body"]`) |
 | `v-shrunk` | the body text drawn in a font with a 10 px line (the style's is 16) | `ui-fit.font-shrunk` (`["body"]`) |
 | `v-modal` | a CORRECT modal dialog: a full-window scrim with an intent, clickable, background opacity 82, then an opaque dialog card with its Close button | none: the background is inert (R7) and the scrim's free bands around the card are reachable |
+| `v-missing` (U24) | the state class `detail` (requires title and body) shown without its body text | `ui-scene.required-element-missing` (`["detail", "body"]`) |
+| `v-split` (U24) | the title, ONE `[[value]]`, drawn as two text nodes "Canary" and "37", both element `title` | `ui-scene.value-split` (`["title"]`) |
+| `v-raw-msgid` (U24) | the body's label is its msgid `canary.body` (the canary's msgids are keys) | `ui-scene.raw-text` (`["body", "msgid"]`) |
 | `v-fake-inert` | the `v-occluded` cover, and over everything a transparent, non-clickable panel with `I` | `ui-scene.occluded-target` (`["ok"]`): a bare I panel grants nothing |
 | `v-unreachable` | a scrim with an intent and a banner card with its rectangle | `ui-scene.occluded-target` (`["bscrim"]`, part `layer-unreachable`) |
 
-`selftest/ui_judges.sh` builds the probe in release and san, runs the canary session `session.in` as the
-`c_ui_probe_session` test `:session_test` in both modes, replays the paths with both judges and `--today
+`selftest/ui_judges.sh` builds the probe in release and san, runs the canary sessions `session.in` and (U24)
+`identity.in` (the identity of the clean state and of the three identity variants) as the
+`c_ui_probe_session` tests `:session_test` and `:identity_test` in both modes, replays the paths with the judges and `--today
 2026-11-16`, and checks: per variant exactly the findings above, their ids recomputed from identity and state key;
 the part of each finding where a part tells causes apart; nothing in the clean state nor under `v-modal`; one `checks-examined` per judge with every check above 0 and no
 `check-vacuous`; the summary's `<gate>.<check>` counts; byte-identical findings and evidence twice in release, and
 release equal to san; every finding replays to its id from its `paths.json`; the exceptions against `--today` (a live
 one turns its finding into info, an unused one with a visited target and an expired one are errors, one whose target
 never appears is info); exit 2 without a contract, without `--today`, with an unknown judge, a malformed date, or
-`--today` without `--judges`; no canary probe is left.
+`--today` without `--judges`; U24: without ui-scene no `identity` command is sent, and every one is read after a
+step's `env-inputs`; a probe that does not announce `identity` (the canary's greeting with the word removed) is refused
+by the canary catalogue (`requires`), and under a copy of the catalogue that does not require it the three identity
+checks are `check-blocked` errors and none of them reaches a verdict; no canary probe is left.
+
+## What the lockers adapter must emit (U24)
+
+The real kiosk does not report identity yet: business-apps pins an older gate and its model adapter gains
+`uim_identity_supported` / `uim_identity` in a product task. Until then its runs give `check-blocked` for
+`required-element-missing` (the contract has `[[state_class]]` rows; it has no `[[value]]` or `[[catalogue]]` row, so
+those two are not blocked: there is nothing to judge). What the adapter must emit, from `lockers.toml`:
+
+- **The state line**: one of the `[[state_class]]` ids, the class of the screen or of the topmost message shown:
+  `splash`, `welcome`, `choose_size`, `opened`, `report`, `lockout`, `inspection`, `startup_fault` (screens) and
+  `dialog`, `snackbar`, `banner` (a message over a screen). The identity has ONE class per state, so a screen with a
+  message over it is either the screen's class or the message's, and only that class's `required` is checked there: a
+  known limit (a list of classes per state would need a second grammar change; reported, not done). The language, a
+  countdown and the digits entered do not change the class.
+- **Element ids** of the `required` lists, on the node that IS that element (from ui-look.md 3.2, 4.1, 6.1 and the
+  ui-rules.md rows the provenance cites): `screen_headline` (the headline text, key 3 on Welcome), `subtitle` (4),
+  `numpad` (the pad panel, 14), `language_switch` (the BG/EN panel, 9), `countdown` (the countdown text of a timed
+  screen or message), `size_buttons` (the panel of the size choices), `cancel` (17), `hero_number` (the locker number),
+  `body`, `done` (16), `report_title`, `staff_strong`, `staff_detail`, `notice_body` and `dismiss` (a message's text
+  and its dismiss control). A container the lists name (`numpad`, `language_switch`, `size_buttons`) must be a semantic
+  node of its own (9 and 14 are today).
+- **The `[[element]]` ids** on their keys: `lang_bg` 11, `lang_en` 12, `code_echo` 13, `numpad_32` .. `numpad_43`
+  (keys 32..43), `done` 16, `cancel` 17, `size_48` .. `size_53`, `released` 20, `licenses` 8. A node has ONE element id:
+  the pad keys carry `numpad_<key>` and the pad panel `numpad`; the BG/EN buttons `lang_*` and their panel
+  `language_switch`.
+- **Value elements** (rows the owner would add: `[[value]] id = "locker_number", element = "hero_number"` and
+  `[[value]] id = "entered_code", element = "code_echo"`): every node that draws a digit of the locker number carries
+  `hero_number` (the F5 split: two nodes "8" and "2", both `hero_number`, is then `value-split`), and the echo of the
+  entered code carries `code_echo`.
+- **Msgids and arguments**: every catalogue text node its gettext msgid (the English source text of
+  `lkui/catalog/i18n/*.pot`, byte for byte) and its formatted arguments (the countdown's `{0}`, the locker number, the
+  digit count). The lockers catalogues are `source-text`: a `[[catalogue]]` row `msgids = "source-text"` (the owner's)
+  turns on the `no-msgid` part for its `text_roles`; the label == msgid part stays blocked on U17b.
 
 ## Rows this task added to the lockers contract (for the owner to sign or reject, row by row)
 
@@ -417,6 +485,13 @@ Each break was applied to the judge, the unit tests (`gate/tests/test_ui_judge_*
 | font-below-min | `size < minimum` -> `size < minimum - 1` |
 | hierarchy-violated | the ratio without `k`; importance pending returns before `single-size` |
 | raw-text | `label == b""` -> `label == b"-"` |
+| U24 (the rows below: `test_ui_judge_identity.py` and `test_ui_explore_identity.py` run, 1 to 3 failing tests each; the C rows `//ui/model:probe_test`) | |
+| U24: required-element-missing | a missing element taken as present (`if True: continue`); hidden nodes counted as present; an unknown class not reported |
+| U24: value-split | `len(nodes) > limit` -> `> limit + 1`; `max_nodes` ignored |
+| U24: raw-text, identity parts | the msgid comparison `False and ...`; `[[identity_literal]]` ignored; source-text msgids judged; `no-msgid` never reported |
+| U24: check-blocked | never emitted; the identity verdicts counted without identity |
+| U24: grammar and explorer | a repeated key, and a node line without identity, accepted (Python); the key cross-check removed; identity not read; the C grammar accepting a node line without identity, and a second `state` line (`//ui/model:probe_test` fails) |
+| U24: loader | a `[[value]]` element that names nothing accepted |
 | toggle-group-indistinct | `len(set(values)) != 2` -> `> 2` |
 | text-overflow | `natural_w > owner.w` -> `> owner.w + 1` |
 | text-overflow verdicts | an ellipsis or clip scope counted as a verdict |
@@ -429,8 +504,16 @@ Each break was applied to the judge, the unit tests (`gate/tests/test_ui_judge_*
 
 ## Deviations and interface gaps
 
-- **O2 lacks the tree**: no parent, z order, layer, msgid, args, state class or element id in the semantic records. The
-  geometric checks read the associated O3 nodes; the checks that need the rest are blocked (above).
+- **O2 lacks the tree**: no parent, z order or layer in the semantic records. The geometric checks read the associated
+  O3 nodes. Msgid, arguments, state class and element id come from the scene identity (U24, a call and a probe command
+  of their own, docs/ui-model.md "Scene identity"), not from new semantic fields: no recorded transcript changed.
+- **U24, `[[catalogue]].msgids`**: the contract's rule "label == msgid and the msgid is not an identity-literal" is
+  wrong for a gettext catalogue (msgid = the English text: every correct English label equals its msgid). The decidable
+  part is therefore conditioned on a contract row that says the msgids are keys (docs/ui-contract.md); lockers' raw
+  msgids stay blocked on U17b.
+- **U24, targets**: a `required-element-missing` finding's exception target is the element id, a `value-split`'s the
+  value id. Neither is a scene key or a rendered node name, so the exceptions table never marks such a target visited:
+  an unused exception of these rules is `exception-unused` info, not error (a live one still turns its finding).
 - **The scene vocabulary is the gate's** (the orchestrator's rulings R1 to R6); model.h will cite this section.
 - **Finding names added**: `stage-unmatched`, `stage-text-mismatch`, `fit-unmeasurable`, `glyph-missing`,
   `scene-vocabulary`, `contract-incomplete`, `contract-pending`, `exception-unused`, `checks-examined`,

@@ -142,7 +142,43 @@ static void t_a_life_line_escapes_its_class_name_and_marks_an_empty_one(ctest_t 
     CHECK(t, strcmp(life("\xd0", true, 22 + 3), "TRUNC") == 0);                 /* an escape is never cut */
 }
 
-CTEST_SUITE("probe", {"life_line", t_a_life_line_escapes_its_class_name_and_marks_an_empty_one},
+#define SIXTEEN "\t=\t=\t=\t=\t=\t=\t=\t=\t=\t=\t=\t=\t=\t=\t=\t="
+
+static long ident(const char *text)
+{
+    return probe_check_identity(text, strlen(text));
+}
+
+/* U24: one `state` line first, then `node` lines; no empty field; `-` is none; arguments `=...` counted exactly. */
+static void t_an_identity_reply_is_one_state_line_then_node_lines(ctest_t *t)
+{
+    CHECK_EQ_I64(t, ident("state\tmain\n"), 1);
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\ttitle\tcanary.title\t0\n"), 2);
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\t-\tm\t2\t=8\t=\nnode\tj\tbody\t-\t0\n"), 3);
+    CHECK_EQ_I64(t, ident("state\tsplash\\x01\nnode\tk\\t1\te\\\\\tm\t1\t=\\xd0\\x99\n"), 2);
+    CHECK_EQ_I64(t, ident(""), -1);                                   /* no state line */
+    CHECK_EQ_I64(t, ident("state\t-\n"), -1);                         /* a class is never none */
+    CHECK_EQ_I64(t, ident("state\t\n"), -1);                          /* no empty field */
+    CHECK_EQ_I64(t, ident("state\tmain"), -1);                         /* no LF */
+    CHECK_EQ_I64(t, ident("state\tmain\textra\n"), -1);
+    CHECK_EQ_I64(t, ident("node\tk\te\tm\t0\nstate\tmain\n"), -1);  /* the state line is first */
+    CHECK_EQ_I64(t, ident("state\tmain\nstate\tmain\n"), -1);       /* and only once */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\t-\t-\t0\n"), -1);  /* a node line without identity */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\t-\t1\t=x\n"), -1);   /* arguments without a msgid */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t1\n"), -1);      /* fewer arguments than counted */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t0\t=x\n"), -1);  /* more */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t1\tx\n"), -1);   /* an argument without `=` */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t01\t=x\n"), -1);
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\t\te\tm\t0\n"), -1);       /* an empty key */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t0\n\n"), -1);   /* an empty line */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\\q\tm\t0\n"), -1);  /* a bad escape */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\x01\tm\t0\n"), -1);  /* a raw control byte */
+    CHECK_EQ_I64(t, ident("state\tmain\nlabel\tk\te\tm\t0\n"), -1);
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t16" SIXTEEN "\n"), 2);    /* UIM_IDENTITY_ARGS_MAX */
+    CHECK_EQ_I64(t, ident("state\tmain\nnode\tk\te\tm\t17" SIXTEEN "\t=\n"), -1);
+}
+
+CTEST_SUITE("probe", {"identity", t_an_identity_reply_is_one_state_line_then_node_lines}, {"life_line", t_a_life_line_escapes_its_class_name_and_marks_an_empty_one},
             {"the_field_count_is_exact", t_the_field_count_is_exact_and_a_surplus_tab_is_refused_before_any_mask_is_shifted},
             {"trace_numbers", t_a_trace_record_has_unsigned_numbers_in_fields_one_and_three},
             {"escapes", t_escapes_are_only_for_bytes_without_another_spelling},

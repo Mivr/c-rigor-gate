@@ -1,0 +1,53 @@
+ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop identity
+ok open
+ok identity lines 7
+state	main
+node	title	title	canary.title	0
+node	body	body	canary.body	0
+node	ok	-	canary.ok	0
+node	back	-	canary.back	0
+node	lang_bg	-	canary.bg	0
+node	lang_en	-	canary.en	0
+ok apply
+ok identity lines 6
+state	detail
+node	title	title	canary.title	1	=36
+node	ok	-	canary.ok	0
+node	back	-	canary.back	0
+node	lang_bg	-	canary.bg	0
+node	lang_en	-	canary.en	0
+ok semantic lines 5
+title	text	Canary 36	8	8	200	24	1	-	-	1	-	-	-
+ok	button	OK	8	100	100	50	1	100:0	-	5	-	-	-
+back	button	Back	200	100	100	50	1	101:0	-	5	-	-	-
+lang_bg	button	BG	216	8	48	48	1	8:0	-	6	-	-	-
+lang_en	button	EN	272	8	48	48	1	8:1	-	7	-	-	-
+ok apply
+ok identity lines 8
+state	main
+node	title	title	canary.title	0
+node	body	body	canary.body	0
+node	ok	-	canary.ok	0
+node	back	-	canary.back	0
+node	lang_bg	-	canary.bg	0
+node	lang_en	-	canary.en	0
+node	title_num	title	canary.title_num	1	=37
+ok apply
+ok identity lines 7
+state	main
+node	title	title	canary.title	1	=38
+node	body	body	canary.body	0
+node	ok	-	canary.ok	0
+node	back	-	canary.back	0
+node	lang_bg	-	canary.bg	0
+node	lang_en	-	canary.en	0
+ok apply
+ok identity lines 7
+state	main
+node	title	title	canary.title	1	=11 title far too long for one line
+node	body	body	canary.body	0
+node	ok	-	canary.ok	0
+node	back	-	canary.back	0
+node	lang_bg	-	canary.bg	0
+node	lang_en	-	canary.en	0
+ok quit

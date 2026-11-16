@@ -175,7 +175,7 @@ class TapExploreTest(h.ExploreCase):
         twice = self.catalogue('drain_ms = 1024', 'drain_ms = 1024\nrequires = ["pointer", "pointer"]')
         outcome, _ = self.replay("facts", [[h.OPEN]], catalogue=twice, code=2)
         self.assertIn("requires: must be a list of distinct probe capabilities (frame-facts, ink, hit-test, tap, "
-                      "apply-missed, crop, pointer)", outcome.stderr)
+                      "apply-missed, crop, pointer, identity)", outcome.stderr)   # U24: the eighth capability
 
     def test_a_tap_that_presses_another_node_than_the_hit_query(self):
         self.probe_error("tapdisagree", [h.OPEN, BUTTON], {"kind": "contract", "command": "tap", "step": 1,

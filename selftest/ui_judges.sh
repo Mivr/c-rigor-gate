@@ -54,12 +54,12 @@ begin "c_ui_probe builds the probe of the canary app in release and in san"
 build_out probe_rel "$REL" "$P:probe"
 build_out probe_san "$SAN" "$P:probe"
 
-begin "the canary session (session.in) under buck2 test in release and san (c_ui_probe_session): transcript byte-identical, exit 0, nothing on stderr"
+begin "the canary sessions (session.in; U24: identity.in, the scene identity) under buck2 test in release and san (c_ui_probe_session): transcripts byte-identical, exit 0, nothing on stderr"
 for plat in "$REL" "$SAN"; do
   log="$out/sess.${plat##*:}.log"
-  "${B[@]}" test --target-platforms "$plat" "$P:session_test" 2>&1 | strip_ansi > "$log"
-  [ "${PIPESTATUS[0]}" = 0 ] || fail "$CUR: the canary session test failed in $plat" "$log"
-  grep -Eq "Pass 1\. Fail 0\." "$log" || fail "$CUR: the session summary in $plat is not one pass" "$log"
+  "${B[@]}" test --target-platforms "$plat" "$P:session_test" "$P:identity_test" 2>&1 | strip_ansi > "$log"
+  [ "${PIPESTATUS[0]}" = 0 ] || fail "$CUR: the canary session tests failed in $plat" "$log"
+  grep -Eq "Pass 2\. Fail 0\." "$log" || fail "$CUR: the session summary in $plat is not two passes" "$log"
 done
 
 begin "the judges on the canary: per check exactly its finding, the id recomputed, in its canary state and nothing else there; nothing in the clean state nor under the correct modal dialog; every check examined nodes and none is vacuous"
@@ -111,25 +111,32 @@ WANT = {
     "v-covered": [("ui-render", "invisible-node", ["title", "covered"], False)],
     "v-btn-text": [("ui-render", "invisible-node", ["ok", "text"], False)],
     "v-fill": [("ui-render", "contrast-low", ["body", "below-large"], False)],
+    # U24: the identity checks (the state class without its required body; the title, one value, as two text nodes;
+    # the body's label is its msgid)
+    "v-missing": [("ui-scene", "required-element-missing", ["detail", "body"], False)],
+    "v-split": [("ui-scene", "value-split", ["title"], False)],
+    "v-raw-msgid": [("ui-scene", "raw-text", ["body", "msgid"], False)],
 }
 # the part each canary finding must have (a flip of the part is a different defect)
 PARTS = {"v-occluded": "covered", "v-fake-inert": "covered", "v-unreachable": "layer-unreachable",
          "v-overlay": "captures", "v-wrap-contra": "contradicts", "v-contrast": "below-large",
          "v-disabled": "disabled-clickable", "v-click": "clickable", "v-hidden": "hidden", "v-long": "long-mode",
          "v-line": "above", "v-invisible": "node", "v-covered": "covered", "v-btn-text": "text",
-         "v-fill": "below-large"}
+         "v-fill": "below-large", "v-raw-msgid": "msgid"}
 def fid(gate, check, identity, key, stateless):
     data = json.dumps([gate, check, identity if stateless else [identity, key]], sort_keys=True,
                       separators=(",", ":")).encode() + b"\n"
     return "%s.%s/%s" % (gate, check, hashlib.sha256(data).hexdigest()[:12])
 assert sorted(WANT) == sorted(p[-1] for p in paths[1:]) and paths[0] == ["open 1000000000 7"], "paths"
-run_level = [f for f in found if f["state"] is None and f["check"] in ("checks-examined", "check-vacuous")]
+run_level = [f for f in found if f["state"] is None and f["check"] in ("checks-examined", "check-vacuous", "check-blocked")]
 assert sorted((f["gate"], f["check"], f["severity"]) for f in run_level) == \
     [("ui-fit", "checks-examined", "info"), ("ui-render", "checks-examined", "info"),
      ("ui-scene", "checks-examined", "info")], run_level
 for f in run_level:
     assert all(n > 0 for n in f["observed"]["totals"].values()), f["observed"]["totals"]
-    assert f["observed"]["states"] == 36
+    assert f["observed"]["states"] == 39
+scene_totals = next(f for f in run_level if f["gate"] == "ui-scene")["observed"]["totals"]
+assert scene_totals["required-element-missing"] > 0 and scene_totals["value-split"] > 0, scene_totals   # U24
 found = [f for f in found if f not in run_level]
 assert not [f for f in found if f["path"] == paths[0]], [f["id"] for f in found if f["path"] == paths[0]]
 keys = {}
@@ -153,6 +160,9 @@ assert len(found) == sum(len(w) for w in WANT.values()), "%d findings" % len(fou
 # every finding is an error (an unmeasured ink too: the judge fails closed)
 assert {f["severity"] for f in found} == {"error"}
 assert [f["observed"]["against"] for f in found if f["path"][-1] == "v-fill"] == ["own-fill"]
+assert [f["observed"] for f in found if f["path"][-1] == "v-split"] == [
+    {"stage": "O2", "value": "title", "element": "title", "nodes": ["title", "title_num"], "max_nodes": 1}]
+assert [f["observed"]["hidden"] for f in found if f["path"][-1] == "v-missing"] == [[]]
 counts = summary["findings"]
 assert counts["ui-scene.checks-examined"] == 1 and counts["ui-fit.font-shrunk"] == 1 and counts["intent-missed"] == 0
 assert counts["ui-render.checks-examined"] == 1 and counts["ui-render.flag-mismatch"] == 5
@@ -160,12 +170,13 @@ assert counts["ui-render.invisible-node"] == 3 and counts["ui-render.ink-unmeasu
 print("  %d canary states, the ids recomputed; nothing in the clean state nor under the correct modal dialog" % len(WANT))
 PY
 
-begin "without ui-render no ink command is sent and the ui-scene and ui-fit findings are the same"
+begin "without ui-render no ink command is sent and the ui-scene and ui-fit findings are the same; identity is read after every observed step"
 printf '#!/bin/sh\ntee -a "%s" | "%s"\n' "$out/cmds.log" "$probe_rel" > "$out/logged-probe"
 chmod +x "$out/logged-probe"
 JUDGES=ui-scene,ui-fit judge two 1 "$out/logged-probe" "$CONTRACT"
 grep -q '^frame$' "$out/cmds.log" || fail "$CUR: the logging probe saw no frame command" "$out/j.two.txt"
 ! grep -q '^ink' "$out/cmds.log" || fail "$CUR: an ink command without ui-render" "$out/cmds.log"
+[ "$(grep -c '^identity$' "$out/cmds.log")" -gt 0 ] && [ "$(grep -B1 '^identity$' "$out/cmds.log" | grep -v '^identity$' | grep -v '^--$' | sort -u)" = "env-inputs" ] || fail "$CUR: identity is not read after env-inputs of each step" "$out/cmds.log"
 python3 -I - "$out/j.rel.1.json" "$out/j.two.json" <<'PY' || fail "$CUR: the two-judge findings differ" "$out/j.two.txt"
 import json, sys
 def load(name):
@@ -177,6 +188,27 @@ assert three == two, (len(three), len(two))
 print("  no ink command; %d ui-scene and ui-fit findings, identical" % len(two))
 PY
 JUDGES=ui-scene,ui-fit,ui-render
+
+begin "U24: without ui-scene no identity command is sent; a probe that does not announce identity is refused by the canary catalogue (it requires it), and under a catalogue that does not, the identity checks are check-blocked, never a silent pass"
+: > "$out/cmds.log"
+JUDGES=ui-fit judge fit 1 "$out/logged-probe" "$CONTRACT"
+grep -q '^frame$' "$out/cmds.log" && ! grep -q '^identity' "$out/cmds.log" || fail "$CUR: an identity command without ui-scene" "$out/cmds.log"
+printf '#!/bin/sh\n"%s" | sed -u "1s/ identity\\$//"\n' "$probe_rel" > "$out/noid-probe"
+chmod +x "$out/noid-probe"
+judge noid 2 "$out/noid-probe" "$CONTRACT"
+grep -q "requires the probe capabilities identity" "$out/j.noid.txt" || fail "$CUR: the catalogue's requires did not refuse" "$out/j.noid.txt"
+sed 's/, "crop", "identity"\]/, "crop"]/' "$CAT" > "$out/noid.events.toml"
+cmp -s "$CAT" "$out/noid.events.toml" && fail "$CUR: the catalogue copy still requires identity"
+CAT="$out/noid.events.toml" judge noid2 1 "$out/noid-probe" "$CONTRACT"
+python3 -I - "$out/j.noid2.json" <<'PY' || fail "$CUR: the blocked identity checks" "$out/j.noid2.txt"
+import json, sys
+found = [json.loads(line) for line in open(sys.argv[1])]
+blocked = sorted((f["observed"]["check"], f["severity"]) for f in found if f["check"] == "check-blocked")
+assert blocked == [("raw-text", "error"), ("required-element-missing", "error"), ("value-split", "error")], blocked
+assert not [f for f in found if f["check"] in ("required-element-missing", "value-split")]
+assert not [f for f in found if f["check"] == "raw-text" and f["observed"]["part"] != "empty"]
+print("  no identity without ui-scene; refused by requires; three check-blocked errors without the capability")
+PY
 
 begin "byte-identical findings: two release runs, and release against san"
 judge rel.2 1 "$probe_rel" "$CONTRACT" --evidence "$out/ev.rel.2"
@@ -197,7 +229,7 @@ for ident in $(python3 -I -c 'import json,sys; [print(json.loads(l)["id"].rsplit
   grep -q "/$ident\"" "$out/rp.json" || fail "$CUR: the replay of $ident does not give $ident" "$out/rp.txt"
   n=$((n + 1))
 done
-[ "$n" = 38 ] || fail "$CUR: $n findings replayed, wanted 38"
+[ "$n" = 41 ] || fail "$CUR: $n findings replayed, wanted 41"
 echo "  $n findings replayed to their ids"
 
 begin "exceptions against --today: a live one turns exactly its finding into info with its expiry; an unused one is exception-unused, an error when its target was visited and info when not; an expired one is an error and changes nothing"

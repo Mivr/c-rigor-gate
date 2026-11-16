@@ -1,6 +1,7 @@
 #include "selftest/ui_canary_product/canary.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #include "lvgl_gate.h"
 
@@ -11,7 +12,9 @@ enum { V_CLEAN, V_OCCLUDED, V_OVERLAY, V_SMALL, V_SPACING, V_BOUNDS, V_OVERLAP, 
        /* U07: one variant per check of the ui-render judge (docs/ui-judges-render.md, "Canaries") */
        V_INVISIBLE, V_CONTRAST, V_DISABLED, V_CLICK, V_HIDDEN, V_LONG, V_ALIGN, V_LINE, V_NOINK,
        /* U07 fix-up 1 */
-       V_COVERED, V_BTN_TEXT, V_FILL };
+       V_COVERED, V_BTN_TEXT, V_FILL,
+       /* U24: one variant per identity check of the ui-scene judge (docs/ui-judges.md, "Canaries") */
+       V_MISSING, V_SPLIT, V_RAW_MSGID };
 enum { N_TITLE, N_BODY, N_OK, N_BACK, N_BG, N_EN };
 /* Style tokens of canary.toml: title 1, body 2, caption 3, button 5, language on 6 / off 7, a small and a big body. */
 enum { T_TITLE = 1, T_BODY = 2, T_CAPTION = 3, T_BUTTON = 5, T_LANG_ON = 6, T_LANG_OFF = 7, T_SMALL = 8, T_BIG = 9 };
@@ -55,7 +58,7 @@ static const char *const g_titles[CANARY_VARIANTS] = {
     "Canary 9", "Canary 10", "Canary 11 title far too long for one line", "Canary 12", "Canary 13", "Canary 14",
     "Canary 15", "Canary 16", "Canary 17", "Canary 18", "Canary 19", "Canary 20", "Canary 21", "Canary 22",
     "Canary 23", "Canary 24", "Canary 25", "Canary 26", "Canary 27", "Canary 28", "Canary 29", "Canary 30",
-    "Canary 31", "Canary 32", "Canary 33", "Canary 34", "Canary 35",
+    "Canary 31", "Canary 32", "Canary 33", "Canary 34", "Canary 35", "Canary 36", "Canary", "Canary 38",
 };
 
 /* The clean scene: a title, a body text, two buttons and the BG/EN switch, every rect in display pixels. */
@@ -85,6 +88,8 @@ static const canary_node_t g_blocker = {"blocker", "panel", "", 0, 0, 320, 240, 
                                         false, false, NULL};   /* a bare inert panel: grants nothing */
 static const canary_node_t g_bscrim = {"bscrim", "scrim", "", 120, 170, 200, 60, "105:0", "-", 0, CANARY_PANEL, true,
                                        0, true, false, NULL};
+static const canary_node_t g_title_num = {"title_num", "text", "37", 108, 8, 100, 24, "-", "-", T_TITLE, CANARY_LABEL,
+                                          true, 0, false, false, NULL};   /* V_SPLIT: the second half of the title */
 static const canary_node_t g_bcard = {"bcard", "banner", "", 120, 170, 200, 60, "-", "-", 0, CANARY_PANEL, true, 255,
                                       true, false, NULL};   /* the card has its scrim's rectangle: no tap reaches the scrim */
 
@@ -103,7 +108,7 @@ static void body_of(unsigned v, canary_node_t *body)
     body->wrap = v == V_WRAP_CONTRA ? "single_line" : NULL;
     body->token = v == V_FONT ? T_SMALL : v == V_HIERARCHY ? T_BIG : v == V_WRAP ? T_CAPTION : body->token;
     body->text = v == V_RAW ? "" : v == V_DOTS ? "Body text that is long" : v == V_GLYPH ? "\xd0\x99"
-                 : v == V_SHRUNK || v == V_LINE ? "xx" : body->text;
+                 : v == V_SHRUNK || v == V_LINE ? "xx" : v == V_RAW_MSGID ? "canary.body" : body->text;
     body->w = v == V_DOTS ? 60 : body->w;
     body->h = v == V_DOTS ? 16 : body->h;
 }
@@ -141,6 +146,12 @@ static void scene_of(unsigned v)
     } else if (v == V_UNREACHABLE) {
         add(g_bscrim);
         add(g_bcard);
+    } else if (v == V_SPLIT) {
+        g_nodes[N_TITLE].w = 100;   /* "Canary" and "37": one value (the title) drawn as two text nodes */
+        add(g_title_num);
+    } else if (v == V_MISSING) {
+        memmove(&g_nodes[N_BODY], &g_nodes[N_BODY + 1], (g_count - N_BODY - 1u) * sizeof g_nodes[0]);
+        g_count--;          /* the `detail` screen without its required body text */
     }
 }
 
@@ -320,6 +331,41 @@ bool canary_node(unsigned i, canary_node_t *out)
     }
     *out = g_nodes[i];
     return true;
+}
+
+/* U24: the identity of each keyed node: element id and msgid (the canary's msgids are catalogue keys, never text). */
+static const struct {
+    const char *key;
+    const char *element;
+    const char *msgid;
+} g_identity[] = {
+    {"title", "title", "canary.title"}, {"title_num", "title", "canary.title_num"}, {"body", "body", "canary.body"},
+    {"ok", "-", "canary.ok"},           {"back", "-", "canary.back"},               {"lang_bg", "-", "canary.bg"},
+    {"lang_en", "-", "canary.en"},      {"close", "-", "canary.close"},
+};
+
+const char *canary_state_class(void)
+{
+    return g_variant == V_MISSING ? "detail" : "main";
+}
+
+bool canary_identity(unsigned i, canary_identity_t *out)
+{
+    unsigned row;
+    if (i >= g_count) {
+        return false;
+    }
+    for (row = 0; row < sizeof g_identity / sizeof g_identity[0]; row++) {
+        if (strcmp(g_identity[row].key, g_nodes[i].key) == 0) {
+            out->element = g_identity[row].element;
+            out->msgid = g_identity[row].msgid;
+            /* the title is "Canary {0}" with the variant's number (the clean "Canary" has no argument) */
+            out->arg = row == 1u ? g_nodes[i].text : row == 0u && strlen(g_nodes[i].text) > 7u ? g_nodes[i].text + 7
+                                                                                              : NULL;
+            return true;
+        }
+    }
+    return false;
 }
 
 void canary_step(uint32_t ms)

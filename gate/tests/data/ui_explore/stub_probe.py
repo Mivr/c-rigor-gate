@@ -46,7 +46,6 @@ line is appended to that file (the tests read the advances), and the probe's pid
 Intent 7 creates an object (a `life` line in the next frame only) in these modes. The frame-facts modes announce every capability (`frame-facts ink hit-test tap apply-missed crop`, as the C probe does)
 and model a 4x2 display: walk node 0 the screen, node 1 a 2x2 button at (0, 0) whose tap presses like intent 1; while
 the notice is shown the button's tap changes nothing (the F3b canary) and intent 1 is `ok apply missed`:
-
     facts        correct frame records, hit-test, tap, crop and ink
     framebad     the button's `node` record has 20 fields
     frametype    the frame has a record of an unknown type
@@ -65,7 +64,6 @@ the notice is shown the button's tap changes nothing (the F3b canary) and intent
 
 U05c, the product's pointer entry: these frame-facts modes announce `pointer` too (all but `pindev`) and write the
 `taps` line in the first frame of a session (`entry`; `indev` for `pindev`). Every tap is a sample through the entry:
-
     ptouch       every tap posts one `touch` at its instant (a correct product with an ambient event)
     pnotouch     a tap posts no `touch` (ambient-missing)
     ptwice       a tap posts `touch` twice (ambient-extra)
@@ -93,6 +91,10 @@ not meeting the label) does not). The first tap, and the first refused apply, re
     pdecoy       a second lv_label (node 3) shows the same text as the countdown, before and after
     pdouble      a second countdown `count2` (node 3, "58 m" -> "60 m") restarts with the first
 
+U24, scene identity: as facts, announcing `identity` too: `ident` (`state main`, the title: element title, msgid
+toy.title, one argument; the button: a msgid), `identbad` (the title's line has no identity), `identkey` (a node line
+whose key no semantic node has).
+
 In every mode intent 2 is accepted only while the notice is shown (trace `late`), intent 10 is a pad digit (accepted,
 trace `digit`) and intent 11 the pad's enter (accepted after a digit, trace `enter`). A stub that would sleep exits as
 soon as its parent is gone, so a killed explorer never leaves one behind.
@@ -110,7 +112,8 @@ FACTS = ("facts", "framebad", "frametype", "tapblocked", "tapdisagree", "noframe
          "prestart", "pindev")
 COUNT = ("pcount", "pskip", "pplus", "ptworun", "ptext", "pnode", "pflag", "pframe", "plife", "pbg", "pfont", "pdecoy",
          "pdouble")
-FACTS += COUNT
+IDENT = ("ident", "identbad", "identkey")
+FACTS += COUNT + IDENT
 POINTER = ("ptouch", "pnotouch", "ptwice", "pchange", "prestart") + COUNT
 IDLE_MS = 5000
 SCREEN = "node\t0\t-1\t0\tlv_obj\t0\t0\t3\t1\t0\t1\t-1\t-1\t0\t0\tffffff\t255\t255\t1\t0\t0"
@@ -401,6 +404,11 @@ def facts(words, model):
         x, w, h = int(words[1]), int(words[3]), int(words[4])
         row = "".join("2196f3ff" if x + i < 2 else "ffffffff" for i in range(w))
         return ["ok crop lines %d" % h] + [row[:-1] if MODE == "cropbad" else row] * h
+    if cmd == "identity" and MODE not in IDENT:
+        return ["err identity unsupported"]
+    if cmd == "identity":
+        title = {"ident": "title\ttitle\ttoy.title\t1\t=Toy", "identbad": "title\t-\t-\t0"}.get(MODE, "ghost\tt\t-\t0")
+        return ["ok identity lines 3", "state\tmain", "node\t" + title, "node\tbutton\t-\ttoy.press\t0"]
     if cmd == "ink":
         return ["ok ink lines 2", "ink\t1\t4\t0,0,1,1\t2196f3\t2196f3\tffffff\tffffff", "noink\t0\tunstable"]
     return None
@@ -458,10 +466,9 @@ def greeting():
         with open(LOG + ".count", "w") as stream:
             stream.write(str(count))
         return "ui-probe/1 ready tap" if count % 2 else "ui-probe/1 ready"
-    if MODE in POINTER:
-        return "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop pointer"
     if MODE in FACTS:
-        return "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop"
+        tail = " pointer" if MODE in POINTER else " identity" if MODE in IDENT else ""
+        return "ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop" + tail
     return {"tapcap": "ui-probe/1 ready hit-test tap", "badcap": "ui-probe/1 ready teleport",
             "missed": "ui-probe/1 ready apply-missed", "badorder": "ui-probe/1 ready tap hit-test",
             "dupcap": "ui-probe/1 ready tap tap"}.get(MODE, "ui-probe/1 ready")

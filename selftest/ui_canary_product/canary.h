@@ -17,7 +17,7 @@
 #define CANARY_W 320
 #define CANARY_H 240
 #define CANARY_NODES 12u
-#define CANARY_VARIANTS 36u
+#define CANARY_VARIANTS 39u
 
 typedef enum { CANARY_LABEL, CANARY_BUTTON, CANARY_PANEL, CANARY_GHOST } canary_kind_t;
 
@@ -41,6 +41,14 @@ typedef struct {
     const char *wrap;     /* the wrap_policy field: NULL is `-` (V_WRAP_CONTRA states one the contract does not give) */
 } canary_node_t;
 
+/* U24: the scene identity of one node: its element id and msgid (`-` for none) and at most one formatted argument
+ * (NULL: none). */
+typedef struct {
+    const char *element;
+    const char *msgid;
+    const char *arg;
+} canary_identity_t;
+
 /* Cold start: a fresh LVGL and the clean scene drawn. False if LVGL cannot start. */
 bool canary_start(void);
 
@@ -53,6 +61,11 @@ lv_display_t *canary_display(void);
 /* The number of scene nodes of the current variant, and node `i` of it (false if out of range). */
 unsigned canary_count(void);
 bool canary_node(unsigned i, canary_node_t *out);
+
+/* U24: the state class of the current variant (`main`, or `detail` for the variant that lacks a required element), and
+ * the identity of node `i`: false if `i` is out of range or the node has no identity. */
+const char *canary_state_class(void);
+bool canary_identity(unsigned i, canary_identity_t *out);
 
 /* Move LVGL's tick by `ms` and run its timers once; draw the scene now. */
 void canary_step(uint32_t ms);

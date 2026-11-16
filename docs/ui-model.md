@@ -16,8 +16,8 @@ the header: static storage (no allocation; the one model object comes from `uim_
 virtual clock and the seed of `uim_open` influence output), and:
 
 * **A failure poisons the session.** A call that returns false (or `UIM_ERROR`) may have changed the model halfway
-  (LVGL cannot be rolled back); the gate calls nothing but `uim_open` afterwards. The read-only `uim_env_inputs` and
-  `uim_semantic` are the exceptions. `fail open` leaves the model closed.
+  (LVGL cannot be rolled back); the gate calls nothing but `uim_open` afterwards. The read-only `uim_env_inputs`,
+  `uim_semantic` and `uim_identity` (U24) are the exceptions. `fail open` leaves the model closed.
 * **A refusal is not a failure.** `uim_apply` returns `UIM_REFUSED` for an input that is not enabled in this state; the
   model is unchanged and the session goes on.
 * **Neither is a miss.** `uim_apply` returns `UIM_MISSED` when the input was delivered through the production path (an
@@ -46,6 +46,7 @@ virtual clock and the seed of `uim_open` influence output), and:
 | `uim_semantic`, `uim_patches`, `uim_trace` | text records (below); patches and trace clear their log |
 | `uim_domain_count()`, `uim_domain_at(m, i)` | the optional view-domain sweep (the gate only asks for `i < count`) |
 | `uim_pointer_supported()`, `uim_pointer(m, x, y, down)` | the optional pointer entry (U05c, below): a constant of the build, and one pointer sample delivered exactly as the product's real input source would, the clock still, processed by the next `uim_settle`; false poisons |
+| `uim_identity_supported()`, `uim_identity(m, out)` | the optional scene identity (U24, below): a constant of the build, and the state class and per-node element id, msgid and arguments of the current scene; read-only, false does not poison |
 
 ### The pointer entry (U05c)
 
@@ -83,6 +84,61 @@ and with one (the host's input hook does the real work: here a queue the next `u
     /* uim_settle: run the host loop at the current virtual time: it drains the queue into the pointer indev
      * (lv_indev_read) and then the work the click queued, as it does for any other queued input. */
 
+### Scene identity (U24)
+
+The semantic records say what is drawn, not what it IS. Three checks of the ui-scene judge need the latter
+(docs/ui-judges.md): `required-element-missing` (the state class of each state and an element id per node: the splash
+without its version line, F10; the report without its columns, F11; the pad without its echo, F2), `value-split` (which
+nodes make one value: the locker number "82" drawn as two labels, F5) and `raw-text` (the msgid of a text: a raw msgid
+on screen). The 14 semantic fields stay as they are, so every recorded transcript stays valid; identity is a call of
+its own.
+
+**The mechanism: two required functions, as U05c's pointer entry.** `bool uim_identity_supported(void)` returns a
+constant of the build and `bool uim_identity(uim_t *m, uim_buf_t *out)` writes the records below. Both must exist in
+every adapter (an interface break: an adapter of before U24 no longer links with the probe main), ordinary required
+symbols of the `uim_` prefix that the symbols gate confines with no change to it (`rules/ui.bzl` and
+`gate/rigor_lib/facts_symbols.py` are unchanged), no weak symbol in product code. A product without identity returns
+false from both (the toys of `selftest/ui_product` and `selftest/ui_frame_product` do); the canary of the judges'
+selftest reports it. The probe reads `uim_identity_supported()` before its greeting and again at every `identity`
+command (a different answer is `err identity model-contract`). `uim_identity` is read-only like `uim_semantic`: it
+never changes the model, is callable whenever `uim_semantic` is, and neither its failure (`fail identity`) nor a
+breach of its grammar (`err identity model-contract`) poisons the session.
+
+    bool uim_identity_supported(void) { return false; }                     /* a product without identity */
+    bool uim_identity(uim_t *m, uim_buf_t *out) { (void)m; out->len = 0; return false; }
+
+**The records** (one call, the record grammar's lines, escapes and printable bytes; unlike the other records NO empty
+field, `-` is "none"; two record types told apart by their first field):
+
+| Record | Fields | Meaning |
+|---|---|---|
+| `state` | `state`, class | exactly one, the FIRST line: the state class id of the screen shown: the product's name for that class of screen in its UI spec, a `[[state_class]]` id of the UI contract (lockers: `welcome`, `opened`, `dialog`, ...). Never `-` |
+| `node` | `node`, key, element, msgid, n, then n arguments | one line per semantic node that has any identity, in any order, each key at most once and a key of the `uim_semantic` records of the same scene. `element`: the node's element id or `-`; `msgid`: the catalogue key its text was formatted from or `-`; `n`: decimal 0..16 (`UIM_IDENTITY_ARGS_MAX`), then exactly n fields, each `=` followed by the escaped bytes of one formatted argument (`=` alone is an empty argument: the `=` marker, as in the frame's `life` class field, lets an empty argument exist without an empty field) |
+
+A `node` line whose element and msgid are both `-` (no identity), arguments without a msgid, a wrong argument count,
+an argument without `=`, an empty field, a first line that is not the one `state` line, or a second `state` line breaks
+the grammar (`err identity model-contract`; the probe checks every line, `probe_identity.c`). The explorer checks the
+same grammar, a repeated key, and that every key names a semantic record of the step (a probe error of kind
+`contract`, `probe-internal-error`).
+
+**What each means, and what a product may not do.**
+- The **state class** is the product's name for the class of screen shown, from its UI spec, the same for every state of
+  that class (the language, a formatted value or a countdown do not change it). It is not the abstraction key: the
+  explorer keys states as before, and the judges look the class up in the contract's `[[state_class]]` rows.
+- An **element id** is a stable name of a node from the product's UI spec (the names the contract's `required` lists and
+  `[[element]]` rows use: `screen_headline`, `numpad`, `countdown`, `lang_bg`, ...). A product may NOT derive it from the
+  node's text, its position, its index or anything that changes with the language or the data; nodes that make one
+  value (the digits of a locker number) carry the same element id.
+- The **msgid** is the catalogue key the node's text was formatted from (gettext's msgid), byte for byte; the
+  **arguments** are the values formatted into it, as formatted, in order. A text that is not catalogue text has no
+  msgid (`-`); a product may NOT report a msgid for a text it did not format from the catalogue, nor the formatted text
+  as the msgid.
+
+The simplest mechanism the probe and the explorer can check exactly: one reply of two fixed record types, the counts
+explicit, every field checked by the existing escape grammar. A 15th semantic field would have changed every
+transcript and the 14-field grammar; a field per kind of identity (a separate `state` command) would have cost a
+second round trip per step for no gain.
+
 Deviations from P004's sketch: `uim_instance()` (the gate needs the one static model object and `uim_t` must not be a
 product type in a gate header), `uim_frame` takes `struct _lv_display_t **` so the header includes no LVGL, and
 `uim_advance` is gate code (the probe) over `uim_step`.
@@ -111,15 +167,18 @@ leading zeros, no overflow; `arg` may carry a `-` (never `-0`) and must fit `int
 
 **The greeting.** `ui-probe/1 ready` followed by the capabilities, each a single space and a token, each at most once
 and in this fixed order: `frame-facts`, `ink`, `hit-test`, `tap`, `apply-missed`, `crop` (a capability added later is
-appended to the list). This probe announces those six, and `pointer` (U05c) last when the product has a pointer
-entry (`uim_pointer_supported()`): `ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop pointer`.
+appended to the list). This probe announces those six, `pointer` (U05c) when the product has a pointer
+entry (`uim_pointer_supported()`): `ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop pointer`, and
+`identity` (U24) after it when the product reports its scene identity (`uim_identity_supported()`; the canary:
+`ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop identity`).
 A greeting with no capability is an older probe of the same protocol. The protocol name stays `ui-probe/1`: a capability
 only adds commands or replies, it never changes an existing one. The explorer refuses an unknown, repeated or unordered
 capability (a protocol finding) and a catalogue that needs one the probe does not announce (taps need `hit-test` and
 `tap`).
 `frame-facts`: `frame` carries the lvprobe records below; `ink`, `hit-test`, `tap`, `crop`: those commands;
 `apply-missed`: `apply` can reply `ok apply missed`; `pointer`: `tap` goes through the product's pointer entry ("Hit
-query and tap"), so a catalogue can require that its taps take the production input path.
+query and tap"), so a catalogue can require that its taps take the production input path; `identity`: the `identity`
+command (below).
 
 | Command | Reply |
 |---|---|
@@ -134,6 +193,7 @@ query and tap"), so a catalogue can require that its taps take the production in
 | `tap <x> <y>` | `ok tap <pressed> <clicked>` (node indexes or `none`) or `ok tap blocked`: a press and release through the production pointer path (the product's pointer entry with `pointer`, else LVGL's pointer indev), then `uim_settle` (so an intent the click queued runs at the tap's time: `trace`, `semantic` and `next-due` right after the tap show it), then refreshes to a quiet frame. An input: an `err` or `fail tap` (the settle failed) poisons, `blocked` does not |
 | `crop <x> <y> <w> <h>` | `ok crop lines <h>`: one line per row, 8 lowercase hex digits (`rrggbbaa`) per pixel. The region must lie inside the display and `h x (8 w + 1) <= 65535` (160x51 fits, 160x52 does not); otherwise `bad-arguments`. Read-only |
 | `semantic`, `patches`, `trace` | `ok <name> lines <n>` followed by exactly n record lines, verbatim; `fail <name>` (patches and trace poison) |
+| `identity` (U24) | `ok identity lines <n>` and the n identity records ("Scene identity"), verbatim; needs `open`, no frame; `fail identity` (does not poison); `err identity unsupported` from a probe that did not announce `identity`; `err identity model-contract` (does not poison) for a breach of the grammar or a `uim_identity_supported()` that changed |
 | `domain-count` | `ok domain-count <n>` (allowed before `open`) |
 | `domain-at <i>` | `ok domain-at` or `fail domain-at` (poisons); `i >= count` is `err domain-at bad-arguments` |
 | `quit` | `ok quit`; the probe then reads to EOF and any further non-empty line is `err ? after-quit` (once) and counted |
@@ -151,7 +211,8 @@ argument count), `not-open`, `line-too-long`, `eof-without-quit`, `model-contrac
 `n > UIM_ENV_MAX`, `len > cap` or a changed buffer pointer or capacity, a record that breaks the grammar, a NULL display from
 `uim_frame`, an env input that is not kind env, a `uim_next_due` at or before now on a stable scene, an `apply` result
 outside the enum, a display lvprobe cannot read, a changed display, a scene that never settles or keeps changing under
-the probe; it poisons the session except after `env-inputs`, `semantic` and `hit-test`), `internal` (a handler failed without an `err` line: never a partial `ok`).
+the probe; it poisons the session except after `env-inputs`, `semantic`, `identity` and `hit-test`), `unsupported`
+(U24: `identity` from a probe that did not announce it), `internal` (a handler failed without an `err` line: never a partial `ok`).
 A last line without LF is `err ? malformed` followed by `err ? eof-without-quit`. Exit status 0 when no protocol error
 occurred and `quit` ended the session, 1 otherwise, 2 if stdout cannot be written. Static memory only.
 
@@ -398,3 +459,6 @@ policy, layering and RAM budget, as `gate//rt:require` is, is a separate task.
 * `tools/validate.sh` learned the `ui` name (one case and the lane order) so that a selected `ui` runs.
 * The `model-contract` cases for a NULL display, an env input of the wrong kind, `n > UIM_ENV_MAX` and a changed buffer
   are implemented in the probe but not driven by the toy (the record grammar, the two-TAB overflow and `due <= now` are).
+* U24: the identity grammar is driven by the probe's unit test (`//ui/model:probe_test`, every violation above) and the
+  explorer's stub, not by a C adapter that breaks it: no selftest product writes a bad identity reply. The toy drives
+  `err identity unsupported` (selftest/ui.sh), the canary the supported path (`identity.in`, `identity.out`).

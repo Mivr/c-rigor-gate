@@ -195,6 +195,10 @@ provenance = "spec:ui-rules.md#timers"
 id = "main"
 required = ["title"]
 provenance = "spec:ui-look.md#3.2"
+[[state_class]]
+id = "detail"
+required = ["title", "body"]     # U24: v-missing shows this class without its body text
+provenance = "spec:ui-look.md#3.2"
 
 [[importance]]
 level = 1
@@ -329,3 +333,15 @@ provenance = "product-baseline:abd8895"
 style = "big_body"
 line_height_px = 16
 provenance = "product-baseline:abd8895"
+
+# U24: the tables of the identity checks (docs/ui-contract.md). The title is ONE value (v-split draws it as two text
+# nodes); the canary's msgids are catalogue keys, and every title and body text comes from the catalogue.
+[[value]]
+id = "title"
+element = "title"
+provenance = "spec:P004#3.1"
+[[catalogue]]
+id = "canary"
+msgids = "key"
+text_roles = ["title", "body"]
+provenance = "spec:P004#3.1"
