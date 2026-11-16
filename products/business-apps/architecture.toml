@@ -148,7 +148,7 @@ modules = ["//apps/lockers/lkapp/**"]
 modules = ["//apps/fiscal/dtc/ports:ports", "//apps/fiscal/dtc/types:types"]
 
 [layer."fiscal-domain"]
-modules = []
+modules = ["//apps/fiscal/dt/ltime:ltime", "//apps/fiscal/journal/amount:amount", "//apps/fiscal/dt/fday:fday"]
 
 [layer."fiscal-safety"]
 modules = []
@@ -1040,4 +1040,9 @@ kind = "pure"
 [[edge]]
 from = "fiscal-root"
 to = "fiscal-root"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/dt/fday:fday"
+to = "//lib/fmt/jpull:jpull"
 kind = "pure"

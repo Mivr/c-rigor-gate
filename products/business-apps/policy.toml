@@ -5242,3 +5242,110 @@ exports = ["main"]
 [module."//apps/fiscal/dtc/ports:dtfake_small_test"]
 allow = ["core_str_from_cstr"]
 exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime"]
+level = "L3"
+impl = ["apps/fiscal/dt/ltime/src/**"]
+allow = []
+exports = ["dt_date_cmp", "dt_local_add_min", "dt_local_date", "dt_local_minutes", "dt_local_valid", "dt_stamp_parse",
+    "dt_stamp_utc_sec", "dt_zdocs_window"]
+
+[module."//apps/fiscal/dt/ltime:ltime_parse_test"]
+allow = ["core_str_from_cstr", "strcpy"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_valid_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_minutes_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_add_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_window_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/dt/ltime:ltime_dst_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/journal/amount:amount"]
+level = "L3"
+impl = ["apps/fiscal/journal/amount/src/**"]
+allow = []
+exports = ["amt_json_money", "amt_json_rate", "amt_money2"]
+
+[module."//apps/fiscal/journal/amount:amount_money2_digits_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/amount:amount_money2_syntax_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/amount:amount_json_exact_test"]
+allow = ["memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/amount:amount_json_noise_test"]
+allow = ["core_str_from_cstr", "memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/amount:amount_json_syntax_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/amount:amount_range_test"]
+allow = ["core_str_from_cstr", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/amount:amount_rate_test"]
+allow = ["core_str_from_cstr", "memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/amount:amount_args_test"]
+allow = ["core_str_from_cstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/fday:fday"]
+level = "L3"
+impl = ["apps/fiscal/dt/fday/src/**"]
+allow = []
+exports = ["dt_fday_parse"]
+
+[module."//apps/fiscal/dt/fday:fday_ok_test"]
+allow = ["core_str_from_cstr", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/fday:fday_amounts_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/fday:fday_device_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/fday:fday_shape_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/fday:fday_range_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/fday:fday_stamp_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/fday:fday_json_test"]
+allow = ["memcpy", "memmove", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/dt/fday:fday_args_test"]
+allow = ["bcmp", "core_str_from_cstr", "memcpy", "memset", "strlen"]
+exports = ["main"]
