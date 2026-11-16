@@ -1,0 +1,58 @@
+# The catalogue of the U05e scene stub (gate/tests/data/ui_explore/stub_scene.py): scene-scoped taps, the pad with and
+# without a digit map, boot seeds and a prefix. A test fixture, not a product's sealed catalogue.
+schema = "ui-events/1"
+product = "selftest"
+app = "scene"
+version = 1
+max_wait_ms = 10000
+drain_ms = 1024
+taps = { scope = "scene", max_per_state = 64, grid_pct = [20, 50, 80], intent_node = "intent", provenance = "design:P004#4.3" }
+
+[boot]
+seeds = [7, 8]
+provenance = "design:P004#4.3"
+
+[[prefix]]
+name = "shown"
+words = ["show"]
+provenance = "design:P004#4.3"
+
+[key]
+fields = ["role", "label", "x", "y", "w", "h", "enabled", "intent", "flags", "style"]
+facts = ["deadline"]
+derived = []
+ignore = []
+
+[u1]
+events = [
+  { id = "go", intent = 1, arg = 0, expect = "accept" },
+  { id = "close", intent = 2, arg = 0, expect = "accept" },
+  { id = "show", intent = 9, arg = 0, expect = "accept" },
+]
+
+[u2]
+events = [
+  { id = "tap-go", x = 60, y = 30, target = "lv_button" },
+]
+
+[u3]
+events = [
+  { id = "blank-right", x = 300, y = 120 },
+]
+
+[u4]
+events = [
+  { id = "pad-12", boundary = "valid-visitor", via = "pad", digits = "12", digit_intent = 5, enter_intent = 6, expect = "accept" },
+  { id = "pad-map-12", boundary = "valid-visitor", via = "pad", digits = "12", digit_map = { "1" = { intent = 5, arg = 0 }, "2" = { intent = 5, arg = 1 } }, enter_intent = 6, expect = "accept" },
+]
+
+[u5]
+events = []
+
+[e1]
+events = []
+
+[t1]
+events = [
+  { id = "one-frame", kind = "advance", ms = 16 },
+]
