@@ -223,28 +223,8 @@ def _seeds(args, explorer, paths, catalogue, prefix):
         details.append(dict(detail, seed=seed))
         extra.extend((seed, item) for item in found)
         if detail.get("budget_cut"):
-            return {"boot_seeds": details, "budget_cut": True}, _merge_bounds(extra)
-    return {"boot_seeds": details}, _merge_bounds(extra)
-
-
-def _merge_bounds(seeded):
-    """The findings of every seed; the bfs bound findings of several seeds share one id, so they become one, whose
-    `reasons` hold every seed's and whose `per_seed` keeps each (a later seed's budget cut never hides an earlier
-    seed's `state-bound`). The first seed's state and path are kept."""
-    out, bounds = [], {}
-    for seed, item in seeded:
-        if item["check"] != "depth-unsaturated":
-            out.append(item)
-            continue
-        part = dict(item["observed"], seed=seed)
-        if item["id"] not in bounds:
-            bounds[item["id"]] = dict(item, observed=dict(item["observed"], per_seed=[]))
-            out.append(bounds[item["id"]])
-        merged = bounds[item["id"]]["observed"]
-        merged["per_seed"].append({k: part[k] for k in ("seed", "reasons", "states_per_depth", "dropped_states")})
-        merged["reasons"] = [r for r in ("last-depth-adds-states", "state-bound", "budget")
-                             if any(r in p["reasons"] for p in merged["per_seed"])]
-    return out
+            return {"boot_seeds": details, "budget_cut": True}, strategies.merge_bounds(extra)
+    return {"boot_seeds": details}, strategies.merge_bounds(extra)
 
 
 def _prefix(args, catalogue, caps):
@@ -440,10 +420,22 @@ def _remove(path):
         os.unlink(path)
 
 
+_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+_STOPPED = []          # the signal that is ending the run, once one arrived
+
+
 def _stop(signum, frame):
     """SIGTERM, SIGINT, SIGHUP: SIGKILL every live probe's group WITHOUT waiting (the interrupted code may hold
-    Popen's wait lock), then exit 128 + the signal; `handle`'s finally reaps them."""
+    Popen's wait lock), then exit 128 + the signal; `handle`'s finally reaps them. Further signals are ignored from
+    here on (a repeated SIGTERM during the teardown would otherwise meet the restored default action and kill the
+    explorer with the signal instead of 128 + it)."""
     del frame
+    _STOPPED.append(signum)
+    for sig in _SIGNALS:
+        try:
+            signal.signal(sig, signal.SIG_IGN)
+        except ValueError:      # not the main thread (a test calling the handler directly): nothing to ignore
+            pass
     kill_all(reap=False)
     raise SystemExit(128 + signum)
 
@@ -469,13 +461,15 @@ def handle(args):
     _check_outputs(args)
     _remove(args.out)              # a stale result never survives this run
     _remove(args.summary)
-    previous = {sig: signal.signal(sig, _stop) for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+    del _STOPPED[:]
+    previous = {sig: signal.signal(sig, _stop) for sig in _SIGNALS}
     try:
         found, summary = explore(args)
     finally:
         kill_all()
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
+        if not _STOPPED:        # a run a signal ends keeps ignoring signals until it has exited
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
     jsonio.write_atomic(args.out, b"".join(jsonio.canonical_dumps(item) for item in found))
     if args.summary:
         jsonio.write_atomic(args.summary, jsonio.canonical_dumps(summary))

@@ -254,3 +254,23 @@ def replay(explorer, paths):
     for path in paths:
         explorer.run(list(path), settle=False)
     return {"paths": len(paths)}
+
+
+def merge_bounds(seeded):
+    """The findings of every seed; the bfs bound findings of several seeds share one id, so they become one, whose
+    `reasons` hold every seed's and whose `per_seed` keeps each (a later seed's budget cut never hides an earlier
+    seed's `state-bound`). The first seed's state and path are kept."""
+    out, bounds = [], {}
+    for seed, item in seeded:
+        if item["check"] != "depth-unsaturated":
+            out.append(item)
+            continue
+        part = dict(item["observed"], seed=seed)
+        if item["id"] not in bounds:
+            bounds[item["id"]] = dict(item, observed=dict(item["observed"], per_seed=[]))
+            out.append(bounds[item["id"]])
+        merged = bounds[item["id"]]["observed"]
+        merged["per_seed"].append({k: part[k] for k in ("seed", "reasons", "states_per_depth", "dropped_states")})
+        merged["reasons"] = [r for r in ("last-depth-adds-states", "state-bound", "budget")
+                             if any(r in p["reasons"] for p in merged["per_seed"])]
+    return out

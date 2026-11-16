@@ -7,7 +7,7 @@ modal layer, a pass-through tap whose control below acts). Against the scene stu
 
 from rigor_lib import ui_explore_catalogue as catalogue_mod
 from rigor_lib.errors import InternalError
-from rigor_lib.ui_explore import _merge_bounds
+from rigor_lib.ui_explore_strategies import merge_bounds as _merge_bounds
 from tests import test_ui_explore_helpers as h
 from tests.test_ui_explore_scene import CANARY, OPEN, SCENE, SceneCase
 
