@@ -45,6 +45,14 @@ class ParseTest(unittest.TestCase):
             with self.assertRaises(InternalError, msg=name):
                 frame_of(lines)
 
+    def test_the_taps_fact_of_a_first_frame_is_accepted_and_ignored(self):
+        _semantic, tree = base()
+        lines = tree.lines()
+        frame = frame_of(lines[:2] + ["taps\tprobe"] + lines[2:])
+        self.assertEqual(len(frame.nodes), 5)
+        with self.assertRaises(InternalError):
+            frame_of(lines + ["ink\t1\t0\t-\t0\t0\t0\t0"])          # an ink record is no frame fact
+
     def test_the_visible_box_is_cut_by_the_display_and_the_clip_chain(self):
         tree = Tree()
         panel = tree.node(0, "lv_obj", (10, 10, 59, 59))

@@ -38,8 +38,27 @@ def check_provenance_form(table, provenance, where):
         _fail("%s: the provenance form %s is that of [[style_line]] alone, and that table has no other" % (where, BASELINE))
 
 
+LAYER_ROLES = ("scrim", "dialog", "banner", "snackbar")     # the layer roles of the scene vocabulary (ui_judge_vocab)
+
+
+def check_input_layer_names(tables):
+    """The naming rule of the sealed `[[input_layer]]` rows (docs/ui-contract.md): a row is the policy of a layer role
+    when it is named the role or `<role>_<kind>`; any other row is a screen-level layer and must be named `screen`
+    (the base layer, the scene's root) or a `[[state_class]]` id. A name that is none of these (a typo) would detach
+    the row from every judge silently, so it is the loader's error."""
+    states = {row["id"] for row in tables["state_class"]}
+    for row in tables["input_layer"]:
+        name = row["layer"]
+        layer = name in LAYER_ROLES or any(name.startswith(role + "_") and len(name) > len(role) + 1
+                                           for role in LAYER_ROLES)
+        if not layer and name != "screen" and name not in states:
+            _fail("[[input_layer]] %r names no layer role (%s, or <role>_<kind>), not `screen` and no [[state_class]]"
+                  % (name, ", ".join(LAYER_ROLES)))
+
+
 def check(tables):
-    """References, one typographic role per style, unique element keys."""
+    """References, one typographic role per style, unique element keys, the input layer names."""
+    check_input_layer_names(tables)
     styles = {r["id"] for r in tables["style"]}
     roles = {r["id"] for r in tables["role"]}
     named = {r["style"] for r in tables["role"]}

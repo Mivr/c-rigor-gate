@@ -174,6 +174,21 @@ bool uim_trace(uim_t *m, uim_buf_t *out)
     return true;
 }
 
+/* The canary has no pointer entry of its own (and no pointer indev: the probe creates one for its taps). */
+bool uim_pointer_supported(void)
+{
+    return false;
+}
+
+bool uim_pointer(uim_t *m, int32_t x, int32_t y, bool down)
+{
+    (void)m;
+    (void)x;
+    (void)y;
+    (void)down;
+    return false;
+}
+
 uint16_t uim_domain_count(void)
 {
     return 0;

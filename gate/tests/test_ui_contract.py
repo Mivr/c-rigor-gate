@@ -474,6 +474,12 @@ class JudgeTablesTest(unittest.TestCase):
         must_fail(self, TEXT + '\n[[layer]]\nid = "x"\nrole = "dialog"\npolicy = "pass-through"\nprovenance = "owner:Q7"\n',
                   "unknown top-level keys: layer")
 
+    def test_an_input_layer_row_must_name_a_layer_role_a_kind_of_one_screen_or_a_state_class(self):
+        self.assertEqual(sorted(r["layer"] for r in uc.load(LOCKERS).rows("input_layer")),
+                         ["banner_notice", "banner_persistent", "dialog", "lockout", "screen", "snackbar", "splash"])
+        for typo in ("dialgo", "bnner_notice", "banner_", "popup"):
+            must_fail(self, edited('layer = "dialog"', 'layer = "%s"' % typo), "names no layer role")
+
     def test_product_baseline_is_the_provenance_of_style_line_alone(self):
         must_fail(self, edited('line_height_px = 229\nprovenance = "product-baseline:f1274bf"',
                                'line_height_px = 229\nprovenance = "spec:ui-look.md#4.2"'), "of [[style_line]] alone")

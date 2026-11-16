@@ -443,7 +443,9 @@ bash selftest/ui_frame.sh || fail "selftest/ui_frame.sh (the probe's frame facts
 bash selftest/ui_judges.sh || fail "selftest/ui_judges.sh (the ui-scene and ui-fit judges on the canary) failed"
 
 begin "no probe process this selftest started is still alive"
-python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" "$probe_ptr_rel" "$probe_ptr_san" <<'PY' || fail "$CUR: probe processes left behind"
+build_out canary_rel "$REL" "//selftest/ui_canary_product:probe"   # built by ui_judges.sh: its processes are checked too
+build_out canary_san "$SAN" "//selftest/ui_canary_product:probe"
+python3 -I - "$root" "$probe_rel" "$probe_san" "$probe_nondet" "$probe_starve" "$probe_tick" "$probe_ptr_rel" "$probe_ptr_san" "$canary_rel" "$canary_san" <<'PY' || fail "$CUR: probe processes left behind"
 import os, sys, time
 root, binaries = sys.argv[1], {os.path.realpath(os.path.join(sys.argv[1], b)) for b in sys.argv[2:]}
 stub = os.path.join(root, "gate/tests/data/ui_explore/stub_probe.py").encode()

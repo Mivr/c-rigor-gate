@@ -6,7 +6,8 @@
 # in its canary state, and nothing else there; nothing in the clean state nor under the modal dialog; every check
 # examined nodes (checks-examined) and none is check-vacuous; the summary counts the judges' findings; byte-identical
 # findings across two runs and across release and san; every finding replays to its id; the contract's exceptions
-# against --today; the judges refuse to run without a contract, a date or known names. No canary probe is left.
+# against --today; the judges refuse to run without a contract, a date or known names; the canary session passes as a
+# c_ui_probe_session test in release and san. No canary probe is left.
 # Needs bash, python3 (stdlib) and tools/buck2. Scratch lives under $TMPDIR.
 set -uo pipefail
 
@@ -49,6 +50,14 @@ judge() {
 begin "c_ui_probe builds the probe of the canary app in release and in san"
 build_out probe_rel "$REL" "$P:probe"
 build_out probe_san "$SAN" "$P:probe"
+
+begin "the canary session (session.in) under buck2 test in release and san (c_ui_probe_session): transcript byte-identical, exit 0, nothing on stderr"
+for plat in "$REL" "$SAN"; do
+  log="$out/sess.$RANDOM.log"
+  "${B[@]}" test --target-platforms "$plat" "$P:session_test" 2>&1 | strip_ansi > "$log"
+  [ "${PIPESTATUS[0]}" = 0 ] || fail "$CUR: the canary session test failed in $plat" "$log"
+  grep -Eq "Pass 1\. Fail 0\." "$log" || fail "$CUR: the session summary in $plat is not one pass" "$log"
+done
 
 begin "the judges on the canary: per check exactly its finding, the id recomputed, in its canary state and nothing else there; nothing in the clean state nor under the correct modal dialog; every check examined nodes and none is vacuous"
 judge rel.1 1 "$probe_rel" "$CONTRACT" --evidence "$out/ev.rel.1" --summary "$out/j.rel.1.sum"

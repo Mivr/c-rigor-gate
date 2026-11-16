@@ -1,5 +1,12 @@
 # The `ui-scene` and `ui-fit` judges (U06, P004 3.1, 3.2)
 
+**What they find today.** On the 23 frames of the real lockers kiosk the judges find six true product defects: banner
+scrims no tap can reach (frames 1-4, 15-18), the snackbar's clickable full-window scrim over BG, EN and Done and the
+snackbar drawn away from its scene rect (frames 13, 14), the fourth stacked banner's scrim over BG/EN (17, 18), the
+clipped Bulgarian licences line (19) and the storage-fault detail drawn as `?40` (22). The contract rows in the block
+"ADDED BY THE U06 AGENT" of `products/business-apps/ui/lockers.toml` are unsigned and need the owner's review, row by
+row (the list is under "Rows this task added to the lockers contract").
+
 Two judges of `rigor ui-explore` (docs/ui-explore.md) that turn the escaped defect classes "a button under an overlay",
 "a target too small", "text that does not fit or is cut", "a toggle that shows no selection" into findings, from the
 scene (O2) and the rendered tree (O3), without the oracle. Python, stdlib only:
@@ -21,7 +28,9 @@ rigor ui-explore ... --judges ui-scene,ui-fit --contract FILE.toml --today YYYY-
 
 `--judges` takes distinct names of `ui-scene` and `ui-fit` and needs `--contract` (docs/ui-contract.md), `--today`
 (the date the contract's exceptions expire against: the judges never read the wall clock) and a probe that announces
-`frame-facts`; otherwise exit 2. `--today` without `--judges` is exit 2 too. Selftest: `selftest/ui_judges.sh` (called
+`frame-facts`; otherwise exit 2. `--today` without `--judges` is exit 2 too. Of the frame records, the judges read
+`lvprobe`, `frame`, `node`, `label` and `fit`, and ignore `region`, `life` and `taps` (the tap path of a session's first
+frame, U05c); any other record type is the gate's error. Selftest: `selftest/ui_judges.sh` (called
 by `selftest/ui.sh`) on the canary product `selftest/ui_canary_product/`. Unit tests: `gate/tests/test_ui_judge_*.py`
 over hand-built observations (`test_ui_judge_helpers.py` writes O2 and O3 lines as the probe writes them), and
 `test_ui_judge_lockers.py` over the 23 frames of the real kiosk.
@@ -303,7 +312,10 @@ key over frame facts (a later engine task), or a product whose scene states ever
 
 ## Canaries (`selftest/ui_canary_product/`)
 
-A 320x240 LVGL app (`canary.c`) with a model adapter (`model.c`) built through `c_ui_probe`, in the vocabulary of the
+A 320x240 LVGL app (`canary.c`) with a model adapter (`model.c`) built through `c_ui_probe`; it has no pointer entry
+(`uim_pointer_supported()` is false) and no pointer indev of its own, so its taps go through the indev the probe
+creates (`taps probe`) and the explorer reports no `taps-injected` (that finding is for a product that HAS its own indev
+but no entry); the app is in the vocabulary of the
 real kiosk: structural roles, style tokens (`canary.toml`'s `[[style]]` with `[[style_role]]` variants), flag letters,
 `-` for the three policies. Its catalogue `canary.events.toml` (one u1 intent per variant), its contract `canary.toml`
 (a 10 inch panel, 40 ppi, everything the judges read decided) and the paths `canary.paths.json`. The clean state is a
@@ -336,7 +348,8 @@ state has its own abstraction key:
 | `v-fake-inert` | the `v-occluded` cover, and over everything a transparent, non-clickable panel with `I` | `ui-scene.occluded-target` (`["ok"]`): a bare I panel grants nothing |
 | `v-unreachable` | a scrim with an intent and a banner card with its rectangle | `ui-scene.occluded-target` (`["bscrim"]`, part `layer-unreachable`) |
 
-`selftest/ui_judges.sh` builds the probe in release and san, replays the paths with both judges and `--today
+`selftest/ui_judges.sh` builds the probe in release and san, runs the canary session `session.in` as the
+`c_ui_probe_session` test `:session_test` in both modes, replays the paths with both judges and `--today
 2026-11-16`, and checks: per variant exactly the findings above, their ids recomputed from identity and state key;
 the part of each finding where a part tells causes apart; nothing in the clean state nor under `v-modal`; one `checks-examined` per judge with every check above 0 and no
 `check-vacuous`; the summary's `<gate>.<check>` counts; byte-identical findings and evidence twice in release, and
@@ -420,7 +433,7 @@ Each break was applied to the judge, the unit tests (`gate/tests/test_ui_judge_*
   `check-vacuous`. Exceptions may name `stage-unmatched`, `stage-text-mismatch`, `fit-unmeasurable`, `glyph-missing`.
 - **`[[style_line]]` has its own provenance form `product-baseline:<commit>`** (ruling R9), allowed in that table only
   and required there.
-- **ui_contract.py stays above 500 lines** (616): it had 610 lines before this task; the tables this task added are in
-  ui_judge_contract.py. Getting under 500 would mean moving the earlier task's dwell code, which this task does not own.
+- **ui_contract.py is split** (fix-up 3): the tables this task added are in ui_judge_contract.py, the dwell table in
+  ui_contract_dwell.py and the consistency checks in ui_contract_checks.py; ui_contract re-exports every public name.
 - **State identity is the abstraction key** (above), as in the explorer.
 - **The explorer offers judges no `ink`, `hit-test` or `crop`**: evidence images are not attached; the records are.

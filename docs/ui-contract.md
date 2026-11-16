@@ -91,8 +91,19 @@ style is named by at most one role (a `[[style_role]]` style is not a `[[role]]`
 so a style token has one typographic role; `[[role_wrap]]` names roles and scopes; `[[element]]` keys are unique and
 their `wrap` names a scope; toggle group members are `[[element]]` ids; `[[style_line]]` names styles. No row of these
 tables may be pending: where the spec does not decide, the row is absent and the judges report `contract-incomplete`.
-A layer's input policy is the sealed `[[input_layer]]` table's, by the structural role (rows named the role or
-`<role>_...`, docs/ui-judges.md); there is no other policy table.
+A layer's input policy is the sealed `[[input_layer]]` table's, by the structural role; there is no other policy table.
+
+**The input-layer naming rule (a gate rule, U06).** An `[[input_layer]]` row is the policy of a layer role of the scene
+vocabulary (`scrim`, `dialog`, `banner`, `snackbar`) when it is named the role or `<role>_<kind>` (lockers: `dialog`,
+`snackbar`, `banner_notice`, `banner_persistent`; the kinds of one role must agree, or the judges report
+`contract-incomplete`). Any other row is a screen-level layer and must be named `screen` (the base layer, the scene's
+root) or a `[[state_class]]` id (lockers: `splash`, `lockout`). A row named otherwise is a LOADER ERROR (exit 2), not a
+finding: a typo (`dialgo`, `bnner_notice`) would detach the row from every judge without any check noticing, and the
+loader refuses every other malformation of a sealed file the same way.
+
+The loader is split across modules (fix-up 3, the series' 500-line limit): `ui_contract.py` (schema, entries, tables,
+the Contract), `ui_contract_checks.py` (the consistency checks), `ui_contract_dwell.py` (the dwell table) and
+`ui_judge_contract.py` (the judges' tables); `ui_contract` re-exports every public name.
 
 ## Checks
 

@@ -174,6 +174,12 @@ def _fit(record):
                 clipped=_flag(f[7], "clipped"), raw=record.raw)
 
 
+# The frame-fact records the judges read, and those they ignore (docs/ui-model.md, "Frame facts"): `region` hashes,
+# `life` events, and `taps` (the tap path of a session's first frame: entry, indev or probe; U05c).
+JUDGED = frozenset(("lvprobe", "frame", "node", "label", "fit"))
+IGNORED = frozenset(("region", "life", "taps"))
+
+
 def parse_frame(records):
     """The O3 facts of one `frame` reply (parsed records with frame-facts). Every shape rule is checked."""
     heads = [r for r in records if r.fields[0] in ("lvprobe", "frame")]
@@ -184,6 +190,8 @@ def parse_frame(records):
     nodes, labels, fits = [], {}, {}
     for record in records:
         kind = record.fields[0]
+        if kind not in JUDGED and kind not in IGNORED:
+            _fail("a %s record, which the frame facts do not have" % kind)
         if kind == "node":
             node = _node(record)
             if node.index != len(nodes) or not -1 <= node.parent < node.index:
