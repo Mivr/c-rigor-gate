@@ -41,8 +41,10 @@ class LockersCatalogueTest(unittest.TestCase):
         self.assertIn("DRAFT by the U23 agent, unsigned, for the owner's review", self.data.decode("utf-8"))
 
     def test_requires_every_capability(self):
-        self.assertEqual(self.cat.requires, CAPABILITIES)
-        self.assertIn("pointer", self.cat.requires)
+        # the seven capabilities the kiosk's probe announces; `identity` (U24) joins when its adapter reports it
+        seven = ("frame-facts", "ink", "hit-test", "tap", "apply-missed", "crop", "pointer")
+        self.assertEqual(self.cat.requires, seven)
+        self.assertEqual(CAPABILITIES, seven + ("identity",))
 
     def test_drain_and_longest_timer(self):
         self.assertLessEqual(self.cat.drain_ms, 60000)
