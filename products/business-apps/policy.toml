@@ -3100,11 +3100,11 @@ allow = ["bcmp", "memchr", "memcmp", "memset"]
 exports = ["httpin_parse"]
 
 [module."//lib/fmt/httpin:parse_basic_test"]
-allow = ["memset"]
+allow = ["bcmp", "memset"]
 exports = ["main"]
 
 [module."//lib/fmt/httpin:parse_field_test"]
-allow = ["memchr", "memset", "snprintf"]
+allow = ["bcmp", "memchr", "memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//lib/fmt/httpin:parse_length_test"]
