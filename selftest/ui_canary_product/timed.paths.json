@@ -1,0 +1,51 @@
+{
+ "schema": "ui-explore-paths/1",
+ "criteria": [],
+ "paths": [
+  [
+   "open 1000000000 7"
+  ],
+  [
+   "open 1000000000 7",
+   "v-clean"
+  ],
+  [
+   "open 1000000000 7",
+   "v-clock"
+  ],
+  [
+   "open 1000000000 7",
+   "v-early"
+  ],
+  [
+   "open 1000000000 7",
+   "v-never"
+  ],
+  [
+   "open 1000000000 7",
+   "v-flash"
+  ],
+  [
+   "open 1000000000 7",
+   "v-blink",
+   "fire-due"
+  ],
+  [
+   "open 1000000000 7",
+   "v-skip"
+  ],
+  [
+   "open 1000000000 7",
+   "v-zero"
+  ],
+  [
+   "open 1000000000 7",
+   "v-start"
+  ],
+  [
+   "open 1000000000 7",
+   "v-silent",
+   "fire-due"
+  ]
+ ]
+}

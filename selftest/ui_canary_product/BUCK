@@ -21,3 +21,15 @@ c_ui_probe_session(name = "session_test", probe = ":probe", session = "session.i
 # U24: the canary's scene identity as a c_ui_probe_session (the clean state, each identity
 # variant: the class without its required body, the title split in two nodes, the raw msgid; and an argument).
 c_ui_probe_session(name = "identity_test", probe = ":probe", session = "identity.in", expected = "identity.out")
+
+# U09: the timed canary of the ui-time judge (selftest/ui_time.sh): one timed defect per intent, and its probe.
+c_library(
+    name = "timed_model",
+    srcs = ["timed.c", "timed_model.c"],
+    headers = ["timed.h"],
+    deps = ["gate//ui/model:model"],
+    exported_deps = ["gate//third_party/lvgl:lvgl"],
+    visibility = ["PUBLIC"],
+)
+
+c_ui_probe(name = "time_probe", model = ":timed_model")

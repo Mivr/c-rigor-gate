@@ -1,0 +1,50 @@
+# The event catalogue of the U09 timed canary (ui-events/1, docs/ui-explore.md; docs/ui-judges-time.md "Canaries").
+# A selftest fixture: intent v (1..10) asks for one timed variant at the current instant (v-clean: a correct dialog
+# of 4 s whose countdown counts 4 3 2 1); `open` shows the title only.
+schema = "ui-events/1"
+product = "selftest"
+app = "canary-time"
+version = 1
+max_wait_ms = 10000
+drain_ms = 1024
+requires = ["frame-facts", "identity"]
+
+[key]
+fields = ["role", "label", "x", "y", "w", "h"]
+facts = ["deadline", "env-inputs"]
+derived = []
+ignore = []
+
+[u1]
+events = [
+  { id = "v-clean", intent = 1, arg = 0, expect = "accept" },
+  { id = "v-early", intent = 2, arg = 0, expect = "accept" },
+  { id = "v-never", intent = 3, arg = 0, expect = "accept" },
+  { id = "v-flash", intent = 4, arg = 0, expect = "accept" },
+  { id = "v-blink", intent = 5, arg = 0, expect = "accept" },
+  { id = "v-skip", intent = 6, arg = 0, expect = "accept" },
+  { id = "v-zero", intent = 7, arg = 0, expect = "accept" },
+  { id = "v-start", intent = 8, arg = 0, expect = "accept" },
+  { id = "v-silent", intent = 9, arg = 0, expect = "accept" },
+  { id = "v-clock", intent = 10, arg = 0, expect = "accept" },
+]
+
+[u2]
+events = []
+
+[u3]
+events = []
+
+[u4]
+events = []
+
+[u5]
+events = []
+
+[e1]
+events = []
+
+[t1]
+events = [
+  { id = "fire-due", kind = "fire-due" },
+]
