@@ -5,22 +5,30 @@ apart by its instance signature) and every created-and-removed key that no such 
 only `flash` applies); both edges of each come from the samples, and each rule is decided, or undecided."""
 
 from rigor_lib.ui_judge_time_checks import decisions, refine
-from rigor_lib.ui_judge_time_probe import edges, keyed
+from rigor_lib.ui_judge_time_probe import edges, keyed, seen
 
 
 def hidden_pairs(facts):
-    """{step index: [(key, role)]}: time steps (longer than one ms, patches that agree with the records) whose patches
-    create and then remove one key."""
+    """{step index: [(key, role, text)]}: time steps (longer than one ms, patches that agree with the records) whose
+    patches create and then remove one key (text None), or update one key's text and then back to the text it had
+    (text: the one shown only inside the step: a text-only flash)."""
     out = {}
     for index in range(1, len(facts)):
-        fact, created = facts[index], {}
+        fact, created, texts = facts[index], {}, {}
         if fact.mode != "time" or fact.chain or fact.now - fact.prev_now <= 1:
             continue
-        for op, key, _name, old, new in fact.patches:
+        for op, key, name, old, new in fact.patches:
             if op == "create":
                 created[key] = new.decode("ascii", "replace")
             elif op == "remove" and key in created:
-                out.setdefault(index, []).append((key, created.pop(key)))
+                out.setdefault(index, []).append((key, created.pop(key), None))
+            elif op == "update" and name == "text" and key not in created:
+                first = texts.setdefault(key, (old, new))
+                if new == first[0] and (key, first[1]) not in [(k, t) for k, _r, t in out.get(index, ())]:
+                    role = fact.rolemap.get(key, ("text",))[0]
+                    if role != "countdown":
+                        out.setdefault(index, []).append((key, role, first[1]))
+                    del texts[key]
     return out
 
 
@@ -53,9 +61,10 @@ def elements(samples, before, step, pairs):
             continue                       # a kind with no node of its own in its scope: nothing to follow
         out.append(("%s#%d" % (kind, n), kind, [(at, _shows(f, kind, sig)) for at, f in sorted(samples.items())]))
         mapped |= {key for f in samples.values() if _shows(f, kind, sig) for key in f.scopes.get(kind, ())}
-    for key, _role in pairs:
-        if key not in mapped and any(key in f.labels for f in samples.values()):
-            out.append((key, None, keyed(samples, [key])[0]))
+    for pair in pairs:
+        key, _role, text = pair
+        if (text is not None or key not in mapped) and any(seen(f, pair) for f in samples.values()):
+            out.append((key if text is None else key + "@text", None, keyed(samples, [pair])[0]))
     return out
 
 

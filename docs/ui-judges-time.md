@@ -46,24 +46,32 @@ Per step of the first run of a path (the explorer's own observation, docs/ui-exp
 **Patches are the product's claim** and are checked: from the second step on, the step's patches must lead from the
 step before's semantic records to its own (a `create` of a key not shown, a `remove` of a key shown, a text `update`
 whose old text is the label shown, and at the end the same keys and, where the chain knows a label, the same label: the
-countdown-restart rule's check). A step where they do not is `patches-inconsistent` (on the path, not on probing runs,
-which repeat its prefix) and gives `flash`, `stalled` and `increase` no verdict. `life` lines are not read (honesty
+countdown-restart rule's check). A step where they do not is `patches-inconsistent` (on the path, and on probing runs
+after their prefix: the first disappearance run of each appearance) and gives `flash`, `stalled` and `increase` no
+verdict. The chain checks what the patches say,
+not what they leave out: a create and remove pair (or a text changed and restored) that a product omits from its
+patches leaves the step end exactly as before and passes the chain (see "Deviations and limits"). `life` lines are not read (honesty
 table). Nothing reads the wall clock.
 
-**An element is an instance** (fix-up 2), not a kind, followed by its own nodes: the nodes of its kind's scope when it
-first is the topmost element of that kind. It stays shown while every one of those nodes is in the scene with the same
-role and label and no patch of the step removed it, also under another element of the same kind stacked over it (the
-kiosk stacks its self-test banner over a boot banner). Countdown nodes are not part of it: a countdown that ticks, is
-made again or is removed leaves the element shown (`countdown-wrong` judges the countdown: a removed one is `absent`).
-A new topmost scope (another text, other keys, a node made again) is a new instance and a new appearance. Banner A
-replaced by banner B is two elements, each with its own lifetime. Every probing sample shows the element only while it
-is that instance; the countdown rules read its countdown only while it is the topmost of its kind.
+**An element is an instance** (fix-ups 2 and 3), not a kind, followed by its own nodes: the nodes of its kind's scope
+when it first is the topmost element of that kind. It stays shown while every one of those nodes is in the scene with
+the same key, role and label and no `remove` patch of the step names it, also under another element of the same kind
+stacked over it (the kiosk stacks its self-test banner over a boot banner). The msgid is not read. Countdown nodes are
+not part of it: a countdown that ticks, is made again or is removed leaves the element shown (`countdown-wrong` judges
+the countdown: a removed one is `absent`, covered or on top). A new topmost scope (another text, other keys, a node
+made again) is a new instance and a new appearance; a replacement with the same keys, roles and labels and no remove
+patch is the same instance. A language event (a catalogue `u5` word) relabels what is shown: across it an element
+keeps its instance when its nodes keep their keys and roles (fix-up 3), so a language switch mid-life is no new
+appearance. Banner A replaced by banner B is two elements, each with its own lifetime. Every probing sample shows the
+element only while it is that instance; the countdown rules read its countdown only while it is the topmost of its
+kind.
 
 **Binding a contract timer** (`[[timer]]`, docs/ui-contract.md: kind, class, `lifetime_ms` L, `countdown_shown`):
 - with identity: a kind is shown iff the step's state class IS the kind (the class of the topmost message, else of the
   screen; docs/ui-judges-identity.md). An element shown at the step before also stays shown while ANOTHER message kind
-  is the class and every node of its scope keeps its key, its role and (a countdown aside) its label, and no patch of
-  the step removed it: a message is drawn over what it covers, which stays visible behind it (ui-rules), so a screen
+  is the class, by the same rule that keeps an instance: every non-countdown node of its scope keeps its key, its role
+  and its label (its role only across a language event), and no patch of the step removed one (its countdown nodes may
+  go: then `absent`): a message is drawn over what it covers, which stays visible behind it (ui-rules), so a screen
   under a dialog and a banner under a snackbar continue, and a dismissed message gives no new appearance. Keys alone
   do not tell: the kiosk reuses key 3 for the headline of several screens;
 - without identity: only a timer of class `message` whose kind is a scene layer role (`dialog`, `banner`, `snackbar`)
@@ -105,14 +113,16 @@ runs PROBING PATHS made of the path's own words and `at` words. No input: whatev
 3. **The disappearance**: (last instant shown, first instant gone], refined by runs of at most 15 `at` words inside it:
    to one ms for a timer with a countdown (the last label before it goes is read: a `0` shown for under a tick is seen),
    else to one tick, then further while a rule is undecided.
-4. **Inside a step** (a time step whose patches create and then remove one key, whatever the flash threshold): the
-   path to the step before, then 15 `at` words inside the step; then, while a created-and-removed key has not been
-   seen in any sample, the midpoints of the 15 widest gaps between consecutive samples; then the instants that narrow
+4. **Inside a step** (a time step whose patches create and then remove one key, or update one key's text and back to
+   the text it had, whatever the flash threshold): the path to the step before, then 15 `at` words inside the step;
+   then, while such a key (or the text) has not been seen in any sample, the midpoints of the 15 widest gaps between consecutive samples; then the instants that narrow
    the edges still undecided; at most 6 runs, every later run re-sampling one instant already seen (runs must agree).
    Each element instance seen only inside (neither at the step before nor at its end) gets the lifetime rules and
-   `flash`, each created-and-removed key no such instance holds gets `flash`, both edges from the samples; a key no
-   sample ever showed is `lifetime-undecided` (`why` `hidden-unsampled`, identity `["inside", word, key, "hidden"]`)
-   and its flash is not counted. Keyed by the state before the step; such a step counts against the probe cap.
+   `flash` (identity `["inside", word, "<kind>#<n>", kind]` and the rule's), each created-and-removed key no such
+   instance holds gets `flash` (`["inside", word, key]`), each text shown only inside gets `flash` (`<key>@text`),
+   both edges from the samples; a key no sample ever showed is `lifetime-undecided` (`why` `hidden-unsampled`,
+   identity `["inside", word, key or <key>@text, "hidden"]`) and its flash is not counted. An element whose only node
+   is a countdown gets `flash` but not the lifetime rules inside a step (no node to follow it by). Keyed by the state before the step; such a step counts against the probe cap.
 
 **Decided or reported.** Each lifetime rule is decided on the bounds (`decisions`): yes (a finding), no, or undecided.
 An undecided rule is NOT counted as examined and is one `lifetime-undecided` (error: the gate could not judge a
@@ -161,7 +171,7 @@ appearance is (a_lo, a_hi), the disappearance (t1_lo, t1_hi]: shown for more tha
 
 | Check | Rule | Identity, target, state |
 |---|---|---|
-| `notice-lifetime-short` | shown at most t1_hi - a_lo < D - tick (not short when more than D - tick - 1), D = max(L, max(`dwell_floor_ms`, `dwell_base_ms` + reading)) (P004 3.10), reading from the element's text as the run shows it | `[kind]`, target the kind; the appearance (`["inside", word, kind]`, the step before, for an element shown only inside a step) |
+| `notice-lifetime-short` | shown at most t1_hi - a_lo < D - tick (not short when more than D - tick - 1), D = max(L, max(`dwell_floor_ms`, `dwell_base_ms` + reading)) (P004 3.10), reading from the element's text as the run shows it | `[kind]`, target the kind; the appearance (`["inside", word, "<kind>#<n>", kind]`, the step before, for an element shown only inside a step: found only through the product's patches, below) |
 | `notice-lifetime-short-floor` | (an approximation, its own id) while the reading rate is pending: the same with max(L, `dwell_floor_ms`), a lower bound of D for any rate | as above |
 | `notice-lifetime-long` | L > 0 and shown for more than L + tick (not long when at most L + tick) | as above |
 | `flash` | a scene node not of role `countdown`, created and removed (patches) with no user input after its creation (env replies and time steps are no user input), the removal step's `now` minus the creation's `appear_lo` < `flicker_floor_ms`; a node created and removed within ONE step is measured by that step's span (0 for an input) | `[key, role]`, target the key; the creation step, path to the removal |
@@ -197,7 +207,7 @@ input).
 | `notice-lifetime-short` | implemented; D needs `reading.rate_wpm`, pending for lockers (Q11): there `contract-pending`, and the floor approximation below. Undecided bounds are `lifetime-undecided`, never silent |
 | (approximation) `notice-lifetime-short-floor` | its own id: D bounded below by max(L, `dwell_floor_ms`) while the rate is pending |
 | `notice-lifetime-long` | implemented |
-| `flash` | implemented on patches the gate checks against the records (`patches-inconsistent`), decided on bounds (undecided: `lifetime-undecided`, not counted); a create/remove pair inside a time step longer than the threshold is sampled inside the step. The `life`-line half is BLOCKED: a `life` line carries no object identity, and `node -1` is written both for an object that was never in a reported walk and for an event after an unreported retried walk (docs/ui-model.md), so a created and a deleted line cannot be tied to one object nor told from a retried snapshot; the missing fact is an object id in `life` lines. The threshold is `flicker_floor_ms`, pending for lockers (Q5) |
+| `flash` | implemented on patches the gate checks against the records (`patches-inconsistent`), decided on bounds (undecided: `lifetime-undecided`, not counted); a create/remove pair, or a text changed and restored, inside a time step longer than the threshold is sampled inside the step; a pair the product's patches omit is not seen (the missing fact: an inside-the-step witness from the gate's own observation; "Deviations and limits"). The `life`-line half is BLOCKED: a `life` line carries no object identity, and `node -1` is written both for an object that was never in a reported walk and for an event after an unreported retried walk (docs/ui-model.md), so a created and a deleted line cannot be tied to one object nor told from a retried snapshot; the missing fact is an object id in `life` lines. The threshold is `flicker_floor_ms`, pending for lockers (Q5) |
 | `countdown-wrong` | implemented for presence, start, zero, increase and the once-per-second recurrence. The formatted string against the oracle's at the same virtual time is BLOCKED: no oracle in the gate. A countdown format is the gate's (no declaration exists) |
 | `invisible-auto-transition` | implemented for the state class (a time or env step, semantic and frame unchanged); BLOCKED without identity (`check-blocked`). The O1 half (a view-state field) is BLOCKED: the protocol has no view-state stage |
 | `dwell-below-reading-time` | implemented from the texts the run shows (no message catalogue; the longest locale is the longest the run shows); needs `rate_wpm` (pending for lockers) |
@@ -244,7 +254,7 @@ and no probe left.
 
 ## Each check seen failing against a broken judge
 
-A copy of `gate/` with one rule broken (`/var/tmp/cache/U09/mut/run3.sh` and `run4.sh`, not committed): the canary
+A copy of `gate/` with one rule broken (`/var/tmp/cache/U09/mut/run3.sh`, `run4.sh` and `run6.sh`, not committed): the canary
 checks against the selftest's own assertion block (with `--evidence`, as the selftest runs it; the unmutated copy
 passes it), the others against `test_ui_judge_time`, `test_ui_judge_time_probe` and `test_ui_judge_time_fixup2`.
 `zero` and `increase` are each found two ways (labels and patches; patches and step-end values), so both ways were
@@ -282,6 +292,11 @@ broken together for the canary row. Every row failed:
 | (fix-up 2) patch chain and increases on probing runs | path only | `test_patches_that_contradict_the_records_are_a_finding_and_judge_nothing` |
 | (fix-up 2) the origin fill inside the budget handling | not run there | `test_a_cut_during_the_origin_fill_is_a_cut_run` |
 | (fix-up 2) flash undecided | dropped | `test_flash_needs_no_input_between_and_ignores_countdowns` |
+| (fix-up 3) carry by the instance rule (countdown nodes aside) | the old carry rule | `test_a_covered_screen_whose_countdown_goes_stays_shown_and_is_absent` |
+| (fix-up 3) a text shown only inside a step | not a pair | `test_a_text_shown_only_inside_a_step` |
+| (fix-up 3) a language event keeps the element | an ordinary input | `test_a_language_switch_keeps_the_element` |
+| (fix-up 3) a countdown-only element inside a step: flash only | followed as an instance | `test_an_element_whose_only_node_is_a_countdown_gets_flash_only` |
+| (fix-up 3) probing runs counted after their prefix only | prefix counted again | `test_probing_runs_count_only_after_their_prefix` |
 
 ## Deviations and limits
 
@@ -290,10 +305,20 @@ broken together for the canary row. Every row failed:
   real kiosk the other gates' findings are the same with and without ui-time.
 - **One class per state**: identity names one class; an element is carried under another message only while its own
   nodes stay as they were (above).
-- **Instance signature**: a replacement that keeps the msgid and the text of its first text node and reuses the same
-  keys without a remove patch is not seen as a replacement.
+- **Instance rule**: an element is its non-countdown nodes' keys, roles and labels plus the step's `remove` patches;
+  the msgid is not read. A replacement with identical keys, roles and labels and no remove patch is one instance.
+- **What a step shows only inside it is found only through the product's patches**: the gate samples inside a time
+  step only when its patches create and remove a key, or change a text and back. A product whose patches omit such a
+  pair leaves the step end as before, so the patch chain cannot see the omission, and the element is not judged. The
+  missing fact is an inside-the-step witness from the gate's own observation (lvprobe's `life` lines would be one,
+  but they carry no object identity: honesty table).
 - **Inside a step**: an element shown so briefly that six sampling runs miss it is `lifetime-undecided`
-  (`hidden-unsampled`); the refinement of undecided edges takes the 15 earliest instants per run.
+  (`hidden-unsampled`); the refinement of undecided edges takes the 15 earliest instants per run; an element whose
+  only node is a countdown gets `flash` there, not the lifetime rules.
+- **Probing runs judged**: of each appearance's probing runs, the FIRST disappearance run is read for flash,
+  invisible transitions, the patch chain, `increase` and `absent` after its prefix; the refining runs (a few `at` words
+  inside a bracket, the same prefix) only give samples. Only the verdicts after the prefix are counted
+  (`checks-examined`; the path counts its own steps once).
 - **The cost pre-check** does not include the probing runs and replays (they depend on what the paths show).
 - **The origin quota is per seed of the open word** even without the explorer's boot seeds (a paths file with several
   seeds gets 8 per seed).

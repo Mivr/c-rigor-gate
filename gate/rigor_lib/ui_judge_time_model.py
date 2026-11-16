@@ -47,8 +47,9 @@ _AT = re.compile(r"at (0|[1-9][0-9]{0,15})")
 
 
 def word_mode(word, catalogue):
-    """`open`, `input` (a user input: u1..u5), `env` (an environment reply, e1: no user input), `time` or `domain`: what
-    a path word does to the model (docs/ui-explore.md, "Paths and time")."""
+    """`open`, `input` (a user input: u1..u4), `language` (a u5 language event: a user input that relabels what is
+    shown, the same elements), `env` (an environment reply, e1: no user input), `time` or `domain`: what a path word
+    does to the model (docs/ui-explore.md, "Paths and time")."""
     if word.startswith("open "):
         return "open"
     if word in ("settle", "wait-change") or _AT.fullmatch(word):
@@ -58,6 +59,8 @@ def word_mode(word, catalogue):
     event = catalogue.by_id(word)
     if event is not None and event.cls == "t1":
         return "time"
+    if event is not None and event.cls == "u5":
+        return "language"
     return "env" if event is not None and event.cls == "e1" else "input"
 
 
@@ -93,7 +96,6 @@ class Facts:
     msgids: dict = field(default_factory=dict)        # kind -> the first msgid of a text node of its scope, or None
     scopes: dict = field(default_factory=dict)        # kind -> the keys of its scope at this step
     roles: dict = field(default_factory=dict)         # kind -> {key: (role, label or None for a countdown)}
-    sigs: dict = field(default_factory=dict)          # kind -> (msgid, text) of its topmost scope
     removed: frozenset = frozenset()                  # the keys a `remove` patch of this step names
     rolemap: dict = field(default_factory=dict)       # key -> (role, label or None for a countdown), every record
     tracked: dict = field(default_factory=dict)       # kind -> ((instance id, its nodes' roles), ...) shown
@@ -156,8 +158,22 @@ def _role_label(record):
     return record.fields[1], None if record.fields[1] == "countdown" else record.values[2]
 
 
-def _present(records, cls, binding, before, removed):
-    """(the kinds shown, the kinds carried under another message with their scope's keys)."""
+def hold(roles, now, removed, language):
+    """Whether an element's nodes all still hold in a scene (`now`: key -> (role, label)): its countdown nodes aside (a
+    countdown removed or made again leaves the element shown: `countdown-wrong` judges its countdown), none removed by
+    a patch, each with its role and its label; across a language event (`language`) its role only (the same element
+    relabelled)."""
+    held = {key: shown for key, shown in roles.items() if shown[0] != "countdown"}
+    if set(held) & removed:
+        return False
+    if language:
+        return all(now.get(key) is not None and now[key][0] == shown[0] for key, shown in held.items())
+    return all(now.get(key) == shown for key, shown in held.items())
+
+
+def _present(records, cls, binding, before, removed, language):
+    """(the kinds shown, the kinds carried under another message with their scope's keys): carried by the same rule
+    that keeps an instance (`hold`)."""
     if not binding.identity:
         roles = {r.fields[1] for r in records}
         return frozenset(k for k in binding.bound() if k in roles), {}
@@ -165,8 +181,8 @@ def _present(records, cls, binding, before, removed):
     carried = {}
     if cls in binding.timers and binding.message(cls) and before is not None:
         carried = {k: before.scopes[k] for k in before.present
-                   if k != cls and before.roles.get(k) and not before.scopes[k] & removed
-                   and all(now.get(key) == shown for key, shown in before.roles[k].items())}
+                   if k != cls and any(shown[0] != "countdown" for shown in before.roles.get(k, {}).values())
+                   and hold(before.roles[k], now, removed, language)}
     return frozenset({k for k in binding.bound() if k == cls} | set(carried)), carried
 
 
@@ -205,7 +221,8 @@ def facts_of(step, before, catalogue, binding):
     cls, msgids = _identity_msgids(step)
     patches = tuple((p.fields[0], p.fields[1], p.fields[2], p.values[3], p.values[4]) for p in step.obs.get("patches", ()))
     removed = frozenset(key for op, key, _f, _o, _n in patches if op == "remove")
-    present, carried = _present(records, cls, binding, before, removed)
+    language = word_mode(step.word, catalogue) == "language"
+    present, carried = _present(records, cls, binding, before, removed, language)
     due = step.obs.get("due")
     out = Facts(step.index, step.word, word_mode(step.word, catalogue), step.now,
                 step.now if before is None else before.now, step.origin, step.key, step.proj, cls=cls,
@@ -231,16 +248,12 @@ def facts_of(step, before, catalogue, binding):
         texts = [r for r in scope if r.fields[1] == "text" and r.values[2] != b""]
         out.texts[kind] = b" ".join(r.values[2] for r in texts).decode("utf-8", "replace")
         out.msgids[kind] = next((msgids[r.fields[0]] for r in texts if r.fields[0] in msgids), None)
-        out.sigs[kind] = (out.msgids[kind], out.texts[kind])
     _instances(out, before)
     return out
 
 
 def _holds(roles, fact):
-    """Whether an instance's nodes all still hold: its countdown nodes aside (a countdown removed or made again leaves
-    the element shown: `countdown-wrong` judges its countdown)."""
-    held = {key: shown for key, shown in roles.items() if shown[0] != "countdown"}
-    return not set(held) & fact.removed and all(fact.rolemap.get(key) == shown for key, shown in held.items())
+    return hold(roles, fact.rolemap, fact.removed, fact.mode == "language")
 
 
 def _plain(roles):
@@ -251,8 +264,8 @@ def _instances(fact, before):
     """The instances of each kind shown at `fact`: those of the step before whose nodes all still hold, and its
     topmost scope as a new one when no held instance has exactly those keys."""
     for kind in sorted(fact.present):
-        held = [(iid, roles) for iid, roles in (before.tracked.get(kind, ()) if before is not None else ())
-                if _holds(roles, fact)]
+        held = [(iid, {key: fact.rolemap.get(key, shown) for key, shown in roles.items()})   # relabelled: language
+                for iid, roles in (before.tracked.get(kind, ()) if before is not None else ()) if _holds(roles, fact)]
         top = fact.roles.get(kind, {})
         match = next((iid for iid, roles in held if _plain(roles) == _plain(top)), None)
         if match is None and top:

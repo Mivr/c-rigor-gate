@@ -22,7 +22,7 @@ from rigor_lib.ui_judge_time_checks import (absent_verdicts, chain_verdicts, cou
 from rigor_lib import ui_judge_time_inside as inside_mod
 from rigor_lib.ui_judge_time_model import Binding, appearances, timeline
 from rigor_lib.ui_judge_time_origin import Origins
-from rigor_lib.ui_judge_time_probe import Diverged, Prober
+from rigor_lib.ui_judge_time_probe import Diverged, Prober, seen
 
 GATE = "ui-time"
 CHECKS = ("notice-lifetime-short", "notice-lifetime-short-floor", "notice-lifetime-long", "flash", "countdown-wrong",
@@ -92,17 +92,21 @@ class TimeJudge:
     def _observed(self, facts, words, start=None):
         """flash, invisible-auto-transition, patches-inconsistent, countdown increases (input steps included) and
         countdown formats of one run. A probing run (`start`: its appearance index) repeats the path's prefix: its
-        patch chain and increases are judged after it only (the path judges the prefix; the ids deduplicate)."""
+        patch chain and increases are judged after it only (the path judges the prefix; the ids deduplicate), and only
+        the verdicts after it are counted (`checks-examined`)."""
         verdicts, after = [], (lambda v: start is None or v["path_at"] > start)
+        prefix = (lambda judge: 0) if start is None else (lambda judge: judge(facts[:start + 1])[1])
         threshold = self._get(("flash",), "thresholds", "flicker_floor_ms", words)
         if threshold is not None:
             found, judged, undecided, _inside = flash_verdicts(facts, threshold)
+            judged -= prefix(lambda got: flash_verdicts(got, threshold))
             verdicts, self.counts["flash"] = found + undecided, self.counts["flash"] + judged
         timers = {row["kind"]: row for row in self.contract.rows("timer")}
         for name, judge in (("invisible-auto-transition", invisible_verdicts), ("patches-inconsistent", chain_verdicts),
                             ("countdown-wrong", increase_verdicts),
                             ("countdown-wrong", lambda got: absent_verdicts(got, timers))):
             found, judged = judge(facts)
+            judged -= prefix(judge)
             found = [v for v in found if name == "invisible-auto-transition" or after(v)]
             if start is not None and name == "countdown-wrong":   # the element of the appearance, keyed by it
                 found = [dict(v, state_at=start, path_at=start) for v in found]
@@ -238,10 +242,11 @@ class TimeJudge:
                                   "state_at": index - 1, "path_at": index,
                                   "observed": {"path": words[:index + 1], "probe_path": error.words}},
                                  facts, words, index)]
-        out = [{"check": "lifetime-undecided", "identity": ["inside", step.word, key, "hidden"], "target": key,
+        out = [{"check": "lifetime-undecided", "identity": ["inside", step.word, key if text is None else key + "@text",
+                                                            "hidden"], "target": key,
                 "state_at": index - 1, "path_at": index, "observed": {"key": key, "role": role, "check": "hidden",
                                                                       "why": "hidden-unsampled", "samples": len(samples)}}
-               for key, role in pairs if not any(key in f.labels for f in samples.values())]
+               for key, role, text in pairs if not any(seen(f, (key, role, text)) for f in samples.values())]
         held["samples"] = samples
         for element in inside_mod.elements(samples, before, step, pairs) if tick else ():
             out += self._hidden_element(element, before, step, limits, words[:index + 1], binding)

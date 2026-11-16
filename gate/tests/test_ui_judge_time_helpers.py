@@ -12,7 +12,7 @@ from rigor_lib.ui_explore_run import Step
 from tests.test_ui_judge_helpers import REPO, esc
 
 TIME_CONTRACT = REPO / "selftest" / "ui_canary_product" / "time.toml"
-INPUTS = ("show", "flash", "blink", "silent", "other", "later", "bump")
+INPUTS = ("show", "flash", "blink", "silent", "other", "later", "bump", "lang")
 
 
 def contract(edit=None):
@@ -63,6 +63,8 @@ class Sim:
             st["until"] = None if self.life is None else now + 2000 + self.life
         elif word == "bump":            # restarts a shown dialog's countdown (an input that raises it)
             st["shown"], st["until"] = now, None if self.life is None else now + self.life
+        elif word == "lang":            # a language event: the dialog's text in the other language
+            st["text"] = "Записано."
         elif word == "blink":
             st["blink"] = now + 200
         elif word == "silent":
@@ -135,6 +137,8 @@ class Catalogue:
     def by_id(word):
         if word == "fire-due":
             return SimpleNamespace(cls="t1")
+        if word == "lang":
+            return SimpleNamespace(cls="u5")
         return SimpleNamespace(cls="u1") if word in INPUTS else None
 
 

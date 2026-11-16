@@ -513,8 +513,9 @@ Choose size, the report (bg and en). Wall time per path is unchanged (0.67 s, bo
 
 The 29 screen-class paths (`products/business-apps/ui/lockers.classes.paths.json`, a DRAFT copied from the adapter
 task) replayed with `--judges ui-scene,ui-fit,ui-render,ui-time` (docs/ui-judges-time.md), re-recorded after U09 fix-up
-2 (elements are instances; what a step shows only inside is sampled). Evidence stayed in `/var/tmp/cache/U09/kiosk/`
-(`k10`, not committed). Everything under "Triage" is MY READING, for the owner to confirm.
+2 (elements are instances; what a step shows only inside is sampled) and fix-up 3 (the carry rule, a language event
+keeps the element, probing runs counted after their prefix only). Evidence stayed in `/var/tmp/cache/U09/kiosk/`
+(`k12`, not committed). Everything under "Triage" is MY READING, for the owner to confirm.
 
 **Inputs.** Probe: business-apps checkout `3e8c46e` (read only; its `gate/` pins a gate without U05e and U09 but with
 the same probe protocol), `biz//apps/lockers/lkapp/uimodel:lockers_ui_probe` from `gate/tools/buck2 build
@@ -541,10 +542,10 @@ gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers
 
 (`--budget-s` must be at least 1989 for the pre-run cost check of these paths' `at` words, ui-time or not.)
 
-**Verdicts reached** (`checks-examined`): 24 elements probed (69 probing runs), every lifetime rule DECIDED (no
-`lifetime-undecided`, no `hidden-unsampled`, no `probe-diverged`, none capped): `notice-lifetime-short-floor` 24,
-`notice-lifetime-long` 14; `countdown-wrong` 474 (probes and the path's own steps); `invisible-auto-transition` 399
-time and env steps; `patches-inconsistent` 498 steps, none inconsistent; `clock-origin-divergence` 48 replays (12
+**Verdicts reached** (`checks-examined`): 21 elements probed (66 probing runs), every lifetime rule DECIDED (no
+`lifetime-undecided`, no `hidden-unsampled`, no `probe-diverged`, none capped): `notice-lifetime-short-floor` 21,
+`notice-lifetime-long` 14; `countdown-wrong` 440 (probes and the path's own steps); `invisible-auto-transition` 322
+time and env steps; `patches-inconsistent` 383 steps, none inconsistent; `clock-origin-divergence` 48 replays (12
 paths: the quota is per seed of the `open` word, 4 origins each); `notice-lifetime-short`, `dwell-below-reading-time`
 and `flash` none: their contract values are pending.
 
@@ -573,7 +574,6 @@ element is an instance: the table has a row per appearing instance.
 | banner (codes offline) | `open 1000 120` | 0 | 3500 | 0 | > 3249, still shown | 1 | no | - |
 | banner (audit) | `open 1000 119` | 0 | 3500 | 0 | > 3249, still shown | 1 | no | - |
 | banner (self-test, stacked over the boot banner of 119 and 120) | `at 3200` (seeds 112, 119, 120) | 0 | 3500 | 1801..2000 | > 3249, still shown | 2 | no | - |
-| banner (the topmost again after `lang-en`: its text changed) | `at 3200`, `lang-en` (seeds 112, 119, 120) | 0 | 3500 | 3200 | > 3249, still shown | 1 | no | - |
 | banner (not saved), shown only inside `at 4300` | `at 3200`, `env-book-second-save-fails`, `wedge-visitor`, `size-small`, `at 4300` (and `lang-en`) | 0 | 3500 | 4029..4097 | (138, 271] | - | **yes** | - |
 | choose_size | `at 3200`, `wedge-visitor` (and `lang-en`) | 30000 | 30000 | 3200 | (29799, 29800] | 3 | no | no |
 | dialog (not recognised) | `at 3200`, `wedge-unknown` (and `lang-en`) | 8000 | 8000 | 3200 | (7799, 7800] | 4 | no | no |
@@ -583,8 +583,12 @@ element is an instance: the table has a row per appearing instance.
 | lockout | the five `wedge-unknown` path (and `lang-en`) | 60000 | 60000 | 39200 | (59799, 59800] | 3 | no | no |
 | report | `at 3200`, `wedge-staff` (and `lang-en`) | 300000 | 300000 | 3200 | (299799, 299800] | 4 | no | no |
 
-**What changed with per-instance presence** (against the fix-up 1 record): the banners after `lang-en` are new rows
-(the language changes the topmost banner's text: a new instance, not a short one: it is still shown); the self-test
+**What changed with fix-up 3** (against the fix-up 2 record, `k10`): no finding id. The three rows "banner after
+`lang-en`" are gone (a language event now keeps the element), so 21 elements instead of 24, and the non-zero
+`checks-examined` totals other than the origin replays and `notice-lifetime-long` went down (a probing run's prefix is no
+longer counted again): `countdown-wrong` 474 to 440, `invisible-auto-transition` 399 to 322, `patches-inconsistent`
+498 to 383, `notice-lifetime-short-floor` 24 to 21. **What changed with per-instance presence** (fix-up 2, against
+the fix-up 1 record): the self-test
 banner of seeds 119 and 120 is its own row (stacked over the boot banner, which lives on); the "not saved" banner is
 now an element seen inside a step (new ids, same reading); the two `absent` findings are new. The "not saved" path
 shows one banner instance and one snackbar, not two banners: the self-test banner was dismissed earlier on that path.
@@ -593,6 +597,6 @@ finding, but a consistent offset the owner may want to know.
 
 ## Cost
 
-90 s of wall time for the 29 paths with all four judges, against 13 s without ui-time: 69 probing runs (each twice,
-inside-step sampling included) and 48 origin replays; the run's `cost` 62 850 probe commands and 11.42 M virtual ms
-against 7 842 and 1.58 M, of which ui-time's share is 55 008 commands and 9.83 M ms. No probe was capped (24 of 64).
+86 s of wall time for the 29 paths with all four judges, against 13 s without ui-time: 66 probing runs (each twice,
+inside-step sampling included) and 48 origin replays; the run's `cost` 61 956 probe commands and 11.39 M virtual ms
+against 7 842 and 1.58 M, of which ui-time's share is 54 114 commands and 9.80 M ms. No probe was capped (21 of 64).

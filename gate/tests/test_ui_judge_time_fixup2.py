@@ -41,7 +41,11 @@ class ScriptSim(Sim):
         flip = self.flip and (len(self.runs) > self.flip_after if self.flip_only is None
                               else len(self.runs) == self.flip_only)   # a product that differs on later runs
         for key, role, text, start, stop, counts in self.script if go is not None else ():
-            if go + start <= t and (stop is None or t < go + stop) and not (flip and self.flip_text is None):
+            if role == "retext" and go + start <= t < go + stop:
+                nodes["1"] = ("text", text)                  # the title's text, changed and restored
+                continue
+            if role != "retext" and go + start <= t and (stop is None or t < go + stop) \
+                    and not (flip and self.flip_text is None):
                 nodes[key] = (role, "")
                 nodes[key + "t"] = ("text", self.flip_text if flip and self.flip_text else text)
                 if counts:
@@ -182,6 +186,68 @@ class CountdownNodeTest(unittest.TestCase):
         self.assertEqual(appearances(facts), [(0, "choose_size")])
         found, judged = absent_verdicts(facts, {"choose_size": rows[0]})
         self.assertEqual(([v["observed"]["step"] for v in found], judged), ([1], 2))
+
+
+class FixUp3Test(unittest.TestCase):
+    def test_a_covered_screen_whose_countdown_goes_stays_shown_and_is_absent(self):
+        # the carried twin of the removed countdown: Choose size under a dialog loses its countdown node
+        rows = [{"kind": "choose_size", "class": "screen", "lifetime_ms": 30000, "countdown_shown": True},
+                {"kind": "dialog", "class": "message", "lifetime_ms": 8000, "countdown_shown": True}]
+        binding = Binding(SimpleNamespace(rows=lambda name: rows), True)
+        screen = [("3", "text", "Choose a size"), ("48", "button", "Small")]
+        dialog = [("321", "dialog", ""), ("322", "text", "Wait"), ("326", "countdown", "8 s")]
+        steps = [made_step(0, "pick", 0, "choose_size", screen + [("6", "countdown", "30 s")]),
+                 made_step(1, "oops", 0, "dialog", screen + [("6", "countdown", "30 s")] + dialog),
+                 made_step(2, "at 900", 900, "dialog", screen + dialog),
+                 made_step(3, "dismiss", 900, "choose_size", screen)]
+        steps[2].obs["patches"] = (parse_record("patches", "remove\t6\tnode\tcountdown\t-"),)
+        steps[3].obs["patches"] = tuple(parse_record("patches", "remove\t%s\tnode\t%s\t-" % (k, r))
+                                        for k, r, _l in dialog)
+        facts = timeline(steps, Catalogue(), binding)
+        self.assertEqual(appearances(facts), [(0, "choose_size"), (1, "dialog")])   # carried, then shown again
+        self.assertEqual([sorted(f.present) for f in facts][2], ["choose_size", "dialog"])
+        found, _judged = absent_verdicts(facts, {"choose_size": rows[0], "dialog": rows[1]})
+        # absent under the dialog (step 2) as on top again (step 3)
+        self.assertEqual([(v["observed"]["kind"], v["observed"]["step"]) for v in found],
+                         [("choose_size", 2), ("choose_size", 3)])
+
+    def test_a_text_shown_only_inside_a_step(self):
+        sim = ScriptSim([("x", "retext", "Busy...", 400, 450, False)])
+        found, _runner, _j = judge_run(sim, [[OPEN, "go", "at 1100"]])
+        flash = [f for f in found if f["check"] == "flash"]
+        self.assertEqual([f["observed"]["element"] for f in flash], ["1@text"])
+
+    def test_a_language_switch_keeps_the_element(self):
+        found, _runner, _j = judge_run(Sim(), [[OPEN, "show", "at 1000", "lang", "at 1500"]])
+        self.assertEqual(len(examined(found)["lifetimes"]), 1)      # no new appearance at the switch
+        self.assertEqual(errors(found), [])
+
+    def test_an_element_with_a_countdown_inside_a_step(self):
+        sim = ScriptSim([("50", "dialog", "Not saved", 400, 450, True)])
+        found, _runner, _j = judge_run(sim, [[OPEN, "go", "at 1100"]])
+        short = [f for f in found if f["check"] == "notice-lifetime-short"]
+        self.assertEqual([f["observed"]["element"] for f in short], ["dialog#0"])
+
+    def test_an_element_whose_only_node_is_a_countdown_gets_flash_only(self):
+        from rigor_lib.ui_judge_time_inside import elements
+        rows = [{"kind": "timed", "class": "screen", "lifetime_ms": 8000, "countdown_shown": True}]
+        binding = Binding(SimpleNamespace(rows=lambda name: rows), True)
+        base = [("1", "text", "Title")]
+        steps = [made_step(0, "go", 0, "main", base), made_step(1, "at 100", 100, "timed", [("7", "countdown", "4 s")]),
+                 made_step(2, "at 200", 200, "main", base)]
+        facts = timeline(steps, Catalogue(), binding)
+        self.assertEqual(facts[1].roles["timed"], {"7": ("countdown", None)})
+        got = elements({100: facts[1]}, facts[0], facts[2], [("7", "countdown", None)])
+        self.assertEqual([(name, kind) for name, kind, _points in got], [("7", None)])   # flash only
+
+
+class CountTest(unittest.TestCase):
+    def test_probing_runs_count_only_after_their_prefix(self):
+        sim = Sim()
+        found, _runner, _j = judge_run(sim, [[OPEN, "show"]])
+        first = [w for w in sim.runs[1:] if w[0] == OPEN and len(w) > 2][0]   # the first disappearance run
+        wanted = 1 + (len(first) - 2)                  # the path's own step, then that run's steps after its prefix
+        self.assertEqual(examined(found)["totals"]["patches-inconsistent"], wanted)
 
 
 class MoreTest(unittest.TestCase):

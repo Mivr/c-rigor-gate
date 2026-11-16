@@ -136,22 +136,22 @@ class Prober:
         the widest gaps between consecutive samples while a key of `pairs` was never seen, then the instants
         `wanted(samples)` asks for (the edges still undecided), at most MAX_PHASES runs in all."""
         before, step = facts[index - 1], facts[index]
-        samples, instants, keys = {}, refine(before.now, step.now, self.max_wait), [key for key, _role in pairs]
+        samples, instants = {}, refine(before.now, step.now, self.max_wait)
         for _phase in range(MAX_PHASES):
             if not instants:
                 break
-            anchor = min((at for at, f in samples.items() if any(k in f.labels for k in keys)), default=None)
+            anchor = min((at for at, f in samples.items() if any(seen(f, pair) for pair in pairs)), default=None)
             instants = sorted(set(instants) | ({anchor} if anchor is not None else set()))   # re-seen: must agree
             run, run_words = self._run(words[:index], instants, lambda f: len(f) >= index and
                                        f[index - 1].key == before.key)
             for f in run[index:]:
-                if f.now in samples and [k in f.labels for k in keys] != [k in samples[f.now].labels for k in keys]:
+                if f.now in samples and [seen(f, p) for p in pairs] != [seen(samples[f.now], p) for p in pairs]:
                     raise Diverged(run_words)
                 if f.now in set(instants) and f.word.startswith("at "):
                     samples[f.now] = f
-            if not all(_unimodal(points) for points in keyed(samples, keys)):
+            if not all(_unimodal(points) for points in keyed(samples, pairs)):
                 raise Diverged(run_words)
-            unseen = [key for key, _role in pairs if not any(key in f.labels for f in samples.values())]
+            unseen = [pair for pair in pairs if not any(seen(f, pair) for f in samples.values())]
             instants = _gaps(sorted(set(samples) | {before.now, step.now})) if unseen else wanted(samples)
         return samples
 
@@ -162,9 +162,16 @@ def _gaps(points):
     return sorted((a + b) // 2 for _w, a, b in gaps[:GRID - 1])
 
 
-def keyed(samples, keys):
-    """Per key, (instant, shown) over the samples."""
-    return [[(at, key in f.labels) for at, f in sorted(samples.items())] for key in keys]
+def seen(fact, pair):
+    """Whether a sample shows what a pair (key, role, text) of a step left behind: the node (text None), or the node
+    with the text a step updated it to and back (a text shown only inside the step)."""
+    key, _role, text = pair
+    return key in fact.labels if text is None else fact.labels.get(key) == text
+
+
+def keyed(samples, pairs):
+    """Per pair, (instant, shown) over the samples."""
+    return [[(at, seen(f, pair)) for at, f in sorted(samples.items())] for pair in pairs]
 
 
 def _unimodal(points):
