@@ -397,6 +397,9 @@ false positive.
 
 ## Re-running the second run
 
+(This section is the second run's record, with the U04a probe; since fix-up 3 the draft catalogue requires `identity`,
+which that probe does not announce, so the command below now needs the probe of "The third run" and gives its ids.)
+
 Build the probe as above; from the worktree, with `P` that output and `second.json`:
 
 ```json
@@ -434,3 +437,66 @@ gate/rigor ui-explore --probe "$P" --catalogue products/business-apps/ui/lockers
 # (ui-scene.check-blocked/64f0b856dc68 is new since the merge with U24: `required-element-missing` needs the scene
 # identity, which this probe does not announce; every other id is unchanged)
 ```
+
+# The third run (U05e fix-up 3: the kiosk reports scene identity)
+
+The probe is now built from the business-apps integration checkout, read-only: `cd /home/user/business-apps &&
+gate/tools/buck2 build //apps/lockers/lkapp/uimodel:lockers_ui_probe --show-output` (business-apps `3e8c46e`, U04g:
+the lockers UI model reports scene identity; the build downloaded 5.2 MiB of pinned inputs and took 51 s), sha256
+`89b98f34e57ba414...`. It greets `ui-probe/1 ready frame-facts ink hit-test tap apply-missed crop pointer identity`.
+The draft catalogue now requires all eight capabilities (`identity` with its provenance; the catalogue test's explicit
+list follows), because the layer policy binds a notice's dismiss intent by identity (docs/ui-explore.md "Taps under a
+layer", the fix-up 3 ruling). Gate at `581ff7e`.
+
+**The documented replay** (`second.json`, the command above, `P` this probe): exit 1, 37 findings (27 errors), no
+ui-explore error, byte-identical twice. Against the second run's 33 ids:
+- gone: `ui-scene.check-blocked/64f0b856dc68` (the probe announces identity, so `required-element-missing` runs);
+- new: five `ui-scene.required-element-missing`, the lane's reading pending the owner: `dismiss` (undrawn 323) and
+  `notice_body` (undrawn 322) on the snackbar state (the known defect: the snackbar is drawn away from its scene rect,
+  so its scene nodes are not drawn there); `size_buttons` twice and `countdown` once in states of class `choose_size`
+  (not triaged by the lane: for the owner);
+- every other id unchanged.
+
+Both notice dismissals are now judged by a sibling replay of the BOUND dismiss intent: path 3 (a tap at key 8 under the
+rejection dialog presses its Dismiss, 323, the dialog's `dismiss` element) `layer covered`, `covered by 323`,
+`judged by sibling`, `tap ok`; path 4 (a tap outside the snackbar) `layer dismiss`, `judged by sibling`,
+`tap dismissed` (its bound intent is the intent of 323, the snackbar's `dismiss` element; the sibling applies the
+catalogue's `notice-dismiss`, key 323).
+The parts rule alone would not decide either: the dismiss posts `dismiss` and `notice_cleared`, and the kiosk's 250 ms
+tick always leaves a next deadline. Sibling cost: 2 sibling runs, 102 probe commands, 8 300 virtual ms, against the
+replay's own 880 commands and 45 400 virtual ms (about 12 % more commands).
+
+The ids of the documented command now:
+
+```sh
+# exit 1; 37 findings:
+# ui-explore.key-too-coarse/75b3512d986f, ui-explore.key-too-coarse/7cff7b31c6af, ui-fit.checks-examined/4e0d1448cc93,
+# ui-fit.text-clipped/971c4b3a0575, ui-fit.text-overflow/6117603b8ff9, ui-render.check-vacuous/56bd3907d221,
+# ui-render.checks-examined/c50bebeacf21, ui-render.contract-pending/0249d3836b00,
+# ui-render.contract-pending/2e2f515fff9b, ui-scene.checks-examined/c4c4df33ffbd,
+# ui-scene.contract-incomplete/951558b98cb8, ui-scene.contract-incomplete/980d4e4eb125,
+# ui-scene.contract-incomplete/cf468399e460, ui-scene.contract-incomplete/d4bdc5505308,
+# ui-scene.contract-pending/148b81015f4f, ui-scene.contract-pending/3eef6d994176,
+# ui-scene.contract-pending/5ae64644b993, ui-scene.contract-pending/91f89d0854c9,
+# ui-scene.contract-pending/aa9761e42588, ui-scene.occluded-target/439bd29e91fe, ui-scene.overlay-policy/2611559a788a,
+# ui-scene.overlay-policy/d03dae1f662d, ui-scene.overlay-policy/e9c560d5ae69,
+# ui-scene.required-element-missing/2643816b2f51, ui-scene.required-element-missing/3dace1d31cbb,
+# ui-scene.required-element-missing/7305cfc29702, ui-scene.required-element-missing/9bdf8e44e054,
+# ui-scene.required-element-missing/e075dec50802, ui-scene.stage-unmatched/15f50acbbaff,
+# ui-scene.stage-unmatched/445edb718280, ui-scene.stage-unmatched/901d602868b0, ui-scene.stage-unmatched/9349709cc74e,
+# ui-scene.stage-unmatched/96a2f6b9e5fe, ui-scene.stage-unmatched/b4cd6c33fe72, ui-scene.stage-unmatched/b975cfe24c0c,
+# ui-scene.stage-unowned-target/ee73e9dc58f3, ui-scene.stage-unowned-target/ff8c3cafc055
+```
+
+**A 10-minute bfs from Welcome** (`--strategy bfs --origin-ms 1000 --seed 112 --prefix welcome --depth 12 --max-states
+1000 --budget-s 600 --judges ui-scene,ui-fit,ui-render`, the catalogue before its comment-only change at `581ff7e`):
+
+| Run | Exit | Wall | States | Paths x2 | Findings (errors) |
+|---|---|---|---|---|---|
+| bfs-welcome-10min | 1 | 601 s | 24 (`[1, 8, 14]`, 0 dropped) | 890 | 72 (41): 6 intent-missed and 4 tap-misrouted (all the self-test banner scrim 296, `tap@296#i` and `banner-selftest-scrim`: the known dead tap-outside), 1 timer-starvation, 1 depth-unsaturated (`budget`), 7 occluded-target, 2+2 text-clipped/overflow on 8, 7 required-element-missing (`size_buttons` 5, `countdown` 2, class `choose_size`), 21 taps-capped (info), 10 key-too-coarse (info), contract-pending 5+2, contract-incomplete 4 |
+
+No `scene-controls-untapped`, no `scene-taps-vacuous` (192 u2 scene taps sent, none unbound), no
+`scene-word-unbound`, no `blocked-target-live`. Sibling cost: 2 runs, 78 probe commands. Screen classes (states that
+carry a finding): Welcome with and without the self-test banner, the pad with 0 to 2 digits, the rejection dialog,
+Choose size, the report (bg and en). Wall time per path is unchanged (0.67 s, both runs, three judges with ink).
+
