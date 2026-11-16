@@ -14,7 +14,7 @@
 #define TIMED_W 320
 #define TIMED_H 240
 #define TIMED_NODES 5u
-#define TIMED_TEXT 32u
+#define TIMED_TEXT 112u
 #define TIMED_NONE UINT64_MAX
 
 /* The variants, by intent id (timed.events.toml). */
@@ -30,6 +30,7 @@ typedef enum {
     TV_START,   /* the countdown starts at 9: countdown-wrong */
     TV_SILENT,  /* the state class turns `detail` 1 s later, nothing visible changes: invisible-auto-transition */
     TV_CLOCK,   /* the expiry kept modulo 2^32: the dialog never shows from an origin of 2^32 or more */
+    TV_WORDY,   /* a 4 s dialog whose text takes longer to read: dwell-below-reading-time, notice-lifetime-short */
     TV_COUNT
 } timed_variant_t;
 

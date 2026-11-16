@@ -46,6 +46,10 @@
    "open 1000000000 7",
    "v-silent",
    "fire-due"
+  ],
+  [
+   "open 1000000000 7",
+   "v-wordy"
   ]
  ]
 }

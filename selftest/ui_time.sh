@@ -69,6 +69,9 @@ WANT = {
     "v-start": [("countdown-wrong", ["dialog", "start"], "part", "start")],
     "v-silent": [("invisible-auto-transition", ["main", "detail"], "to", "detail")],
     "v-clock": [("clock-origin-divergence", ["origin", "v-clock", "semantic"], "part", "semantic")],
+    # 96 characters need 6878 ms of dwell: the 4 s timer is below it (static), and the 4 s shown is short of it
+    "v-wordy": [("dwell-below-reading-time", None, "min_dwell_ms", 6878),
+                ("notice-lifetime-short", ["dialog"], "dwell_ms", 6878)],
 }
 def fid(check, identity, key):
     data = json.dumps(["ui-time", check, [identity, key]], sort_keys=True, separators=(",", ":")).encode() + b"\n"
@@ -81,7 +84,12 @@ want = sorted((v, check) for v, items in WANT.items() for check, _i, _k, _t in i
 assert got == want, (got, want)
 for f in errors:
     (check, identity, name, target), = [w for w in WANT[f["path"][1]] if w[0] == f["check"]]
-    assert f["id"] == fid(check, identity, f["state"]["key"]), (f["id"], check, identity)
+    if identity is None:      # static: [kind, message], no state (the message is its text's digest here)
+        assert f["state"] is None and f["id"] == "ui-time.%s/%s" % (check, hashlib.sha256(json.dumps(
+            ["ui-time", check, ["dialog", f["observed"]["message"]]], sort_keys=True,
+            separators=(",", ":")).encode() + b"\n").hexdigest()[:12]), f
+    else:
+        assert f["id"] == fid(check, identity, f["state"]["key"]), (f["id"], check, identity)
     assert f["observed"][name] == target, (f["id"], name, f["observed"])
     assert f["evidence"] and f["evidence"][0].endswith("paths.json"), f["evidence"]
 short = [f for f in errors if f["check"] == "notice-lifetime-short"][0]
@@ -95,8 +103,9 @@ rows = {r["path"][1]: r for r in examined["observed"]["lifetimes"]}
 clean = rows["v-clean"]
 assert (clean["shown_more_than_ms"], clean["shown_at_most_ms"]) == (3999, 4000), clean
 assert rows["v-never"]["shown_at_most_ms"] is None and rows["v-early"]["shown_at_most_ms"] == 1000, rows
-assert examined["observed"]["cost"]["probe_runs"] > 0 and examined["observed"]["cost"]["origin_runs"] == 4 * 7
-assert summary["findings"]["ui-time.flash"] == 2 and summary["findings"]["ui-time.countdown-wrong"] == 4, summary
+assert examined["observed"]["cost"]["probe_runs"] > 0 and examined["observed"]["cost"]["origin_runs"] == 4 * 8
+assert summary["findings"]["ui-time.flash"] == 2 and summary["findings"]["ui-time.countdown-wrong"] == 4 \
+    and summary["findings"]["ui-time.notice-lifetime-short"] == 2, summary
 PY
 
 begin "determinism: byte-identical findings across two release runs and across release and san"

@@ -7,6 +7,10 @@
 
 enum { LIFE_MS = 4000, EARLY_MS = 1000, BLINK_MS = 200, SILENT_MS = 1000, SECOND_MS = 1000, LAST_CHANGE_S = 5 };
 
+/* 96 characters: 5878 ms of reading at 175 wpm, so a minimum dwell of 6878 ms (P004 3.10) against the 4 s timer */
+static const char WORDY[] = "Your locker is open now. Please take all of your belongings and close the door firmly "
+                            "when done.";
+
 static uint64_t g_pool[LV_MEM_SIZE / 8];
 static uint8_t g_frame[LVGL_GATE_TEST_BUF_BYTES(TIMED_W, TIMED_H)];
 static lv_draw_buf_t g_draw_buf;
@@ -43,6 +47,7 @@ static bool dialog_shown(timed_variant_t v, uint64_t since, uint64_t now)
     case TV_SKIP:
     case TV_ZERO:
     case TV_START:
+    case TV_WORDY:
         return now < since + LIFE_MS;
     case TV_EARLY:
         return now < since + EARLY_MS;
@@ -92,7 +97,8 @@ void timed_scene_at(timed_variant_t v, uint64_t since, uint64_t now, timed_scene
     if (dialog_shown(v, since, now)) {
         int n = snprintf(digits, sizeof digits, "%llu s", (unsigned long long)countdown(v, since, now));
         ok = ok && n > 0 && (size_t)n < sizeof digits && add(out, "card", "dialog", "", card) &&
-             add(out, "msg", "text", "Saved.", msg) && add(out, "count", "countdown", digits, count);
+             add(out, "msg", "text", v == TV_WORDY ? WORDY : "Saved.", msg) &&
+             add(out, "count", "countdown", digits, count);
         out->cls = "dialog";
     }
     if (v == TV_BLINK && now < since + BLINK_MS) {
