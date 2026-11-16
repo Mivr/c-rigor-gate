@@ -5,6 +5,8 @@ the rendered tree, their association, each layer's sealed `[[input_layer]]` poli
 state before the tap. Without a contract nothing here runs. One verdict per tap, in this order:
   inert    the tap's target (a u2 tap's aimed node, a scene tap's node) is interactive and inert under R7: the tap
            must have NO effect; an effect is `blocked-target-live`; neither `intent-missed` nor `tap-misrouted`;
+  covered  the same, but the tap pressed a node of the modal layer's own card (its Dismiss over the target's point):
+           the tap is that control's, judged as a tap on it (`intent-missed` when nothing changed), never misrouted;
   dismiss  the point is under a scrim (outside its card), the topmost layer there, whose sealed rows say a tap outside
            dismisses: the tap must do exactly that layer's dismiss: the layer's records leave the scene and nothing
            else of the scene changes (outcome `dismissed`); anything else is `tap-misrouted` naming both;
@@ -73,14 +75,18 @@ def _top(ctx, x, y):
     return node, shield, (parts[1] if len(parts) > 1 else None), policy
 
 
-def _inert(ctx, aim, x, y):
+def _inert(ctx, aim, x, y, pressed):
     key = ctx.name_of(aim).get("key") if aim is not None and aim < len(ctx.frame.nodes) else None
     node = ctx.by_key.get(key)
     if node is None or not node.interactive or not ctx.inert_target(node, aim):
         return None
-    shields = [n.key for n, shield, _, policy in ctx.layers()
+    shields = [(n.key, parts) for n, shield, parts, policy in ctx.layers()
                if policy == "capture-modal-inert" and shield > aim and _holds(ctx, shield, x, y)]
-    return Verdict("inert", shields[-1] if shields else None, node.key, None, ())
+    layer = shields[-1][0] if shields else None
+    cards = [part for _, parts in shields for part in parts[1:]]
+    if pressed is not None and pressed < len(ctx.frame.nodes) and any(ctx.frame.descends(pressed, c) for c in cards):
+        return Verdict("covered", layer, node.key, None, ())      # the layer's own card (its control) took the tap
+    return Verdict("inert", layer, node.key, None, ())
 
 
 def _below(ctx, shield, x, y):
@@ -91,13 +97,14 @@ def _below(ctx, shield, x, y):
     return None
 
 
-def verdict(contract, snapshot, x, y, aim):
-    """The Verdict of a tap at (x, y) aimed at rendered node `aim` (or None) in the state of `snapshot`, or None."""
+def verdict(contract, snapshot, x, y, aim, pressed=None):
+    """The Verdict of a tap at (x, y) aimed at rendered node `aim` (or None), which pressed rendered node `pressed` (or
+    None), in the state of `snapshot`, or None."""
     ctx = context(contract, snapshot)
     if ctx is None:
         return None
     try:
-        found = _inert(ctx, aim, x, y)
+        found = _inert(ctx, aim, x, y, pressed)
         if found is not None:
             return found
         top = _top(ctx, x, y)

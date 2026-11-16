@@ -230,12 +230,13 @@ def tap_input(session, step, before, event, catalogue=None, scene=None, aim=None
     ambient = tap_ambient(session, step, marks, catalogue)
     found = None
     if scene is not None and scene.contract is not None:
-        found = layers.verdict(scene.contract, before, x, y, aim if aim is not None else aimed_node(nodes, event))
+        found = layers.verdict(scene.contract, before, x, y, aim if aim is not None else aimed_node(nodes, event),
+                               None if got == "blocked" else got[0])
     judged = None if found is None else layer_tap(step, found, (marks, before, after, ambient, catalogue),
                                                   event.cls == "u2" and node is not None)
     if judged is not None:
         result = judged
-        if step.misrouted and node is not None:
+        if (step.misrouted or result == "missed") and node is not None:
             step.image_box = image_box(nodes[node][3], size)
     elif event.cls == "u2" and node is not None:
         result = "ok" if tap_changes(step, marks, before, after, False, ambient, catalogue) else "missed"
@@ -275,6 +276,8 @@ def layer_tap(step, verdict, judged, pressed_node):
     if verdict.kind == "dismiss" and removed_only:
         return "dismissed"
     changed = tap_changes(step, marks, before, after, not pressed_node, ambient, catalogue)
+    if verdict.kind == "covered":
+        return "ok" if changed else "missed"
     if verdict.kind == "inert":
         if changed:
             step.blocked = {"layer": verdict.layer, "target": verdict.target, "changed": changed}

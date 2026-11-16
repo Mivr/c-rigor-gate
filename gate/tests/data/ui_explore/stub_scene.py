@@ -10,7 +10,7 @@ per mode is shown at `open` (or after `apply 3 9 0`):
     plain        no overlay
     slow         no overlay; every `open` takes 0.4 s of wall time (the run-time budget)
     dialog       a modal dialog: scrim 0,0 320x240 (clickable, opacity 82, no intent), card 60,60 200x120, its Close
-                 button 110,140 100x30 (2:0); a tap on the scrim does nothing (correct)
+                 button 110,60 100x30 (2:0, drawn over the key `ok`); a tap on the scrim does nothing (correct)
     dialoglive   as dialog, but a tap on the scrim over `go` still adds 1 (blocked-target-live)
     snack        a snackbar: scrim 0,0 320x240 (clickable, opacity 0, intent 3:0), card 20,180 280x50, its OK button
                  200,190 80x30 (3:0); a tap on the scrim dismisses it (correct: tap outside dismisses)
@@ -91,11 +91,11 @@ def scene(model):
 def overlay(model, records, nodes):
     if model.overlay == "dialog":
         records += [sem("dscrim", "scrim", "", (0, 0, W, H)), sem("dcard", "dialog", "", (60, 60, 200, 120)),
-                    sem("dclose", "button", "Close", (110, 140, 100, 30), "2:0", style=5)]
+                    sem("dclose", "button", "Close", (110, 60, 100, 30), "2:0", style=5)]
         nodes += [(0, "lv_obj", (0, 0, W - 1, H - 1), 1, 82, None), (len(nodes), "lv_obj", (60, 60, 259, 179), 0,
                                                                          255, None)]
-        nodes += [(len(nodes) - 1, "lv_button", (110, 140, 209, 169), 1, 255, None),
-                  (len(nodes), "lv_label", (130, 145, 189, 164), 0, 0, "Close")]
+        nodes += [(len(nodes) - 1, "lv_button", (110, 60, 209, 89), 1, 255, None),
+                  (len(nodes), "lv_label", (130, 65, 189, 84), 0, 0, "Close")]
     elif model.overlay == "snack":
         records += [sem("sscrim", "scrim", "", (0, 0, W, H), "3:0"), sem("scard", "snackbar", "", (20, 180, 280, 50)),
                     sem("sok", "button", "OK", (200, 190, 80, 30), "3:0", style=5)]
@@ -148,7 +148,7 @@ def tap(model, x, y):
         model.change("digit", entry=model.entry + PAD[box])
     elif box == (110, 60, 149, 89) and model.entry:
         model.change("enter", 10, "")
-    elif box in ((110, 140, 209, 169), (200, 190, 279, 219)):
+    elif box in ((110, 60, 209, 89), (200, 190, 279, 219)):
         model.close("close")
     elif box == (0, 0, W - 1, H - 1):
         scrim(model, on_go)
