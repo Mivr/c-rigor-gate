@@ -1,0 +1,168 @@
+# The deviation entries the owner has acknowledged, per header (docs/ui-deviations.md). OWNER-SEALED: the owner must review
+# it. First version: made by READING each header of /home/user/business-apps (see the report of U13 fix-up 2 for the table).
+# `labels` are the entry labels counted, `count` must equal their number. A label that is not written in the header (the
+# header has bullets or prose) is a short name chosen here. The file records the expected count and does NOT excuse it:
+# entries without tags are still `deviation-untagged`; a header whose section the gate cannot find is
+# `deviation-section-missing` until it is tagged or the owner changes this file.
+schema = "ui-deviation-sections/2"
+product = "business-apps"
+
+[headers."apps/lockers/lk/audit/audit.h"]
+count = 1
+labels = ["reason-for-any-kind"]
+
+[headers."apps/lockers/lk/auditplan/auditplan.h"]
+count = 4
+labels = ["N1", "N2", "N3", "N4"]
+
+[headers."apps/lockers/lk/booktext/booktext.h"]
+count = 3
+labels = ["remaining-deviation-dup-locker-full", "no-inventory-parameter", "no-line-numbers"]
+
+[headers."apps/lockers/lk/codeset/codeset.h"]
+count = 1
+labels = ["seal-duplicate-check"]
+
+[headers."apps/lockers/lk/codesfile/codesfile.h"]
+count = 4
+labels = ["D1-D4", "D5", "D6", "D7"]
+
+[headers."apps/lockers/lk/outcome/outcome.h"]
+count = 5
+labels = ["1.", "2.", "3.", "4.", "5."]
+
+[headers."apps/lockers/lk/preflight/preflight.h"]
+count = 3
+labels = ["lk_preflight_line-moved-from-selftest", "check-array-api", "fixed-128-byte-words-field"]
+
+[headers."apps/lockers/lk/selftest/selftest.h"]
+count = 3
+labels = ["(1)", "(2)", "(3)"]
+
+[headers."apps/lockers/lk/syncbody/syncbody.h"]
+count = 4
+labels = ["D-1", "D-2", "D-3", "D-4"]
+
+[headers."apps/lockers/lk/syncsched/syncsched.h"]
+count = 1
+labels = ["transient-404-429"]
+
+[headers."apps/lockers/lkadp/auditfile/auditfile.h"]
+count = 8
+labels = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"]
+
+[headers."apps/lockers/lkadp/bookfile/bookfile.h"]
+count = 6
+labels = ["replace-mode", "size-limit", "file-name", "errors", "load-v1-v2-limits", "no-inventory-parameter"]
+
+[headers."apps/lockers/lkadp/codeshttp/codeshttp.h"]
+count = 7
+labels = ["N1", "N2", "N3", "N4", "N5", "N6", "N8"]
+
+[headers."apps/lockers/lkadp/e2eclock/e2eclock.h"]
+count = 2
+labels = ["N1", "N2"]
+
+[headers."apps/lockers/lkadp/relaytcp/relaytcp.h"]
+count = 7
+labels = ["N1", "N2", "N3", "N4", "N5", "N6", "N7"]
+
+[headers."apps/lockers/lkadp/synchttp/synchttp.h"]
+count = 12
+labels = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10", "N11", "N12"]
+
+[headers."apps/lockers/lkapp/checkconfig/checkconfig.h"]
+count = 3
+labels = ["D1", "D2", "D4"]
+
+[headers."apps/lockers/lkapp/commission/commission.h"]
+count = 4
+labels = ["N1", "N2", "N3", "N4"]
+
+[headers."apps/lockers/lkapp/e2e/e2e.h"]
+count = 4
+labels = ["N1", "N2", "N3", "N4"]
+
+[headers."apps/lockers/lkapp/uiloop/uiloop.h"]
+count = 1
+labels = ["leaving-idle-wedge-clear"]
+
+[headers."apps/lockers/lkapp/wire/wire.h"]
+count = 8
+labels = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"]
+
+[headers."apps/lockers/lkrx/boot/boot.h"]
+count = 5
+labels = ["B10", "D1", "D2", "D3", "D4"]
+
+[headers."apps/lockers/lkrx/codes/codes.h"]
+count = 6
+labels = ["D1", "D2", "D3", "D4", "D5", "D6"]
+
+[headers."apps/lockers/lkrx/fold_status/fold_status.h"]
+count = 5
+labels = ["G1", "G2", "G3", "G4", "G5"]
+
+[headers."apps/lockers/lkrx/notice/notice.h"]
+count = 5
+labels = ["X1", "X2", "X3", "X4", "X5"]
+
+[headers."apps/lockers/lkrx/pad/pad.h"]
+count = 5
+labels = ["D1", "D2", "D3", "D4", "D5"]
+
+[headers."apps/lockers/lkrx/shift/shift.h"]
+count = 12
+labels = ["DISAGREE-1", "DISAGREE-2", "DISAGREE-3", "DISAGREE-4", "DISAGREE-5", "DISAGREE-6", "GAP-T", "GAP-ST", "GAP-S2", "GAP-S4", "GAP-H", "GAP-F"]
+
+[headers."apps/lockers/lkrx/sync/sync.h"]
+count = 11
+labels = ["X1", "X2", "X3", "X4", "X5", "X6", "GAP-1", "GAP-2", "GAP-3", "GAP-4", "GAP-5"]
+
+[headers."apps/lockers/lkrx/view/view.h"]
+count = 6
+labels = ["D1", "D2", "D3", "GAP-1", "GAP-3", "GAP-4"]
+
+[headers."apps/lockers/lkrx/visit/visit.h"]
+count = 7
+labels = ["DISAGREE-1", "DISAGREE-2", "DISAGREE-3", "DISAGREE-4", "GAP-V1", "GAP-V2", "GAP-V3"]
+
+[headers."apps/lockers/lkrx/vstate/vstate.h"]
+count = 7
+labels = ["D1", "D2", "D3", "D4", "D5", "D6", "D7"]
+
+[headers."apps/lockers/lksim/board/board.h"]
+count = 7
+labels = ["(1)", "(2)", "(3)", "(4)", "(5)", "(6)", "(7)"]
+
+[headers."apps/lockers/lkui/input/input.h"]
+count = 3
+labels = ["1.", "2.", "LKUI_I_LANGUAGE-DEVIATION"]
+
+[headers."apps/lockers/lkui/notices/notices.h"]
+count = 9
+labels = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9"]
+
+[headers."apps/lockers/lkui/screens/screens.h"]
+count = 12
+labels = ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11", "L12"]
+
+[headers."apps/lockers/relay/driver/driver.h"]
+count = 8
+labels = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"]
+
+[headers."apps/lockers/relay/frame/frame.h"]
+count = 2
+labels = ["constructors-signature", "domain-panics-vs-values"]
+
+[headers."apps/lockers/relay/opener_sm/opener_sm.h"]
+count = 10
+labels = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10"]
+
+[headers."apps/lockers/relay/pulse/pulse.h"]
+count = 2
+labels = ["ip-format-display", "mode-1777-caller-decides"]
+
+[headers."lib/fmt/kv/kv.h"]
+count = 1
+labels = ["kv-u64-pos-canonical"]
