@@ -16,8 +16,9 @@ exception whose rule is a check of a selected judge and that turned nothing (or 
 
 import datetime
 
-from rigor_lib import jsonio, ui_contract
+from rigor_lib import jsonio, ui_contract, ui_judge_fit, ui_judge_scene
 from rigor_lib.errors import InternalError
+from rigor_lib.ui_judge_context import Context
 from rigor_lib.ui_explore_judges import PRIVATE, state_of
 
 SCENE_CHECKS = ("occluded-target", "overlay-policy", "touch-target-small", "target-spacing", "node-out-of-bounds",
@@ -110,8 +111,6 @@ class JudgeSet:
 
     def step_judge(self, step, path, contract):
         del contract
-        from rigor_lib import ui_judge_fit, ui_judge_scene      # the checks import this module
-        from rigor_lib.ui_judge_context import Context
         context = Context(self, step)
         out = context.stage_findings(Reporter(self.gates[0], self, step, path))
         if "ui-scene" in self.gates:
