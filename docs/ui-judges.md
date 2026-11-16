@@ -1,5 +1,9 @@
 # The `ui-scene` and `ui-fit` judges (U06, P004 3.1, 3.2)
 
+The third judge, `ui-render` (U07, P004 3.3: what is painted, from lvprobe's ink), has its own page:
+[docs/ui-judges-render.md](ui-judges-render.md). Everything below about findings, pending values, exceptions,
+`checks-examined` and `check-vacuous` applies to it too.
+
 **What they find today.** On the 23 frames of the real lockers kiosk the judges find six true product defects: banner
 scrims no tap can reach (frames 1-4, 15-18), the snackbar's clickable full-window scrim over BG, EN and Done and the
 snackbar drawn away from its scene rect (frames 13, 14), the fourth stacked banner's scrim over BG/EN (17, 18), the
@@ -26,14 +30,14 @@ scene (O2) and the rendered tree (O3), without the oracle. Python, stdlib only:
 rigor ui-explore ... --judges ui-scene,ui-fit --contract FILE.toml --today YYYY-MM-DD
 ```
 
-`--judges` takes distinct names of `ui-scene` and `ui-fit` and needs `--contract` (docs/ui-contract.md), `--today`
-(the date the contract's exceptions expire against: the judges never read the wall clock) and a probe that announces
-`frame-facts`; otherwise exit 2. `--today` without `--judges` is exit 2 too. Of the frame records, the judges read
-`lvprobe`, `frame`, `node`, `label` and `fit`, and ignore `region`, `life` and `taps` (the tap path of a session's first
-frame, U05c); any other record type is the gate's error. Selftest: `selftest/ui_judges.sh` (called
-by `selftest/ui.sh`) on the canary product `selftest/ui_canary_product/`. Unit tests: `gate/tests/test_ui_judge_*.py`
-over hand-built observations (`test_ui_judge_helpers.py` writes O2 and O3 lines as the probe writes them), and
-`test_ui_judge_lockers.py` over the 23 frames of the real kiosk.
+`--judges` takes distinct names of `ui-scene`, `ui-fit` and `ui-render` (U07; that one also needs `ink`) and needs
+`--contract` (docs/ui-contract.md), `--today` (the date the contract's exceptions expire against: the judges never read
+the wall clock) and a probe that announces `frame-facts`; otherwise exit 2. `--today` without `--judges` is exit 2 too.
+Of the frame records, the judges read `lvprobe`, `frame`, `node`, `label` and `fit`, and ignore `region`, `life` and
+`taps` (the tap path of a session's first frame, U05c); any other record type is the gate's error. Selftest:
+`selftest/ui_judges.sh` (called by `selftest/ui.sh`) on the canary product `selftest/ui_canary_product/`. Unit tests:
+`gate/tests/test_ui_judge_*.py` over hand-built observations (`test_ui_judge_helpers.py` writes O2 and O3 lines as the
+probe writes them), and `test_ui_judge_lockers.py` over the 23 frames of the real kiosk.
 
 ## The scene vocabulary (orchestrator rulings R1 to R6)
 
@@ -267,7 +271,7 @@ What a reviewer saw in the real records that no check of these judges covers (re
 
 | Check | Status | Why / what is missing |
 |---|---|---|
-| `occluded-target` | implemented (grid; disc pending while `panel.diagonal_in` is; a layer's free square) | Coverage is lvprobe's per-node facts, not ink (the explorer offers judges no `ink`). Not counted as covering (false negatives): borders, outlines and shadows only; an `lv_image`'s own image, an arc, bar, line or any other widget's own drawing; a gradient without a background opacity. A background drawn under an `opa_layered` ancestor (`bg_opa_exact` 0) counts when its drawn opacity is above 0. LVGL's extended click area is not modelled |
+| `occluded-target` | implemented (grid; disc pending while `panel.diagonal_in` is; a layer's free square) | Coverage is lvprobe's per-node facts, not ink (this judge reads no ink; ui-render does, docs/ui-judges-render.md). Not counted as covering (false negatives): borders, outlines and shadows only; an `lv_image`'s own image, an arc, bar, line or any other widget's own drawing; a gradient without a background opacity. A background drawn under an `opa_layered` ancestor (`bg_opa_exact` 0) counts when its drawn opacity is above 0. LVGL's extended click area is not modelled |
 | `overlay-policy` | implemented: sealed and rendered halves | "visibly dimmed" is judged by the proxy the rendered facts give (a background opacity above 0 on the clickable scrim, R7), not by luminance; the hit-test injection half is `ui-input`'s |
 | `touch-target-small` | implemented (dp; the mm floor while the ppi is pending is contract-pending) | The keypad (20 mm) and button (16.5/19 mm) floors are not applied: the contract has no role-to-target-class table (and Q10 is pending) |
 | `target-spacing` | implemented (overlap; mm gaps pending while the ppi is) | rendered boxes, not LVGL's extended click areas |
@@ -436,4 +440,5 @@ Each break was applied to the judge, the unit tests (`gate/tests/test_ui_judge_*
 - **ui_contract.py is split** (fix-up 3): the tables this task added are in ui_judge_contract.py, the dwell table in
   ui_contract_dwell.py and the consistency checks in ui_contract_checks.py; ui_contract re-exports every public name.
 - **State identity is the abstraction key** (above), as in the explorer.
-- **The explorer offers judges no `ink`, `hit-test` or `crop`**: evidence images are not attached; the records are.
+- **The explorer offers judges no `hit-test` or `crop`**: evidence images are not attached; the records are. Since U07
+  it takes `ink` once per new abstract state for `ui-render` (docs/ui-judges-render.md).

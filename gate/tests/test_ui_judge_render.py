@@ -216,6 +216,16 @@ class StageChecksTest(unittest.TestCase):
         self.assertEqual(sorted((f["observed"]["long"], f["observed"]["expected"]) for f in found
                                 if f["check"] == "flag-mismatch"), [("clip", "wrap"), ("dots", "wrap")])
 
+    def test_an_ellipsis_scope_needs_dots(self):
+        elided = contract(lambda t: t + '[[element]]\nid = "body_el"\nkey = "body"\nwrap = "elided"\n'
+                                       'provenance = "spec:ui-look.md#4.1"\n')
+        semantic, tree = base()
+        found = judged(semantic, tree, ink=False, the_contract=elided)
+        self.assertEqual([(f["observed"]["long"], f["observed"]["expected"]) for f in found
+                          if f["check"] == "flag-mismatch"], [("wrap", "dots")])
+        tree.nodes[2]["label"]["long"] = 1
+        self.assertEqual(render(judged(semantic, tree, ink=False, the_contract=elided), "flag-mismatch"), [])
+
     def test_align_mismatch_on_the_drawn_alignment_only_when_drawn(self):
         semantic, tree = base()
         tree.nodes[2]["label"]["align_drawn"] = 1
