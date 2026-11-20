@@ -5324,3 +5324,27 @@ exports = ["main"]
 allow = ["bcmp", "core_buf_init", "core_buf_len", "core_buf_overflow", "memcmp"]
 allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
+
+# lib-fmt/hmac (staffbot T0.6): built like lib/fmt/fp, over the gate's mbedTLS (its only dep, outside the architecture contract).
+[module."//lib/fmt/hmac:hmac"]
+level = "L3"
+impl = ["lib/fmt/hmac/src/**"]
+allow = ["memcpy", "memset"]
+third_party = ["gate//third_party/mbedtls:mbedtls"]
+exports = ["hmac_hex_decode", "hmac_sha256", "hmac_sha256_verify"]
+
+[module."//lib/fmt/hmac:rfc4231_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/hmac:edge_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/fmt/hmac:verify_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/fmt/hmac:hex_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
