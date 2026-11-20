@@ -1,0 +1,9 @@
+{
+  "bypass": "a fuzz target whose harness never calls the module",
+  "description": "the c_fuzz target lists //parse:parse in deps and runs clean, but its harness returns at once and references no symbol of the parser: green fuzzing of nothing. Only the fuzz gate sees it.",
+  "fail": {
+    "fuzz": [
+      "fuzz-harness-no-call"
+    ]
+  }
+}

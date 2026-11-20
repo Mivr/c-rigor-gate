@@ -8,9 +8,10 @@ be listed in the gate's `allowed_signers`. Approvals live outside the graded rep
 import os
 import re
 import subprocess
+import tomllib
 from dataclasses import dataclass
 
-from rigor_lib import gitrun, jsonio, paths
+from rigor_lib import gitrun, jsonio, ledger as ledger_lib, paths
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import finding
 
@@ -92,14 +93,38 @@ def _principals_for(signature_path, allowed_signers):
     return [line for line in out.decode("utf-8", "replace").splitlines() if line.strip()]
 
 
-def signature_is_valid(data, signature_path, allowed_signers, namespace=NAMESPACE):
-    """True if some allowed principal's key signed exactly `data` in `namespace`."""
+def signing_principals(data, signature_path, allowed_signers, namespace=NAMESPACE):
+    """Every allowed principal whose key signed exactly `data` in `namespace`."""
+    found = []
     for principal in _principals_for(signature_path, allowed_signers):
         code, _ = _ssh_keygen(["-Y", "verify", "-f", allowed_signers, "-I", principal,
                                "-n", namespace, "-s", signature_path], input_bytes=data)
         if code == 0:
-            return True
-    return False
+            found.append(principal)
+    return found
+
+
+def signature_is_valid(data, signature_path, allowed_signers, namespace=NAMESPACE):
+    """True if some allowed principal's key signed exactly `data` in `namespace`."""
+    return bool(signing_principals(data, signature_path, allowed_signers, namespace))
+
+
+def load_roles(path):
+    """{principal: set of approval kinds it may sign} from `signer_roles.toml`; InternalError if unusable."""
+    try:
+        document = tomllib.loads(jsonio.read_bytes(path).decode("utf-8"))
+    except (OSError, ValueError) as exc:
+        raise InternalError("cannot read signer roles %s: %s" % (path, exc)) from exc
+    principals = document.get("principal", {})
+    if set(document) - {"principal"} or not isinstance(principals, dict):
+        raise InternalError("signer roles: only [principal.<name>] tables are allowed")
+    roles = {}
+    for name, table in principals.items():
+        kinds = table.get("kinds") if isinstance(table, dict) and set(table) == {"kinds"} else None
+        if not isinstance(kinds, list) or not all(k in KINDS for k in kinds):
+            raise InternalError("signer roles: principal %s needs kinds = [known approval kinds]" % name)
+        roles[name] = set(kinds)
+    return roles
 
 
 def _is_nonempty_string(value):
@@ -134,8 +159,10 @@ def _applies_to(approval, repo, head_sha):
             and gitrun.is_ancestor(repo, approval.repo_sha, head_sha))
 
 
-def _check_one(directory, stem, allowed_signers):
-    """Verify one `<stem>.json`. Returns (Approval or None, problem reason or None)."""
+def _check_one(directory, stem, allowed_signers, roles=None):
+    """Verify one `<stem>.json`. Returns (Approval or None, problem reason or None).
+
+    With `roles` (from load_roles) the signer's principal must be listed with the approval's kind."""
     json_path = os.path.join(directory, stem + b".json")
     signature_path = json_path + b".sig"
     if not os.path.isfile(json_path) or os.path.islink(json_path):
@@ -145,12 +172,24 @@ def _check_one(directory, stem, allowed_signers):
     data = jsonio.read_bytes(json_path)
     if jsonio.sha256_hex(data).encode("ascii") != stem:
         return None, "name-mismatch"
-    if not signature_is_valid(data, signature_path, allowed_signers):
+    principals = signing_principals(data, signature_path, allowed_signers)
+    if not principals:
         return None, "signature-rejected"
     approval = _parse_document(data, stem.decode("ascii"))
     if approval is None:
         return None, "malformed"
+    if roles is not None and not any(approval.kind in roles.get(p, ()) for p in principals):
+        return None, "kind-not-allowed-for-signer"
     return approval, None
+
+
+def _tighten_reason(approval, since, claims):
+    """"tighten-only" if the switch is on and this approval's claim entry came after the switch was turned on."""
+    subject = ledger_lib.make_subject(approval.kind, approval.scope, approval.stem)
+    seq = claims.get(subject)
+    if since is not None and seq is not None and seq > since:
+        return "tighten-only"
+    return None
 
 
 def _classify_names(names):
@@ -170,8 +209,12 @@ def _classify_names(names):
     return sorted(stems), sorted(orphans), sorted(others)
 
 
-def load_approvals(directory, repo, head_sha, allowed_signers):
-    """Verify every file in the approvals directory against the graded head."""
+def load_approvals(directory, repo, head_sha, allowed_signers, roles_path=None, ledger=None):
+    """Verify every file in the approvals directory against the graded head.
+
+    `roles_path`: a signer_roles.toml; when given, a signer may only sign the kinds listed for it.
+    `ledger`: a ledger directory; when its tighten-only switch is on, an approval whose claim entry
+    comes after the `tighten-only-on` entry does not count. Without both, nothing changes."""
     raw_directory = os.fsencode(directory)
     if not os.path.isdir(raw_directory):
         raise InternalError("approvals path is not a directory: %s" % directory)
@@ -183,9 +226,14 @@ def load_approvals(directory, repo, head_sha, allowed_signers):
     stems, orphans, others = _classify_names(names)
     problems = [_forged(name, "unrecognised-file") for name in others]
     problems += [_forged(name, "orphan-signature") for name in orphans]
+    roles = load_roles(roles_path) if roles_path is not None else None
+    since = ledger_lib.tighten_only_since(ledger) if ledger is not None else None
+    claims = ledger_lib.claim_seqs(ledger) if since is not None else {}
     valid = []
     for stem in stems:
-        approval, reason = _check_one(raw_directory, stem, allowed_signers)
+        approval, reason = _check_one(raw_directory, stem, allowed_signers, roles)
+        if reason is None:
+            reason = _tighten_reason(approval, since, claims)
         if reason is not None:
             problems.append(_forged(stem + b".json", reason))
         elif _applies_to(approval, repo, head_sha):

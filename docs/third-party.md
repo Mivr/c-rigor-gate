@@ -83,11 +83,16 @@ final newline, regular file; any defect is exit 2. A label may not be on both la
 2. **`semantic-suppressions`.** A facts file of kind `c_third_party` whose label is on the allowlist is **not
    scanned**. One whose label is not on the allowlist is a finding (`third-party-not-allowed`) and is not trusted.
    Text of the library's headers that ends up in a product unit is **not** the product's text (T108): the facts
-   rule (`rules/facts.bzl`) passes `--vendor-marker /art/<gate cell>/third_party/` to the scanner (the fragment
-   `c_structure` already uses), and a file whose path contains it is skipped like a file below a `--system-root`.
+   rule (`rules/facts.bzl`) passes `--vendor-marker /art/<gate cell>/third_party/` to the scanner (the marker
+   `c_structure` already uses), and a file is skipped like a file below a `--system-root` only when its path is
+   `buck-out/<version>` followed by the marker (T133, `vendor_tail` in `cscan.py` and `structure_scan.py`): the output
+   tree of the gate's cell. The marker is never matched as a fragment elsewhere in a path, and a path of an unknown
+   layout is product code. In the gate's own selftests the gate is the root cell and the marker is `/art/root/third_party/`,
+   anchored the same way.
    A product `#define`/`#undef` of a name such a header also defines stays `reserved-macro`, so a product cannot
-   redefine `LV_*` or `MBEDTLS_*` behind the library's back. A product directory named `third_party` is another
-   cell/path and is not exempt; without the marker nothing changes (fail closed).
+   redefine `LV_*` or `MBEDTLS_*` behind the library's back. A product directory named `third_party`, or `x/art/gate/third_party/`, is under the product's cell and is not
+   exempt, for every checker: `cscan.py`, `structure_scan.py`, and the mutation generator (`mutants_gate.outside_product`
+   decides by the cell after `buck-out/<version>/<kind>`); canary `vendor-path-spoof`. Without the marker nothing changes (fail closed).
 3. **`symbols`.** The policy gains `third_party = ["gate//third_party/mbedtls:mbedtls"]` per module (labels must
    be on the allowlist, else exit 2). A module that depends on a library without that entry gets
    `third-party-not-permitted`, and the library's exports do **not** count for it (so its calls are also

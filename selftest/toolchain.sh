@@ -144,6 +144,125 @@ for m in release san; do
 done
 rm -rf "$xs"
 
+begin "NDK and SDK trees (T-G1, T-G3): the pinned trees verify against their manifests uncached; one flipped manifest byte makes the grader's verifier fail (ndk, build-tools, jdk each)"
+must_pass build --no-remote-cache toolchains//:ndk_verified toolchains//:android_build_tools_verified toolchains//:android_platform_verified toolchains//:jdk_verified
+for entry in "ndk|/bin/clang-21" "android_build_tools|/aapt2" "jdk|/bin/java"; do
+tree="${entry%%|*}"; member="${entry#*|}"
+flip="$out/flip-$tree"
+{ git init -q -b flip "$flip" && git -C "$flip" fetch -q --no-tags "$root" HEAD && git -C "$flip" reset -q --hard FETCH_HEAD; } || fail "$CUR: copy of the gate commit"
+flipped="$(python3 -I - "$flip/toolchains/$tree.manifest" "$member" <<'PY'
+import sys
+path = sys.argv[1]
+lines = open(path, encoding="utf-8").read().split("\n")
+for i, line in enumerate(lines):
+    fields = line.split("\t")
+    if len(fields) == 5 and fields[0] == "f" and fields[4].endswith(sys.argv[2]):
+        digest = fields[3]
+        fields[3] = digest[:-1] + ("1" if digest[-1] != "1" else "2")
+        lines[i] = "\t".join(fields)
+        break
+else:
+    sys.exit("no %s line in the manifest" % sys.argv[2])
+open(path, "w", encoding="utf-8").write("\n".join(lines))
+print(fields[4])
+PY
+)" || fail "$CUR: flip"
+git -C "$flip" -c user.name=selftest -c user.email=selftest@invalid commit -q -am "selftest: one $tree.manifest sha256 flipped" || fail "$CUR: commit"
+python3 -I - "$root" "$flip" "$flipped" "$tree" > "$out/flip-$tree.log" 2>&1 <<'PY' || fail "$CUR: the flipped $tree.manifest was not refused as expected" "$out/flip-$tree.log"
+import os, subprocess, sys
+root, flip, flipped, tree = sys.argv[1:5]
+sys.path.insert(0, os.path.join(root, "gate"))
+from rigor_lib import toolchain_verify
+
+def run(tree, args):
+    done = subprocess.run(["bash", os.path.join(tree, "tools", "buck2")] + args, cwd=tree, stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=1800)
+    return done.returncode, done.stdout, done.stderr
+
+failure = toolchain_verify.prepare(run, flip)
+assert failure is not None, "the flipped %s.manifest was accepted" % tree
+assert failure.step == toolchain_verify.STEP_VERIFY, failure.message()
+assert failure.manifest() == "toolchains/%s.manifest" % tree, failure.message()
+assert failure.first_difference() == flipped, (failure.first_difference(), flipped)
+assert failure.verifier_exit_code() == 1, failure.message()
+print("FAILS as wanted: %s, first difference %s" % (failure.manifest(), failure.first_difference()))
+clean = toolchain_verify.prepare(run, root)
+assert clean is None, clean.message()
+print("the committed manifests (llvm, sysroot, ndk, android_build_tools, android_platform, jdk) verify")
+PY
+cat "$out/flip-$tree.log"
+# the scratch clone's own Buck2 daemon: stop only the processes whose working directory is the clone
+python3 -I - "$flip" <<'PY'
+import os, signal, sys
+root = os.path.realpath(sys.argv[1])
+for pid in filter(str.isdigit, os.listdir("/proc")):
+    try:
+        cwd = os.path.realpath(os.readlink("/proc/%s/cwd" % pid))
+    except OSError:
+        continue
+    if cwd == root or cwd.startswith(root + os.sep):
+        os.kill(int(pid), signal.SIGTERM)
+PY
+rm -rf "$flip"
+done
+
+begin "hardened release profile (T139): automatic variables start zeroed; an array overrun is NOT trapped"
+mkdir -p "$scratch"
+cat > "$scratch/BUCK" <<'BUCK'
+load("@gate//rules:c.bzl", "c_test")
+c_test(name = "hx", srcs = ["hx.c"])
+BUCK
+cat > "$scratch/hx.c" <<'C'
+#include <stddef.h>
+#include <string.h>
+#include "ctest/ctest.h"
+
+static volatile size_t g_idx = 4;
+struct box { int a[4]; int b; };
+
+/* An index that is one past a fixed array inside a struct: written through, it lands in the neighbour. */
+__attribute__((noinline)) static void t_overrun(ctest_t *t) {
+    struct box s;
+    s.b = 0;
+    memset(s.a, 0, sizeof s.a);
+    s.a[g_idx] = 7;
+    CHECK_EQ_I64(t, s.b, 0);
+}
+
+__attribute__((noinline)) static void dirty(void) {
+    unsigned char junk[256];
+    size_t i;
+    for (i = 0; i < sizeof junk; i++) { junk[i] = 0xA5; }
+    __asm__ volatile("" : : "r"(junk) : "memory");
+}
+__attribute__((noinline)) static void leave(unsigned char *p) { __asm__ volatile("" : : "r"(p) : "memory"); }
+__attribute__((noinline)) static long sum_uninit(void) {
+    unsigned char buf[256];
+    long s = 0;
+    size_t i;
+    leave(buf);
+    for (i = 0; i < sizeof buf; i++) { s += buf[i]; }
+    return s;
+}
+/* Reads an automatic array nobody wrote, right after a call left 0xA5 on that part of the stack. */
+static void t_uninit(ctest_t *t) { dirty(); CHECK_EQ_I64(t, sum_uninit(), 0); }
+
+CTEST_SUITE("hx", { "overrun", t_overrun }, { "uninit", t_uninit })
+C
+log="$out/$step.log"
+run "$log" build //selftest/scratch:hx_results --show-output || fail "$CUR: build failed" "$log"
+res="$(awk '/hx_results/ && /buck-out/ {print $2}' "$log" | tail -1)"
+[ -f "$res" ] || fail "$CUR: no results file" "$log"
+python3 -I -c '
+import json, sys
+rows = {r["id"]: r for r in (json.loads(l) for l in open(sys.argv[1])) if "id" in r}
+assert sorted(rows) == ["hx/overrun", "hx/uninit"], rows
+assert rows["hx/uninit"]["status"] == "pass", rows["hx/uninit"]  # -ftrivial-auto-var-init=zero
+# not covered: -fsanitize=bounds is not in the release profile (docs/toolchain.md), so the write lands in the neighbour
+assert rows["hx/overrun"]["status"] == "fail" and "signal" not in rows["hx/overrun"]["reason"] and "s.b" in rows["hx/overrun"]["reason"], rows["hx/overrun"]
+' "$res" || fail "$CUR: results are not the expected two" "$res"
+rm -rf "$scratch"
+
 begin "remote: compile, link and test all execute on RE (fresh, uncached sources)"
 mkdir -p "$scratch"
 nonce="$(date +%s%N)-$$"
@@ -210,6 +329,57 @@ must_pass build //examples/hello:hello
 must_pass build //examples/hello:hello
 n="$("${B[@]}" log what-ran 2>/dev/null | strip_ansi | grep -vc '^Showing\|^$')"
 [ "$n" = 0 ] || fail "$CUR: $n actions executed on the second build"
+
+begin "wasm32 (P008): examples/wasm builds tally_wasm.wasm exporting exactly tally_char (both forms), its native test passes"
+wasm_out() { awk '/tally_wasm/ && /buck-out/ {print $2}' "$1" | tail -1; }
+must_pass test //examples/wasm:tally_test
+log="$out/$step.default.log"
+run "$log" build //examples/wasm:tally_wasm --show-output || fail "$CUR: build failed" "$log"
+w1="$(wasm_out "$log")"
+[ -f "$w1" ] && [ "${w1##*/}" = tally_wasm.wasm ] || fail "$CUR: no tally_wasm.wasm" "$log"
+python3 -I -B gate/rigor_lib/wasm_exports.py "$w1" --expect tally_char > "$out/exports.txt" 2>&1 || fail "$CUR: exports" "$out/exports.txt"
+[ "$(cat "$out/exports.txt")" = tally_char ] || fail "$CUR: exports are not exactly tally_char" "$out/exports.txt"
+log="$out/$step.flag.log"
+run "$log" build --target-platforms toolchains//:wasm32_release //examples/wasm:tally_wasm --show-output || fail "$CUR: build failed" "$log"
+w2="$(wasm_out "$log")"
+cmp -s "$w1" "$w2" || fail "$CUR: --target-platforms toolchains//:wasm32_release built a different module" "$log"
+"${B[@]}" aquery 'deps(//examples/wasm:tally_wasm)' --output-attribute=cmd 2>/dev/null > "$out/wasm_aquery.json" \
+  || fail "$CUR: aquery failed"
+python3 -I - "$out/wasm_aquery.json" <<'PY' || fail "$CUR" "$out/wasm_aquery.json"
+import json, re, sys
+cmds = [re.split(r'[\s,\[\]"\']+', v.get("cmd") or "") for v in json.load(open(sys.argv[1])).values()]
+# The gate's own compile of fsl.c carries every flag inline (the prelude's compiles of tally.c use an argsfile).
+rt = [c for c in cmds if any(t.endswith("fsl.c") for t in c) and "-c" in c]
+links = [c for c in cmds if "-flavor" in c and "wasm" in c]
+assert len(rt) == 1, rt
+for flag in ("--target=wasm32-unknown-unknown", "-nostdinc", "-ffreestanding", "-nostdlib", "-std=c17", "-O2", "-Werror",
+             "-Wall", "-Wextra", "-Wpedantic", "-Wconversion", "-Wsign-conversion", "-Wshadow", "-Wcast-qual", "-Wvla",
+             "-Wframe-larger-than=512", "-Wformat=2", "-Wnull-dereference", "-Wimplicit-fallthrough"):
+    assert flag in rt[0], (flag, rt[0])
+assert not [t for t in rt[0] if "sysroot" in t or t.startswith(("-fsanitize", "-fprofile", "-fcoverage-mapping", "-g"))], rt[0]
+assert len(links) == 1, links
+for flag in ("--no-entry", "--export=tally_char", "-z", "stack-size=65536", "--initial-memory=2097152",
+             "--max-memory=2097152", "--strip-debug"):
+    assert flag in links[0], (flag, links[0])
+assert len([t for t in links[0] if t.startswith("--export")]) == 1, links[0]
+print("wasm32 compile and link commands as documented")
+PY
+
+begin "wasm32: libc headers other than <string.h> do not exist, an undefined symbol and a missing export fail the link"
+mkdir -p "$scratch"
+for hdr in stdio.h stdlib.h errno.h unistd.h; do
+  printf '#include <%s>\nint w(void) { return 1; }\n' "$hdr" > "$scratch/w.c"
+  printf 'load("@gate//rules:c.bzl", "c_library", "c_wasm")\nc_library(name = "w", srcs = ["w.c"])\nc_wasm(name = "m", deps = [":w"], exports = ["w"])\n' > "$scratch/BUCK"
+  must_fail_with "'$hdr' file not found" build //selftest/scratch:m
+done
+printf 'unsigned long malloc_size(void);\nint w(void) { return (int)malloc_size(); }\n' > "$scratch/w.c"
+must_fail_with "undefined symbol: malloc_size" build //selftest/scratch:m
+printf 'int w(void) { return 1; }\n' > "$scratch/w.c"
+printf 'load("@gate//rules:c.bzl", "c_library", "c_wasm")\nc_library(name = "w", srcs = ["w.c"])\nc_wasm(name = "m", deps = [":w"], exports = ["w", "nope"])\n' > "$scratch/BUCK"
+must_fail_with "symbol exported via --export not found: nope" build //selftest/scratch:m
+printf 'load("@gate//rules:c.bzl", "c_library", "c_wasm")\nc_library(name = "w", srcs = ["w.c"], system_libs = ["pthread"])\nc_wasm(name = "m", deps = [":w"], exports = ["w"])\n' > "$scratch/BUCK"
+must_fail_with "a wasm32 module links none" build //selftest/scratch:m
+rm -rf "$scratch"
 
 echo "elapsed ${SECONDS}s"
 echo "ALL CHECKS PASSED ($step)"

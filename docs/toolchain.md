@@ -11,6 +11,10 @@ compiling or linking: no host clang, no `/usr/include`, no `/usr/lib`.
 | Buck2 client | `/usr/local/bin/buck2` (`tools/buck2.version`; `tools/buck2` refuses any other binary) | `400f5fde930a62ff6f64513fb5a7e88fa1847afa85758cadd9484dc93446fa94` |
 | Prelude | bundled in that binary (`[external_cells] prelude = bundled`) | n/a |
 | LLVM 19.1.7 | `https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-Linux-X64.tar.xz` | `4a5ec53951a584ed36f80240f6fbf8fdd46b4cf6c7ee87cc2d5018dc37caf679` |
+| Android NDK r29 (linux zip) | `https://dl.google.com/android/repository/android-ndk-r29-linux.zip` | `4abbbcdc842f3d4879206e9695d52709603e52dd68d3c1fff04b3b5e7a308ecf` |
+| Android build-tools r35 (linux zip; `c_apk`: aapt2, zipalign, apksigner and d8 jars) | `https://dl.google.com/android/repository/build-tools_r35_linux.zip` | `bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88` |
+| Android platform 35 r02 (`android.jar`) | `https://dl.google.com/android/repository/platform-35_r02.zip` | `0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0` |
+| Temurin JDK 21.0.6+7 (linux x64; java for apksigner, d8 and javac, keytool) | `https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.6%2B7/OpenJDK21U-jdk_x64_linux_hotspot_21.0.6_7.tar.gz` | `a2650fba422283fbed20d936ce5d2a52906a5414ec17b2f7676dddb87201dbae` |
 | glibc sysroot (Chromium Debian bullseye amd64) | `https://commondatastorage.googleapis.com/chrome-linux-sysroot/f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` | `f851add76bdae472fb6c94b4f920bc4a132d85ac607951391297f636af7e934e` |
 
 `toolchains/fetch.bzl` (`fetched_tree`) downloads each archive (hash-checked) and runs `tar` on RE to unpack only
@@ -23,14 +27,14 @@ names (`toolchains/tools.bzl`, `.project(...)`). A pattern that matches nothing 
 archive, about two minutes, once per Buck2 daemon). The action cache is client-writable (backlog B4), so the tree
 cannot just be trusted from it. Design:
 
-- `toolchains/llvm.manifest` and `toolchains/sysroot.manifest` list every member of the extracted trees (directory,
+- `toolchains/{llvm,sysroot,ndk}.manifest` list every member of the extracted trees (directory,
   file with exec bit, size and sha256, symlink with target). They are gate files (`toolchains/**`), covered by the
   gate-clean check, and a change to one is a review item of its own.
 - The `toolchain` gate of `rigor grade` (`gate/rigor_lib/grade_toolchain.py`, T073; `docs/grade.md`) runs right after
   `assemble`, before any gate that compiles, and does this in the head tree's daemon (`toolchain_verify.prepare`):
-  (1) `build toolchains//:{llvm,sysroot}_ref`, cache allowed, nothing materialised, so the tree comes from the action
+  (1) `build toolchains//:{llvm,sysroot,ndk}_ref`, cache allowed, nothing materialised, so the tree comes from the action
   cache (the unpack runs only when the cache truly lacks it); (2) `build --no-remote-cache
-  toolchains//:{llvm,sysroot}_verified`: the `verified_tree` rule (`toolchains/fetch.bzl`) runs
+  toolchains//:{llvm,sysroot,ndk}_verified`: the `verified_tree` rule (`toolchains/fetch.bzl`) runs
   `toolchains/verify_tree.py` on a worker, uncached, over the very tree of step 1 and compares every name, type,
   exec bit, size, link target and sha256 with the manifest. Buck2 keeps that tree in the daemon, so the compile and
   link actions of the builds that follow consume the digest that was verified. Warm cost: about 8 s.
@@ -49,6 +53,56 @@ cannot just be trusted from it. Design:
 - Regenerating the manifests: `toolchains/gen_manifests.sh` (a real, uncached unpack; deterministic, so a second
   run leaves `git diff` empty). Bootstrapping a new pin needs empty `*.manifest` placeholder files first (the BUCK
   file names them as sources).
+- The NDK tree is verified the same way (T-G1). `ndk.manifest` was regenerated from a fully uncached unpack (`build
+  --no-remote-cache`, the `fetched_zip_tree` action executed on RE, not served from a cache). The first regeneration
+  was byte-identical to the manifest generated from a cached tree; the committed one has one more member,
+  `bin/llvm-readobj` (the target of the `llvm-readelf` link, which dangled without it), and is otherwise unchanged. Later (S2) `unzip_members.py` matched `*` across `/` no longer: the 1930 libc++ headers, the
+  other ABIs' asm headers and the Vulkan headers dropped out of the tree (1792 manifest lines, nothing removed that a C product
+  includes), regenerated uncached again (executed on RE).
+  `selftest/toolchain.sh` has a step in which a scratch clone with one `ndk.manifest` sha256 flipped makes the
+  grader's own verifier fail (`toolchain-mismatch`, `toolchains/ndk.manifest`, the flipped path), and the committed
+  manifests pass.
+- Cost of the `ndk` entry in a Linux-only `--uncached` grade (S7, measured): the two verify commands over llvm and sysroot
+  versus over llvm, sysroot and ndk, in a warm daemon, both 0.6 s (ref 0.3 s + verify 0.3 s; 0.4 + 1.8 s on the very first
+  run that verified the ndk tree); `verify_tree.py` over the 297 MB materialised ndk tree takes 0.2 s of CPU. A fresh daemon
+  also takes the ndk tree (114 MB) from the action cache once. Not measured: a cold daemon end to end (`--isolation-dir`
+  is forbidden here and `buck2 kill` is not allowed to a lane), so that number is for the orchestrator's `validate.sh`.
+- NDK twins of the Linux facts (T-G1): `toolchains//:libc_symbols_android` (every symbol the API 28 stubs `libc.so`,
+  `libm.so`, `libdl.so`, `libandroid.so` and `liblog.so` export; the reserved-name list of an Android build) and
+  `toolchains//:ndk-system-roots` (`--system-root` for the NDK's clang and bionic header directories). The `system_libs`
+  names `android` (`-landroid`) and `log` (`-llog`) link in the android mode only; `pthread` links nothing there
+  (bionic has it in libc) and is unchanged on Linux.
+- The SDK trees of `c_apk` (T-G3) are verified the same way: `android_build_tools` (zip, `fetched_zip_tree`), `android_platform`
+  (zip) and `jdk` (a `.tar.gz`: `fetched_tree` with `gzip = True`; the `.tar.xz` command of llvm and sysroot is untouched, so
+  their action digests did not change: `aquery` of both trees is byte-identical to the previous commit, and the `linux_release`
+  `hello` actions have the same digests). The pins are the Rust kiosk's `toolchains/android.bzl` ones (URL, sha256, size). Members
+  only (`docs/products.md`, "`c_apk`"): 10, 4 and 78 manifest lines. `toolchain_verify.TREES` lists all six trees; each
+  `Linux` `--uncached` grade now verifies them too (cost: see the report of T-G3; the JDK tree is 270 MB, of which `lib/modules` 142 MB).
+  Regenerate with `toolchains/gen_manifests.sh`. It no longer stops any daemon (the pinned Buck2 forbids a private
+  `--isolation-dir`, ADR 0039, and a lane must not kill the shared one); it needs a daemon that has not built the trees, which
+  the orchestrator provides. Run in W35 after the merge with 301dc22 (llvm unpacked again on a worker, 1.6 GiB down), all six
+  manifests came out byte-identical to the committed ones, including the three SDK manifests first made by hand. `selftest/toolchain.sh` flips one sha256 in each of
+  `ndk.manifest`, `android_build_tools.manifest` and `jdk.manifest` and expects `toolchain-mismatch` for that manifest.
+- javac for `c_apk` Java (T-G3b): `toolchains//:javac` is `java -m jdk.compiler/com.sun.tools.javac.Main` on the same pinned JDK tree
+  (`java_jar` with `module`; the compiler lives in `lib/modules`, so no member was added and `jdk.manifest` is unchanged). There is
+  no `lib/ct.sym` in the tree, hence no `--release`: `rules/apk_java.py` uses `-source 8 -target 8 -bootclasspath android.jar` with
+  `-Xlint:all,-options -Werror` (docs/products.md, "`c_apk`"). d8 is `toolchains//:d8` (`--min-api 28`). Both run only inside RE
+  actions (the `apk_java` action and the Java part of `apk_lab`), like every SDK tool.
+- Known limitation (T-G3, root cause found in round 4): the farm's CAS does not reliably serve the build-tools files to a Buck2
+  CLIENT. Any `buck2 build --materializations all` (or `buck2 run`) of a tree that holds several of them (`aapt2`, `lib/apksigner.jar`,
+  `lib/d8.jar`, `lib64/libc++.so`, `zipalign`, ...) fails with `Error downloading digest <sha256>:<size> ... Operation made no
+  progress over multiple calls, due to input being empty` on a daemon that has not already got every blob locally; the failing file
+  differs from run to run. The action cache entry is fine (`Cache hits: 100%`), RE workers read the same blobs without trouble
+  (every RE action of `c_apk` passes), and the platform, jdk and ndk trees download from the same farm without error. Reproduced
+  from scratch clones: a tree of `{aapt2, apksigner.jar}` or `{aapt2, d8.jar}` fails while each member alone, and the pairs
+  `{aapt2, zipalign}`, `{aapt2, libc++.so}`, succeed (blobs already on the machine from an earlier success), so a machine that once
+  downloaded the blobs one by one is fine and a fresh one is not. It is not the rule: not a symlink, mode, or hardlink (the
+  extractor writes plain files, `unzip_members.py`), and the same files extracted by a different action fail identically.
+  It looks like a farm-side (NativeLink) read problem for these blobs (candidate a); report to the orchestrator.
+  What the gate does about it: **no SDK tool is ever materialized on a client.** `c_apk` and `<name>_check` run on RE only, and
+  `selftest/android.sh` reads the APK back and breaks it inside ONE RE action (`rules/apk_lab.py`, rule `apk_lab`), whose output is a
+  small log. `buck2 run` of `<name>_check[run]`, `toolchains//:aapt2`, `:zipalign`, `:apksigner` on a client may fail the same way;
+  `toolchains//:keytool` (the JDK tree) works.
 - Tests: `gate/tests/test_toolchain_verify.py`, `gate/tests/test_grade_toolchain.py`; the last step of
   `selftest/grade.sh` grades with a scratch gate copy whose `llvm.manifest` has one sha256 flipped (`toolchain` FAIL).
 
@@ -58,10 +112,13 @@ A mode is a target platform. The default (`[parser] target_platform_detector_spe
 
 | Mode | Command | Flags |
 |---|---|---|
-| release | `tools/buck2 test //...` | `-O2` |
+| release | `tools/buck2 test //...` | `-O2 -ftrivial-auto-var-init=zero -fstack-protector-strong -fstrict-flex-arrays=3` (T139, below) |
+| android | `tools/buck2 build --target-platforms toolchains//:android_release //...` | exactly the release list (`_RELEASE_COMPILE` in `rules/c.bzl`), NDK clang: no android-only weakening; third-party code keeps its own `-O2` as in release |
 | san | `tools/buck2 test --target-platforms toolchains//:linux_san //...` | `-O1 -g -fsanitize=address,undefined,leak -fno-sanitize-recover=all -fno-omit-frame-pointer` |
 | cov | `tools/buck2 test --target-platforms toolchains//:linux_cov //...` | `-fprofile-instr-generate -fcoverage-mapping -fcoverage-mcdc` |
 | fuzz | `tools/buck2 test --target-platforms toolchains//:linux_fuzz //...` | `-fsanitize=fuzzer,address,undefined` (+ `-O1 -g -fno-sanitize-recover=all -fno-omit-frame-pointer`) |
+| msan (T125) | `tools/buck2 build --target-platforms toolchains//:linux_msan //x:t_results` | `-O1 -g -fsanitize=memory -fsanitize-memory-track-origins=2 -fno-sanitize-recover=all -fno-omit-frame-pointer`; link `-fsanitize=memory -fsanitize-memory-track-origins=2` |
+| tsan (T125) | `tools/buck2 build --target-platforms toolchains//:linux_tsan //x:t_results` | `-O1 -g -fsanitize=thread -fno-sanitize-recover=all -fno-omit-frame-pointer`; link `-fsanitize=thread` |
 
 Coverage report (line, branch, MC/DC), also on RE, via the fetched `llvm-profdata` / `llvm-cov`:
 
@@ -73,11 +130,196 @@ tools/buck2 build --target-platforms toolchains//:linux_cov //examples/hello:hel
 `c_fuzz` is a test that runs `-seed=1 -runs=200000` as a cacheable RE action (see "Fuzz runs" below); it fails when
 the fuzzer finds a crash.
 
+## The hardened release profile (T139, P003 §6, D5)
+
+The shipped binary is the `release` build, and the sanitizers run in other modes only. T139 measured five flags of the
+pinned LLVM 19.1.7 and sysroot (glibc 2.31) on the `c_perf` targets and adopted the ones the owner's rule allows: **adopt
+a flag only if every declared `c_perf` target moves by under 3% in instructions** (D5; the threshold is not tuned).
+
+**Adopted (release mode only; `_HARDENED_RELEASE` in `rules/c.bzl`):** `-ftrivial-auto-var-init=zero` and
+`-fstrict-flex-arrays=3`. **Under 3% but deferred:** `-fstack-protector-strong`: every function with a stack array then
+imports `__stack_chk_fail`, which the `symbols` gate (`gate/rigor_lib/facts_symbols.py`, `facts_data.py`) reports as
+`undeclared-symbol`, so `selftest/product_checks.sh` and `selftest/third_party.sh` fail with it. Adopting it needs that
+gate to know the compiler-implied import (outside T139's paths); the flag is measured and verified below, not on.
+**Not adopted:** `-fsanitize=bounds -fsanitize-trap=bounds`
+(+21.2% on `bsearch`, +34.6% on `nlogn`) and `-D_FORTIFY_SOURCE=3` (+5.4% on `mmove`, and it hides libc calls from
+`libc_bytes`, see below). The other modes are untouched. Gate-owned third-party code (`rules/third_party.bzl`) keeps its own
+flags: no flag had to match across objects to link.
+
+**What each flag does here (checked with the pinned compiler, release binary, `selftest/toolchain.sh`):**
+
+| flag | effect, verified |
+|---|---|
+| `-ftrivial-auto-var-init=zero` | an automatic array nobody wrote reads as zero (0xA5 left on the stack by an earlier call otherwise) |
+| `-fstack-protector-strong` | a write past a stack array that reaches the canary ends in `SIGABRT` ("stack smashing detected") instead of a corrupted return address (`SIGSEGV`) |
+| `-fstrict-flex-arrays=3` | only a trailing `[]` is a flexible array. **Inert on its own**: it matters to `-fsanitize=bounds` and to object-size checks, neither of which is on; it is in the profile because it costs nothing and keeps a later bounds flag honest |
+| `-fsanitize=bounds` + `-fsanitize-trap=bounds` (rejected) | works: the out-of-range write into a struct's array member ends in `SIGILL` |
+| `-D_FORTIFY_SOURCE=3` (rejected) | works: a `memcpy` of 12 bytes into an 8-byte object aborts (`SIGABRT`). glibc 2.31 knows levels 1 and 2, so level 3 acts as level 2; the check is against the whole object, not the member (an overflow of one struct member into the next is not caught) |
+
+**Measurement** (2026-11-13, `selftest/perf.sh` fixtures built with each flag set on the farm; every record is from
+`Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz`, so counts are compared on one CPU model as `docs/perf.md` requires). Each cell
+is the larger change of the two sizes, against the build with no flag. `*`: `libc_bytes` also changed. The first six rows are
+the declared targets (the fixtures that exist for the gate's `c_perf` selftests); the last three are stress fixtures added by
+T139 for the shapes the flags touch, reported, not part of the decision. `abuf` is not in `selftest/perf.sh`: with auto-init on, two builds of the same code that differ only in a nonce string constant counted 123550 and 125741 instructions (1.8%), a code-layout effect that the agreement rule of `docs/perf.md` rightly refuses, so its row was measured once, from a fixture that is not kept.
+
+| fixture | instructions, no flag (small n, large n) | auto-init | bounds | stack-prot. | fortify | flex-arrays | all five | the three under 3% |
+|---|---|---|---|---|---|---|---|---|
+| lin | 115051, 460051 | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% |
+| quad | 21452986, 342312026 | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% |
+| mmove | 3596112, 4927378 | -0.33% | +0.00% | -0.33% | **+5.38%*** | +0.00% | **+5.14%*** | +0.00% |
+| flat | 1473, 1573 | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% | +0.00% |
+| bsearch | 7816, 9053 | +0.00% | **+21.24%** | +0.00% | +0.00% | +0.00% | **+21.24%** | +0.00% |
+| nlogn | 401506, 1915509 | +0.00% | **+34.56%** | +0.00% | +0.00%* | +0.00% | **+34.56%*** | +0.00% |
+| stab (index into `struct { u32 cell[256]; }`) | 260149, 1040149 | +0.00% | +23.07% | +0.00% | +0.00% | +0.00% | +23.07% | +0.00% |
+| abuf (384-byte automatic buffer, filled in part) | 106022, 423809 | +16.53%* | +65.82%* | +1.48% | +0.00% | +0.00% | +84.41%* | +20.08%* |
+| mcpy (`memcpy` of a run-time length into a member) | 82463, 329963 | +0.00% | +24.24% | +0.00% | +21.21%* | +0.00% | +45.45%* | +0.00% |
+
+Worst move on the declared targets: auto-init 0.33%, stack protector 0.33%, flex-arrays 0%, fortify 5.38%, bounds
+34.56%, all five 34.56%, the three under 3% 0%. **Decision by the rule:** the whole set fails (bounds, fortify); the largest
+subset under 3% on every declared target is auto-init + stack protector + flex-arrays; the stack protector is held back only by the `symbols` gate (above), so auto-init + flex-arrays is what is adopted. The
+stress fixtures say what the declared targets cannot: `abuf` pays +20% for zeroing a 384-byte frame (the price of
+`-ftrivial-auto-var-init=zero` on a hot function with a big buffer), `stab` +23% for bounds checks on an array index the
+compiler cannot bound. A product whose own `c_perf` targets are of that shape sees those numbers; its targets are the
+ones the rule is applied to when it declares them.
+
+Two measurement notes. (1) `-D_FORTIFY_SOURCE=3` turns `memcpy`, `memmove` and `memset` of a checked object into
+`__memcpy_chk` and friends, which `PERF_WRAPS` (`-Wl,--wrap=`) does not name, so `libc_bytes` reads 0 for them (`mmove`:
+800020000 to 0). Adopting fortify later needs the `__*_chk` names added to `rules/perf.bzl` first. (2) The stack protector
+and auto-init each lower the `mmove` count by 0.3% (about 12 thousand instructions, a compiler code-layout effect), and the three together leave it unchanged.
+
+**What the adopted set covers:** an automatic variable is never
+indeterminate (a read of one yields zero, and the sanitizer modes still find the read, in their own build). **What it does
+not cover:** an array index past the end of a fixed array inside a struct is NOT trapped (the neighbour is read or written;
+`selftest/toolchain.sh` pins that this is today's behaviour); a stack overrun is not caught until the stack protector is adopted; an overflowing `memcpy` into a sized object is not stopped
+(a stack canary may catch it by layout luck, not by design); a pointer plus a separate length is not bounds-checked, with
+or without `-fsanitize=bounds`; heap objects do not exist in product code; uninitialised static data is already zero.
+`-fbounds-safety`, which would check every pointer-plus-length pair, is not complete in upstream Clang and is not in the
+pinned 19.1.7; revisit it at the next toolchain bump (G20).
+
+## The msan and tsan modes (T125; graded by `tests-msan` and `tests-tsan` since T138)
+
+Two target platforms, `toolchains//:linux_msan` (MemorySanitizer with origin tracking) and `toolchains//:linux_tsan`
+(ThreadSanitizer). The flags are sealed in `rules/c.bzl` and the same in `rules/third_party.bzl` for gate-owned
+third-party code, so a test that links mbedTLS is instrumented throughout. The runtimes (`libclang_rt.{msan,tsan}.a`
+and `.syms`) are members of the pinned LLVM 19.1.7 archive and of `llvm.manifest`. Only `<name>_results` is produced
+in them, with the sealed environment of `san` plus `MSAN_OPTIONS` / `TSAN_OPTIONS` (`rules/ctest.bzl`:
+`halt_on_error=1`, exit codes 77 / 66, the hermetic `external_symbolizer_path`, `log_path`; for TSan also
+`stack_trace_format`, so frames read `#N 0x.. in <func> <file>:<line>` like the other sanitizers). `ctest` forks one
+process per test; nothing more than `log_path` was needed for that. On a failing exit the action prints the sanitizer
+log to stderr, so a runtime that died at start-up names its reason.
+
+- **Which tests.** The gates `tests-msan` and `tests-tsan` of `rigor grade` (`docs/grade.md`) judge exactly these sets: `tests-tsan` the tests declared `threads = True`
+  (and the `symbols` gate checks the declaration against thread creation in the test and its link closure: `threads-undeclared`, `threads-vacuous`), `tests-msan` every test but
+  those with no msan target (info `msan-not-applicable`, naming the library). `c_test(threads = True)` has a tsan results target; `threads = False` (the default) has none. Every
+  `c_test` has an msan results target, except one whose link closure has a sysroot library beyond libc and pthread
+  (MSan needs every linked object instrumented; today only X11): such a `c_library` is incompatible with the msan mode,
+  and so is everything that depends on it.
+- **No frame limit in msan.** In the msan mode only, `-Wframe-larger-than=512` is not passed (every other sealed
+  warning is). The limit bounds the stack of shipped code; origin tracking inflates the frames of instrumented code,
+  which is not shipped (`ctest_run` alone reaches 632 bytes). TSan did not need this: tsan keeps the limit.
+- **What they cannot see.** MSan: only uninitialised reads in code compiled with it (not libc, X11 or the kernel) and
+  only on executed paths. TSan: only races between threads that actually ran in the test, and not through uninstrumented
+  code. Neither runs a product that talks to a device. A clean verdict is evidence, not proof.
+- **The farm prerequisite.** Both runtimes map fixed shadow ranges. When the kernel's ASLR entropy is high they re-exec
+  themselves with `personality(ADDR_NO_RANDOMIZE)`. The RE workers run under Docker's default seccomp profile plus one
+  rule that allows `personality(0x0040000)`. Without it the call fails, the runtime dies at start-up
+  (`CHECK failed: ... personality(...) != -1`, `memory layout is incompatible`) and the results action fails with
+  `test binary could not run`: measured on the farm before the rule, about one run in five for msan and almost always
+  for tsan (6 of 6). A shared-library layout cannot be fixed with link flags (`-no-pie` was tried: 59 of 300 starts
+  still failed). With the rule: 0 of 30 uncached runs of the passing fixture failed to start, for each mode.
+  `selftest/sanmodes.sh` prints one line naming this when a results run ends that way; it is still a failure.
+  `rigor grade` (T138) turns it into the one error `sanitizer-startup` of `tests-msan` / `tests-tsan`, which names this
+  prerequisite and lists no missing test; the build is not retried, so a farm without the rule fails every grade clearly.
+- **Stable reports.** TSan prints `(pid=N)` and `(tid=N)`; the normalizer of `ctest/sanlog.c` rewrites them to `pid=N` / `tid=N`
+  (with the pids, hex numbers and BuildIds it already scrubbed), so a report is byte-identical across runs.
+- Self-test: `selftest/sanmodes.sh`.
+
 ## Sealed flags
 
 `rules/c.bzl` appends `-std=c17 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wsign-conversion -Wshadow
 -Wcast-qual -Wvla -Wframe-larger-than=512 -Wformat=2 -Wnull-dereference -Wimplicit-fallthrough` after the mode
-flags. The macros `c_library`, `c_binary`, `c_test`, `c_fuzz` have no flag parameters.
+flags. The macros `c_library`, `c_binary`, `c_test`, `c_fuzz` have no flag parameters. (`-Wframe-larger-than=512` is left out in the msan mode only, see above.)
+
+## WebAssembly (wasm32)
+
+Why (P008, owner decision D18): the staff bot's operations are C17 static-memory modules that run inside a Cloudflare
+Worker as WebAssembly. The C decides; the Worker does every I/O. A product builds the `.wasm` from the very
+`c_library` modules it tests natively.
+
+**Toolchain.** No new download: the pinned LLVM 19.1.7 tree already holds `clang-19` (with its WebAssembly backend),
+the multi-call `bin/lld` and clang's builtin headers. `toolchains/BUCK` adds:
+
+- `toolchains//:wasm32_release`, a target platform with cpu `toolchains//:wasm32`, os `prelude//os/constraints:none`
+  and mode `release`. The cpu is a gate-owned constraint (setting `toolchains//:wasm_cpu`, which no other platform
+  sets): the pinned bundled prelude has no `prelude//cpu/constraints:wasm32` (its `prelude//cpu:wasm32` is a
+  `config_setting`, not a constraint value), and a select key the gate owns cannot drift with the prelude. The first
+  version named the missing prelude label, which broke the analysis of every target, native ones included, because
+  `toolchains//:cxx` selects on it. `gate/tests/test_toolchain_labels.py` now guards this without Buck2: every
+  `prelude//cpu|os/constraints:*` label in `toolchains/` and `rules/` must be one the pinned prelude has, and every
+  `toolchains//:` label (and every `":name"` select key or platform attribute in `toolchains/BUCK`) must be a target
+  that `toolchains/BUCK` defines;
+- `toolchains//:wasm_cc` (`wasm_cc` in `toolchains/tools.bzl`): `clang-19 --target=wasm32-unknown-unknown -nostdinc
+  -ffreestanding -nostdlib`, then exactly two include directories, `-isystem <clang's builtin headers>` and `-isystem
+  toolchains/wasm/include`. No sysroot;
+- `toolchains//:wasm_ld`: `lld -flavor wasm` (that is, wasm-ld), and the `cxx_wasm` C toolchain built from both (the
+  archiver is the same pinned `llvm-ar` as on Linux). `toolchains//:cxx` selects it on `toolchains//:wasm32`, before the
+  android and Linux choices, which are unchanged.
+
+The mode is `release`, so a wasm32 object gets exactly the native release compile flags: `-O2`, the hardened release
+flags (`-ftrivial-auto-var-init=zero -fstrict-flex-arrays=3`) and the whole sealed warning set above, with `-Werror`.
+There are no sanitizer, coverage or fuzz flags and no wasm32 variant of those modes.
+
+**Freestanding headers, and why there is no libc.** A module that runs in a Worker has no file system, clock,
+environment, process or allocator of its own: the Worker passes everything in through linear memory and the exported
+functions. That is already the C rule of the products (pure core, injected ports, static memory), so a libc would only
+add code that must never be called. The include path is therefore clang's builtin headers (`stdint.h`, `stddef.h`,
+`stdbool.h`, `limits.h`, `float.h`, `stdarg.h`, `stdalign.h`, `stdnoreturn.h`, `iso646.h`, ...: types and macros,
+no functions) plus the gate's `toolchains/wasm/include/string.h`, which declares only `memcpy`, `memmove`, `memset`,
+`memcmp`, `strlen`, `strcmp`, `strncmp` and `strchr`. Any other libc or POSIX header (`stdio.h`, `stdlib.h`,
+`errno.h`, `unistd.h`, `inttypes.h`, ...) does not exist for wasm32 and fails the compile with clang's
+`fatal error: 'stdio.h' file not found`; they are deliberately not stubbed. The eight functions are implemented by
+`toolchains/wasm/rt/fsl.c` (plain byte loops, no allocation, no state), which `c_wasm` compiles with the same flags
+and links into every module. clang may also call `memcpy`, `memmove` and `memset` itself (struct copies,
+zero-initialisation); those calls land there too. Not supported here: WASI, threads, SIMD, exceptions.
+
+**`c_wasm(name, deps, exports, stack_bytes = 65536, memory_pages = 32)`** (`rules/c.bzl`, `rules/wasm.bzl`). `deps` are
+`c_library` targets. The macro configures them to `toolchains//:wasm32_release` itself (a configuration transition on
+the `deps` attribute), so the module is built by its label alone, under the default platform:
+
+    tools/buck2 build //examples/wasm:tally_wasm --show-output
+
+The same command with `--target-platforms toolchains//:wasm32_release` builds the identical module (the selftest
+compares the bytes). Never build a whole package (`//pkg/...`) for that platform: its `c_test` and the facts targets
+would be configured for wasm32 too. The transitive sources of `deps` are compiled and archived by the prelude with
+`cxx_wasm`; `c_wasm` then links the archives of the whole link closure and `fsl.c` with
+
+    lld -flavor wasm --no-entry --export=<each of exports> -z stack-size=<stack_bytes>
+        --initial-memory=<memory_pages * 65536> --max-memory=<the same> --strip-debug
+
+and the output is `<name>.wasm`. Memory is fixed (initial = maximum) and the module exports its `memory` plus exactly
+the listed functions. An undefined symbol (a call to anything that is neither in the deps nor in `fsl.c`) is a link
+error, as is an export that no dep defines. A dep that links a system library (`system_libs`) fails the analysis.
+The macro checks `exports` (non-empty C identifiers, no duplicates), `stack_bytes` (a positive multiple of 16, less than
+the memory) and `memory_pages` (1 to 65536). `c_wasm` is built in the release mode only (it is incompatible with san,
+cov, fuzz, msan, tsan and android).
+
+**Not graded.** A `c_wasm` target is an artifact, like a `c_binary`'s executable: it has no facts, adds no module kind
+to grade, and nothing about it enters a verdict. The module's native `c_test` (and `c_mutants`) stay the evidence;
+the wasm32 build only proves that the same sources compile freestanding, link without libc, and export what the
+Worker calls.
+
+**Checking a module's exports.** `gate/rigor_lib/wasm_exports.py` (stdlib only) reads the export section (id 7) of a
+`.wasm` file and prints the exported function names, one per line; `--expect NAME` (repeated) exits 1 unless they are
+exactly those names; a malformed file exits 2:
+
+    python3 -I -B gate/rigor_lib/wasm_exports.py <file>.wasm --expect tally_char
+
+**Example.** `examples/wasm`: the freestanding module `tally` (`tally_char`, counts a byte in a string with `strchr`),
+its native `c_test` `tally_test`, and `c_wasm(name = "tally_wasm", deps = [":tally"], exports = ["tally_char"])`.
+`selftest/toolchain.sh` runs the native test, builds `tally_wasm.wasm` in both forms, checks its exports and the
+documented compile and link flags (aquery), and demands that `stdio.h`, `stdlib.h`, `errno.h` and `unistd.h` are not
+found, that an undefined symbol and a missing export fail the link, and that a dep with `system_libs` is refused.
+Unit tests of the reader: `gate/tests/test_wasm_exports.py`.
 
 ## Known limits (deviations)
 
@@ -98,10 +340,10 @@ fatal settings `halt_on_error=1`, `abort_on_error=0`, `detect_leaks=1` (the comp
 
 ## Fuzz runs
 
-`c_fuzz(name = "fz")` defines `fz__bin` (the libFuzzer binary) and `fz` (rule `fuzz_run`, rules/ctest.bzl). `fz` is a
+`c_fuzz(name = "fz")` defines `fz__bin` (the libFuzzer binary) and `fz` (rule `fuzz_run`, rules/fuzz.bzl). `fz` is a
 build action on RE with the same hermetic symbolizer and the same fatal sanitizer options as `<name>_results`
-(`sanitizer_env_lines`, no `log_path`; reports stay on stderr), running `fz__bin -seed=1 -runs=200000
--artifact_prefix=<scratch>/`. It always produces its outputs; `buck2 test` of `fz` only reads the verdict.
+(`sanitizer_env_lines`, no `log_path`; reports stay on stderr), running `fz__bin -seed=1 -runs=N
+-artifact_prefix=<scratch>/` (N: the `runs` of the target, default 200000; first it replays the corpus, see `docs/fuzz.md`). It always produces its outputs; `buck2 test` of `fz` only reads the verdict.
 
 | Output | Command | Content |
 |---|---|---|

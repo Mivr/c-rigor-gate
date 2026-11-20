@@ -17,6 +17,30 @@ the two `--san-*` options go together, see "Sanitizer reports"). Exit 0 all pass
 1 some test failed, 2 usage/framework error (bad option, bad or duplicate test name, no tests, I/O error).
 Test and suite names must match `[a-z0-9_]+` (<= 64 chars) and be unique.
 
+## `CHECK_TRAPS(t, expression)` (T128)
+Asserts that `expression` stops the process by the trap of `rigor_require` (docs/require.md): `expression` runs in a child
+process (a fork of the test process, same process group) and the check passes only if that child **dies by SIGILL**, the
+signal of `__builtin_trap()`. It counts as one check. It fails, with a reason that names what happened instead, when
+
+- the expression returns ("the expression returned, it did not trap"),
+- the child exits by itself ("the expression exited with status N, it did not trap"),
+- it dies by another signal ("the expression died by signal 11 (Segmentation fault), not by the trap"),
+- it makes a sanitizer report ("the expression made a sanitizer report instead: <summary>"; the child's log file is taken,
+  so the report does not also fail the test twice), or
+- it does not die within 3 s ("timeout after 3000 ms, the expression did not trap"; the child is SIGKILLed).
+
+The reason is the first failure of the test: `CHECK_TRAPS(<expression>): <what happened>`. The child gets SIGILL back at its
+default action (in `san` the sanitizer runtime would otherwise turn the trap into an exit), keeps the test's resource
+limits (`RLIMIT_CORE` is 0, so no core file is left) and runs inside the test's 10 s. The expression is evaluated only in
+the child: its side effects never reach the test. A trap **outside** `CHECK_TRAPS` is what it was: the test died by a
+signal and fails.
+
+```c
+static void t_traps(ctest_t *t) { CHECK_TRAPS(t, table_get(TABLE_CAP)); }   /* one check */
+```
+Implementation: `ctest/traps.c` (fork, wait with a deadline, judge the status); `ctest_check_traps` in `ctest.c` records
+the check. Selftest: `selftest/require.sh`.
+
 ## Why a test cannot look green by cheating
 Every test runs in a forked child (own process group, stdout redirected to stderr). The test function
 returns into framework code that writes one fixed-size report (magic, per-run random nonce, assert count,
@@ -76,8 +100,8 @@ The compile flags (`-fno-sanitize-recover=all`) and these options keep every san
 The second output is `san_report.txt`, available as the sub-target `<name>_results[san_report]` (and materialized
 beside `results.jsonl`). It holds no PIDs, addresses or worker paths, so two cold runs are byte-identical.
 
-## `c_fuzz` runs (rules/ctest.bzl, `fuzz_run`)
-The same symbolizer and fatal options (one shared helper, `sanitizer_env_lines`) apply to the fuzz action, minus
+## `c_fuzz` runs (rules/fuzz.bzl, `fuzz_run`)
+The same symbolizer and fatal options (one shared helper, `sanitizer_env_lines` of rules/ctest.bzl) apply to the fuzz action, minus
 `log_path` (the report stays on stderr and is filtered). Outputs `report.txt` (`<name>[report]`) and `crash`
 (`<name>[crash]`) are declared; see `docs/toolchain.md`, "Fuzz runs".
 

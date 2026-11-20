@@ -28,10 +28,12 @@ def vfunc(name, calls=(), **kw):
 class VendorScanTest(TempDirTestCase):
     def facts(self):
         base = str(self.sub("v"))
-        for name in ("art", "src"):
-            shutil.copytree(FIXTURE / name, os.path.join(base, name))
-        ast = json.loads((FIXTURE / "ast.json").read_text().replace("@D@", base))
-        includes = (FIXTURE / "includes.txt").read_text().replace("@D@", base)
+        shutil.copytree(FIXTURE / "src", os.path.join(base, "src"))
+        # The vendored tree sits where Buck2 puts it (T133: the marker counts only right after `buck-out/<version>`).
+        shutil.copytree(FIXTURE / "art", os.path.join(base, "buck-out", "v2", "art"))
+        tree = base + "/buck-out/v2/art/"
+        ast = json.loads((FIXTURE / "ast.json").read_text().replace("@D@/art/", tree).replace("@D@", base))
+        includes = (FIXTURE / "includes.txt").read_text().replace("@D@/art/", tree).replace("@D@", base)
         files = structure_scan.Files([], [MARKER])
         return {f["name"]: f for f in structure_scan.unit_facts(
             "//t:t", os.path.join(base, "src", "v.c"), ast, includes, files)["functions"]}

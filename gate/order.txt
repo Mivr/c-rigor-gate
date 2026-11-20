@@ -13,7 +13,12 @@ structure
 mode-divergence
 tests-release
 tests-san
+tests-msan
+tests-tsan
 tests-stub
+fuzz
+sim
+oracle
 perf
 mutants
 witness-tests

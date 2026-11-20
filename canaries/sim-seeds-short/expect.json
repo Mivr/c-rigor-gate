@@ -1,0 +1,9 @@
+{
+  "bypass": "a simulation that runs fewer seeds than the policy demands",
+  "description": "T2G2: the world is clean and passes its 20 seeds, the policy (gate-owned) asks for 200 at every tier. The judge recomputes the budget from the policy, never from the c_sim target, so only the sim gate fails with sim-seeds-short.",
+  "fail": {
+    "sim": [
+      "sim-seeds-short"
+    ]
+  }
+}

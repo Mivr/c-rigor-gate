@@ -1,0 +1,8 @@
+{
+  "bypass": "a merge-tier verdict presented as a nightly one",
+  "description": "A signed PASS graded at tier merge (report-only mutation deferred) is refused by `rigor verify --require-tier nightly`, and accepted with --require-tier merge: it is refused for its tier alone.",
+  "verify": {
+    "require_tier": "nightly",
+    "refused": "tier is merge, expected nightly"
+  }
+}

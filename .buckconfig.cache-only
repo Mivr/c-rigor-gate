@@ -1,0 +1,28 @@
+# Cache-only overlay: local execution plus the remote Action Cache, no remote
+# execution. For hosts that reach a cache endpoint but have no Execution
+# service, e.g. Claude cloud sessions: `sbws-cache-up` tunnels the sb-ws
+# cache-only NativeLink front to 127.0.0.1:9092 and maps forge.internal to it,
+# so the [buck2_re_client] addresses in .buckconfig already point there.
+#
+#   buck2 build --config-file .buckconfig.cache-only //some:target
+#
+# NEVER use it in the gate or a grading run. The default (no overlay) stays farm-only
+# execution.
+#
+# Action digests are unchanged: toolchains//:platforms keeps its label and
+# its remote_execution_properties; only its executor becomes local + remote
+# cache (toolchains/platforms.bzl). The endpoint cannot be set here or with -c:
+# buck2 reads [buck2_re_client] from the .buckconfig files once per daemon.
+[rbe]
+  cache_only = true
+
+[buck2]
+  # Buck2 uploads a local result only when the executor allows uploads AND the
+  # action does. Actions default to "no", so lift the per-action default here.
+  default_allow_cache_upload = true
+
+[fbcode]
+  # The test toolchain always builds a remote-enabled test executor, which has
+  # nowhere to run without an Execution service. This is the prelude's own
+  # switch (prelude/tests/re_utils.bzl) for running those tests locally.
+  disable_re_tests = true
