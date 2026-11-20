@@ -21,7 +21,7 @@ modules = ["//lib/rt/**"]
 modules = ["//lib/fmt/fp:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httphdr:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*",
            "//lib/fmt/httpresp:*", "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jkidx:*", "//lib/fmt/jlex:*", "//lib/fmt/jnum:*", "//lib/fmt/jpnum:*", "//lib/fmt/jpull:*",
            "//lib/fmt/jstr:*", "//lib/fmt/jtok:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*", "//lib/fmt/kv:*", "//lib/fmt/lines:*",
-           "//lib/fmt/mbrtu:*", "//lib/fmt/pct:*", "//lib/fmt/url:*"]
+           "//lib/fmt/mbrtu:*", "//lib/fmt/pct:*", "//lib/fmt/tzeu:*", "//lib/fmt/url:*"]
 
 # Non-test libraries only tests may use (test kits over a module's fake or real seam).
 [testkit]
@@ -1040,4 +1040,11 @@ kind = "pure"
 [[edge]]
 from = "fiscal-root"
 to = "fiscal-root"
+kind = "pure"
+
+# lib-fmt/tzeu (staffbot T0.4): calls fmt_civil_utc and fmt_date_utc (//lib/fmt/fmt sits in lib-base, see the layer above)
+# and its header includes core's buf.h and str.h.
+[[edge]]
+from = "//lib/fmt/tzeu:tzeu"
+to = "lib-base"
 kind = "pure"
