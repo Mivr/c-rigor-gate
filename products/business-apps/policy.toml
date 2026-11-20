@@ -5353,4 +5353,44 @@ exports = ["main"]
 
 [module."//apps/staffbot/core/abi:abi_fuzz"]
 allow = []
+
+[module."//lib/fmt/csv:csv"]
+level = "L3"
+impl = ["lib/fmt/csv/src/**"]
+allow = []
+exports = ["csv_end_record", "csv_field_copy", "csv_next_field", "csv_put_field", "csv_reader_had_bom", "csv_reader_init"]
+
+# The tests and csv_fuzz list only :csv in deps (core is csv's exported_deps, so its header reaches them) and call core's
+# buffer functions directly, so those symbols are allowed here (as dtc/ports tests allow core_str_from_cstr).
+[module."//lib/fmt/csv:csv_read_test"]
+allow = ["bcmp", "core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "core_buf_put_char",
+    "core_buf_put_u64", "memcmp", "memset"]
+exports = ["main"]
+
+[module."//lib/fmt/csv:csv_error_test"]
+allow = ["bcmp", "core_buf_cstr", "core_buf_init", "core_buf_overflow", "core_buf_put", "core_buf_put_char", "core_buf_put_u64",
+    "memcmp", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/csv:csv_write_test"]
+allow = ["core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/csv:csv_roundtrip_test"]
+allow = ["core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "core_buf_str", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/csv:csv_spec_test"]
+allow = ["bcmp", "core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "core_buf_put_char",
+    "core_buf_put_u64", "core_buf_str", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/csv:csv_edge_test"]
+allow = ["bcmp", "core_buf_cstr", "core_buf_init", "core_buf_len", "core_buf_overflow", "core_buf_put", "core_buf_put_char",
+    "core_buf_put_u64", "core_buf_str", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/csv:csv_fuzz"]
+allow = ["bcmp", "core_buf_init", "core_buf_len", "core_buf_overflow", "memcmp"]
+allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
