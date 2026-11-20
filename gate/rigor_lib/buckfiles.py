@@ -5,7 +5,8 @@ subset. Allowed: one `load("@gate//rules:c.bzl", ...)` naming only the gate macr
 calls to those macros with keyword arguments whose values are string literals or lists of string
 literals. T102: `srcs` and `headers` of `c_library`, `c_binary` and `c_test` may also be `glob([...])`
 (package-local `src/*.c`, `src/*.h`, `src/<name>.c|.h` patterns only) or one string list joined to one such glob by a
-single `+`. Everything else is a finding, and so is any other file that Buck2 would read as build
+single `+`. #348: `c_wasm` (an artifact, like a `c_binary`'s executable) has no `srcs`/`headers`, only `deps`, `exports`
+and its two int budgets. Everything else is a finding, and so is any other file that Buck2 would read as build
 configuration (`.bzl`, `BUCK.v2` which takes priority over `BUCK`, `PACKAGE`, `.buckconfig`, ...).
 """
 
@@ -21,7 +22,8 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk")
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_sim", "c_catalog", "c_embed", "c_android_so", "c_apk",
+          "c_wasm")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 # T135: `c_fuzz` takes `corpus` (the form `srcs` has on a `c_fuzz`: string literals, never a glob; the macro checks the paths)
@@ -50,6 +52,12 @@ APK_KEYWORDS = ("name", "visibility", "so", "package", "label", "version_code", 
                 "java_srcs", "java_classes", "java_packages", "res_xml", "application_class", "receivers", "launch_mode", "lock_task_mode",
                 "exclude_from_recents", "soft_input_mode", "categories")
 APK_STRINGS = ("application_class", "launch_mode", "lock_task_mode", "soft_input_mode")
+# #348: `c_wasm` (#341) links its `deps` (c_library labels, checked like every dep; not `gate//rt:require`, the module is
+# freestanding) for wasm32 and exports `exports` (a list of symbol names); `stack_bytes` and `memory_pages` are int literals
+# (the macro checks their ranges). No `srcs`/`headers`: a module has no sources of its own.
+WASM_MACRO = "c_wasm"
+WASM_KEYWORDS = ("name", "visibility", "deps", "exports", "stack_bytes", "memory_pages")
+WASM_INTS = ("stack_bytes", "memory_pages")
 APK_SO_LABEL = re.compile(r":[A-Za-z0-9.+-][A-Za-z0-9_.+-]*")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
@@ -61,6 +69,8 @@ DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+
 GATE_THIRD_PARTY = re.compile(r"//third_party[/:]")
 TEST_MACRO = "c_test"
 ANDROID_MACRO = "c_android_so"   # nothing depends on a shared object (or on what it derives): it is a product output only
+# Product outputs nothing may depend on (`tests` in statement_findings): a test, a shared object, an APK, a wasm module (#348).
+OUTPUT_MACROS = (TEST_MACRO, ANDROID_MACRO, APK_MACRO, WASM_MACRO)
 # T128: `gate//rt:require` (facts_rt) is the one more gate label, for a library, a binary or a test only.
 REQUIRE_MACROS = ("c_library", "c_binary", TEST_MACRO)
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
@@ -185,6 +195,8 @@ def _known_keywords(macro):
         return CATALOG_KEYWORDS
     if macro == EMBED_MACRO:
         return EMBED_KEYWORDS
+    if macro == WASM_MACRO:
+        return WASM_KEYWORDS
     return KEYWORDS + MACRO_KEYWORDS.get(macro, ())
 
 
@@ -205,6 +217,10 @@ def _value_ok(macro, keyword):
         return _is_bool(node)
     if macro == EMBED_MACRO and arg in ("src", "symbol"):
         return _is_string(node)
+    if macro == WASM_MACRO and arg in WASM_INTS:
+        return _is_int(node)
+    if macro == WASM_MACRO and arg == "exports":
+        return _is_string_list(node)
     if macro == APK_MACRO and arg == "version_code":
         return _is_int(node)
     if macro == APK_MACRO and arg == "receivers":
@@ -312,7 +328,7 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
             found.extend(call_findings(path, node, allowed, test_allowed))
             if tests is not None and isinstance(node.value.func, ast.Name) and node.value.func.id in MACROS:
                 directory = os.path.dirname(path)
-                if node.value.func.id in (TEST_MACRO, ANDROID_MACRO, APK_MACRO):
+                if node.value.func.id in OUTPUT_MACROS:
                     tests.extend((directory, n) for n in _keyword_strings(node.value, "name"))
                 if apks is not None and node.value.func.id == ANDROID_MACRO:
                     apks[0].update((path, n) for n in _keyword_strings(node.value, "name"))
