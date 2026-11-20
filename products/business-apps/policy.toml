@@ -5301,3 +5301,35 @@ exports = ["main"]
 [module."//lib/fmt/tzeu:tzeu_text_test"]
 allow = ["bcmp", "memcmp", "memset", "strcmp"]
 exports = ["main"]
+
+[module."//lib/fmt/money:money"]
+level = "L3"
+impl = ["lib/fmt/money/src/**"]
+allow = []
+exports = ["money_add", "money_fmt", "money_fmt_sep", "money_mul_qty", "money_parse", "money_sub", "money_sum",
+    "money_vat_split"]
+
+[module."//lib/fmt/money:money_parse_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/money:money_parse_edges_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/money:money_fmt_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//lib/fmt/money:money_arith_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/fmt/money:money_vat_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/fmt/money:money_fuzz"]
+allow = []
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]

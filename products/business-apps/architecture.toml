@@ -22,7 +22,8 @@ modules = ["//lib/rt/**"]
 modules = ["//lib/fmt/fp:*", "//lib/fmt/hmac:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httphdr:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*",
            "//lib/fmt/httpresp:*", "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jkidx:*", "//lib/fmt/jlex:*", "//lib/fmt/jnum:*", "//lib/fmt/jpnum:*", "//lib/fmt/jpull:*",
            "//lib/fmt/jstr:*", "//lib/fmt/jtok:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*", "//lib/fmt/kv:*", "//lib/fmt/lines:*",
-           "//lib/fmt/mbrtu:*", "//lib/fmt/pct:*", "//lib/fmt/tzeu:*", "//lib/fmt/url:*"]
+           "//lib/fmt/mbrtu:*", "//lib/fmt/money:*", "//lib/fmt/pct:*", "//lib/fmt/tzeu:*", "//lib/fmt/url:*"]
+
 
 # Non-test libraries only tests may use (test kits over a module's fake or real seam).
 [testkit]
@@ -1054,4 +1055,21 @@ kind = "pure"
 [[edge]]
 from = "//lib/fmt/tzeu:tzeu"
 to = "lib-base"
+kind = "pure"
+
+# lib-fmt/money (staffbot T0.3): its header includes core's buf.h and money_fmt calls core_buf_put. The libFuzzer target is
+# a leaf that only calls the parser it fuzzes and core; the layering gate does not exempt c_fuzz like c_test (G23).
+[[edge]]
+from = "//lib/fmt/money:money"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/money:money_fuzz"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/money:money_fuzz"
+to = "//lib/fmt/money:money"
 kind = "pure"
