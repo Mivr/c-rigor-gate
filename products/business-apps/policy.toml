@@ -5322,3 +5322,25 @@ exports = ["main"]
 [module."//lib/fmt/csv:csv_fuzz"]
 allow = ["bcmp", "core_buf_init", "core_buf_len", "core_buf_overflow", "memcmp"]
 exports = ["LLVMFuzzerTestOneInput"]
+
+[module."//apps/staffbot/core/abi:abi"]
+level = "L2"
+impl = ["apps/staffbot/core/abi/src/**"]
+allow = ["memcpy", "strlen"]
+exports = ["sb_abi_version", "sb_call"]
+
+[module."//apps/staffbot/core/abi:abi_frame_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/staffbot/core/abi:abi_utf8_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/staffbot/core/abi:abi_ops_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/staffbot/core/abi:abi_fuzz"]
+allow = []
+exports = ["LLVMFuzzerTestOneInput"]
