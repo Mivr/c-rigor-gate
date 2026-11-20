@@ -5,7 +5,7 @@
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
          "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
-         "resv-dom"]
+         "resv-dom", "staffbot-core"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -168,6 +168,13 @@ modules = []
 # all), so no edge leaves the layer; a module that later needs lib-base declares its own edge.
 [layer."resv-dom"]
 modules = ["//apps/resv/dom/**"]
+
+# The staff bot (app staffbot, business-control P008): its core is C compiled natively for the tests and to wasm32 for the
+# Worker. A layer of its own, above the others and with no edge to any of them: the core ABI module uses nothing but the
+# compiler's builtin headers and <string.h>. The c_wasm target (staffbot_wasm) is an artifact with no facts, so it is in
+# no layer and no policy table.
+[layer."staffbot-core"]
+modules = ["//apps/staffbot/core/**"]
 
 # Library edges. The most permissive matching edge wins, so the layer edges below are the whole story for their kinds.
 [[edge]]
@@ -1047,4 +1054,9 @@ kind = "pure"
 [[edge]]
 from = "fiscal-root"
 to = "fiscal-root"
+kind = "pure"
+
+[[edge]]
+from = "//apps/staffbot/core/abi:abi_fuzz"
+to = "//apps/staffbot/core/abi:abi"
 kind = "pure"
