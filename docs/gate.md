@@ -75,6 +75,20 @@ holds, per gate, id, status, findings count and the sha256 of its canonical find
 hash commits to the findings. `metadata` (gate metadata, paths, unlisted result files) is not
 hashed.
 
+### `sim --results DIR --policy P.toml --facts DIR [--salt FILE] [--salt-id H] [--spec S.toml] [--regressions R.json] [--tier merge|nightly] [--out F]`
+The verdict on the whole-app simulation runs of a product (T2G2, P330 §1.8; run by `rigor grade` as the gate `sim`). It
+recomputes what it can (seeds from the salt and the world hash, the budget from the policy and the tier, what each
+invariant, fault, screen and counter must show from the spec) and trusts nothing the runner says about itself. Findings,
+fields and the malformed-input rules (exit 2) are in [sim.md](sim.md) "The judge: `rigor sim`".
+
+### `oracle --bundle DIR --results DIR [--policy P.toml] [--normalise N.toml] [--excluded E.toml] [--out F]`
+The verdict on the byte-identical replay of the hidden Rust traces (T2G7, P330 §3.4; run by `rigor grade` as the gate `oracle`).
+`--bundle` is the oracle bundle (`oracle.toml` + `files/`, the witness bundle's format family), `--results` the replayer's output,
+one `<trace id>.trace` per replayed trace. It parses the output itself and finds the first difference itself (`trace_first_diff`):
+`oracle-divergence` (trace, step, line, byte), `oracle-no-settle`, `oracle-bundle-missing`, `oracle-count-short`,
+`oracle-excluded-grew`. Findings carry ids and positions only, never trace text. A malformed bundle, trace, table or result is
+exit 2; keys, formats and the exact semantics are in [oracle.md](oracle.md).
+
 ### `approve --kind K --scope S --reason TEXT --repo-sha SHA --key KEYFILE --out DIR`
 Writes `DIR/<sha256>.json` (canonical JSON of kind, scope, reason, repo_sha; named by the hash of
 its bytes) and `DIR/<sha256>.json.sig` made with `ssh-keygen -Y sign -n c-rigor-gate`.
@@ -98,6 +112,21 @@ A file named like an approval (`<64 hex>.json` or `.json.sig`) anywhere in the g
 `approval-in-repo` finding.
 Gates that take `--approvals` need `--repo` and `--head` (for the ancestry check); the run is exit 2
 without them. Existence of ssh-keygen is only required when the approvals directory is non-empty.
+
+### Signer roles (`gate/signer_roles.toml`, T132)
+`[principal.<name>] kinds = [...]` lists the approval kinds a signer may sign; the name is the principal of
+`allowed_signers` as `ssh-keygen -Y find-principals` reports it. With `--signer-roles FILE` an approval counts only
+if its signer's principal is listed with the approval's kind; otherwise it is a `forged-approval` finding with
+reason `kind-not-allowed-for-signer`. A principal in `allowed_signers` that the file does not list may sign nothing.
+The shipped file gives `orchestrator` the five kinds that exist (`suppression`, `test-removal`, `ratchet`,
+`equivalent-mutant`, `witness-equivalent-mutant`), so it reproduces today's rule. **The flag is off by default and no
+gate passes it yet** (a later task wires it); `approvals.load_approvals(..., roles_path=None, ledger=None)` is the
+library surface. `--ledger DIR` likewise switches on the tighten-only rule of `docs/trust.md`
+(reason `tighten-only`). Both are accepted wherever `--approvals` is.
+
+### `ledger append|verify|claims`
+`ledger append --ledger DIR --kind K --subject S [--evidence FILE] --at N`, `ledger verify --ledger DIR [--head SHA]`
+(prints the head; exit 1 if the chain is broken), `ledger claims --ledger DIR`. See `docs/trust.md`.
 
 ## Known limits
 - Pattern scanning is a line regex. Line splices (a backslash-newline inside a token) and macro

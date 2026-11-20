@@ -1,0 +1,14 @@
+load("@gate//rules:c.bzl", "c_library", "c_test", "c_wasm")
+
+# A freestanding module (only <string.h> and <stdint.h>): tested natively like any other module ...
+c_library(
+    name = "tally",
+    srcs = ["tally.c"],
+    headers = ["tally.h"],
+)
+
+c_test(name = "tally_test", srcs = ["tally_test.c"], deps = [":tally"])
+
+# ... and also built as a wasm32 module exporting one function (docs/toolchain.md, "WebAssembly (wasm32)").
+# `tally_wasm.wasm` is an artifact, not a graded module: `tally_test` is the evidence.
+c_wasm(name = "tally_wasm", deps = [":tally"], exports = ["tally_char"])

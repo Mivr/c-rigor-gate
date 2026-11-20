@@ -8,6 +8,9 @@
     ]
   },
   "not_run": [
+    "fuzz",
+    "sim",
+    "oracle",
     "mutants"
   ]
 }

@@ -48,6 +48,8 @@ class Grading:
     witness: object = None
     # B13: the perf bundle loaded from its snapshot in <work>/inputs/perf (perf_bundle.Bundle), or None.
     perf: object = None
+    # `--only`: the ids of the gates this grade runs, or None for every gate
+    selected: object = None
 
 
 def gate_checkout_sha():
@@ -119,8 +121,8 @@ def prepare_work(work):
     os.makedirs(work, exist_ok=True)
     kill_daemon(os.path.join(work, "tree"))
     kill_daemon(os.path.join(work, WITNESS_TREE))
-    for name in ("src", "tree", "results", "test-results", "facts", "mutants-reports", "mutants-perf", "home", "tmp",
-                 "inputs", WITNESS_TREE, WITNESS_WORK):
+    for name in ("src", "tree", "results", "test-results", "facts", "mutants-reports", "mutants-perf", "fuzz",
+                 "home", "tmp", "inputs", WITNESS_TREE, WITNESS_WORK):
         path = os.path.join(work, name)
         if os.path.lexists(path):
             remove_tree(path)

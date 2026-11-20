@@ -1,0 +1,11 @@
+{
+  "bypass": "a simulation that checks nothing",
+  "description": "T2G6: the world runs 20 distinct seeds and passes them, but reports no gauge, counter, sync, screen or fault effect through world_stats. The spec (gate-owned) lists I11 to I13, a fault, a screen and an impossible counter, so the judge cannot find what the invariants should have seen: sim-vacuous for each, fault-not-observed for the fault and sim-stats-counter for the counter that is not reported. A green sim that looked at nothing is the failure the floors exist for.",
+  "fail": {
+    "sim": [
+      "fault-not-observed",
+      "sim-stats-counter",
+      "sim-vacuous"
+    ]
+  }
+}

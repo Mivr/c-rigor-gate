@@ -1,0 +1,82 @@
+load("@gate//rules:c.bzl", "c_android_so", "c_apk", "c_library")
+
+c_library(name = "core", srcs = ["core.c"], headers = ["core.h"])
+
+# A NativeActivity shared object: the entry symbol is the only dynamic export (android mode only).
+c_android_so(
+    name = "club",
+    srcs = ["entry.c"],
+    deps = [":core"],
+    exports = ["ANativeActivity_onCreate"],
+    system_libs = ["android", "log"],
+)
+
+# The signed, 16 KB aligned APK of that object (debug key only) and its check test `app_check`.
+c_apk(
+    name = "app",
+    so = ":club",
+    package = "org.example.club",
+    label = "Club example",
+    version_code = 1,
+    version_name = "0.1.0",
+    visibility = ["PUBLIC"],    # the self-test (selftest/android.sh) breaks this APK in a scratch package
+)
+
+# The same shared object with Java (T-G3b): classes.dex (a Runnable, a DeviceAdminReceiver, an Application and a boot receiver), one
+# res/xml file, the manifest declarations of a dedicated device (receivers, application class, HOME launcher, lock task) and
+# its check `app_java_check`. The dex must define exactly `java_classes`.
+c_apk(
+    name = "app_java",
+    so = ":club",
+    package = "org.example.club",
+    label = "Club Java example",
+    version_code = 1,
+    version_name = "0.1.0",
+    permissions = ["RECEIVE_BOOT_COMPLETED"],
+    java_srcs = ["Tick.java", "Admin.java"],
+    java_classes = [
+        "org.example.club.Tick",
+        "org.example.club.Admin",
+        "org.example.club.Admin$App",
+        "org.example.club.Admin$Boot",
+    ],
+    res_xml = ["device_admin.xml"],
+    application_class = "org.example.club.Admin$App",
+    receivers = [
+        {
+            "name": "org.example.club.Admin",
+            "permission": "BIND_DEVICE_ADMIN",
+            "exported": True,
+            "actions": ["DEVICE_ADMIN_ENABLED"],
+            "meta_data": {"android.app.device_admin": "device_admin"},
+        },
+        {
+            "name": "org.example.club.Admin$Boot",
+            "exported": True,
+            "actions": ["BOOT_COMPLETED"],
+        },
+    ],
+    launch_mode = "singleTask",
+    lock_task_mode = "if_whitelisted",
+    exclude_from_recents = True,
+    soft_input_mode = "stateHidden",
+    categories = ["HOME", "DEFAULT"],
+    visibility = ["PUBLIC"],    # the self-test (selftest/android.sh) breaks this APK in a scratch package
+)
+
+# A class outside the app package, allowed only because `java_packages` lists its package (T-G3b follow-up): the dex must
+# define exactly `java_classes`, and the receiver may sit in any listed package.
+c_apk(
+    name = "app_pkg",
+    so = ":club",
+    package = "org.example.club",
+    label = "Club package example",
+    version_code = 1,
+    version_name = "0.1.0",
+    permissions = ["RECEIVE_BOOT_COMPLETED"],
+    java_srcs = ["Owner.java"],
+    java_packages = ["org.example.club", "org.example.owner"],
+    java_classes = ["org.example.owner.Owner"],
+    receivers = [{"name": "org.example.owner.Owner", "exported": True, "actions": ["BOOT_COMPLETED"]}],
+    visibility = ["PUBLIC"],
+)

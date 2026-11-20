@@ -162,6 +162,8 @@ carries `impl` for its L2+ modules (T039's `impl-missing`). The red witness case
 | canary | bypass | fails | NOT_RUN |
 |---|---|---|---|
 | `system-lib-not-allowed` | a new L3 library declares `system_libs = ["pthread"]`, its policy entry does not list it | `symbols`: system-lib-not-allowed; `witness-tests`: witness-missing | mutants-witness |
+| `android-so-denied-symbol` | a `c_android_so` (compiled only in the android mode) calls `getenv` | `symbols`: denied-symbol | |
+| `android-so-inline-asm` | a `c_android_so` contains inline assembly | `semantic-suppressions`: inline-asm | |
 | `system-lib-not-declared` | the policy entry lists `system_libs = ["pthread"]`, the library declares none | `symbols`: system-lib-not-declared; `witness-tests`: witness-missing | mutants-witness |
 
 Both are the `exports-missing-l3` shape (a new `//core:extra`, whose `witness-missing` is the same as there) with an `exports` list, so the
@@ -255,6 +257,52 @@ All five share `canaries/_catalog/files/` (a canary-local `i18n` runtime with th
 here is `i18n/`, `cat/` next to `core/`, `util/`. `expect.json` `contains` pins the exact `po2c` message in `build.json`, so a
 canary that fails for another reason is a miss.
 
+## Canary added by T133
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `vendor-path-spoof` | `core/art/gate/third_party/spoof.h` with a diagnostic pragma and `no_sanitize`; the directory name must not pass as gate third-party code | `semantic-suppressions`: forbidden-attribute, pragma; `suppressions`: forbidden-pattern; `mutants`: unmutated-function | none |
+
+Before T133 `semantic-suppressions` passed it (the vendor marker was matched anywhere in the path).
+
+## Canaries added by T129 (the `fuzz` gate)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `fuzz-crash` | a parser (profile `parser`) whose `parse_run` reads `buf[data[4] % 8]` from a 4-byte buffer behind the magic `PA`; the fixed seed and budget of the `c_fuzz` run reach it | `fuzz`: fuzz-crash | none |
+| `fuzz-missing` | the policy gives `//parse:parse` the `parser` profile and the product has the library and no `c_fuzz` target | `fuzz`: fuzz-missing | none |
+| `fuzz-vacuous-harness` | the `c_fuzz` target lists the parser in `deps`, runs clean, and its harness never calls it | `fuzz`: fuzz-harness-no-call | none |
+| `fuzz-regression-dropped` | `fuzz-regressions.json` (gate-owned, beside `policy.toml`) names the sha256 of an input that once crashed `//parse:fz`; since T135 the product has a `corpus` and the input is removed from it, so it is not among the replayed files | `fuzz`: fuzz-regression-missing | none |
+| `fuzz-green` (control) | the same shape with the fixed parser and a harness that calls it | none: PASS | none |
+
+They share `canaries/_fuzz/files/` (the parser in two variants, the two harnesses, the BUCK files), copied in by each `edit.sh`; the
+policy of each adds an L1 `//parse:parse` (`profile = ["parser"]`, `allow = ["malloc", "free"]`) and, where there is a target, a
+`//parse:fz` entry that exports `LLVMFuzzerTestOneInput`. `fuzz` is also a NOT_RUN gate wherever `mutants` is (they need the same
+gates to have passed): every `not_run` list that named `mutants` names `fuzz` now, in the canaries and the tripwires.
+
+## Canaries added by T135 (a corpus and a budget in a graded `c_fuzz`)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `fuzz-corpus-replayed` (control) | the fixed parser, a corpus of a seed and the input `fuzz-regressions.json` names; `contains` pins `corpus_files` 2, `replayed` 2 | none: PASS | none |
+| `fuzz-regression-crashes` | the same corpus, the parser still has the bug: the replay of the corpus file crashes (`contains` pins phase `replay` and the sha256) | `fuzz`: fuzz-crash | none |
+| `fuzz-budget-lowered` | `runs = 1000` on the target; the policy's `parser` profile demands 200000 | `fuzz`: fuzz-short | none |
+
+`fuzz-regression-dropped` is reworked (above). All share `canaries/_fuzz/files/` (`BUCK.corpus`, `BUCK.corpus-dropped`, `BUCK.runs`
+and `corpus/`). `fuzz` is the last gate, so no `not_run` list changes.
+
+## Canary added by T137 (grade tiers)
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `tier-forged` | a verdict graded at tier `merge` presented as a nightly one: the control product graded `--tier merge`, signed with a throwaway key, then `rigor verify --require-tier nightly` | none at grade time; `verify` must exit 1 with `tier is merge, expected nightly` (and exit 0 with `--require-tier merge`, so it is refused for its tier alone) | none |
+
+Its `expect.json` has `verify` instead of `fail`: `require_tier` is the tier that must be refused, `refused` the text of the
+refusal; the runner grades at the other tier, whatever `--tier` says.
+
+**The tier `merge` pass.** `selftest/canaries.sh --jobs 8 --tier merge` grades every canary at tier `merge` against the same
+`expect.json`: a canary that is red on `mutants` at an L3 or L4 module (the base product's `//core:core` is L3) must be red
+there at merge, in the same gate and rule. The L2 module of the base product (`//util:util`) is deferred at merge, so a canary
+whose red gate depends on it would miss in that pass; the pass is a second run of the same pack, not a second pack.
+The one known case is `third-party-link` (an L2 control whose `contains` pins a finding of the L2 module's mutants): in the merge
+pass `canaries/runner.py` (`MERGE_DEFERS_CONTAINS`) skips that pin, nothing else of its expectation.
+
 ## Canaries of gate `decoupling`
 All use the shared base product with a `decoupling.toml` beside `product.toml` (and a `decoupling-baseline.toml` where
 named). In the common declaration `//core:core` is the contract and `//util:util` the component.
@@ -277,3 +325,73 @@ Every canary without a `decoupling.toml` (all the others) gets `decoupling` PASS
 ## Not covered here
 `rigor trajectory` (T015) audits an agent transcript, not a graded repository, so it has no canary until it is
 part of `rigor grade`. The environment-hostility and signature checks stay in `selftest/grade.sh`.
+
+## Canaries added by T138 (`tests-msan`, `tests-tsan`)
+Every expectation that lists `tests-san` in `not_run` now lists `tests-msan` and `tests-tsan` too (they need the same
+clean build, run by the pack, not guessed); every canary whose test fails in release and san (`failing-test`,
+`removed-test`, `skipped-test`, `results-fd`, `deleted-target`) also fails `tests-msan` with the same rules (the same
+test fails in msan; no threaded test exists in the base product, so `tests-tsan` passes). The tripwire `unproducible-test-id` fails `tests-msan` as well.
+
+| canary | bypass | fails | NOT_RUN |
+|---|---|---|---|
+| `uninit-read` | a branch decided by a struct field nobody wrote (read in another unit, so the compiler cannot fold it) | `tests-msan`: no-assertions, test-not-pass | none |
+| `threads-undeclared` | a test that calls `pthread_create` without `threads = True` (so it has no tsan result) | `symbols`: threads-undeclared | none |
+| `msan-guarded-code` | code under `__has_feature(memory_sanitizer)` behind a product macro | `mode-divergence`: mode-divergent-code | none |
+| `threads-through-library` | the library calls `pthread_create`, the test only calls the library; no declaration | `symbols`: threads-undeclared | none |
+| `data-race` | two threads write one counter without a lock, in a test declared `threads = True` | `tests-tsan`: no-assertions, test-not-pass | none |
+| `threads-vacuous` | `threads = True` on a test whose closure starts no thread | `symbols`: threads-vacuous | none |
+
+`buckfiles` accepts `threads` on `c_test` as a boolean literal only, and refuses the derived `_facts_msan` / `_facts_tsan`
+names as deps like the other derived names. Every gate has a live canary again.
+
+## Historical canaries (T2G8, P330 section 5)
+A synthetic canary edits a fixture. A **historical canary** re-introduces a *real, already fixed* defect into the *real
+product* at a pinned commit, and the gate must turn red on it. The product at the defect's own commit had no harness
+(no `c_sim`), so the canary takes a later **base** commit that has it and applies a **regress patch**: the reverse of
+the fix, restricted to the defect's hunks. It is provenance-checked, so a canary cannot be invented.
+
+### Layout of `canaries/hist-<id>/`
+| File | Meaning |
+|---|---|
+| `pin.toml` | `product` (repository name), `base`, `bug_commit`, `fix_commit` (full 40-digit ids), `paths` (globs: the only files the patch may touch); optional `fix_repo` (the fix lives in another repository), `fix_ref` (a ref that must contain the fix, default `main`; a lane branch is allowed), `gates` (passed as `rigor grade --only a,b`; absent = the full grade) |
+| `regress.patch` | git diff, made by `tools/hist_canary.py make`, never hand-edited |
+| `expect.json` | as every canary: the red verdict of the patched base (`fail`, `not_run`, `contains`, `pending`...) |
+| `product.toml`, `policy.toml`, `expected-tests.json`, `task.toml` | gate-owned grade inputs as for any canary (`task.toml` optional: default allows exactly `paths`) |
+| `history.sh` | fixture canaries only: `bash history.sh DIR` generates the tiny deterministic history (fixed dates and names, so the commit ids in `pin.toml` reproduce) |
+
+### The tool: `tools/hist_canary.py`
+```
+tools/hist_canary.py show   canaries/hist-X [--repo NAME=PATH]...          # the hunks of git diff <fix>^ <fix>, numbered
+tools/hist_canary.py make   canaries/hist-X --select core/a.c:2 --select b.c [--context 3] [--repo ...]
+tools/hist_canary.py verify canaries/hist-X [--repo ...]
+```
+`--repo NAME=PATH` names the local clone of the product (`pin.toml` `product`) and of `fix_repo`. `make` selects whole hunks of the fix
+diff (`PATH` = all its hunks, `PATH:N,N` = hunk numbers, 1-based), reverses them (context trimmed to `--context`, at least 1), proves
+provenance and `git apply --check` on `base`, then writes `regress.patch`. `verify` exits 0, or 1 with the reason, or 2 on a usage error. It refuses:
+- a hunk that is not, up to line numbers and context, the reverse of a **distinct** hunk of the fix diff (an invented, edited or
+  duplicated hunk, a hunk of another file, an unsupported header such as rename or binary);
+- a file outside `paths`;
+- a `fix_commit` that is not an ancestor of `fix_ref`, or a `bug_commit` that is not an ancestor of `fix_commit`;
+- a patch that does not apply on `base` (**stale**).
+
+### The runner
+For a canary with a `pin.toml` the runner (`canaries/runner.py`, `--hist-repo NAME=PATH` names the repositories; a fixture needs none):
+1. runs the `verify` above; a refusal or a stale patch is a miss, so **the pack fails closed** (`STALE` in the table);
+2. clones the product at `base`, applies `regress.patch` as the head commit, and grades it (with `--only` when `pin.toml` has `gates`),
+   judged against `expect.json` exactly as any canary;
+3. grades the **unpatched base** (an empty head commit) as the control; it must PASS, or the red verdict proves nothing. The outcome is one row,
+   `expected ...; control PASS`.
+
+**pending.** A canary without `regress.patch` (the fix does not exist yet, e.g. `hist-pool-retire`) must say `"pending": "<task>"` in `expect.json`. It is listed, not graded, and
+does not fail the pack (its `pin.toml` may then name only what is known; the tool reads a pin only for canaries that have a patch); without `pending` a missing patch fails the pack. Pending is a ratchet that must reach zero.
+
+**`rigor grade --only` and the `sim` gate.** Neither exists until T2G2. The grade command and gate list are data (`gates`), so a real canary names
+`gates = ["sim", "oracle"]` and `fail: {"sim": [...]}` once T2G2 lands. The selftest canary `hist-selftest` uses the full grade today and is red in
+`tests-release`, `tests-san`, `tests-msan` (`test-not-pass`) like `failing-test`; it is the only thing to change when `--only` exists (add
+`gates` and the expected `not_run` set), and the tool, layout and runner do not change.
+
+### The fixture `hist-selftest`
+`history.sh` builds three commits from `canaries/_base/product`: c0 (two defects), c1 (the fix of both), c2 (later work = `base`).
+`regress.patch` selects only the `core_add` hunk (the `util_make_ramp` hunk is not part of the canary). Unit tests
+(`gate/tests/test_hist_canary.py`) also cover an invented hunk (refused), a duplicated hunk, a stale patch (the pack exits 1), a pending canary, a
+named `fix_ref`, and a fix in another repository.

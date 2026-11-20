@@ -352,6 +352,12 @@ class SystemLibsCase(TempDirTestCase):
     def test_only_a_library_has_system_libs(self):
         self.sym(["pthread"], 'system_libs = ["pthread"]\n', 2, kind="c_test")
 
+    def test_an_android_shared_object_has_system_libs_like_a_library(self):
+        """T-G2: kind c_android_so, the NDK names `android` and `log`, exact match against the policy entry."""
+        self.assertEqual(self.sym(["android", "log"], 'system_libs = ["android", "log"]\n', 0, kind="c_android_so"), [])
+        self.assertEqual(self.sym(["android"], "", 1, kind="c_android_so"), [("system-lib-not-allowed", "android")])
+        self.assertEqual(self.sym([], 'system_libs = ["log"]\n', 1, kind="c_android_so"), [("system-lib-not-declared", "log")])
+
     def test_a_product_facts_file_without_the_key_is_refused(self):
         document = facts("//p:lib", [unit()])
         del document["system_libs"]

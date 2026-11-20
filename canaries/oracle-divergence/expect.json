@@ -1,0 +1,9 @@
+{
+  "bypass": "an app that replays a hidden Rust trace differently",
+  "description": "T2G7: the replayer clears the pad on cancel only when more than one digit was entered. The hidden trace has a cancel after one digit left, so the view text differs by one byte. Red on the oracle gate only.",
+  "fail": {
+    "oracle": [
+      "oracle-divergence"
+    ]
+  }
+}

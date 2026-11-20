@@ -1,0 +1,75 @@
+# Constants of the wire invariants I3 to I6b (P330 section 2.1, T2G3). Gate-owned.
+#
+# `sim/inv/wire_consts.h` carries the same values for the C engine; `gate/tests/test_sim_wire_consts.py` fails if the two
+# files disagree. A change to a value here is a loosening or tightening of a hardware-safety check: it needs the owner.
+#
+# Sources: "HW" is docs/lockers/hardware-safety.md of business-apps (the same text is docs/hardware-safety.md of
+# club-apps), cited by section: "Failure modes", "Board facts", "Rules for code" N (the numbered list).
+
+[PULSE_CAP_UNITS]
+value = 8
+source = "HW, Rules for code 1: the duration is capped at 800 ms (8 units of 100 ms)"
+
+[PULSE_UNIT_MS]
+value = 100
+source = "HW, Board facts: FC05 at 0x0200+n is flash-on, the value is the duration in 100 ms units"
+
+[FLASH_EARLY_OFF_MS]
+value = 30
+source = "P330 section 2.1 I3 (the board's early-off window of apps/lockers/lksim/board/board.h, 'Flash'): a flash of N units ends between N*100-30 and N*100 ms after the frame. HW, Real-device verification item 6, measured 440 to 490 ms for 5 units, inside every read the model accepts (reads override the model)"
+
+[GAP_MS]
+value = 300
+source = "HW, Rules for code 3: after the pulse, poll until both relays read off, then wait 300 ms before the next pulse"
+
+[WATCHDOG_MARGIN_MS]
+value = 150
+source = "HW, Rules for code 4: the deadline is min(pulse duration + 150 ms, 900 ms)"
+
+[WATCHDOG_CAP_MS]
+value = 900
+source = "HW, Rules for code 4: the deadline is min(pulse duration + 150 ms, 900 ms); Rules for code 6: the worst case from the first flash to the all-off is the 900 ms cap"
+
+[BURN_MS]
+value = 1000
+source = "HW, Failure modes: a solenoid energised for 1 s or more burns out"
+
+[MAX_ENERGISED_COILS]
+value = 2
+source = "HW, Failure modes (two or more solenoids at once trip the supply) and Rules for code 2 (a locker is the pair row, column; one locker at a time through the global queue)"
+
+[VERIFY_SLACK_MS]
+value = 150
+source = "NOT in HW. P330 section 2.1 I5 says 'frame deadline' without a value; the kiosk's own FRAME_DEADLINE_MS is 150 (club-apps adapters/waveshare-relay/src/lib.rs line 97). The verified-off read must arrive by first flash + WATCHDOG_CAP_MS + VERIFY_SLACK_MS. Open for the owner to confirm (T2G3 report)"
+
+[COILS]
+value = 30
+source = "HW, Board facts: coils 0..29 map to relays 1..30 (Waveshare 30CH)"
+
+[SLAVE_ID]
+value = 1
+source = "HW, Board facts: the slave ID is 0x01"
+
+[FLASH_BASE]
+value = 0x0200
+source = "HW, Board facts: FC05 at 0x0200+n is flash-on"
+
+[ALL_OFF_ADDR]
+value = 0x00FF
+source = "HW, Board facts: FC05 at 0x00FF addresses all coils; Rules for code 4: all-OFF is FC05 0x00FF with value 0x0000"
+
+[VERSION_REG]
+value = 0x8000
+source = "HW, Board facts: the version read (firmware V1.00) is FC03 at 0x8000 (club-apps conformance fixtures: request 010380000001)"
+
+[CONFIG_REG]
+value = 0x4000
+source = "P330 section 2.1 I6b allow-list: FC03 read of address 0x8000 or 0x4000 (the board's read-only device-parameter register; not in HW)"
+
+[ON_VALUE]
+value = 0xFF00
+source = "HW, Rules for code 5: the app never sends ON (0xFF00), all-ON, or toggle"
+
+[TOGGLE_VALUE]
+value = 0x5500
+source = "HW, Rules for code 5: the app never sends toggle (FC05 value 0x5500 on this board family)"

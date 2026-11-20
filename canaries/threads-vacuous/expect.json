@@ -1,0 +1,9 @@
+{
+  "bypass": "an empty threads declaration",
+  "description": "T138: a c_test declared threads = True whose own objects reference neither pthread_create nor thrd_create.",
+  "fail": {
+    "symbols": [
+      "threads-vacuous"
+    ]
+  }
+}

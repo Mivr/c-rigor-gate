@@ -1,0 +1,9 @@
+{
+  "bypass": "an oracle replay that skips a trace the policy requires",
+  "description": "T2G7: the policy lists a trace id (scripted-99) that the bundle does not hold. Red on the oracle gate only; the traces it does hold replay cleanly.",
+  "fail": {
+    "oracle": [
+      "oracle-bundle-missing"
+    ]
+  }
+}

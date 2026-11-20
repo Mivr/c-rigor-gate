@@ -6,9 +6,31 @@
 # `?` one character; they match the whole repo-relative path.
 # `tools/affected.py --check` fails if a tracked file is only matched by a catch-all (glob `**`) or by nothing.
 #
-# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf
+# Selftest names: gate grade mutate structure product_checks toolchain ctest fuzz third_party canaries trajectory_real perf profiles require sanmodes sim android
 # "all" is shorthand for every one of them.
 
+# ---- 0. The Android shared object rule (first match wins, so these come before `rules/**` and `examples/**`) -------
+[[rule]]
+glob = "selftest/android.sh"
+selftests = ["android"]
+[[rule]]
+glob = "examples/android/**"
+selftests = ["android"]
+[[rule]]
+glob = "rules/android.bzl"
+selftests = ["android", "product_checks"]
+[[rule]]
+glob = "rules/elf_check.py"
+selftests = ["android"]
+[[rule]]
+glob = "rules/apk*"
+selftests = ["android", "product_checks"]
+[[rule]]
+glob = "toolchains/android_*"
+selftests = ["android", "toolchain"]
+[[rule]]
+glob = "toolchains/jdk.manifest"
+selftests = ["android", "toolchain"]
 # ---- 1. Anything that can change how every product builds or is graded: everything --------------------------------
 [[rule]]
 glob = "rules/**"
@@ -22,6 +44,11 @@ selftests = ["all"]
 [[rule]]
 glob = ".buckconfig"
 selftests = ["all"]
+# Read only through an explicit `--config-file` (cache-only hosts); no gate run or selftest reads it. The switch it
+# flips lives in toolchains/platforms.bzl, which `toolchains/**` already maps to "all".
+[[rule]]
+glob = ".buckconfig.cache-only"
+selftests = ["gate"]
 [[rule]]
 glob = ".buckroot"
 selftests = ["all"]
@@ -56,10 +83,10 @@ selftests = ["trajectory_real"]
 # ---- 3. The kernel library, by family ---------------------------------------------------------------------------------
 [[rule]]
 glob = "gate/rigor_lib/facts*"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/buckfiles.py"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 # The byte-array generator of `c_embed` (T112): its selftest is selftest/embed.sh, run with the ctest group.
 [[rule]]
 glob = "gate/rigor_lib/bin2c.py"
@@ -69,10 +96,14 @@ glob = "gate/rigor_lib/product_checks.py"
 selftests = ["product_checks", "grade", "canaries"]
 [[rule]]
 glob = "gate/rigor_lib/semantic_table.py"
-selftests = ["product_checks", "grade", "canaries"]
+selftests = ["product_checks", "grade", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/structure*"
-selftests = ["structure", "grade", "canaries"]
+selftests = ["structure", "grade", "canaries", "require"]
+# T128: layering reads the same facts and must accept gate//rt:require; the rest of the library is below.
+[[rule]]
+glob = "gate/rigor_lib/layering*"
+selftests = ["grade", "product_checks", "structure", "mutate", "canaries", "require"]
 [[rule]]
 glob = "gate/rigor_lib/mutants*"
 selftests = ["mutate", "grade", "canaries"]
@@ -80,8 +111,40 @@ selftests = ["mutate", "grade", "canaries"]
 glob = "gate/rigor_lib/perf_*"
 selftests = ["perf", "mutate", "grade", "canaries"]
 [[rule]]
+glob = "gate/rigor_lib/fuzz_gate.py"
+selftests = ["fuzz"]
+# T2G2: the judge and its policy readers are run by `rigor grade` (the sim canaries and the grade selftest).
+[[rule]]
+glob = "gate/rigor_lib/sim_judge.py"
+selftests = ["sim", "grade", "canaries"]
+[[rule]]
+glob = "gate/rigor_lib/sim_policy.py"
+selftests = ["sim", "grade", "canaries"]
+# T2G1: the `c_sim` shard merge and mode comparison run inside the sim selftest's actions.
+[[rule]]
+glob = "gate/rigor_lib/sim_*"
+selftests = ["sim"]
+[[rule]]
 glob = "gate/rigor_lib/results_parse.py"
 selftests = ["ctest", "mutate", "product_checks", "third_party", "fuzz", "grade", "canaries"]
+# T127: the profile library and judge read facts and policy only; no existing gate calls them.
+[[rule]]
+glob = "gate/rigor_lib/profiles.py"
+selftests = ["product_checks", "profiles"]
+[[rule]]
+glob = "gate/rigor_lib/policy_check.py"
+selftests = ["product_checks", "profiles"]
+# T132: the ledger library and the signer roles file; only `rigor ledger` and the optional approvals arguments use them.
+[[rule]]
+glob = "gate/rigor_lib/ledger.py"
+selftests = ["grade"]
+[[rule]]
+glob = "gate/signer_roles.toml"
+selftests = ["grade", "canaries"]
+# T131: the guard judge reads facts, structure facts and policy only; its selftest is the require one.
+[[rule]]
+glob = "gate/rigor_lib/guards_gate.py"
+selftests = ["require"]
 # Everything else in the library is shared plumbing (clone, contract, approvals, verdicts, scans, runner, ...).
 [[rule]]
 glob = "gate/rigor_lib/**"
@@ -109,10 +172,26 @@ glob = "mutate/**"
 selftests = ["mutate", "grade", "canaries"]
 [[rule]]
 glob = "ctest/**"
-selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure"]
+selftests = ["ctest", "perf", "toolchain", "product_checks", "mutate", "fuzz", "third_party", "grade", "canaries", "structure", "require"]
+# T2G1: the gate-owned simulation runner and world interface (`gate//sim`); only the sim selftest links them.
+[[rule]]
+glob = "sim/**"
+selftests = ["sim"]
+# T2G3: the recordings-to-`fr` converter; its checks are gate unit tests, which always run.
+[[rule]]
+glob = "tools/sim/**"
+selftests = []
+# T128: the gate-owned header `gate//rt:require`; every gate that reads dependencies and headers meets it.
+[[rule]]
+glob = "rt/**"
+selftests = ["require", "product_checks", "structure", "mutate", "grade", "canaries"]
 [[rule]]
 glob = "examples/**"
 selftests = ["toolchain", "ctest", "product_checks"]
+# T2G3: the constants of the wire invariants; the C engine (sim/inv) and gate/tests/test_sim_wire_data.py read them.
+[[rule]]
+glob = "policy/sim_constants.toml"
+selftests = ["sim"]
 [[rule]]
 glob = "policy/**"
 selftests = ["product_checks"]
@@ -121,7 +200,7 @@ glob = "third_party/**"
 selftests = ["third_party", "grade", "product_checks", "canaries"]
 [[rule]]
 glob = "products/selftest/**"
-selftests = ["grade", "canaries"]
+selftests = ["grade", "canaries", "sim"]
 # The real product: no selftest or canary reads it (T066; test_affected keeps this honest), only the unit tests do.
 [[rule]]
 glob = "products/annas-c/**"
@@ -152,6 +231,12 @@ selftests = ["grade"]
 [[rule]]
 glob = "selftest/mutants_lane.sh"
 selftests = ["grade"]
+[[rule]]
+glob = "selftest/profiles.sh"
+selftests = ["product_checks", "profiles"]
+[[rule]]
+glob = "selftest/profiles_product/**"
+selftests = ["product_checks", "profiles"]
 [[rule]]
 glob = "selftest/grade_product/**"
 selftests = ["grade"]
@@ -186,11 +271,23 @@ selftests = ["ctest", "product_checks"]
 glob = "selftest/perf.sh"
 selftests = ["perf"]
 [[rule]]
+glob = "selftest/require.sh"
+selftests = ["require"]
+[[rule]]
+glob = "selftest/require_product/**"
+selftests = ["require"]
+[[rule]]
 glob = "selftest/fuzz.sh"
 selftests = ["fuzz"]
 [[rule]]
 glob = "selftest/fuzz_product/**"
 selftests = ["fuzz"]
+[[rule]]
+glob = "selftest/sim.sh"
+selftests = ["sim"]
+[[rule]]
+glob = "selftest/sim/**"
+selftests = ["sim"]
 [[rule]]
 glob = "selftest/third_party.sh"
 selftests = ["third_party"]
@@ -226,6 +323,10 @@ selftests = []
 [[rule]]
 glob = "tools/backlog_fold.py"
 selftests = []
+# The historical canary tool (T2G8): its provenance checks are what the canary pack runs.
+[[rule]]
+glob = "tools/hist_canary.py"
+selftests = ["canaries"]
 [[rule]]
 glob = "tools/validate.sh"
 selftests = []
@@ -233,3 +334,9 @@ selftests = []
 [[rule]]
 glob = "tools/job*"
 selftests = []
+[[rule]]
+glob = "selftest/sanmodes.sh"
+selftests = ["sanmodes"]
+[[rule]]
+glob = "selftest/sanmodes/**"
+selftests = ["sanmodes"]

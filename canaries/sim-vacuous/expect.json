@@ -1,0 +1,9 @@
+{
+  "bypass": "a world whose workload does nothing",
+  "description": "T2G2: the world ignores every intent, fault and restart of the seeded workload, so all 20 seeds give one trace hash. The judge recomputes distinctness from the hashes file and fails with sim-vacuous (a run that reaches nothing proves nothing).",
+  "fail": {
+    "sim": [
+      "sim-vacuous"
+    ]
+  }
+}

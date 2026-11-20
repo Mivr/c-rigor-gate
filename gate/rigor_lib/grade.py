@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-from rigor_lib import approvals, grade_context, grade_pipeline, grade_policy, jsonio, product_layout, runner, verdict
+from rigor_lib import approvals, grade_context, grade_pipeline, grade_policy, grade_tier, jsonio, product_layout, runner, verdict
 from rigor_lib import verdict_inputs
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import GateResult, finding
@@ -21,7 +21,10 @@ SIGN_TIMEOUT_SECONDS = 60
 
 def run_gates(g):
     """Run the pipeline. Returns the exception that stopped it, or None."""
+    chosen = getattr(g, "selected", None)
     for gate_id, step in grade_pipeline.GATES:
+        if chosen is not None and gate_id not in chosen:
+            continue   # `--only`: not part of this grade (nor of its order)
         started = time.monotonic()
         try:
             result = step(g)
@@ -65,7 +68,7 @@ def discard(path):
 
 
 def absolute_arguments(args):
-    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "sign_key", "work",
+    for name in ("product_repo", "task", "product", "approvals", "witness", "perf", "oracle", "sim_salt", "sign_key", "work",
                  "verdict_out"):
         value = getattr(args, name, None)
         if value is not None:
@@ -87,7 +90,24 @@ def start_grading(args):
     # P002 Q1: a bad bundle is exit 2 here, before `clone`.
     witness, inputs["witness_sha256"] = verdict_inputs.snapshot_witness(
         args.witness, os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.WITNESS_NAME))
+    selected = None
+    if getattr(args, "only", None) is not None:   # a partial grade: its order file lists only what runs (and is hashed so)
+        if args.sign_key is not None:
+            raise InternalError("--only grades are never signed: --sign-key is refused")
+        ids = [gate_id for gate_id, _ in grade_pipeline.GATES]
+        selected = grade_pipeline.selection(args.only, ids)
+        order_bytes = "".join(i + "\n" for i in ids if i in selected).encode("ascii")
+        with open(args.order_file, "wb") as handle:
+            handle.write(order_bytes)
+        inputs["order_sha256"] = jsonio.sha256_hex(order_bytes)
     product = product_layout.load_product(args.product)
+    # T2G7: the oracle bundle (the hidden half of the replay) is copied and bound like the witness; `args.oracle` then names the
+    # copy, which the `oracle` gate loads again. Only its hash enters the verdict.
+    oracle_source = getattr(args, "oracle", None)
+    if oracle_source is not None:
+        args.oracle = os.path.join(work, verdict_inputs.INPUTS_DIR, verdict_inputs.ORACLE_NAME)
+    inputs["oracle_sha256"] = verdict_inputs.snapshot_oracle(oracle_source, getattr(args, "oracle", None),
+                                                             product.name)
     perf_source = getattr(args, "perf", None)  # callers that build args by hand may omit it
     levels = {}
     if perf_source is not None:  # the snapshot of the policy, like every other reader
@@ -98,7 +118,8 @@ def start_grading(args):
         args=args, product=product, gate_sha=gate_sha, work=work,
         src=os.path.join(work, "src"), tree=os.path.join(work, "tree"),
         results=os.path.join(work, "results"), test_results=os.path.join(work, "test-results"),
-        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean, witness=witness, perf=perf)
+        inputs=inputs, order_bytes=order_bytes, gate_clean=gate_clean, witness=witness, perf=perf,
+        selected=selected)
 
 
 def file_sha256(path):
@@ -155,6 +176,10 @@ def run(args):
     return code
 
 
+def _gate_list(text):
+    return text.split(",")
+
+
 def add_parser(subparsers):
     parser = subparsers.add_parser("grade", allow_abbrev=False,
                                    help="clone, assemble, build and judge one product change")
@@ -170,11 +195,24 @@ def add_parser(subparsers):
     parser.add_argument("--perf", metavar="DIR",
                         help="perf bundle (docs/perf.md); snapshotted into <work>/inputs/perf and bound as "
                              "perf_sha256 (null without it); loaded and checked, no gate judges it yet")
+    parser.add_argument("--oracle", metavar="DIR",
+                        help="oracle bundle (docs/oracle.md): the hidden Rust traces the `oracle` gate replays; snapshotted into "
+                             "<work>/inputs/oracle and bound as oracle_sha256 (null without it)")
+    parser.add_argument("--sim-salt", metavar="FILE",
+                        help="the salt of the simulation seeds (lowercase hex; docs/sim.md): the grader's hidden one. Only "
+                             "its sha256 enters the verdict (inputs.sim_salt_id); without it the product's "
+                             "sim-salt.public is used, else no salt")
+    parser.add_argument("--only", type=_gate_list, metavar="A,B",
+                        help="a partial grade: run these gates and what they need (grade_pipeline.selection); the others "
+                             "are left out of the order, so the verdict can PASS. Never signed (historical canaries, docs/canaries.md)")
     parser.add_argument("--sign-key")
     parser.add_argument("--work", required=True)
     parser.add_argument("--allow-dirty-gate", action="store_true",
                         help="grade although tracked gate files differ from HEAD; the verdict records "
                              "gate_clean=false, is never signed and never verifies")
+    parser.add_argument("--tier", choices=grade_tier.TIERS, default=grade_tier.DEFAULT,
+                        help="nightly (default): the whole grade; merge: report-only mutation is deferred "
+                             "(docs/grade.md); bound into the verdict")
     parser.add_argument("--uncached", action="store_true",
                         help="no remote action-cache reads or writes: every action runs on a worker")
     # Not `dest="out"`: cli.report_internal_error deletes args.out, but a failed grading must

@@ -1,0 +1,9 @@
+{
+  "bypass": "a threaded test that is not declared threads = True",
+  "description": "T138: a c_test whose own object calls pthread_create but has no threads = True declaration has no tsan results target, so a race in it passes every gate.",
+  "fail": {
+    "symbols": [
+      "threads-undeclared"
+    ]
+  }
+}

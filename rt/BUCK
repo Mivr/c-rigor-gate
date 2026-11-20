@@ -1,0 +1,9 @@
+load("@gate//rules:c.bzl", "c_library")
+
+# Gate-owned, header-only: the one primitive a product may use to stop the process (docs/require.md).
+# A product lists `gate//rt:require` in `deps` of a c_library, c_binary or c_test and includes "rt/require.h".
+c_library(
+    name = "require",
+    headers = ["require.h"],
+    visibility = ["PUBLIC"],
+)
