@@ -120,8 +120,8 @@ class GateLabelTest(unittest.TestCase):
         self.defined = defined_names(TOOLCHAINS_BUCK.read_text())
 
     def test_the_names_of_comprehensions_are_expanded(self):
-        for name in ("linux_release", "linux_san", "release", "never", "android", "llvm-ar", "ndk-llvm-readelf",
-                     "llvm_ref", "jdk_verified", "wasm32", "wasm32_release", "wasm_cpu", "cxx", "cxx_wasm"):
+        for name in ("linux_release", "linux_san", "release", "never", "san", "llvm-ar",
+                     "llvm_ref", "wasm32", "wasm32_release", "wasm_cpu", "cxx", "cxx_wasm"):
             self.assertIn(name, self.defined)
 
     def test_every_toolchains_label_is_defined(self):

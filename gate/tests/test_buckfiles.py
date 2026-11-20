@@ -516,3 +516,104 @@ class CatalogCase(TempDirTestCase):
 
     def test_named_catalog_files_are_not_a_finding_here(self):
         self.assertEqual(self.check(CAT_LOAD + CAT, 0, files={"a.pot": "", "a.bg.po": ""}), [])
+
+
+WASM_LOAD = 'load("@gate//rules:c.bzl", "c_fuzz", "c_library", "c_test", "c_wasm")\n'
+# The shape of a product module built for wasm32 (#348: business-apps apps/staffbot/core/abi/BUCK of #342, here without the
+# c_fuzz `corpus` keyword, which this product line's buckfiles does not have).
+WASM_LIB = ('c_library(name = "abi", srcs = ["src/abi.c"], headers = ["abi.h"])\n'
+            'c_test(name = "abi_frame_test", srcs = ["tests/abi_frame_test.c"], deps = [":abi"])\n'
+            'c_fuzz(name = "abi_fuzz", srcs = ["tests/abi_fuzz.c"], deps = [":abi"])\n')
+WASM = 'c_wasm(name = "staffbot_wasm", deps = [":abi"], exports = ["sb_abi_version", "sb_call", "__heap_base"])\n'
+
+
+class WasmCase(TempDirTestCase):
+    """#348: `c_wasm` (#341) is a gate macro: `name`, `deps`, `exports`, the int budgets and `visibility`, no sources."""
+
+    def check(self, files, code):
+        root = self.sub("product")
+        for rel, data in files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(data, encoding="utf-8")
+        self.assertExit(run_rigor(["buckfiles", "--root", root, "--out", self.tmp / "out.json"]), code)
+        return sorted((f["rule"], f.get("why")) for f in read_json(self.tmp / "out.json")["findings"])
+
+    def bad(self, call, why, rule="bad-argument"):
+        self.assertEqual(self.check({"BUCK": WASM_LOAD + WASM_LIB + call}, 1), [(rule, why)])
+
+    def test_a_library_and_its_wasm_module_pass(self):
+        self.assertEqual(self.check({"apps/staffbot/core/abi/BUCK": WASM_LOAD + WASM_LIB + WASM}, 0), [])
+
+    def test_the_load_alone_and_every_keyword_pass(self):
+        self.assertEqual(self.check({"BUCK": 'load("@gate//rules:c.bzl", "c_wasm")\n'}, 0), [])
+        self.setUp()
+        call = ('c_wasm(name = "m", deps = [":abi", "//lib/text:text"], exports = ["f"], stack_bytes = 4096, '
+                'memory_pages = 2, visibility = ["PUBLIC"])\n')
+        self.assertEqual(self.check({"BUCK": WASM_LOAD + WASM_LIB + call}, 0), [])
+
+    def test_a_wasm_module_has_no_sources_and_no_other_keyword(self):
+        for extra in ('srcs = ["a.c"]', 'headers = ["a.h"]', 'srcs = glob(["src/*.c"])', 'system_libs = ["m"]',
+                      'exported_deps = [":abi"]', 'compiler_flags = ["-w"]', 'linker_flags = ["-s"]', "**{}",
+                      'corpus = ["c"]', 'so = ":abi"'):
+            with self.subTest(extra=extra):
+                self.setUp()
+                self.bad('c_wasm(name = "m", deps = [":abi"], exports = ["f"], %s)\n' % extra, "keyword")
+
+    def test_a_bad_dep_label_is_refused_as_for_the_other_macros(self):
+        for label in ("root//a:b", "@x//a:b", "prelude//a:b", "//third_party/x:y", "gate//rt:require", "abi", "//a:b:c", ""):
+            with self.subTest(label=label):
+                self.setUp()
+                self.bad('c_wasm(name = "m", deps = ["%s"], exports = ["f"])\n' % label, "dep")
+
+    def test_deps_that_are_not_a_list_are_refused(self):
+        self.bad('c_wasm(name = "m", deps = ":abi", exports = ["f"])\n', "dep")
+        for value in ("DEPS", '[":abi"] + DEPS', 'glob(["src/*.c"])', "None", '{"a": ":abi"}'):
+            with self.subTest(value=value):
+                self.setUp()
+                self.bad('c_wasm(name = "m", deps = %s, exports = ["f"])\n' % value, "value")
+
+    def test_exports_are_a_list_of_strings_and_the_budgets_int_literals(self):
+        for extra in ('exports = "f"', "exports = EXPORTS", "exports = [1]", 'exports = ["f"] + X', 'stack_bytes = "65536"',
+                      "stack_bytes = True", "stack_bytes = 1.5", "stack_bytes = 64 * 1024", "stack_bytes = -16",
+                      "memory_pages = None", "memory_pages = [2]", "memory_pages = PAGES"):
+            with self.subTest(extra=extra):
+                self.setUp()
+                call = 'c_wasm(name = "m", deps = [":abi"], %s)\n' % extra
+                self.bad(call if extra.startswith("exports") else call.replace(")\n", ', exports = ["f"])\n'), "value")
+
+    def test_positional_is_refused(self):
+        self.bad('c_wasm("m", deps = [":abi"], exports = ["f"])\n', "positional")
+
+    def test_its_keywords_are_not_the_other_macros(self):
+        for call in ('c_library(name = "l", stack_bytes = 16)\n',
+                     'c_binary(name = "b", srcs = ["b.c"], memory_pages = 1)\n'):
+            with self.subTest(call=call):
+                self.setUp()
+                load = 'load("@gate//rules:c.bzl", "c_binary", "c_library")\n'
+                self.assertEqual(self.check({"BUCK": load + call}, 1), [("bad-argument", "keyword")])
+
+    def test_nothing_depends_on_a_wasm_module(self):
+        for dep in (":staffbot_wasm", "//apps/abi:staffbot_wasm"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                files = {"apps/abi/BUCK": WASM_LOAD + WASM_LIB + WASM,
+                         "apps/app/BUCK": WASM_LOAD + 'c_library(name = "l", srcs = ["l.c"])\n'}
+                files["apps/abi/BUCK" if dep.startswith(":") else "apps/app/BUCK"] += \
+                    'c_binary(name = "b", srcs = ["b.c"], deps = ["%s"])\n' % dep
+                files = {k: v.replace('"c_wasm")', '"c_wasm", "c_binary")') for k, v in files.items()}
+                self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
+        self.setUp()   # nor another wasm module
+        self.bad('c_wasm(name = "m", deps = [":staffbot_wasm"], exports = ["f"])\n' + WASM, "test-target")
+
+    def test_an_unknown_macro_is_still_refused(self):
+        for call in ('c_wasm32(name = "m", deps = [":abi"], exports = ["f"])\n',
+                     'wasm_module(name = "m", deps = [":abi"], exports = ["f"])\n',
+                     'native.c_wasm(name = "m", deps = [":abi"], exports = ["f"])\n'):
+            with self.subTest(call=call):
+                self.setUp()
+                self.bad(call, None, rule="bad-call")
+        for load in ('load("@gate//rules:c.bzl", "c_wasm32")\n', 'load("@gate//rules:wasm.bzl", "c_wasm")\n',
+                     'load("@gate//rules:wasm.bzl", "wasm_module")\n'):
+            with self.subTest(load=load):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": load}, 1), [("bad-load", None)])

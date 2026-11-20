@@ -21,7 +21,7 @@ from rigor_lib.runner import gate_handler
 GATE_ID = "buckfiles"
 
 LOAD_PATH = "@gate//rules:c.bzl"
-MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog", "c_embed")
+MACROS = ("c_library", "c_binary", "c_test", "c_fuzz", "c_catalog", "c_embed", "c_wasm")
 KEYWORDS = ("name", "srcs", "headers", "deps", "visibility")
 # Keywords of one macro only (T095): `system_libs` names sysroot libraries a library links; the macro checks the names.
 MACRO_KEYWORDS = {"c_library": ("system_libs", "exported_deps")}
@@ -34,6 +34,12 @@ CATALOG_KEYWORDS = ("name", "visibility", "deps", "pots", "po", "langs", "source
 # int literal (the only int a macro takes; no bool, no expression) and `nul` a True/False literal (the only bool), `visibility` the usual list.
 EMBED_MACRO = "c_embed"
 EMBED_KEYWORDS = ("name", "visibility", "src", "symbol", "max_bytes", "nul")
+# #348: `c_wasm` (#341) links its `deps` (c_library labels, checked like every dep) for wasm32 and exports `exports` (a list of
+# symbol names); `stack_bytes` and `memory_pages` are int literals (the macro checks their ranges). No `srcs`/`headers`: a
+# module has no sources of its own.
+WASM_MACRO = "c_wasm"
+WASM_KEYWORDS = ("name", "visibility", "deps", "exports", "stack_bytes", "memory_pages")
+WASM_INTS = ("stack_bytes", "memory_pages")
 BUILD_FILE = "BUCK"
 # Same-cell labels only: no cell prefix, so no raw rules of another cell and nothing from the prelude.
 # (The macros add `gate//ctest:ctest` themselves.) The one exception is an exact label of the
@@ -43,6 +49,8 @@ BUILD_FILE = "BUCK"
 DEP_LABEL = re.compile(r"(:[A-Za-z0-9_.+-]+|//[A-Za-z0-9_./+-]*:[A-Za-z0-9_.+-]+)")
 GATE_THIRD_PARTY = re.compile(r"//third_party[/:]")
 TEST_MACRO = "c_test"
+# Product outputs nothing may depend on (`tests` in statement_findings): a test, a wasm module (#348).
+OUTPUT_MACROS = (TEST_MACRO, WASM_MACRO)
 # Targets the `c_test` macro creates besides the test itself; none of them may be a dep of anything.
 TEST_DERIVED = ("", "_facts", "_facts_san", "_results", "_coverage")
 
@@ -149,6 +157,8 @@ def _known_keywords(macro):
         return CATALOG_KEYWORDS
     if macro == EMBED_MACRO:
         return EMBED_KEYWORDS
+    if macro == WASM_MACRO:
+        return WASM_KEYWORDS
     return KEYWORDS + MACRO_KEYWORDS.get(macro, ())
 
 
@@ -165,6 +175,10 @@ def _value_ok(macro, keyword):
         return _is_bool(node)
     if macro == EMBED_MACRO and arg in ("src", "symbol"):
         return _is_string(node)
+    if macro == WASM_MACRO and arg in WASM_INTS:
+        return _is_int(node)
+    if macro == WASM_MACRO and arg == "exports":
+        return _is_string_list(node)
     return _is_value(node) or (macro in GLOB_MACROS and arg in GLOB_KEYWORDS and _is_glob_value(node))
 
 
@@ -242,7 +256,7 @@ def statement_findings(path, tree, allowed, test_allowed, tests=None, calls=None
             found.extend(call_findings(path, node, allowed, test_allowed))
             if tests is not None and isinstance(node.value.func, ast.Name) and node.value.func.id in MACROS:
                 directory = os.path.dirname(path)
-                if node.value.func.id == TEST_MACRO:
+                if node.value.func.id in OUTPUT_MACROS:
                     tests.extend((directory, n) for n in _keyword_strings(node.value, "name"))
                 calls.extend((path, node.lineno, d) for d in _dep_strings(node.value)
                              if DEP_LABEL.fullmatch(d))
