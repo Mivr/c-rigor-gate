@@ -13,6 +13,7 @@ load("@gate//rules:ctest.bzl", "ctest_results", "fuzz_run")
 load("@gate//rules:facts.bzl", "c_facts", "c_san_facts")
 load("@gate//rules:mutate.bzl", "c_mutants_rule", "mutsrc")
 load("@gate//rules:perf.bzl", "PERF_WRAPS", "perf_results")
+load("@gate//rules:wasm.bzl", "wasm_module")
 
 _SEALED = [
     "-std=c17",
@@ -410,4 +411,59 @@ def c_mutants(name, module, tests, deps = [], perf = []):
         deps = deps,
         link_flags = _link_flags(),
         target_compatible_with = _RELEASE_ONLY,
+    )
+
+def _symbol_names(macro, attr, names):
+    if type(names) != "list" or len(names) == 0:
+        fail("{}: `{}` must be a non-empty list of C identifiers, got {!r}".format(macro, attr, names))
+    for symbol in names:
+        if type(symbol) != "string" or symbol == "" or symbol[0].isdigit() or any([c not in _EMBED_SYMBOL_CHARS for c in symbol.elems()]):
+            fail("{}: `{}` entries must be C identifiers ([A-Za-z_][A-Za-z0-9_]*), got {!r}".format(macro, attr, symbol))
+    if len(set(names)) != len(names):
+        fail("{}: `{}` has duplicates: {}".format(macro, attr, names))
+
+# A wasm32 page is 64 KiB; 65536 pages is the whole 4 GiB address space of wasm32.
+_WASM_PAGE = 65536
+_WASM_MAX_PAGES = 65536
+
+def _wasm_check(name, deps, stack_bytes, memory_pages):
+    if type(deps) != "list" or len(deps) == 0:
+        fail("c_wasm {}: `deps` must be a non-empty list of c_library labels, got {!r}".format(name, deps))
+    for label in deps:
+        if type(label) != "string":
+            fail("c_wasm {}: `deps` entries must be label strings, got {!r}".format(name, label))
+    if len(set(deps)) != len(deps):
+        fail("c_wasm {}: `deps` has duplicates: {}".format(name, deps))
+    if type(stack_bytes) != "int" or stack_bytes < 16 or stack_bytes % 16 != 0:
+        fail("c_wasm {}: `stack_bytes` must be a positive int and a multiple of 16, got {!r}".format(name, stack_bytes))
+    if type(memory_pages) != "int" or memory_pages < 1 or memory_pages > _WASM_MAX_PAGES:
+        fail("c_wasm {}: `memory_pages` must be an int from 1 to {}, got {!r}".format(name, _WASM_MAX_PAGES, memory_pages))
+    if stack_bytes >= memory_pages * _WASM_PAGE:
+        fail("c_wasm {}: `stack_bytes` ({}) must be less than the memory ({} pages of 64 KiB)".format(name, stack_bytes, memory_pages))
+
+def c_wasm(name, deps, exports, stack_bytes = 65536, memory_pages = 32, visibility = []):
+    """A freestanding WebAssembly module `<name>.wasm` (P008, docs/toolchain.md "WebAssembly (wasm32)").
+
+    `deps` are `c_library` targets; the macro configures them to `toolchains//:wasm32_release` itself (a transition),
+    so `buck2 build //pkg:<name>` needs no `--target-platforms` (and builds the same with
+    `--target-platforms toolchains//:wasm32_release`). Their transitive sources are compiled for wasm32 with the release
+    flags and warnings, `-ffreestanding -nostdlib`, no sysroot: only clang's builtin headers and the gate's <string.h>.
+    The gate's toolchains/wasm/rt/fsl.c (memcpy, memmove, memset, memcmp, strlen, strcmp, strncmp, strchr) is linked
+    in, then `lld -flavor wasm --no-entry --export=<each of exports> -z stack-size=<stack_bytes>
+    --initial-memory=<memory_pages * 64 KiB> --max-memory=<the same> --strip-debug`. An undefined symbol is a link error.
+    The module is an artifact, like a `c_binary`'s executable: it is not graded and has no facts of its own; the
+    module's `c_test` and `c_mutants` stay the evidence. Built in the release mode only.
+    """
+    _symbol_names("c_wasm", "exports", exports)
+    _wasm_check(name, deps, stack_bytes, memory_pages)
+    wasm_module(
+        name = name,
+        out = name + ".wasm",
+        deps = deps,
+        exports = exports,
+        stack_bytes = stack_bytes,
+        memory_bytes = memory_pages * _WASM_PAGE,
+        compile_flags = _compile_flags(),
+        target_compatible_with = _RELEASE_ONLY,
+        visibility = visibility,
     )

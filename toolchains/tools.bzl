@@ -144,3 +144,55 @@ libc_symbols = rule(
         "_nm": attrs.exec_dep(default = "toolchains//:llvm-nm", providers = [RunInfo]),
     },
 )
+
+# ---------------------------------------------------------------------------
+# WebAssembly (wasm32-unknown-unknown, freestanding; docs/toolchain.md "WebAssembly (wasm32)"). The pinned LLVM's own
+# clang (it has the WebAssembly backend) and its multi-call `lld` as `lld -flavor wasm`. No sysroot and no libc: the
+# include path is clang's builtin headers and the gate's `toolchains/wasm/include` (only <string.h>).
+# ---------------------------------------------------------------------------
+
+_WASM_TRIPLE = "wasm32-unknown-unknown"
+
+def _wasm_cc_impl(ctx: AnalysisContext) -> list[Provider]:
+    """clang as a freestanding wasm32 C compiler: -nostdinc, then exactly the two header directories."""
+    llvm = _tree(ctx.attrs.llvm)
+    clang_headers = llvm.project("lib/clang/{}/include".format(ctx.attrs.llvm_major))
+    gate_headers = cmd_args(ctx.attrs.string_h, parent = 1)
+    args = cmd_args(
+        llvm.project("bin/clang-" + ctx.attrs.llvm_major),
+        "--target=" + _WASM_TRIPLE,
+        "-nostdinc",
+        "-ffreestanding",
+        "-nostdlib",
+        "-fdebug-compilation-dir=.",
+        "-fcoverage-compilation-dir=.",
+        cmd_args(clang_headers, format = "-resource-dir={}", parent = 1),
+        "-isystem",
+        clang_headers,
+        "-isystem",
+        gate_headers,
+        hidden = [clang_headers, ctx.attrs.string_h],
+    )
+    return [DefaultInfo(), RunInfo(args = args)]
+
+wasm_cc = rule(
+    impl = _wasm_cc_impl,
+    attrs = {
+        "llvm": attrs.dep(),
+        "llvm_major": attrs.string(),
+        # The gate's freestanding <string.h>; its directory is the second (and last) -isystem directory.
+        "string_h": attrs.source(),
+    },
+)
+
+def _wasm_ld_impl(ctx: AnalysisContext) -> list[Provider]:
+    """The pinned multi-call lld as the WebAssembly linker (`lld -flavor wasm`, i.e. wasm-ld)."""
+    llvm = _tree(ctx.attrs.llvm)
+    return [DefaultInfo(), RunInfo(args = cmd_args(llvm.project("bin/lld"), "-flavor", "wasm"))]
+
+wasm_ld = rule(
+    impl = _wasm_ld_impl,
+    attrs = {
+        "llvm": attrs.dep(),
+    },
+)

@@ -79,6 +79,80 @@ the fuzzer finds a crash.
 -Wcast-qual -Wvla -Wframe-larger-than=512 -Wformat=2 -Wnull-dereference -Wimplicit-fallthrough` after the mode
 flags. The macros `c_library`, `c_binary`, `c_test`, `c_fuzz` have no flag parameters.
 
+## WebAssembly (wasm32)
+
+Why (P008, owner decision D18): the staff bot's operations are C17 static-memory modules that run inside a Cloudflare
+Worker as WebAssembly. The C decides; the Worker does every I/O. A product builds the `.wasm` from the very
+`c_library` modules it tests natively.
+
+**Toolchain.** No new download: the pinned LLVM 19.1.7 tree already holds `clang-19` (with its WebAssembly backend),
+the multi-call `bin/lld` and clang's builtin headers. `toolchains/BUCK` adds:
+
+- `toolchains//:wasm32_release`, a target platform with cpu `prelude//cpu/constraints:wasm32`, os
+  `prelude//os/constraints:none` and mode `release`;
+- `toolchains//:wasm_cc` (`wasm_cc` in `toolchains/tools.bzl`): `clang-19 --target=wasm32-unknown-unknown -nostdinc
+  -ffreestanding -nostdlib`, then exactly two include directories, `-isystem <clang's builtin headers>` and `-isystem
+  toolchains/wasm/include`. No sysroot;
+- `toolchains//:wasm_ld`: `lld -flavor wasm` (that is, wasm-ld), and the `cxx_wasm` C toolchain built from both (the
+  archiver is the same pinned `llvm-ar` as on Linux). `toolchains//:cxx` selects it on the wasm32 cpu, before the
+  android and Linux choices, which are unchanged.
+
+The mode is `release`, so a wasm32 object gets exactly the native release compile flags: `-O2`, the hardened release
+flags (`-ftrivial-auto-var-init=zero -fstrict-flex-arrays=3`) and the whole sealed warning set above, with `-Werror`.
+There are no sanitizer, coverage or fuzz flags and no wasm32 variant of those modes.
+
+**Freestanding headers, and why there is no libc.** A module that runs in a Worker has no file system, clock,
+environment, process or allocator of its own: the Worker passes everything in through linear memory and the exported
+functions. That is already the C rule of the products (pure core, injected ports, static memory), so a libc would only
+add code that must never be called. The include path is therefore clang's builtin headers (`stdint.h`, `stddef.h`,
+`stdbool.h`, `limits.h`, `float.h`, `stdarg.h`, `stdalign.h`, `stdnoreturn.h`, `iso646.h`, ...: types and macros,
+no functions) plus the gate's `toolchains/wasm/include/string.h`, which declares only `memcpy`, `memmove`, `memset`,
+`memcmp`, `strlen`, `strcmp`, `strncmp` and `strchr`. Any other libc or POSIX header (`stdio.h`, `stdlib.h`,
+`errno.h`, `unistd.h`, `inttypes.h`, ...) does not exist for wasm32 and fails the compile with clang's
+`fatal error: 'stdio.h' file not found`; they are deliberately not stubbed. The eight functions are implemented by
+`toolchains/wasm/rt/fsl.c` (plain byte loops, no allocation, no state), which `c_wasm` compiles with the same flags
+and links into every module. clang may also call `memcpy`, `memmove` and `memset` itself (struct copies,
+zero-initialisation); those calls land there too. Not supported here: WASI, threads, SIMD, exceptions.
+
+**`c_wasm(name, deps, exports, stack_bytes = 65536, memory_pages = 32)`** (`rules/c.bzl`, `rules/wasm.bzl`). `deps` are
+`c_library` targets. The macro configures them to `toolchains//:wasm32_release` itself (a configuration transition on
+the `deps` attribute), so the module is built by its label alone, under the default platform:
+
+    tools/buck2 build //examples/wasm:tally_wasm --show-output
+
+The same command with `--target-platforms toolchains//:wasm32_release` builds the identical module (the selftest
+compares the bytes). Never build a whole package (`//pkg/...`) for that platform: its `c_test` and the facts targets
+would be configured for wasm32 too. The transitive sources of `deps` are compiled and archived by the prelude with
+`cxx_wasm`; `c_wasm` then links the archives of the whole link closure and `fsl.c` with
+
+    lld -flavor wasm --no-entry --export=<each of exports> -z stack-size=<stack_bytes>
+        --initial-memory=<memory_pages * 65536> --max-memory=<the same> --strip-debug
+
+and the output is `<name>.wasm`. Memory is fixed (initial = maximum) and the module exports its `memory` plus exactly
+the listed functions. An undefined symbol (a call to anything that is neither in the deps nor in `fsl.c`) is a link
+error, as is an export that no dep defines. A dep that links a system library (`system_libs`) fails the analysis.
+The macro checks `exports` (non-empty C identifiers, no duplicates), `stack_bytes` (a positive multiple of 16, less than
+the memory) and `memory_pages` (1 to 65536). `c_wasm` is built in the release mode only (it is incompatible with san,
+cov, fuzz, msan, tsan and android).
+
+**Not graded.** A `c_wasm` target is an artifact, like a `c_binary`'s executable: it has no facts, adds no module kind
+to grade, and nothing about it enters a verdict. The module's native `c_test` (and `c_mutants`) stay the evidence;
+the wasm32 build only proves that the same sources compile freestanding, link without libc, and export what the
+Worker calls.
+
+**Checking a module's exports.** `gate/rigor_lib/wasm_exports.py` (stdlib only) reads the export section (id 7) of a
+`.wasm` file and prints the exported function names, one per line; `--expect NAME` (repeated) exits 1 unless they are
+exactly those names; a malformed file exits 2:
+
+    python3 -I -B gate/rigor_lib/wasm_exports.py <file>.wasm --expect tally_char
+
+**Example.** `examples/wasm`: the freestanding module `tally` (`tally_char`, counts a byte in a string with `strchr`),
+its native `c_test` `tally_test`, and `c_wasm(name = "tally_wasm", deps = [":tally"], exports = ["tally_char"])`.
+`selftest/toolchain.sh` runs the native test, builds `tally_wasm.wasm` in both forms, checks its exports and the
+documented compile and link flags (aquery), and demands that `stdio.h`, `stdlib.h`, `errno.h` and `unistd.h` are not
+found, that an undefined symbol and a missing export fail the link, and that a dep with `system_libs` is refused.
+Unit tests of the reader: `gate/tests/test_wasm_exports.py`.
+
 ## Known limits (deviations)
 
 - clang has no `-Wstack-usage`; `-Wframe-larger-than=512` is used instead.
