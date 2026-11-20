@@ -18,7 +18,7 @@ modules = ["//lib/ds/**"]
 modules = ["//lib/rt/**"]
 
 [layer."lib-fmt"]
-modules = ["//lib/fmt/fp:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httphdr:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*",
+modules = ["//lib/fmt/csv:*", "//lib/fmt/fp:*", "//lib/fmt/httpchunk:*", "//lib/fmt/httpdef:*", "//lib/fmt/httphdr:*", "//lib/fmt/httpredir:*", "//lib/fmt/httpreq:*",
            "//lib/fmt/httpresp:*", "//lib/fmt/i18n:*", "//lib/fmt/jdom:*", "//lib/fmt/jkidx:*", "//lib/fmt/jlex:*", "//lib/fmt/jnum:*", "//lib/fmt/jpnum:*", "//lib/fmt/jpull:*",
            "//lib/fmt/jstr:*", "//lib/fmt/jtok:*", "//lib/fmt/jutf8:*", "//lib/fmt/jw:*", "//lib/fmt/kv:*", "//lib/fmt/lines:*",
            "//lib/fmt/mbrtu:*", "//lib/fmt/money:*", "//lib/fmt/pct:*", "//lib/fmt/tzeu:*", "//lib/fmt/url:*"]
@@ -1064,4 +1064,16 @@ kind = "pure"
 [[edge]]
 from = "//lib/fmt/tzeu:tzeu"
 to = "lib-base"
+kind = "pure"
+
+# lib-fmt/csv (staffbot T0.5): its header includes core's buf.h and the writer calls core_buf_put and friends. csv_fuzz is a
+# leaf over csv only (c_fuzz is not exempt from layering like c_test, G23).
+[[edge]]
+from = "//lib/fmt/csv:csv"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//lib/fmt/csv:csv_fuzz"
+to = "//lib/fmt/csv:csv"
 kind = "pure"
