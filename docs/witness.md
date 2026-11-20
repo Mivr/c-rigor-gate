@@ -254,3 +254,10 @@ never forwards a test-author verdict to an implementer.
 **Bootstrap.** For modules that already exist, `witness.py from-commit` at main builds a bundle from their
 impl paths. Such a witness equals the head, so it adds no G1 strength for them, but it makes every later
 strengthening task gradeable and costs nothing through the identical-tree reuse.
+
+## The oracle bundle (T2G7)
+The hidden half of the oracle replay (`docs/oracle.md`) is a bundle in the same family: `oracle.toml` + `files/`, no symlinks or
+special files, exact keys, a sha256 of every file, every defect exit 2, `rigor grade --oracle DIR` copies it once and binds
+`inputs.oracle_sha256` with the scheme of `witness_sha256` (`oracle_bundle.digest`). Differences: it holds Rust traces, not
+implementation files, so it has no module table and no overlay; the same custody rules apply (the orchestrator, the gate process,
+never an implementer; a work directory that holds a copy lives under a `*-hidden` path).

@@ -26,6 +26,17 @@ class BuckFilesCase(TempDirTestCase):
     def test_green_build_file(self):
         self.assertEqual(self.check({"core/BUCK": GOOD, "BUCK": GOOD, "core/a.c": "int x;"}, 0), [])
 
+    def test_threads_is_a_boolean_literal_of_c_test_only(self):
+        loads = 'load("@gate//rules:c.bzl", "c_library", "c_test")\n'
+        for value in ("True", "False"):
+            self.assertEqual(self.check({"BUCK": loads + 'c_test(name = "t", srcs = ["t.c"], threads = %s)\n' % value}, 0), [])
+        for value in ('"yes"', "1", "None", "flag", "not False", "[True]"):
+            with self.subTest(value=value):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": loads + 'c_test(name = "t", threads = %s)\n' % value}, 1), ["bad-argument"])
+        self.setUp()
+        self.assertEqual(self.check({"BUCK": loads + 'c_library(name = "l", threads = True)\n'}, 1), ["bad-argument"])
+
     def test_green_empty_and_comment_only(self):
         self.assertEqual(self.check({"BUCK": "# nothing here\n"}, 0), [])
 
@@ -112,6 +123,24 @@ class BuckFilesCase(TempDirTestCase):
         text = self.lib(srcs='glob(["src/*.c"])', headers='["a.h"] + glob(["src/*.h"])')
         self.assertEqual(product_layout.named_files([("BUCK", text)], {"src/a.c", "a.h", "x"}), {"a.h"})
 
+    def test_fuzz_corpus_and_runs(self):
+        """T135: `corpus` (string literals) and `runs` (an int literal) on a `c_fuzz`, and nowhere else."""
+        head = LOADS + 'c_fuzz(name = "f", srcs = ["f_fuzz.c"], '
+        self.assertEqual(self.check({"BUCK": head + 'corpus = ["corpus/a", "corpus/b"], runs = 5000)\n'}, 0), [])
+        for tail in ('corpus = glob(["src/*.c"]))', 'corpus = ["a"] + ["b"])', 'corpus = [1])', 'corpus = None)',
+                     'corpus = select({"DEFAULT": []}))', 'runs = "5")', 'runs = 5.0)',
+                     'runs = True)', 'runs = -5)', 'runs = 2 * 5)', 'runs = [5])', 'runs = N)', 'runs = None)',
+                     'corpus = ["a"], seeds = ["a"])'):
+            with self.subTest(tail=tail):
+                self.setUp()
+                self.red(head + tail + "\n", "bad-argument")
+        for macro in ("c_library", "c_binary", "c_test"):
+            for tail in ('corpus = ["a"]', "runs = 5"):
+                with self.subTest(macro=macro, tail=tail):
+                    self.setUp()
+                    self.red('load("@gate//rules:c.bzl", "%s")\n%s(name = "x", %s)\n' % (macro, macro, tail),
+                             "bad-argument")
+
     def test_concatenation_value(self):
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"] + ["b.c"])\n', "bad-argument")
 
@@ -174,6 +203,14 @@ class BuckFilesCase(TempDirTestCase):
     def test_system_libs_must_be_literal_strings(self):
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = LIBS)\n', "bad-argument")
         self.red(LOAD + 'c_library(name = "a", srcs = ["a.c"], system_libs = [LIB])\n', "bad-argument")
+
+    def test_c_android_so_takes_exports_and_system_libs(self):
+        load = 'load("@gate//rules:c.bzl", "c_android_so")\n'
+        ok = load + 'c_android_so(name = "a", srcs = ["a.c"], deps = [":b"], exports = ["f"], system_libs = ["android", "log"])\n'
+        self.assertEqual(self.check({"BUCK": ok}, 0), [])
+        self.red(load + 'c_android_so(name = "a", srcs = ["a.c"], exports = f)\n', "bad-argument")
+        self.red(load + 'c_android_so(name = "a", srcs = ["a.c"], exports = ["f"], linker_flags = ["-s"])\n', "bad-argument")
+        self.red('load("@gate//rules:c.bzl", "c_library")\nc_library(name = "a", srcs = ["a.c"], exports = ["f"])\n', "bad-argument")
 
     def test_exported_deps_on_a_library(self):
         self.assertEqual(self.check({"BUCK": LOAD + 'c_library(name = "a", srcs = ["a.c"], exported_deps = [":c", "//p:d"])\n'}, 0), [])
@@ -375,13 +412,82 @@ class TestOnlyLabelCase(TempDirTestCase):
                                  [("bad-argument", "dep")])
 
     def test_a_library_may_not_depend_on_a_test_or_on_what_a_test_derives(self):
-        for dep in (":t", ":t_facts", ":t_results", ":t_coverage", "//pkg/p:t", "//other/pkg/p:t_results", "//pkg/p:t_facts"):
+        for dep in (":t", ":t_facts", ":t_facts_san", ":t_facts_msan", ":t_facts_tsan", ":t_results", ":t_coverage", "//pkg/p:t", "//other/pkg/p:t_results", "//pkg/p:t_facts"):
             with self.subTest(dep=dep):
                 self.setUp()
                 files = {"p/BUCK": LOADS + 'c_test(name = "t", deps = ["%s"])\n' % PEER,
                          "q/BUCK": LOADS + 'c_library(name = "l", srcs = ["l.c"], deps = [])\n'}
                 files["p/BUCK" if dep.startswith(":") else "q/BUCK"] += \
                     'c_binary(name = "b", srcs = ["b.c"], deps = ["%s"])\n' % dep
+                self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
+
+    def test_nothing_depends_on_a_shared_object_or_on_what_it_derives(self):
+        """T-G2: `<name>__lib` is the unchecked link, `<name>__map` its script; only `<name>` is an output."""
+        for dep in (":so", ":so_facts", ":so__lib", ":so__map"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                load = 'load("@gate//rules:c.bzl", "c_android_so", "c_library")\n'
+                files = {"BUCK": load + 'c_android_so(name = "so", srcs = ["a.c"], exports = ["f"])\n'
+                                        'c_library(name = "l", srcs = ["l.c"], deps = ["%s"])\n' % dep}
+                self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
+
+    def test_c_apk_takes_the_manifest_declaration_and_one_shared_object_of_its_package(self):
+        """T-G3: keywords are the declaration only; `so` is a `:name` of a c_android_so of the same BUCK file."""
+        load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk")\n'
+        so = 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'
+        apk = ('c_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, '
+               'version_name = "0.1.0", orientation = "landscape", permissions = ["INTERNET"], assets = ["a.txt"])\n')
+        self.assertEqual(self.check({"BUCK": load + so + apk}, 0), [])
+        self.assertEqual(self.check({"BUCK": load + apk + so}, 0), [])      # declaration order does not matter
+        for extra in ('signing = "release"', 'keystore = "k.jks"', 'key = "/k"', 'deps = [":club"]', 'srcs = ["a.c"]',
+                      'min_sdk = 28', 'target_sdk = 35', 'has_code = True', 'manifest = "m.xml"', 'compiler_flags = ["-O3"]',
+                      'version_code = VERSION', 'permissions = PERMS', 'label = LABEL'):
+            with self.subTest(extra=extra):
+                self.setUp()
+                self.assertEqual({r for r, _ in self.check({"BUCK": load + so + apk[:-2] + ", " + extra + ")\n"}, 1)}, {"bad-argument"})
+
+    def test_c_apk_java_and_resource_declarations_are_literal_data_only(self):
+        """T-G3b: java_srcs, res_xml, receivers (literal dicts) and the activity words; never a variable, a call or a raw manifest."""
+        load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk")\n'
+        so = 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'
+        head = 'c_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, version_name = "0.1.0", %s)\n'
+        good = ('java_srcs = ["A.java"], java_classes = ["org.example.club.A"], java_packages = ["org.example.club", "org.example.owner"], res_xml = ["d.xml"], application_class = "org.example.club.A", '
+                'receivers = [{"name": "org.example.club.A", "permission": "BIND_DEVICE_ADMIN", "exported": True, "actions": ["BOOT_COMPLETED"], '
+                '"meta_data": {"android.app.device_admin": "d"}}], launch_mode = "singleTask", lock_task_mode = "if_whitelisted", '
+                'exclude_from_recents = True, soft_input_mode = "stateHidden", categories = ["HOME", "DEFAULT"]')
+        self.assertEqual(self.check({"BUCK": load + so + head % good}, 0), [])
+        for bad in ('java_srcs = JAVA', 'java_srcs = glob(["*.java"])', 'receivers = RECEIVERS', 'receivers = [RECEIVER]',
+                    'receivers = [{"name": NAME}]', 'receivers = [{NAME: "x"}]', 'receivers = [{"name": "a", "x": 1}]',
+                    'receivers = [{"name": "a", "meta_data": {"k": ["v"]}}]', 'receivers = [{**R}]', 'receivers = {"name": "a"}',
+                    'exclude_from_recents = "true"', 'launch_mode = LAUNCH', 'categories = CATS', 'application_class = 5',
+                    'java_packages = PKGS', 'java_packages = glob(["*"])', 'java_flags = ["-nowarn"]', 'processors = ["p.P"]', 'raw_manifest = "<receiver/>"', 'manifest_xml = "<a/>"',
+                    'javac_flags = []', 'dex_flags = []'):
+            with self.subTest(bad=bad):
+                self.setUp()
+                self.assertEqual({r for r, _ in self.check({"BUCK": load + so + head % bad}, 1)}, {"bad-argument"})
+
+    def test_c_apk_so_must_be_a_local_c_android_so_and_not_a_private_target(self):
+        load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk", "c_library")\n'
+        so = 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'
+        head = 'c_apk(name = "app", so = "%s", package = "org.example.club", label = "Club", version_code = 1, version_name = "0.1.0")\n'
+        for label in (":club__lib", ":club__map", "//p:club", "@gate//x:y", ":missing", "club", ""):
+            with self.subTest(so=label):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": load + so + head % label}, 1)[0][0], "bad-argument")
+        self.setUp()   # a c_library, or a c_android_so of another package, is not a shared object of this one
+        self.assertEqual(self.check({"BUCK": load + 'c_library(name = "club", srcs = ["a.c"])\n' + head % ":club"}, 1),
+                         [("bad-argument", "so")])
+        self.setUp()
+        self.assertEqual(self.check({"BUCK": load + head % ":club", "q/BUCK": load + so}, 1), [("bad-argument", "so")])
+
+    def test_nothing_depends_on_an_apk_or_on_its_check(self):
+        load = 'load("@gate//rules:c.bzl", "c_android_so", "c_apk", "c_library")\n'
+        for dep in (":app", ":app_check", ":app__lib"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                files = {"BUCK": load + 'c_android_so(name = "club", srcs = ["a.c"], exports = ["ANativeActivity_onCreate"])\n'
+                                 'c_apk(name = "app", so = ":club", package = "org.example.club", label = "Club", version_code = 1, version_name = "0.1.0")\n'
+                                 'c_library(name = "l", srcs = ["l.c"], deps = ["%s"])\n' % dep}
                 self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
 
     def test_similar_names_elsewhere_are_not_refused(self):
@@ -516,3 +622,103 @@ class CatalogCase(TempDirTestCase):
 
     def test_named_catalog_files_are_not_a_finding_here(self):
         self.assertEqual(self.check(CAT_LOAD + CAT, 0, files={"a.pot": "", "a.bg.po": ""}), [])
+
+
+WASM_LOAD = 'load("@gate//rules:c.bzl", "c_fuzz", "c_library", "c_test", "c_wasm")\n'
+# The shape of a product module built for wasm32 (#348: business-apps apps/staffbot/core/abi/BUCK of #342).
+WASM_LIB = ('c_library(name = "abi", srcs = ["src/abi.c"], headers = ["abi.h"])\n'
+            'c_test(name = "abi_frame_test", srcs = ["tests/abi_frame_test.c"], deps = [":abi"])\n'
+            'c_fuzz(name = "abi_fuzz", srcs = ["tests/abi_fuzz.c"], deps = [":abi"], corpus = ["corpus/valid_abi"])\n')
+WASM = 'c_wasm(name = "staffbot_wasm", deps = [":abi"], exports = ["sb_abi_version", "sb_call", "__heap_base"])\n'
+
+
+class WasmCase(TempDirTestCase):
+    """#348: `c_wasm` (#341) is a gate macro: `name`, `deps`, `exports`, the int budgets and `visibility`, no sources."""
+
+    def check(self, files, code):
+        root = self.sub("product")
+        for rel, data in files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(data, encoding="utf-8")
+        self.assertExit(run_rigor(["buckfiles", "--root", root, "--out", self.tmp / "out.json"]), code)
+        return sorted((f["rule"], f.get("why")) for f in read_json(self.tmp / "out.json")["findings"])
+
+    def bad(self, call, why, rule="bad-argument"):
+        self.assertEqual(self.check({"BUCK": WASM_LOAD + WASM_LIB + call}, 1), [(rule, why)])
+
+    def test_a_library_and_its_wasm_module_pass(self):
+        self.assertEqual(self.check({"apps/staffbot/core/abi/BUCK": WASM_LOAD + WASM_LIB + WASM}, 0), [])
+
+    def test_the_load_alone_and_every_keyword_pass(self):
+        self.assertEqual(self.check({"BUCK": 'load("@gate//rules:c.bzl", "c_wasm")\n'}, 0), [])
+        self.setUp()
+        call = ('c_wasm(name = "m", deps = [":abi", "//lib/text:text"], exports = ["f"], stack_bytes = 4096, '
+                'memory_pages = 2, visibility = ["PUBLIC"])\n')
+        self.assertEqual(self.check({"BUCK": WASM_LOAD + WASM_LIB + call}, 0), [])
+
+    def test_a_wasm_module_has_no_sources_and_no_other_keyword(self):
+        for extra in ('srcs = ["a.c"]', 'headers = ["a.h"]', 'srcs = glob(["src/*.c"])', 'system_libs = ["m"]',
+                      'exported_deps = [":abi"]', 'compiler_flags = ["-w"]', 'linker_flags = ["-s"]', "**{}",
+                      'corpus = ["c"]', 'so = ":abi"'):
+            with self.subTest(extra=extra):
+                self.setUp()
+                self.bad('c_wasm(name = "m", deps = [":abi"], exports = ["f"], %s)\n' % extra, "keyword")
+
+    def test_a_bad_dep_label_is_refused_as_for_the_other_macros(self):
+        for label in ("root//a:b", "@x//a:b", "prelude//a:b", "//third_party/x:y", "gate//rt:require", "abi", "//a:b:c", ""):
+            with self.subTest(label=label):
+                self.setUp()
+                self.bad('c_wasm(name = "m", deps = ["%s"], exports = ["f"])\n' % label, "dep")
+
+    def test_deps_that_are_not_a_list_are_refused(self):
+        self.bad('c_wasm(name = "m", deps = ":abi", exports = ["f"])\n', "dep")
+        for value in ("DEPS", '[":abi"] + DEPS', 'glob(["src/*.c"])', "None", '{"a": ":abi"}'):
+            with self.subTest(value=value):
+                self.setUp()
+                self.bad('c_wasm(name = "m", deps = %s, exports = ["f"])\n' % value, "value")
+
+    def test_exports_are_a_list_of_strings_and_the_budgets_int_literals(self):
+        for extra in ('exports = "f"', "exports = EXPORTS", "exports = [1]", 'exports = ["f"] + X', 'stack_bytes = "65536"',
+                      "stack_bytes = True", "stack_bytes = 1.5", "stack_bytes = 64 * 1024", "stack_bytes = -16",
+                      "memory_pages = None", "memory_pages = [2]", "memory_pages = PAGES"):
+            with self.subTest(extra=extra):
+                self.setUp()
+                call = 'c_wasm(name = "m", deps = [":abi"], %s)\n' % extra
+                self.bad(call if extra.startswith("exports") else call.replace(")\n", ', exports = ["f"])\n'), "value")
+
+    def test_positional_is_refused(self):
+        self.bad('c_wasm("m", deps = [":abi"], exports = ["f"])\n', "positional")
+
+    def test_its_keywords_are_not_the_other_macros(self):
+        for call in ('c_library(name = "l", stack_bytes = 16)\n', 'c_android_so(name = "s", exports = ["f"], memory_pages = 1)\n',
+                     'c_binary(name = "b", srcs = ["b.c"], memory_pages = 1)\n'):
+            with self.subTest(call=call):
+                self.setUp()
+                load = 'load("@gate//rules:c.bzl", "c_android_so", "c_binary", "c_library")\n'
+                self.assertEqual(self.check({"BUCK": load + call}, 1), [("bad-argument", "keyword")])
+
+    def test_nothing_depends_on_a_wasm_module(self):
+        for dep in (":staffbot_wasm", "//apps/abi:staffbot_wasm"):
+            with self.subTest(dep=dep):
+                self.setUp()
+                files = {"apps/abi/BUCK": WASM_LOAD + WASM_LIB + WASM,
+                         "apps/app/BUCK": WASM_LOAD + 'c_library(name = "l", srcs = ["l.c"])\n'}
+                files["apps/abi/BUCK" if dep.startswith(":") else "apps/app/BUCK"] += \
+                    'c_binary(name = "b", srcs = ["b.c"], deps = ["%s"])\n' % dep
+                files = {k: v.replace('"c_wasm")', '"c_wasm", "c_binary")') for k, v in files.items()}
+                self.assertEqual(self.check(files, 1), [("bad-argument", "test-target")])
+        self.setUp()   # nor another wasm module
+        self.bad('c_wasm(name = "m", deps = [":staffbot_wasm"], exports = ["f"])\n' + WASM, "test-target")
+
+    def test_an_unknown_macro_is_still_refused(self):
+        for call in ('c_wasm32(name = "m", deps = [":abi"], exports = ["f"])\n',
+                     'wasm_module(name = "m", deps = [":abi"], exports = ["f"])\n',
+                     'native.c_wasm(name = "m", deps = [":abi"], exports = ["f"])\n'):
+            with self.subTest(call=call):
+                self.setUp()
+                self.bad(call, None, rule="bad-call")
+        for load in ('load("@gate//rules:c.bzl", "c_wasm32")\n', 'load("@gate//rules:wasm.bzl", "c_wasm")\n',
+                     'load("@gate//rules:wasm.bzl", "wasm_module")\n'):
+            with self.subTest(load=load):
+                self.setUp()
+                self.assertEqual(self.check({"BUCK": load}, 1), [("bad-load", None)])

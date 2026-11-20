@@ -1,0 +1,34 @@
+load("@gate//rules:c.bzl", "c_library")
+load("@gate//rules:structure.bzl", "c_structure")
+
+# One module per case (T127). The facts of every module are built by `selftest/profiles.sh`.
+#   rd      calls read(2): the floor is `adapter` (F-adapter)
+#   calc    nothing special: `pure`
+#   hdr     exports (const uint8_t *, size_t): `parser` (F-parser)
+#   task    pthread_create / pthread_join: `concurrent` (F-concurrent)
+#   flag    __atomic_load_n: `concurrent` (F-concurrent, a builtin)
+#   state   writable static data: `wiring` (F-wiring)
+#   base    a leaf that top depends on (the level floor)
+#   top     depends on base through a `pure` edge
+#   shape   a leaf that user depends on through a `data` edge (exempt from the level floor)
+#   user    depends on shape through a `data` edge
+[
+    (
+        c_library(name = n, srcs = [n + ".c"], headers = [n + ".h"], deps = [":" + d for d in deps],
+                  system_libs = libs),
+        c_structure(name = n + "_s", module = ":" + n, srcs = [n + ".c"], headers = [n + ".h"],
+                    deps = [":" + d for d in deps]),
+    )
+    for n, deps, libs in [
+        ("rd", [], []),
+        ("calc", [], []),
+        ("hdr", [], []),
+        ("task", [], ["pthread"]),
+        ("flag", [], []),
+        ("state", [], []),
+        ("base", [], []),
+        ("top", ["base"], []),
+        ("shape", [], []),
+        ("user", ["shape"], []),
+    ]
+]

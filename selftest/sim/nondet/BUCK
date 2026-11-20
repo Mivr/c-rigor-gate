@@ -1,0 +1,9 @@
+load("@gate//rules:c.bzl", "c_sim")
+
+c_sim(
+    name = "sim",
+    srcs = ["world.c"],
+    deps = ["//selftest/scratch_sim/toy:toy"],
+    seeds = 20,
+    run_ms = 20000,
+)

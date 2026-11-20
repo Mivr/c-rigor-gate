@@ -1,0 +1,8 @@
+load("@gate//rules:c.bzl", "c_sim")
+
+c_sim(
+    name = "sim",
+    srcs = ["world.c"],
+    seeds = 20,
+    run_ms = 20000,
+)

@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #include "ctest.h"
 #include "sanlog.h"
+#include "traps.h"
 
 #include <errno.h>
 #include <ftw.h>
@@ -108,6 +109,15 @@ void ctest_check(ctest_t *t, int ok, const char *file, int line, const char *exp
     count(t);
     if (!ok) {
         (void)snprintf(d, sizeof d, "CHECK(%s)", expr);
+        note_fail(t, file, line, d);
+    }
+}
+
+void ctest_check_traps(ctest_t *t, int ok, const char *file, int line, const char *expr, const char *why) {
+    char d[240];
+    count(t);
+    if (!ok) {
+        (void)snprintf(d, sizeof d, "CHECK_TRAPS(%.60s): %s", expr, why);
         note_fail(t, file, line, d);
     }
 }
@@ -715,6 +725,7 @@ int ctest_run(int argc, char **argv, const char *suite, const ctest_case_t *case
         return 2;
     }
     g_san_log = o.san_log;
+    ctest_traps_set_san_log(o.san_log);
     g_san_report = o.san_report;
     shuffle(n, o.seed);
     rc = run_all(suite, cases, n, &passed);

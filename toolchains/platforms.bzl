@@ -20,15 +20,34 @@ def _exec_platform_impl(ctx: AnalysisContext) -> list[Provider]:
     constraints.update(ctx.attrs.cpu_configuration[ConfigurationInfo].constraints)
     constraints.update(ctx.attrs.os_configuration[ConfigurationInfo].constraints)
     cfg = ConfigurationInfo(constraints = constraints, values = {})
-    platform = ExecutionPlatformInfo(
-        label = ctx.label.raw_target(),
-        configuration = cfg,
+    # Read here, not in toolchains/BUCK: that file's sha256 is a verdict input
+    # (gate/rigor_lib/verdict_inputs.py), and this switch must not move verdict keys.
+    if read_root_config("rbe", "cache_only", "false") == "true":
+        # Cache-only mode (.buckconfig.cache-only): hosts with a remote cache but no
+        # Execution service (Claude cloud sessions). Every action runs locally, is
+        # looked up in the remote Action Cache first, and its result is uploaded. Same
+        # label, configuration and RE properties as the farm executor: buck2 puts the
+        # properties into the action digest for every executor kind, so lookups find
+        # what the farm built.
+        executor_config = CommandExecutorConfig(
+            local_enabled = True,
+            remote_enabled = False,
+            remote_cache_enabled = True,
+            allow_cache_uploads = True,
+            remote_execution_properties = re_properties(ctx.attrs.worker_image),
+            remote_execution_use_case = "buck2-default",
+        )
+    else:
         executor_config = CommandExecutorConfig(
             local_enabled = False,
             remote_enabled = True,
             remote_execution_properties = re_properties(ctx.attrs.worker_image),
             remote_execution_use_case = "buck2-default",
-        ),
+        )
+    platform = ExecutionPlatformInfo(
+        label = ctx.label.raw_target(),
+        configuration = cfg,
+        executor_config = executor_config,
     )
     return [
         DefaultInfo(),

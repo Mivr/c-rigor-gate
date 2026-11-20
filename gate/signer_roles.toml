@@ -1,0 +1,7 @@
+# Which approval kinds each signer principal may sign (P003 section 10; docs/trust.md).
+# The principal is the name in `allowed_signers` as `ssh-keygen -Y find-principals` reports it.
+# A principal that is in allowed_signers but not listed here may sign nothing.
+# Gate-owned: only the owner changes this file; loosening any gate starts here.
+# T132: `orchestrator` keeps exactly the kinds that exist today, so nothing changes yet.
+[principal.orchestrator]
+kinds = ["suppression", "test-removal", "ratchet", "equivalent-mutant", "witness-equivalent-mutant"]

@@ -1,0 +1,9 @@
+{
+  "bypass": "a product that must be simulated and has no c_sim target",
+  "description": "T2G2: the policy says `[sim] required = true` (target //simw:sim) and the product has no c_sim. Only the sim gate fails, with sim-missing-target; a product cannot opt out of the simulation by not writing the target.",
+  "fail": {
+    "sim": [
+      "sim-missing-target"
+    ]
+  }
+}
