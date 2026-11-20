@@ -5271,3 +5271,27 @@ exports = ["main"]
 allow = []
 allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
+
+[module."//lib/fmt/tzeu:tzeu"]
+level = "L3"
+profile = ["pure"]
+impl = ["lib/fmt/tzeu/src/**"]
+allow = []
+exports = ["tzeu_add_days", "tzeu_date_valid", "tzeu_days_between", "tzeu_fmt_date", "tzeu_from_local", "tzeu_is_dst",
+    "tzeu_offset_min", "tzeu_parse_date", "tzeu_to_local", "tzeu_weekday"]
+
+[module."//lib/fmt/tzeu:tzeu_dst_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//lib/fmt/tzeu:tzeu_local_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/fmt/tzeu:tzeu_date_test"]
+allow = []
+exports = ["main"]
+
+[module."//lib/fmt/tzeu:tzeu_text_test"]
+allow = ["bcmp", "memcmp", "memset", "strcmp"]
+exports = ["main"]
