@@ -4,7 +4,8 @@
 [layers]
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
-         "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root"]
+         "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
+         "resv-dom"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -34,6 +35,7 @@ modules = ["//lib/io/posix_fs:testkit",
            "//lib/ui/lvrender:testkit",
            "//lib/ui/lvhost:testkit",
            "//lib/ui/uikit:testkit",
+           "//apps/resv/dom/tables:testkit",
            "//apps/lockers/lk/auditplan:testkit",
            "//apps/lockers/lk/book:testkit",
            "//apps/lockers/lk/booktext:testkit",
@@ -161,6 +163,11 @@ modules = []
 
 [layer."fiscal-root"]
 modules = []
+
+# The reservations app (app resv, business-control P008/S1): domain layer. apps/resv/dom/tables is freestanding (no deps at
+# all), so no edge leaves the layer; a module that later needs lib-base declares its own edge.
+[layer."resv-dom"]
+modules = ["//apps/resv/dom/**"]
 
 # Library edges. The most permissive matching edge wins, so the layer edges below are the whole story for their kinds.
 [[edge]]
