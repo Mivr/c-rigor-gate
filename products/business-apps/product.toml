@@ -3,6 +3,8 @@ name = "business-apps"
 [layout]
 # Every module directory of the monorepo (one entry per module directory on main; apps/lockers/** modules are listed one directory each; T104). Coverage (B14) makes a missing one a
 # finding (ungraded-path), and an entry that matches nothing a finding (stale-include).
+# services/staff-bot/worker/package.json is listed by name: the gate counts package.json as a build file, so it must be
+# covered by an include (an exclude on it is excluded-code); the rest of services/staff-bot (TS, py, sql, md) is not code.
 include = ["apps/fiscal/dtc/ports/**",
            "apps/fiscal/dtc/types/**",
            "apps/lockers/itest/boot/**",
@@ -106,6 +108,7 @@ include = ["apps/fiscal/dtc/ports/**",
            "lib/fmt/kv/**",
            "lib/fmt/lines/**",
            "lib/fmt/mbrtu/**",
+           "lib/fmt/money/**",
            "lib/fmt/pct/**",
            "lib/fmt/url/**",
            "lib/io/cabundle/**",
@@ -144,6 +147,7 @@ include = ["apps/fiscal/dtc/ports/**",
            "lib/ui/lvrender/**",
            "lib/ui/scene/**",
            "lib/ui/scenediff/**",
-           "lib/ui/uikit/**"]
+           "lib/ui/uikit/**",
+           "services/staff-bot/worker/package.json"]
 # Non-code only (docs, plans, live fixtures): an exclude that covers a BUCK or C file is a finding.
 exclude = []
