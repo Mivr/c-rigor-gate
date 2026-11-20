@@ -787,5 +787,31 @@ class Judging(TempDirTestCase):
         self.assertEqual(used, {"equivalent-mutant": ["x"]})
 
 
+class FuzzBinaryLayout(unittest.TestCase):
+    """The libFuzzer binary behind a `c_fuzz` (`<name>__bin`) is the fuzz target's, not a module: no level, no mutants."""
+
+    def layout_of(self, fuzz_binary):
+        answers = {
+            "kind(ctest_results": {},
+            "kind('^(cxx_library": {"root//a:a": {}, "root//a:a_mutsrc": {}, "root//a:f__bin": {}},
+            "kind(cxx_binary": "root//a:f__bin\n",
+            "kind(fuzz_run": {"root//a:f": {"binary": fuzz_binary}},
+        }
+
+        def run_buck(tree, args):
+            for key, value in answers.items():
+                if args[1].startswith(key):
+                    return 0, value if isinstance(value, str) else json.dumps(value), ""
+            return 0, "{}", ""
+        with mock.patch.object(grade_build, "run_buck", side_effect=run_buck):
+            return grade_mutants.read_layout(SimpleNamespace(tree="t"))
+
+    def test_the_binary_behind_a_fuzz_target_is_not_a_binary_module(self):
+        self.assertEqual(self.layout_of("root//a:f__bin").binaries, frozenset())
+
+    def test_a_binary_the_fuzz_target_does_not_name_stays(self):
+        self.assertEqual(self.layout_of("root//a:other__bin").binaries, frozenset({"//a:f__bin"}))
+
+
 if __name__ == "__main__":
     unittest.main()
