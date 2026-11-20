@@ -1,0 +1,7 @@
+{
+  "control": true,
+  "description": "T135: the fixed parser and a c_fuzz target whose corpus lists a seed and the input `fuzz-regressions.json` names (it once crashed the buggy parser): the fuzz gate passes and its result shows both files replayed",
+  "contains": {
+    "fuzz": "\"corpus_files\":2,\"phase\":\"budget\",\"replayed\":2"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "bypass": "data race seen only in tsan",
+  "description": "T138: two threads write one counter without a lock in a test declared threads = True: release, san and msan pass, ThreadSanitizer fails it.",
+  "fail": {
+    "tests-tsan": [
+      "no-assertions",
+      "test-not-pass"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+diff --git a/core/core.c b/core/core.c
+--- a/core/core.c
++++ b/core/core.c
+@@ -1,6 +1,6 @@
+ #include "core.h"
+ 
+-int core_add(int a, int b) { return a + b; }
++int core_add(int a, int b) { return a + b + 1; }
+ 
+ int core_sign(int value) {
+     if (value < 0) {

@@ -39,6 +39,12 @@ void ctest_check_str(ctest_t *t, const char *a, const char *b, const char *file,
 void ctest_check_mem(ctest_t *t, const void *a, size_t alen, const void *b, size_t blen,
                      const char *file, int line, const char *ea, const char *eb);
 
+/* CHECK_TRAPS support (docs/ctest.md): `ctest_trap_begin` forks. In the child it returns 1: the macro then evaluates
+ * the expression and calls `ctest_trap_returned`. In the parent it waits for the child, counts one check and
+ * returns 0. The check passes only if the child died by SIGILL, the signal of __builtin_trap(). */
+int ctest_trap_begin(ctest_t *t, const char *file, int line, const char *expr);
+_Noreturn void ctest_trap_returned(void);
+
 int ctest_run(int argc, char **argv, const char *suite, const ctest_case_t *cases, size_t n);
 
 /* Each check counts as one assertion; a failed check is recorded and the test continues. */
@@ -50,6 +56,17 @@ int ctest_run(int argc, char **argv, const char *suite, const ctest_case_t *case
 #define CHECK_EQ_STR(t, a, b) ctest_check_str((t), (a), (b), __FILE__, __LINE__, #a, #b)
 #define CHECK_EQ_MEM(t, a, alen, b, blen) \
     ctest_check_mem((t), (a), (alen), (b), (blen), __FILE__, __LINE__, #a, #b)
+
+/* The expression runs in a child process and must die by the trap of rigor_require (rt/require.h): it fails when
+ * the expression returns, when the child exits, or when it dies any other way. One check. A trap outside this
+ * macro kills the test as before. */
+#define CHECK_TRAPS(t, expression)                                              \
+    do {                                                                        \
+        if (ctest_trap_begin((t), __FILE__, __LINE__, #expression) != 0) {      \
+            (void)(expression);                                                 \
+            ctest_trap_returned();                                              \
+        }                                                                       \
+    } while (0)
 
 #define CTEST_SUITE(suite_name, ...)                                                        \
     int main(int argc, char **argv) {                                                       \

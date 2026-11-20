@@ -1,0 +1,9 @@
+{
+  "bypass": "a parser with an out-of-bounds read that the fixed fuzz budget reaches",
+  "description": "parse_run reads buf[data[4] % 8] from a 4-byte buffer behind the magic 'PA'; the fixed seed and budget of the c_fuzz run reach it, so the run does not pass. Only the fuzz gate sees it: no test exercises the parser.",
+  "fail": {
+    "fuzz": [
+      "fuzz-crash"
+    ]
+  }
+}

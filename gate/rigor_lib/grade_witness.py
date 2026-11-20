@@ -27,7 +27,7 @@ from argparse import Namespace
 from dataclasses import dataclass
 
 from rigor_lib import approval_args, approvals, contract, gitrun, grade_build, grade_context, grade_mutants
-from rigor_lib import globs, grade_policy, grade_steps, jsonio, tests_gate, witness_bundle, witness_scope
+from rigor_lib import globs, grade_policy, grade_steps, grade_tier, jsonio, tests_gate, witness_bundle, witness_scope
 from rigor_lib import mutants_gate as rigor_mutants
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, finding
@@ -271,9 +271,10 @@ def _mutants(g, state):
     if not state.judged:
         return GateResult(MUTANTS_ID, found, {"modules": {}, "approvals_used": []})
     chosen = grade_mutants.plan(state.layout, state.levels)
-    modules = [m for m in chosen.modules if m.label in state.judged]
+    modules, deferred = grade_tier.split(g, [m for m in chosen.modules if m.label in state.judged])
+    found.extend(grade_tier.findings(deferred))
     found.extend(_renamed(item) for item in chosen.findings if item.get("module") in state.judged)
-    metadata = {"scope": state.judged, "modules": {}, "approvals_used": []}
+    metadata = dict(grade_tier.metadata(g, deferred), scope=state.judged, modules={}, approvals_used=[])
     if not modules:
         return GateResult(MUTANTS_ID, found, metadata)
     reused = _head_mutants(g, [m.label for m in modules]) if state.equals_head else None

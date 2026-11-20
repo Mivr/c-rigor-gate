@@ -1,0 +1,9 @@
+{
+  "bypass": "msan-only code",
+  "description": "Code under __has_feature(memory_sanitizer) behind a product macro: the msan tests compile it, the release scan never sees it (T138).",
+  "fail": {
+    "mode-divergence": [
+      "mode-divergent-code"
+    ]
+  }
+}

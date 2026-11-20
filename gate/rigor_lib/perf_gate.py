@@ -7,7 +7,7 @@ The step writes the package `gate-perf/` (`perf_package`) into the grading tree,
 release platform (cached like any build; `--uncached` applies), reads each `perf.jsonl` and removes the package again.
 Findings:
 
-    perf-class-exceeded       a counter at n2 is above what the class allows (target, class, both counts, ratio)
+    perf-class-exceeded       a counter at n2 is above what the class allows (target, class, counter, n1, n2; the counts and the ratio are metadata)
     perf-counter-unavailable  the counter could not be read on the worker: no verdict without counts, so an error
     perf-record-bad           a record whose status is not ok (gen-overflow, run-error, crash, timeout), or too few
     perf-build-failed         the target did not build
@@ -29,14 +29,22 @@ _TAIL_CHARS = 4000
 
 
 def judge_target(label, module, cost_class, records):
-    """The findings of one target, from its parsed records."""
+    """The findings of one target, from its parsed records. A finding names what is wrong, never the counts: they can
+    differ by a few instructions from one worker to the next, so they go to the metadata (`evidence`)."""
     first, last, why = perf_judge.usable(records)
     where = {"module": module, "target": label, "class": cost_class}
     if why == "record":
         return [finding("perf-record-bad", status=perf_judge.status_of(records), records=len(records), **where)]
     if why == "unavailable":
         return [finding("perf-counter-unavailable", counter=first.get("counter"), errno=first.get("errno"), **where)]
-    return [finding("perf-class-exceeded", **dict(where, **item)) for item in perf_judge.exceeded(cost_class, records)]
+    return [finding("perf-class-exceeded", **dict(where, counter=item["counter"], n1=item["n1"], n2=item["n2"]))
+            for item in perf_judge.exceeded(cost_class, records)]
+
+
+def evidence(cost_class, records):
+    """[{counter, n1, n2, count1, count2, ratio, limit}] of a target that left its class (metadata only)."""
+    _, _, why = perf_judge.usable(records)
+    return perf_judge.exceeded(cost_class, records) if why is None else []
 
 
 def _summary(records):
@@ -87,6 +95,7 @@ def _run(g, targets):
             found.append(finding("perf-build-failed", module=module, target=label, **{"class": cost_class}))
             continue
         records = perf_judge.parse_records(label, jsonio.read_bytes(path))
-        metadata["targets"][label] = {"class": cost_class, "records": _summary(records)}
+        metadata["targets"][label] = {"class": cost_class, "records": _summary(records),
+                                      "exceeded": evidence(cost_class, records), "cpu": records[0].get("cpu")}
         found.extend(judge_target(label, module, cost_class, records))
     return GateResult(GATE_ID, found, metadata)

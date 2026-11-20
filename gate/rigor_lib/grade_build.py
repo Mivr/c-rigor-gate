@@ -137,6 +137,11 @@ def output_path(tree, label, entry):
     return path if os.path.isfile(path) else None
 
 
+def result_file_name(index, label):
+    """The name `collect_mode` gives the results file of the `index`-th label."""
+    return "%03d-%s.jsonl" % (index, re.sub(r"[^A-Za-z0-9_.-]", "_", label))
+
+
 def collect_mode(tree, mode, labels, report_path, out_dir):
     """Findings for one mode; copies each target's results file into `out_dir`."""
     results = read_report(report_path)
@@ -151,7 +156,7 @@ def collect_mode(tree, mode, labels, report_path, out_dir):
         if source is None:
             found.append(finding("missing-output", mode=mode, target=label))
             continue
-        name = "%03d-%s.jsonl" % (index, re.sub(r"[^A-Za-z0-9_.-]", "_", label))
+        name = result_file_name(index, label)
         with open(os.path.join(out_dir, name), "xb") as handle:
             handle.write(jsonio.read_bytes(source))
     return found

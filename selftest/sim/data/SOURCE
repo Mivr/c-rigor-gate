@@ -1,0 +1,10 @@
+Two recordings of the fixed conformance script (club-apps tools/conformance), copied byte for byte and read-only.
+
+source: Mivr/club-apps, tools/conformance/fixtures at commit 0b21f09 (task T152)
+copied: 2026-11-14 by the orchestrator, into this repository by lane W40 (T2G3)
+files:  real-board-2026-10-07.json   a run against the real board (77 exchanges)
+        sim-docker-2026-10-07.json   the same script against the club-apps Docker simulator (87 exchanges)
+pinned: SHA256SUMS in this directory (sha256sum -c SHA256SUMS); gate/tests/test_sim_wire_fixtures.py checks it
+check:  neither file contains an IPv4 literal (the `host` field is the word "real-board" or "sim"); the converter
+        tools/sim/fixture_to_fr.py refuses any output that matches one, and never copies `host` or `port`.
+use:    positive control of the wire invariants I3 to I6b (docs/sim.md, "Wire invariants")

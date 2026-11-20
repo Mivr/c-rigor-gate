@@ -12,7 +12,7 @@ reserved prefixes (`mbedtls_`, `psa_`, `srv_`, `tls_peer_`), so no product can d
 A library that only tests may use (`ALLOWED_TEST_LABELS`) must not be reached by anything but a `c_test`.
 """
 
-from rigor_lib import facts_third_party, ram_budget
+from rigor_lib import facts_rt, facts_third_party, ram_budget
 from rigor_lib.facts_data import WRITABLE
 from rigor_lib.facts_policy import Module
 from rigor_lib.findings import SEVERITY_ERROR, SEVERITY_INFO, GateResult, finding
@@ -39,6 +39,8 @@ def exports_of(facts):
 def dep_exports(facts, facts_by_label, libs, module, found):
     exports = {}   # symbol -> the first dep (in label order) that defines it
     for dep in sorted(facts.deps):
+        if facts_rt.is_require(dep):
+            continue    # gate//rt:require (T128): exports nothing and needs no facts or policy entry
         if dep in libs:
             if facts_third_party.canonical(dep) in module.third_party:
                 owner = libs[dep]
@@ -147,17 +149,24 @@ def mutable_data_findings(facts, module):
     return found
 
 
-def run(facts_by_label, policy, libc, third=None):
+ANDROID_KINDS = ("c_android_so",)
+
+
+def run(facts_by_label, policy, libc, third=None, libc_android=None):
+    """`libc_android`: the NDK export list, reserved for the facts of the Android kinds instead of `libc` (T-G2).
+    Without one, an Android kind is judged against `libc` (which still reserves glibc names)."""
     third = facts_third_party.load() if third is None else third
     facts_third_party.check_policy(policy, third)
     products, libs, found = facts_third_party.split(facts_by_label, third)
     found.extend(policy_coverage_findings(products, policy))
     found.extend(facts_third_party.test_only_findings(products, third))
-    reserved = set(libc)
+    reserved = set()
     for label in policy.trusted & set(products):
         reserved |= exports_of(products[label])
     for lib in libs.values():
         reserved |= exports_of(lib)
+    reserved_android = reserved | set(libc if libc_android is None else libc_android)
+    reserved |= set(libc)
     prefixes = tuple(third.prefixes)
     units = 0
     for label in sorted(products):
@@ -169,7 +178,8 @@ def run(facts_by_label, policy, libc, third=None):
         own = exports_of(facts)
         for unit in facts.units:
             units += 1
-            found.extend(unit_findings(facts, unit, module, policy, allowed, own, reserved, prefixes))
+            found.extend(unit_findings(facts, unit, module, policy, allowed, own,
+                                       reserved_android if facts.kind in ANDROID_KINDS else reserved, prefixes))
         found.extend(unused_allow_findings(facts, module, allowed, own))
         found.extend(export_findings(facts, module))
         found.extend(system_lib_findings(facts, module))

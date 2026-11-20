@@ -10,6 +10,9 @@
     ]
   },
   "not_run": [
+    "fuzz",
+    "sim",
+    "oracle",
     "mutants",
     "witness-tests",
     "mutants-witness"

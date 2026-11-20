@@ -1,0 +1,8 @@
+load("@gate//rules:c.bzl", "c_library")
+
+c_library(
+    name = "other",
+    srcs = ["other.c"],
+    headers = ["other.h"],
+    visibility = ["PUBLIC"],
+)

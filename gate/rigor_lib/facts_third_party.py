@@ -19,6 +19,7 @@ import os
 import re
 from dataclasses import dataclass
 
+from rigor_lib import facts_rt
 from rigor_lib.errors import InternalError
 from rigor_lib.findings import finding
 
@@ -95,6 +96,8 @@ def split(facts_by_label, third):
     products, trusted, found = {}, {}, []
     for label in sorted(facts_by_label):
         facts = facts_by_label[label]
+        if facts_rt.is_require(label):
+            continue    # gate//rt:require (T128): gate code, not judged and not a module of the product
         if facts.kind != KIND:
             products[label] = facts
         elif canonical(label) in third.trusted:
