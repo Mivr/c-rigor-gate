@@ -88,13 +88,20 @@ Worker as WebAssembly. The C decides; the Worker does every I/O. A product build
 **Toolchain.** No new download: the pinned LLVM 19.1.7 tree already holds `clang-19` (with its WebAssembly backend),
 the multi-call `bin/lld` and clang's builtin headers. `toolchains/BUCK` adds:
 
-- `toolchains//:wasm32_release`, a target platform with cpu `prelude//cpu/constraints:wasm32`, os
-  `prelude//os/constraints:none` and mode `release`;
+- `toolchains//:wasm32_release`, a target platform with cpu `toolchains//:wasm32`, os `prelude//os/constraints:none`
+  and mode `release`. The cpu is a gate-owned constraint (setting `toolchains//:wasm_cpu`, which no other platform
+  sets): the pinned bundled prelude has no `prelude//cpu/constraints:wasm32` (its `prelude//cpu:wasm32` is a
+  `config_setting`, not a constraint value), and a select key the gate owns cannot drift with the prelude. The first
+  version named the missing prelude label, which broke the analysis of every target, native ones included, because
+  `toolchains//:cxx` selects on it. `gate/tests/test_toolchain_labels.py` now guards this without Buck2: every
+  `prelude//cpu|os/constraints:*` label in `toolchains/` and `rules/` must be one the pinned prelude has, and every
+  `toolchains//:` label (and every `":name"` select key or platform attribute in `toolchains/BUCK`) must be a target
+  that `toolchains/BUCK` defines;
 - `toolchains//:wasm_cc` (`wasm_cc` in `toolchains/tools.bzl`): `clang-19 --target=wasm32-unknown-unknown -nostdinc
   -ffreestanding -nostdlib`, then exactly two include directories, `-isystem <clang's builtin headers>` and `-isystem
   toolchains/wasm/include`. No sysroot;
 - `toolchains//:wasm_ld`: `lld -flavor wasm` (that is, wasm-ld), and the `cxx_wasm` C toolchain built from both (the
-  archiver is the same pinned `llvm-ar` as on Linux). `toolchains//:cxx` selects it on the wasm32 cpu, before the
+  archiver is the same pinned `llvm-ar` as on Linux). `toolchains//:cxx` selects it on `toolchains//:wasm32`, before the
   android and Linux choices, which are unchanged.
 
 The mode is `release`, so a wasm32 object gets exactly the native release compile flags: `-O2`, the hardened release
