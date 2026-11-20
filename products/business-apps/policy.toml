@@ -5348,3 +5348,26 @@ exports = ["main"]
 [module."//lib/fmt/hmac:hex_test"]
 allow = ["memcpy", "memset"]
 exports = ["main"]
+
+[module."//apps/resv/dom/tables:tables"]
+level = "L3"
+impl = ["apps/resv/dom/tables/src/**"]
+allow = ["bcmp", "memcmp"]
+exports = ["tbl_check_wanted", "tbl_count", "tbl_find", "tbl_pick", "tbl_row"]
+
+[module."//apps/resv/dom/tables:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/resv/dom/tables:tables_rows_test"]
+allow = ["memset", "snprintf", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/dom/tables:tables_pick_test"]
+allow = ["strcmp", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/dom/tables:tables_wanted_test"]
+allow = ["strlen"]
+exports = ["main"]
