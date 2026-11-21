@@ -6081,7 +6081,7 @@ allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/resv/ops/rules/repr:rrul_repr_test"]
-allow = ["bcmp", "memcmp", "memcpy", "memset", "snprintf"]
+allow = ["bcmp", "memchr", "memcmp", "memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//apps/resv/ops/rules/space:rrul_space_test"]
