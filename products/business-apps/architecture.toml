@@ -1259,3 +1259,17 @@ kind = "pure"
 from = "//apps/resv/fmt/out:rout"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
+
+# fiscal journal/zrep (P009 T1.1b): :zrep calls money_parse (money exported: zrep.h uses money_t) and json_utf8_seq_len
+# (jutf8); :zrep -> //apps/fiscal/journal/receipt:rcline (rcl_amount, rcl_footer) and :zrep_fuzz -> :zrep are inside
+# fiscal-domain.
+[[edge]]
+from = "//apps/fiscal/journal/zrep:zrep"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/journal/zrep:zrep"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+

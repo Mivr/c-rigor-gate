@@ -5715,3 +5715,32 @@ exports = ["main"]
 [module."//apps/resv/fmt/out:rout_edge_test"]
 allow = ["bcmp", "memcmp", "memcpy", "memset", "strchr", "strlen", "strncmp", "strstr"]
 exports = ["main"]
+
+# apps/fiscal/journal/zrep (P009 T1.1b). Symbols from clang -O0/-O2/-O1 san objects (memcmp is bcmp at -O2). The two
+# sources share the internal zrep_* functions through src/zrep_int.h.
+[module."//apps/fiscal/journal/zrep:zrep"]
+level = "L3"
+impl = ["apps/fiscal/journal/zrep/src/**"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["zrep_find_amounts", "zrep_find_last", "zrep_find_z", "zrep_parse", "zrep_ws"]
+
+[module."//apps/fiscal/journal/zrep:zrep_class_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/zrep:zrep_last_test"]
+allow = ["memcpy", "strcat", "strcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/zrep:zrep_amount_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/zrep:zrep_errors_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/zrep:zrep_fuzz"]
+allow = []
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
