@@ -5394,3 +5394,77 @@ exports = ["main"]
 allow = ["bcmp", "core_buf_init", "core_buf_len", "core_buf_overflow", "memcmp"]
 allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
+
+# apps/viva/tx (P009 T4.1). Symbols from clang -O2 objects (x86-64 Linux target) and the san/O0 builds; the wasm32 build of
+# the libraries calls memcpy/memset/memcmp only. The tests list no core_*/vtx* symbol: each test lists core (or the library
+# it calls) in its own deps.
+[module."//apps/viva/tx:vtx"]
+level = "L3"
+impl = ["apps/viva/tx/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["vtx_begin", "vtx_error", "vtx_feed", "vtx_night_text", "vtx_tips_text"]
+
+[module."//apps/viva/tx/when:vtxwhen"]
+level = "L3"
+impl = ["apps/viva/tx/when/src/**"]
+allow = []
+exports = ["vtxw_night", "vtxw_parse"]
+
+[module."//apps/viva/tx/count:vtxcount"]
+level = "L3"
+impl = ["apps/viva/tx/count/src/**"]
+allow = ["bcmp", "memcmp", "memcpy", "memset"]
+exports = ["vtxc_add", "vtxc_init", "vtxc_nights"]
+
+[module."//apps/viva/tx/text:vtxtext"]
+level = "L3"
+impl = ["apps/viva/tx/text/src/**"]
+allow = ["bcmp", "memcmp"]
+exports = ["vtxt_night", "vtxt_tips"]
+
+[module."//apps/viva/tx:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/viva/tx:vtx_begin_test"]
+allow = ["snprintf"]
+exports = ["main"]
+
+[module."//apps/viva/tx:vtx_json_test"]
+allow = ["snprintf", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/viva/tx:vtx_when_test"]
+allow = ["memcpy", "snprintf", "strchr", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/viva/tx:vtx_count_test"]
+allow = ["memcpy", "snprintf", "strchr", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/viva/tx:vtx_dedupe_test"]
+allow = ["memcpy", "snprintf", "strchr", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/viva/tx:vtx_text_test"]
+allow = ["memcpy", "snprintf", "strchr", "strcmp", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/viva/tx/when:vtxwhen_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/viva/tx/count:vtxcount_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/viva/tx/text:vtxtext_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/viva/tx:vtx_fuzz"]
+allow = []
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+

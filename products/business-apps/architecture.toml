@@ -5,7 +5,7 @@
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
          "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
-         "resv-dom", "staffbot-core"]
+         "resv-dom", "staffbot-core", "viva-tx"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -37,6 +37,7 @@ modules = ["//lib/io/posix_fs:testkit",
            "//lib/ui/lvhost:testkit",
            "//lib/ui/uikit:testkit",
            "//apps/resv/dom/tables:testkit",
+           "//apps/viva/tx:testkit",
            "//apps/lockers/lk/auditplan:testkit",
            "//apps/lockers/lk/book:testkit",
            "//apps/lockers/lk/booktext:testkit",
@@ -176,6 +177,14 @@ modules = ["//apps/resv/dom/**"]
 # no layer and no policy table.
 [layer."staffbot-core"]
 modules = ["//apps/staffbot/core/**"]
+
+# The Viva card-payments app (app viva, business-control P009 T4.1): the per-night transaction walk. One layer, `tx`, for
+# the four packages of apps/viva/tx (the walk and its three splits when/count/text, split for the mutant budget). Edges:
+# inside the layer, down to lib-base (core, and //lib/fmt/fmt which sits in lib-base) and, as module edges, to the three
+# lib-fmt modules it uses (jpull, money, tzeu); no edge to any other app. The c_test targets are exempt; the c_fuzz target
+# is covered by the layer edges (it calls :vtx and core).
+[layer."viva-tx"]
+modules = ["//apps/viva/tx/**"]
 
 # Library edges. The most permissive matching edge wins, so the layer edges below are the whole story for their kinds.
 [[edge]]
@@ -1096,4 +1105,45 @@ kind = "pure"
 [[edge]]
 from = "//lib/fmt/csv:csv_fuzz"
 to = "//lib/fmt/csv:csv"
+kind = "pure"
+
+# viva/tx (P009 T4.1): the layer edges, then the module edges to lib-fmt (every exported_deps entry is a dep of its own library).
+[[edge]]
+from = "viva-tx"
+to = "viva-tx"
+kind = "pure"
+
+[[edge]]
+from = "viva-tx"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//apps/viva/tx:vtx"
+to = "//lib/fmt/jpull:jpull"
+kind = "pure"
+
+[[edge]]
+from = "//apps/viva/tx:vtx"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/viva/tx:vtx"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/viva/tx/text:vtxtext"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/viva/tx/text:vtxtext"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/viva/tx/when:vtxwhen"
+to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
