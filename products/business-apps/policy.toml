@@ -5975,7 +5975,7 @@ allow = ["memset"]
 exports = ["main"]
 
 [module."//apps/resv/ops/rules/time:rrul_ts_test"]
-allow = ["memcpy", "strlen"]
+allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
 
 [module."//apps/resv/ops/rules/update:rrul_update_test"]
