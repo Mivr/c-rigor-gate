@@ -5524,3 +5524,8 @@ exports = ["main"]
 allow = ["bcmp", "memcmp", "memset"]
 allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
+
+# ldg_edge_test (353 fix round 1): symbols from clang -O2/-O0/san objects (memcmp is bcmp at -O2).
+[module."//apps/books/ledger:ldg_edge_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
