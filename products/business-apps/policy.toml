@@ -5974,3 +5974,138 @@ exports = ["main"]
 [module."//apps/fiscal/night/views/line/text:vwltext_text_test"]
 allow = ["memcpy", "memset"]
 exports = ["main"]
+
+
+# apps/resv/ops/rules (P008 S5a). Symbols from clang -O0/-O2/-O1 san objects; memcmp is bcmp at -O2.
+[module."//apps/resv/ops/rules:rules"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/resv/ops/rules/time:time"]
+level = "L3"
+impl = ["apps/resv/ops/rules/time/src/**"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["rrul_event_matches", "rrul_fmt_since", "rrul_has_ended", "rrul_ts_parse", "rrul_ts_sofia_date"]
+
+[module."//apps/resv/ops/rules/space:space"]
+level = "L3"
+impl = ["apps/resv/ops/rules/space/src/**"]
+allow = []
+exports = ["rrul_space_at", "rrul_space_at_end", "rrul_strip"]
+
+[module."//apps/resv/ops/rules/fold:fold"]
+level = "L3"
+impl = ["apps/resv/ops/rules/fold/src/**"]
+allow = []
+exports = ["rrul_fold_next", "rrul_fold_start", "rrul_translit"]
+
+[module."//apps/resv/ops/rules/name:name"]
+level = "L3"
+impl = ["apps/resv/ops/rules/name/src/**"]
+allow = ["bcmp", "memcmp", "memcpy", "memset"]
+exports = ["rrul_add_manual", "rrul_bare", "rrul_dupes", "rrul_has_manual_suffix", "rrul_is_manual", "rrul_manual_tail",
+    "rrul_pick_email", "rrul_slug"]
+
+[module."//apps/resv/ops/rules/repr:repr"]
+level = "L3"
+impl = ["apps/resv/ops/rules/repr/src/**"]
+allow = []
+exports = ["rrul_repr"]
+
+[module."//apps/resv/ops/rules/text:text"]
+level = "L3"
+impl = ["apps/resv/ops/rules/text/src/**"]
+allow = []
+exports = ["rrul_ev_label", "rrul_fmt_row", "rrul_fmt_table", "rrul_label_row", "rrul_line_note_reinstate",
+    "rrul_line_note_update", "rrul_line_warn_seats", "rrul_line_warn_unknown", "rrul_msg_bad_time",
+    "rrul_msg_cancel_already", "rrul_msg_dupes", "rrul_msg_ended", "rrul_msg_match_count", "rrul_msg_name_limit",
+    "rrul_msg_need_event", "rrul_msg_reinstate_active", "rrul_msg_reinstate_clash", "rrul_msg_reinstate_no_row",
+    "rrul_msg_table_full", "rrul_msg_table_taken", "rrul_msg_update_cancelled", "rrul_msg_update_email",
+    "rrul_msg_update_no_row", "rrul_msg_update_nothing", "rrul_put_i64"]
+
+[module."//apps/resv/ops/rules/pick:pick"]
+level = "L3"
+impl = ["apps/resv/ops/rules/pick/src/**"]
+allow = []
+exports = ["rrul_booking_ok", "rrul_check_open", "rrul_io_ok", "rrul_nstr_eq", "rrul_pick_table", "rrul_table_fits",
+    "rrul_table_held", "rrul_token18", "rrul_uuid4"]
+
+[module."//apps/resv/ops/rules/update:update"]
+level = "L3"
+impl = ["apps/resv/ops/rules/update/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["rrul_update_begin", "rrul_update_finish"]
+
+[module."//apps/resv/ops/rules/decide:decide"]
+level = "L3"
+impl = ["apps/resv/ops/rules/decide/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["rrul_decide_book", "rrul_decide_cancel", "rrul_decide_reinstate"]
+
+[module."//apps/resv/ops/rules/pick:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/resv/ops/rules/decide:rrul_book_test"]
+allow = ["bcmp", "memcmp", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/decide:rrul_reinstate_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/decide:rrul_table_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/fold:rrul_fold_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/name:rrul_bare_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/name:rrul_dupes_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/name:rrul_manual_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/pick:rrul_pick_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/repr:rrul_repr_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "snprintf"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/space:rrul_space_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/text:rrul_text_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/time:rrul_ts_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/update:rrul_update_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/rules/name:rrul_name_fuzz"]
+allow = ["memset", "strlen"]
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+
+[module."//apps/resv/ops/rules/time:rrul_ts_fuzz"]
+allow = []
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
