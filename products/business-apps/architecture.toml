@@ -1079,6 +1079,7 @@ kind = "pure"
 [[edge]]
 from = "//lib/fmt/money:money_fuzz"
 to = "//lib/fmt/money:money"
+kind = "pure"
 
 [[edge]]
 from = "//apps/staffbot/core/abi:abi_fuzz"
