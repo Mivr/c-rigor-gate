@@ -5529,3 +5529,82 @@ exports = ["LLVMFuzzerTestOneInput"]
 [module."//apps/books/ledger:ldg_edge_test"]
 allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
 exports = ["main"]
+
+# apps/resv/dom/args (P008 S2). Symbols from clang -O2/-O1/-O0 objects (x86-64 Linux target); memcmp is bcmp natively and
+# stays memcmp at -O0 and in the wasm32 build. The three sources share the internal rargs_* functions through src/internal.h.
+[module."//apps/resv/dom/args:rargs"]
+level = "L3"
+impl = ["apps/resv/dom/args/src/**"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["rargs_ap", "rargs_cp", "rargs_cp_count", "rargs_fold_len", "rargs_has", "rargs_head", "rargs_int",
+    "rargs_list_item", "rargs_negnum", "rargs_op_find", "rargs_ops", "rargs_opt_prefix", "rargs_parse", "rargs_repr",
+    "rargs_required", "rargs_space", "rargs_trim", "rargs_utf8_ok"]
+
+[module."//apps/resv/dom/args:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/resv/dom/args:rargs_input_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_read_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_write_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_book_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_fuzz"]
+allow = ["memcpy"]
+exports = ["LLVMFuzzerTestOneInput"]
+
+# resv/dom/args tests added in 352 fix 2 (symbols from clang -O2/-O0 objects; all as the first four tests).
+
+[module."//apps/resv/dom/args:rargs_utf8_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_space_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_repr_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_fold_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_int_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_opts_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_opts2_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_rules_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+# resv/dom/args tests added in 352 fix 3 (same symbols as the other rargs tests).
+
+[module."//apps/resv/dom/args:rargs_edge_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_ops_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
