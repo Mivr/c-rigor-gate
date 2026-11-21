@@ -5800,7 +5800,7 @@ exports = ["zp_night_validated", "zp_run", "zp_z_pure"]
 [module."//apps/fiscal/night/zperiod/night:zpnight"]
 level = "L3"
 impl = ["apps/fiscal/night/zperiod/night/src/**"]
-allow = ["memcpy", "memmove", "memset", "money_add", "money_sub", "tzeu_add_days", "tzeu_date_valid"]
+allow = ["memcpy", "memmove", "memset"]
 exports = ["zp_madd", "zp_night_date", "zp_nights_add", "zp_sale_from_rcpt", "zp_sale_total", "zp_stamp_cmp",
     "zp_z_from_zrep"]
 
