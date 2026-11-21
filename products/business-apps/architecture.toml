@@ -5,7 +5,7 @@
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
          "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
-         "resv-dom", "resv-fmt", "staffbot-core", "viva-tx", "books-ledger",
+         "resv-dom", "resv-fmt", "resv-ops", "staffbot-core", "viva-tx", "books-ledger",
          "staffbot-ops", "staffbot-root"]
 
 [layer."lib-base"]
@@ -38,6 +38,7 @@ modules = ["//lib/io/posix_fs:testkit",
            "//lib/ui/lvhost:testkit",
            "//lib/ui/uikit:testkit",
            "//apps/staffbot/ops/viva:testkit",
+           "//apps/resv/ops/rules/pick:testkit",
            "//apps/resv/fmt/out:testkit",
            "//apps/resv/dom/args:testkit",
            "//apps/resv/dom/tables:testkit",
@@ -184,6 +185,13 @@ modules = ["//apps/resv/dom/**"]
 # lib-base) and, as a module edge, to lib-fmt tzeu (UTC -> Europe/Sofia). The c_test targets are exempt.
 [layer."resv-fmt"]
 modules = ["//apps/resv/fmt/**"]
+
+# The reservations app's decision layer (P008 S5a): apps/resv/ops/rules (nine packages split for the mutant budget: time,
+# space, fold, name, repr, text, pick, update, decide, plus the header-only top `rules`). Above resv-fmt (rout's row
+# types and folding) and resv-dom (args, tables), down to lib-base (core, fmt) and, as a module edge, to lib-fmt tzeu
+# (time). Pure: every decision is a function of typed rows.
+[layer."resv-ops"]
+modules = ["//apps/resv/ops/**"]
 
 # The staff bot (app staffbot, business-control P008): its core is C compiled natively for the tests and to wasm32 for the
 # Worker. A layer of its own, above the others and with no edge to any of them: the core ABI module uses nothing but the
@@ -1429,3 +1437,29 @@ kind = "pure"
 from = "//apps/fiscal/night/views/shift/types:vwstypes"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
+# resv/ops/rules (P008 S5a).
+[[edge]]
+from = "resv-ops"
+to = "resv-ops"
+kind = "pure"
+
+[[edge]]
+from = "resv-ops"
+to = "resv-fmt"
+kind = "pure"
+
+[[edge]]
+from = "resv-ops"
+to = "resv-dom"
+kind = "pure"
+
+[[edge]]
+from = "resv-ops"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//apps/resv/ops/rules/time:time"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
