@@ -5429,3 +5429,37 @@ exports = ["main"]
 [module."//apps/resv/dom/args:rargs_fuzz"]
 allow = ["memcpy"]
 exports = ["LLVMFuzzerTestOneInput"]
+
+# resv/dom/args tests added in 352 fix 2 (symbols from clang -O2/-O0 objects; all as the first four tests).
+
+[module."//apps/resv/dom/args:rargs_utf8_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_space_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_repr_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_fold_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_int_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_opts_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_opts2_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/resv/dom/args:rargs_rules_test"]
+allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
+exports = ["main"]
