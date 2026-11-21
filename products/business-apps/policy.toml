@@ -5856,3 +5856,121 @@ exports = ["main"]
 [module."//apps/fiscal/night/zperiod/period:zpperiod_args_test"]
 allow = ["memcmp", "memcpy", "memset"]
 exports = ["main"]
+
+# apps/fiscal/night/views (P009 T1.3a). Symbols from clang -O0/-O2/-O1 san objects; memcmp is bcmp at -O2.
+[module."//apps/fiscal/night/views/args:vwargs"]
+level = "L2"
+impl = ["apps/fiscal/night/views/args/src/**"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["vwa_parse"]
+
+[module."//apps/fiscal/night/views/args/ap:vwap"]
+level = "L2"
+impl = ["apps/fiscal/night/views/args/ap/src/**"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["vwa_ap", "vwa_op_find", "vwa_ops", "vwa_opt_prefix"]
+
+[module."//apps/fiscal/night/views/args/text:vwatext"]
+level = "L2"
+impl = ["apps/fiscal/night/views/args/text/src/**"]
+allow = ["memset"]
+exports = ["vwa_has", "vwa_head", "vwa_int", "vwa_negnum", "vwa_repr", "vwa_utf8_ok"]
+
+[module."//apps/fiscal/night/views/devices:vwdev"]
+level = "L2"
+impl = ["apps/fiscal/night/views/devices/src/**"]
+allow = ["memset"]
+exports = ["vwd_text"]
+
+[module."//apps/fiscal/night/views/fmt:vwfmt"]
+level = "L2"
+impl = ["apps/fiscal/night/views/fmt/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["vwf_date_long", "vwf_eur", "vwf_fixed", "vwf_fixed2", "vwf_grp0", "vwf_grp2", "vwf_net", "vwf_pad_cp", "vwf_ratio", "vwf_stamp"]
+
+[module."//apps/fiscal/night/views/hourly:vwhourly"]
+level = "L2"
+impl = ["apps/fiscal/night/views/hourly/src/**"]
+allow = ["memset"]
+exports = ["vwh_night", "vwh_text"]
+
+[module."//apps/fiscal/night/views/line:vwline"]
+level = "L2"
+impl = ["apps/fiscal/night/views/line/src/**"]
+allow = ["memset"]
+exports = ["vwl_night_dev", "vwl_open_period", "vwl_storno_from_rcpt"]
+
+[module."//apps/fiscal/night/views/line/text:vwltext"]
+level = "L2"
+impl = ["apps/fiscal/night/views/line/text/src/**"]
+allow = ["memset"]
+exports = ["vwl_fiscal_line", "vwl_fmt_z"]
+
+[module."//apps/fiscal/night/views/line/types:vwltypes"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/night/views/args:vwargs_ap_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/args:vwargs_ops_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/args:vwargs_text_test"]
+allow = ["strncmp"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/args/ap:vwap_run_test"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/args/ap:vwap_table_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/args/text:vwatext_int_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/args/text:vwatext_repr_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/devices:vwdev_errors_test"]
+allow = ["memcpy", "memset", "strcpy"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/devices:vwdev_text_test"]
+allow = ["memcpy", "memset", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/fmt:vwfmt_num_test"]
+allow = []
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/fmt:vwfmt_text_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/hourly:vwhourly_night_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/hourly:vwhourly_text_test"]
+allow = ["memcpy", "memset", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/line:vwline_night_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/line:vwline_storno_test"]
+allow = ["memcmp", "memset", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/line/text:vwltext_text_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]

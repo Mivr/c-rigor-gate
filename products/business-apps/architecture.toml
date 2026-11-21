@@ -1348,3 +1348,56 @@ from = "//apps/fiscal/night/zperiod/types:zptypes"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
 
+# fiscal night/views (P009 T1.3a): the text of club-fiscal's views, in fiscal-domain (apps/fiscal/night/**): packages fmt,
+# args (+ args/ap, args/text), line (+ line/text, line/types), hourly, devices. Inside the layer they use zperiod and the
+# receipt parser; lib-base (core, fmt) by the layer edge; module edges to the lib-fmt modules they call.
+
+[[edge]]
+from = "//apps/fiscal/night/views/args:vwargs"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/devices:vwdev"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/fmt:vwfmt"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/fmt:vwfmt"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/fmt:vwfmt"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/args/text:vwatext"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/hourly:vwhourly"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/hourly:vwhourly"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/line:vwline"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/line/types:vwltypes"
+to = "//lib/fmt/money:money"
+kind = "pure"
