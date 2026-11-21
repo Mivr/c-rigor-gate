@@ -5790,3 +5790,56 @@ exports = ["sb_call2"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
 
+# apps/fiscal/night/zperiod (P009 T1.2). Symbols from clang -O0/-O2/-O1 san objects.
+[module."//apps/fiscal/night/zperiod:zperiod"]
+level = "L3"
+impl = ["apps/fiscal/night/zperiod/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["zp_night_validated", "zp_run", "zp_z_pure"]
+
+[module."//apps/fiscal/night/zperiod/night:zpnight"]
+level = "L3"
+impl = ["apps/fiscal/night/zperiod/night/src/**"]
+allow = ["memcpy", "memmove", "memset", "money_add", "money_sub", "tzeu_add_days", "tzeu_date_valid"]
+exports = ["zp_madd", "zp_night_date", "zp_nights_add", "zp_sale_from_rcpt", "zp_sale_total", "zp_stamp_cmp",
+    "zp_z_from_zrep"]
+
+[module."//apps/fiscal/night/zperiod/period:zpperiod"]
+level = "L3"
+impl = ["apps/fiscal/night/zperiod/period/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["zp_periods_build", "zp_periods_judge"]
+
+[module."//apps/fiscal/night/zperiod/types:zptypes"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/night/zperiod:zperiod_run_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/zperiod:zperiod_errors_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/zperiod/night:zpnight_conv_test"]
+allow = ["memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/zperiod/night:zpnight_night_test"]
+allow = ["memcmp", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/zperiod/night:zpnight_helper_test"]
+allow = ["memcpy"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/zperiod/period:zpperiod_period_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/zperiod/period:zpperiod_merge_test"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["main"]
+

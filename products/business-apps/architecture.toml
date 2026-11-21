@@ -160,7 +160,7 @@ modules = ["//apps/fiscal/dtc/ports:ports", "//apps/fiscal/dtc/types:types"]
 # edges to each other are the fiscal-domain -> fiscal-domain edge below; the edges to lib-fmt are module edges (see the
 # fiscal block further down).
 [layer."fiscal-domain"]
-modules = ["//apps/fiscal/journal/**"]
+modules = ["//apps/fiscal/journal/**", "//apps/fiscal/night/**"]
 
 [layer."fiscal-safety"]
 modules = []
@@ -1323,3 +1323,28 @@ kind = "pure"
 from = "staffbot-root"
 to = "lib-base"
 kind = "pure"
+
+# fiscal night/zperiod (P009 T1.2): Z periods, event nights, validated income. Four packages in fiscal-domain (top
+# :zperiod, night/:zpnight, period/:zpperiod, header-only types/:zptypes, split for the mutant budget); :zpnight reads the
+# parsed receipts and Z reports of journal/receipt and journal/zrep (same layer). Module edges to lib-fmt: money
+# (money_add/money_sub) and tzeu (tzeu_add_days, tzeu_date_valid) from :zpnight; :zptypes exports both headers.
+[[edge]]
+from = "//apps/fiscal/night/zperiod/night:zpnight"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/zperiod/night:zpnight"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/zperiod/types:zptypes"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/zperiod/types:zptypes"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
