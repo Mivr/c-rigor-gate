@@ -1401,3 +1401,31 @@ kind = "pure"
 from = "//apps/fiscal/night/views/line/types:vwltypes"
 to = "//lib/fmt/money:money"
 kind = "pure"
+
+# fiscal night/views/shift (P009 T1.3c): the shift view (vws_text), its split check and types, in fiscal-domain; module edges
+# to the lib-fmt modules their headers and code use.
+
+[[edge]]
+from = "//apps/fiscal/night/views/shift:shift"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/shift:shift"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/shift/check:vwscheck"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/shift/types:vwstypes"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/shift/types:vwstypes"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
