@@ -151,8 +151,12 @@ modules = ["//apps/lockers/lkapp/**"]
 [layer."fiscal-contract"]
 modules = ["//apps/fiscal/dtc/ports:ports", "//apps/fiscal/dtc/types:types"]
 
+# apps/fiscal/journal/* is fiscal-domain (collector.md section 1: journal parsers are domain leaves); the first module is
+# journal/receipt (P009 T1.1). Its two libraries (:rcpt, :rcline) and the :rcpt_fuzz target are inside the layer, so their
+# edges to each other are the fiscal-domain -> fiscal-domain edge below; the edges to lib-fmt are module edges (see the
+# fiscal block further down).
 [layer."fiscal-domain"]
-modules = []
+modules = ["//apps/fiscal/journal/**"]
 
 [layer."fiscal-safety"]
 modules = []
@@ -1146,4 +1150,17 @@ kind = "pure"
 [[edge]]
 from = "//apps/viva/tx/when:vtxwhen"
 to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+# fiscal journal/receipt (P009 T1.1): :rcpt calls money_parse (money is also exported: rcpt.h uses money_t) and
+# json_utf8_seq_len (jutf8, the strict UTF-8 check). :rcpt -> :rcline (a private dep since fix round 1) and
+# :rcpt_fuzz -> :rcpt are inside fiscal-domain. :rcline has no dep.
+[[edge]]
+from = "//apps/fiscal/journal/receipt:rcpt"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/journal/receipt:rcpt"
+to = "//lib/fmt/jutf8:jutf8"
 kind = "pure"

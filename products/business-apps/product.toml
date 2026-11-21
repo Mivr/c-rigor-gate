@@ -7,6 +7,7 @@ name = "business-apps"
 # covered by an include (an exclude on it is excluded-code); the rest of services/staff-bot (TS, py, sql, md) is not code.
 include = ["apps/fiscal/dtc/ports/**",
            "apps/fiscal/dtc/types/**",
+           "apps/fiscal/journal/receipt/**",
            "apps/lockers/itest/boot/**",
            "apps/lockers/itest/catalog/**",
            "apps/lockers/itest/codes/**",
