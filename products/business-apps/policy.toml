@@ -5336,8 +5336,12 @@ allow_builtins = ["__builtin_trap"]
 [module."//apps/staffbot/core/abi:abi"]
 level = "L2"
 impl = ["apps/staffbot/core/abi/src/**"]
-allow = ["memcpy", "strlen"]
-exports = ["sb_abi_version", "sb_call"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["sb_abi_version", "sb_call", "sb_call_ext", "sb_reply_put"]
+
+[module."//apps/staffbot/core/abi:abi_ext_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
 
 [module."//apps/staffbot/core/abi:abi_frame_test"]
 allow = ["memcpy", "memset", "strlen"]
@@ -5715,3 +5719,45 @@ exports = ["main"]
 [module."//apps/resv/fmt/out:rout_edge_test"]
 allow = ["bcmp", "memcmp", "memcpy", "memset", "strchr", "strlen", "strncmp", "strstr"]
 exports = ["main"]
+
+# apps/staffbot/ops/viva (P009 T4.2a). Symbols from clang -O0/-O2/-O1 san objects.
+[module."//apps/staffbot/ops/viva:vop"]
+level = "L3"
+impl = ["apps/staffbot/ops/viva/src/**"]
+allow = ["memset"]
+exports = ["vop_begin", "vop_feed", "vop_text"]
+
+[module."//apps/staffbot/ops/viva:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/staffbot/ops/viva:vop_args_test"]
+allow = ["memcpy", "strcat", "strchr", "strcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/staffbot/ops/viva:vop_night_test"]
+allow = ["strcmp", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/staffbot/ops/viva:vop_pages_test"]
+allow = ["memset", "snprintf", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/staffbot/ops/viva:vop_fuzz"]
+allow = ["memcpy"]
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+
+# apps/staffbot/wasm (P009 T4.2a): the composition root of staffbot.wasm. Reviewed line: the writable bytes are g_state (one
+# vop_t and the text buffer of the viva ops); k_ops is const.
+[module."//apps/staffbot/wasm:root"]
+level = "L1"
+allow_mutable_data = true
+allow = []
+exports = ["sb_call2"]
+
+[module."//apps/staffbot/wasm:root_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+

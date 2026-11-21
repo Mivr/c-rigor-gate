@@ -5,7 +5,8 @@
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
          "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
-         "resv-dom", "resv-fmt", "staffbot-core", "viva-tx", "books-ledger"]
+         "resv-dom", "resv-fmt", "staffbot-core", "viva-tx", "books-ledger",
+         "staffbot-ops", "staffbot-root"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -36,6 +37,7 @@ modules = ["//lib/io/posix_fs:testkit",
            "//lib/ui/lvrender:testkit",
            "//lib/ui/lvhost:testkit",
            "//lib/ui/uikit:testkit",
+           "//apps/staffbot/ops/viva:testkit",
            "//apps/resv/fmt/out:testkit",
            "//apps/resv/dom/args:testkit",
            "//apps/resv/dom/tables:testkit",
@@ -203,6 +205,18 @@ modules = ["//apps/viva/tx/**"]
 # Edges: inside the layer, down to lib-base (core) and, as module edges, to the lib-fmt modules it uses (csv, money, tzeu).
 [layer."books-ledger"]
 modules = ["//apps/books/ledger/**"]
+
+# The staff bot's ops (P009 T4.2a): apps/staffbot/ops/viva runs the Viva walk (apps/viva/tx) for the bot. Above viva-tx (the
+# first edge from one app to another: the staff bot uses the viva app's walk), down to lib-base (core) and, as a module
+# edge, to lib-fmt tzeu (now -> night). Pure: the caller owns the one vop_t.
+[layer."staffbot-ops"]
+modules = ["//apps/staffbot/ops/**"]
+
+# The composition root of staffbot.wasm (P009 T4.2a): apps/staffbot/wasm owns the module's only mutable static data (one
+# vop_t and a text buffer) and the op table behind sb_call2. Composition edges to the core ABI and the ops. The c_wasm
+# target staffbot_wasm is an artifact with no facts (in no layer and no policy table), as before.
+[layer."staffbot-root"]
+modules = ["//apps/staffbot/wasm/**"]
 
 # Library edges. The most permissive matching edge wins, so the layer edges below are the whole story for their kinds.
 [[edge]]
@@ -1259,3 +1273,35 @@ kind = "pure"
 from = "//apps/resv/fmt/out:rout"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
+
+# staffbot ops/viva and wasm root (P009 T4.2a).
+[[edge]]
+from = "staffbot-ops"
+to = "staffbot-ops"
+kind = "pure"
+
+[[edge]]
+from = "staffbot-ops"
+to = "viva-tx"
+kind = "pure"
+
+[[edge]]
+from = "staffbot-ops"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//apps/staffbot/ops/viva:vop"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "staffbot-root"
+to = "staffbot-core"
+kind = "composition"
+
+[[edge]]
+from = "staffbot-root"
+to = "staffbot-ops"
+kind = "composition"
+
