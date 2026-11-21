@@ -1429,3 +1429,51 @@ kind = "pure"
 from = "//apps/fiscal/night/views/shift/types:vwstypes"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
+
+# fiscal night/views night and month (P009 T1.3b, #364): the night, month and nights views, in fiscal-domain; module
+# edges to the lib-fmt modules their headers and code use.
+
+[[edge]]
+from = "//apps/fiscal/night/views/night:vwnight"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/night:vwnight"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/night/check:vwncheck"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/night/text:vwntext"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/night/types:vwntypes"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/month:vwmonth"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/month/nights:vwnights"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/month/types:vwmtypes"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/views/month/types:vwmtypes"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"

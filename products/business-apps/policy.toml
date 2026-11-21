@@ -6004,3 +6004,68 @@ exports = ["main"]
 [module."//apps/fiscal/night/views/shift/check:vwscheck_test"]
 allow = ["memset"]
 exports = ["main"]
+
+# apps/fiscal/night/views night and month (P009 T1.3b, #364). Symbols from clang -O0/-O1/-O2 objects.
+[module."//apps/fiscal/night/views/night:vwnight"]
+level = "L2"
+impl = ["apps/fiscal/night/views/night/src/**"]
+allow = ["memset"]
+exports = ["vwn_text"]
+
+[module."//apps/fiscal/night/views/night/check:vwncheck"]
+level = "L2"
+impl = ["apps/fiscal/night/views/night/check/src/**"]
+allow = ["memchr"]
+exports = ["vwn_check"]
+
+[module."//apps/fiscal/night/views/night/text:vwntext"]
+level = "L2"
+impl = ["apps/fiscal/night/views/night/text/src/**"]
+allow = ["memchr"]
+exports = ["vwn_rat", "vwn_rat_round", "vwn_tx_eur", "vwn_tx_eur_rat", "vwn_tx_eur_sgn", "vwn_tx_finish", "vwn_tx_lit", "vwn_tx_note", "vwn_tx_pad", "vwn_tx_plus_rat", "vwn_tx_text", "vwn_tx_two", "vwn_tx_whole"]
+
+[module."//apps/fiscal/night/views/month:vwmonth"]
+level = "L2"
+impl = ["apps/fiscal/night/views/month/src/**"]
+allow = ["memchr", "memset"]
+exports = ["vwm_month_text"]
+
+[module."//apps/fiscal/night/views/month/nights:vwnights"]
+level = "L2"
+impl = ["apps/fiscal/night/views/month/nights/src/**"]
+allow = ["memchr", "memset"]
+exports = ["vwm_nights_text"]
+
+[module."//apps/fiscal/night/views/night/types:vwntypes"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/night/views/month/types:vwmtypes"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/night/views/month/nights:vwnights_test"]
+allow = ["memset", "strchr", "strcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/month:vwmonth_month_test"]
+allow = ["memset", "strcpy", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/night/check:vwncheck_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/night/text:vwntext_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/night:vwnight_closed_test"]
+allow = ["memset", "strcpy", "strstr"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/views/night:vwnight_prov_test"]
+allow = ["memset", "strcpy", "strstr"]
+exports = ["main"]
