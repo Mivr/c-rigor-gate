@@ -5843,3 +5843,16 @@ exports = ["main"]
 allow = ["memcmp", "memcpy", "memset"]
 exports = ["main"]
 
+
+# zperiod tests added in 357 fix round 1.
+[module."//apps/fiscal/night/zperiod:zperiod_extra_test"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/zperiod/night:zpnight_args_test"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/zperiod/period:zpperiod_args_test"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["main"]
