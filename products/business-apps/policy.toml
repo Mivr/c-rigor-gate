@@ -5468,3 +5468,12 @@ allow = []
 allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
 
+
+# viva/tx calendar tests (350 fix 2); symbols from clang -O2/-O1/-O0 objects.
+[module."//apps/viva/tx:vtx_cal_test"]
+allow = ["memcpy", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/viva/tx/text:vtxtext_cal_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
