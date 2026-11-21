@@ -5608,3 +5608,70 @@ exports = ["main"]
 [module."//apps/resv/dom/args:rargs_ops_test"]
 allow = ["memcpy", "memset", "snprintf", "strcmp", "strcpy", "strlen", "strncmp"]
 exports = ["main"]
+
+# apps/fiscal/journal/receipt (P009 T1.1). Symbols from clang -O2 objects (x86-64 Linux target: memcmp becomes bcmp) and the
+# san/O0 builds. :rcpt and :rcline share one package, so each lists its sources; src/rcpt_int.h is shared by :rcpt's two
+# sources only.
+[module."//apps/fiscal/journal/receipt:rcpt"]
+level = "L3"
+impl = ["apps/fiscal/journal/receipt/src/rcpt.c", "apps/fiscal/journal/receipt/src/sale.c",
+    "apps/fiscal/journal/receipt/src/rcpt_int.h"]
+allow = ["bcmp", "memset"]
+exports = ["rcpt_at", "rcpt_parse", "rcpt_sale_line", "rcpt_value", "rcpt_ws_fwd"]
+
+[module."//apps/fiscal/journal/receipt:rcline"]
+level = "L3"
+impl = ["apps/fiscal/journal/receipt/src/rcline.c"]
+allow = []
+exports = ["rcl_adj", "rcl_amount", "rcl_footer", "rcl_item"]
+
+[module."//apps/fiscal/journal/receipt:rcline_item_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcline_adj_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcline_amount_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcline_footer_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcpt_class_test"]
+allow = ["strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcpt_items_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcpt_money_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcpt_names_test"]
+allow = ["bcmp", "memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcpt_errors_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/fiscal/journal/receipt:rcpt_fuzz"]
+allow = []
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+
+# rcpt_edge_test (351 fix round 1): memcmp only (bcmp in the -O1 san build, inlined at -O2), strlen.
+[module."//apps/fiscal/journal/receipt:rcpt_edge_test"]
+allow = ["bcmp", "strlen"]
+exports = ["main"]
+
+# rcpt_lines_test (351 fix round 2): symbols from clang -O2 and the -O1 san build.
+[module."//apps/fiscal/journal/receipt:rcpt_lines_test"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["main"]
