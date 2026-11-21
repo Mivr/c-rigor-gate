@@ -5,7 +5,7 @@
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
          "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
-         "resv-dom", "staffbot-core"]
+         "resv-dom", "staffbot-core", "books-ledger"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -176,6 +176,12 @@ modules = ["//apps/resv/dom/**"]
 # no layer and no policy table.
 [layer."staffbot-core"]
 modules = ["//apps/staffbot/core/**"]
+
+# The club books app (app books, business-control P009 T2.1): the cash ledger, posting rules of club-fiscal's cash_ledger.csv.
+# One layer for the two packages of apps/books/ledger (the ledger and its row codec row/, split for the mutant budget).
+# Edges: inside the layer, down to lib-base (core) and, as module edges, to the lib-fmt modules it uses (csv, money, tzeu).
+[layer."books-ledger"]
+modules = ["//apps/books/ledger/**"]
 
 # Library edges. The most permissive matching edge wins, so the layer edges below are the whole story for their kinds.
 [[edge]]
@@ -1096,4 +1102,41 @@ kind = "pure"
 [[edge]]
 from = "//lib/fmt/csv:csv_fuzz"
 to = "//lib/fmt/csv:csv"
+kind = "pure"
+
+# books/ledger (P009 T2.1): layer edges, then the module edges to lib-fmt (every exported_deps entry is a dep of its own
+# library; the c_fuzz target ldg_fuzz is covered by the layer edges: it calls :ldg and core).
+[[edge]]
+from = "books-ledger"
+to = "books-ledger"
+kind = "pure"
+
+[[edge]]
+from = "books-ledger"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ledger/row:ldgrow"
+to = "//lib/fmt/csv:csv"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ledger/row:ldgrow"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ledger/row:ldgrow"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ledger:ldg"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ledger:ldg"
+to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"

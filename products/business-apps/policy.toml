@@ -5394,3 +5394,51 @@ exports = ["main"]
 allow = ["bcmp", "core_buf_init", "core_buf_len", "core_buf_overflow", "memcmp"]
 allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
+
+# apps/books/ledger (P009 T2.1). Symbols from clang -O2/-O1/-O0 objects (x86-64 Linux target; memcmp is bcmp natively at -O2
+# and a call on wasm32). The tests list no core_*/ldg* symbol: each lists core (or the library it calls) in its own deps.
+[module."//apps/books/ledger/row:ldgrow"]
+level = "L3"
+impl = ["apps/books/ledger/row/src/**"]
+allow = ["bcmp", "memcmp", "memcpy"]
+exports = ["ldgrow_date_text", "ldgrow_format", "ldgrow_header_len", "ldgrow_parse", "ldgrow_post_ok", "ldgrow_put_seq"]
+
+[module."//apps/books/ledger/row:ldgrow_parse_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ledger/row:ldgrow_format_test"]
+allow = ["memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ledger:ldg"]
+level = "L3"
+impl = ["apps/books/ledger/src/**"]
+allow = ["bcmp", "memcmp", "memcpy", "memset"]
+exports = ["ldg_balance", "ldg_check_chain", "ldg_count", "ldg_get", "ldg_init", "ldg_insert", "ldg_load_csv", "ldg_write_csv"]
+
+[module."//apps/books/ledger:ldg_load_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ledger:ldg_write_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/books/ledger:ldg_insert_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ledger:ldg_refuse_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ledger:ldg_chain_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ledger:ldg_fuzz"]
+allow = ["bcmp", "memcmp", "memset"]
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+

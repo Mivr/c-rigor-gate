@@ -5,7 +5,9 @@ name = "business-apps"
 # finding (ungraded-path), and an entry that matches nothing a finding (stale-include).
 # services/staff-bot/worker/package.json is listed by name: the gate counts package.json as a build file, so it must be
 # covered by an include (an exclude on it is excluded-code); the rest of services/staff-bot (TS, py, sql, md) is not code.
-include = ["apps/fiscal/dtc/ports/**",
+include = ["apps/books/ledger/**",
+           "apps/books/ledger/row/**",
+           "apps/fiscal/dtc/ports/**",
            "apps/fiscal/dtc/types/**",
            "apps/lockers/itest/boot/**",
            "apps/lockers/itest/catalog/**",
