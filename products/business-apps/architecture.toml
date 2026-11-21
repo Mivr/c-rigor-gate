@@ -6,7 +6,7 @@ order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
          "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
          "resv-dom", "resv-fmt", "staffbot-core", "viva-tx", "books-ledger",
-         "staffbot-ops", "staffbot-root"]
+         "books-ops", "staffbot-ops", "staffbot-root"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -38,6 +38,9 @@ modules = ["//lib/io/posix_fs:testkit",
            "//lib/ui/lvhost:testkit",
            "//lib/ui/uikit:testkit",
            "//apps/staffbot/ops/viva:testkit",
+           "//apps/books/ops/args:testkit",
+           "//apps/books/ops/args/ap:testkit",
+           "//apps/books/ops/args/cmds:testkit",
            "//apps/resv/fmt/out:testkit",
            "//apps/resv/dom/args:testkit",
            "//apps/resv/dom/tables:testkit",
@@ -205,6 +208,12 @@ modules = ["//apps/viva/tx/**"]
 # Edges: inside the layer, down to lib-base (core) and, as module edges, to the lib-fmt modules it uses (csv, money, tzeu).
 [layer."books-ledger"]
 modules = ["//apps/books/ledger/**"]
+
+# The club books ops (P009 T2.2): apps/books/ops — types (header-only, over the ledger's types) and args (the argv rules
+# of club-fiscal's books commands, split into text, ap, canon, field, item, cmds and the top bkargs for the mutant budget).
+# Above books-ledger, down to lib-base and, as module edges, to the lib-fmt modules they call.
+[layer."books-ops"]
+modules = ["//apps/books/ops/**"]
 
 # The staff bot's ops (P009 T4.2a): apps/staffbot/ops/viva runs the Viva walk (apps/viva/tx) for the bot. Above viva-tx (the
 # first edge from one app to another: the staff bot uses the viva app's walk), down to lib-base (core) and, as a module
@@ -1400,4 +1409,64 @@ kind = "pure"
 [[edge]]
 from = "//apps/fiscal/night/views/line/types:vwltypes"
 to = "//lib/fmt/money:money"
+kind = "pure"
+# books/ops (P009 T2.2a).
+[[edge]]
+from = "books-ops"
+to = "books-ops"
+kind = "pure"
+
+[[edge]]
+from = "books-ops"
+to = "books-ledger"
+kind = "pure"
+
+[[edge]]
+from = "books-ops"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/types:bktypes"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/types:bktypes"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args:bkargs"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/canon:bkacanon"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/canon:bkacanon"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/field:bkafield"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/field:bkafield"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/item:bkaitem"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/text:bkatext"
+to = "//lib/fmt/jutf8:jutf8"
 kind = "pure"

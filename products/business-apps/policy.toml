@@ -5974,3 +5974,165 @@ exports = ["main"]
 [module."//apps/fiscal/night/views/line/text:vwltext_text_test"]
 allow = ["memcpy", "memset"]
 exports = ["main"]
+
+# apps/books/ops (P009 T2.2a). Symbols from clang -O0/-O2/-O1 san objects; memcmp is bcmp at -O2.
+[module."//apps/books/ops/args/text:bkatext"]
+level = "L3"
+impl = ["apps/books/ops/args/text/src/**"]
+allow = ["memset"]
+exports = ["bka_cp", "bka_has", "bka_head", "bka_negnum", "bka_repr", "bka_space", "bka_trim", "bka_utf8_ok"]
+
+[module."//apps/books/ops/args/ap:bkaap"]
+level = "L3"
+impl = ["apps/books/ops/args/ap/src/**"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["bka_ap", "bka_list_item", "bka_op_find", "bka_opdef", "bka_opt_prefix", "bka_required"]
+
+[module."//apps/books/ops/args/canon:bkacanon"]
+level = "L3"
+impl = ["apps/books/ops/args/canon/src/**"]
+allow = ["memset"]
+exports = ["bka_cats", "bka_dirs", "bka_lkinds", "bkargs_canon", "bkargs_canon_op", "bkargs_category_name",
+    "bkargs_lkind_name", "bkargs_word"]
+
+[module."//apps/books/ops/args/field:bkafield"]
+level = "L3"
+impl = ["apps/books/ops/args/field/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["bka_amount", "bka_coins", "bka_count", "bka_date", "bka_die", "bka_die3", "bka_nth", "bka_opt", "bka_posc",
+    "bka_posn", "bka_put_note", "bka_put_text", "bka_text"]
+
+[module."//apps/books/ops/args/item:bkaitem"]
+level = "L3"
+impl = ["apps/books/ops/args/item/src/**"]
+allow = ["memchr", "memset"]
+exports = ["bka_bank_item", "bka_cash_item", "bka_denoms"]
+
+[module."//apps/books/ops/args/cmds:bkacmds"]
+level = "L3"
+impl = ["apps/books/ops/args/cmds/src/**"]
+allow = ["memset"]
+exports = ["bka_cmds"]
+
+[module."//apps/books/ops/args:bkargs"]
+level = "L3"
+impl = ["apps/books/ops/args/src/**"]
+allow = ["memset"]
+exports = ["bkargs_parse"]
+
+[module."//apps/books/ops/types:bktypes"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/books/ops/args:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/books/ops/args/ap:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/books/ops/args/cmds:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/books/ops/args/text:bkatext_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/ap:bkaap_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/ap:bkaap_vec0_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/ap:bkaap_vec1_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/canon:bkacanon_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strcmp", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/field:bkafield_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/item:bkaitem_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/cmds:bkacmds_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/cmds:bkacmds_vec0_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/cmds:bkacmds_vec1_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args/cmds:bkacmds_rules_test"]
+allow = ["bcmp", "memset", "snprintf", "strcmp", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_canon_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_dates_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_input_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_misc_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_rules_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_vec0_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_vec1_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_vec2_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_vec3_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_vec4_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_vec5_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_vec6_test"]
+allow = ["memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/args:bkargs_fuzz"]
+allow = ["bcmp", "memcmp", "memcpy"]
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
