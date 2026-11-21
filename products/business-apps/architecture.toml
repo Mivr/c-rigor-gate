@@ -36,6 +36,7 @@ modules = ["//lib/io/posix_fs:testkit",
            "//lib/ui/lvrender:testkit",
            "//lib/ui/lvhost:testkit",
            "//lib/ui/uikit:testkit",
+           "//apps/resv/dom/args:testkit",
            "//apps/resv/dom/tables:testkit",
            "//apps/lockers/lk/auditplan:testkit",
            "//apps/lockers/lk/book:testkit",
@@ -1096,4 +1097,26 @@ kind = "pure"
 [[edge]]
 from = "//lib/fmt/csv:csv_fuzz"
 to = "//lib/fmt/csv:csv"
+kind = "pure"
+
+# resv/dom/args (P008 S2): :rargs calls :tables inside the layer (:rargs_fuzz -> :rargs too), core (lib-base) and, as module
+# edges, tzeu (tzeu_parse_date) and jutf8 (json_utf8_seq_len). tzeu's own edge to lib-base is declared above.
+[[edge]]
+from = "resv-dom"
+to = "resv-dom"
+kind = "pure"
+
+[[edge]]
+from = "resv-dom"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//apps/resv/dom/args:rargs"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/resv/dom/args:rargs"
+to = "//lib/fmt/jutf8:jutf8"
 kind = "pure"
