@@ -5754,7 +5754,7 @@ exports = ["LLVMFuzzerTestOneInput"]
 [module."//apps/staffbot/wasm:root"]
 level = "L1"
 allow_mutable_data = true
-allow = []
+allow = ["core_buf_init", "core_buf_len"]
 exports = ["sb_call2"]
 
 [module."//apps/staffbot/wasm:root_test"]

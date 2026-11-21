@@ -213,7 +213,8 @@ modules = ["//apps/books/ledger/**"]
 modules = ["//apps/staffbot/ops/**"]
 
 # The composition root of staffbot.wasm (P009 T4.2a): apps/staffbot/wasm owns the module's only mutable static data (one
-# vop_t and a text buffer) and the op table behind sb_call2. Composition edges to the core ABI and the ops. The c_wasm
+# vop_t and a text buffer) and the op table behind sb_call2. Pure edges (as app-root: this product declares no
+# [composition] modules) to the core ABI, the ops and lib-base (core_buf_*). The c_wasm
 # target staffbot_wasm is an artifact with no facts (in no layer and no policy table), as before.
 [layer."staffbot-root"]
 modules = ["//apps/staffbot/wasm/**"]
@@ -1298,10 +1299,14 @@ kind = "pure"
 [[edge]]
 from = "staffbot-root"
 to = "staffbot-core"
-kind = "composition"
+kind = "pure"
 
 [[edge]]
 from = "staffbot-root"
 to = "staffbot-ops"
-kind = "composition"
+kind = "pure"
 
+[[edge]]
+from = "staffbot-root"
+to = "lib-base"
+kind = "pure"
