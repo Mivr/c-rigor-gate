@@ -5,7 +5,7 @@
 order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim",
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
          "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
-         "resv-dom", "staffbot-core", "viva-tx", "books-ledger"]
+         "resv-dom", "resv-fmt", "staffbot-core", "viva-tx", "books-ledger"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
@@ -36,6 +36,7 @@ modules = ["//lib/io/posix_fs:testkit",
            "//lib/ui/lvrender:testkit",
            "//lib/ui/lvhost:testkit",
            "//lib/ui/uikit:testkit",
+           "//apps/resv/fmt/out:testkit",
            "//apps/resv/dom/args:testkit",
            "//apps/resv/dom/tables:testkit",
            "//apps/viva/tx:testkit",
@@ -175,6 +176,12 @@ modules = []
 # all), so no edge leaves the layer; a module that later needs lib-base declares its own edge.
 [layer."resv-dom"]
 modules = ["//apps/resv/dom/**"]
+
+# The reservations app's text layer (P008 S4): apps/resv/fmt/out prints the read operations. Above resv-dom (it uses the
+# tables inventory and the parsed arguments of apps/resv/dom/args), down to lib-base (core, and //lib/fmt/fmt which sits in
+# lib-base) and, as a module edge, to lib-fmt tzeu (UTC -> Europe/Sofia). The c_test targets are exempt.
+[layer."resv-fmt"]
+modules = ["//apps/resv/fmt/**"]
 
 # The staff bot (app staffbot, business-control P008): its core is C compiled natively for the tests and to wasm32 for the
 # Worker. A layer of its own, above the others and with no edge to any of them: the core ABI module uses nothing but the
@@ -1229,4 +1236,26 @@ kind = "pure"
 [[edge]]
 from = "//apps/fiscal/journal/receipt:rcpt"
 to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+# resv/fmt/out (P008 S4): :rout -> tables and args (resv-dom), core and fmt (lib-base), tzeu (module edge); :testkit -> :rout
+# inside the layer.
+[[edge]]
+from = "resv-fmt"
+to = "resv-fmt"
+kind = "pure"
+
+[[edge]]
+from = "resv-fmt"
+to = "resv-dom"
+kind = "pure"
+
+[[edge]]
+from = "resv-fmt"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//apps/resv/fmt/out:rout"
+to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"

@@ -5675,3 +5675,43 @@ exports = ["main"]
 [module."//apps/fiscal/journal/receipt:rcpt_lines_test"]
 allow = ["bcmp", "memcmp", "memset"]
 exports = ["main"]
+
+# apps/resv/fmt/out (P008 S4). Symbols from clang -O2 and -O1 san objects plus the coder's report (memcpy/memset are
+# compiler-generated copies and fills; memcmp is bcmp at -O2). The six sources share the internal rout_* functions through
+# src/internal.h.
+[module."//apps/resv/fmt/out:rout"]
+level = "L2"
+impl = ["apps/resv/fmt/out/src/**"]
+allow = ["bcmp", "memcmp", "memcpy", "memset"]
+exports = ["rout_cmp", "rout_event", "rout_events", "rout_find", "rout_fold_contains", "rout_head", "rout_norm",
+    "rout_put_evlabel", "rout_put_i64", "rout_put_repr", "rout_put_row", "rout_put_sofia_head", "rout_put_table",
+    "rout_recent", "rout_show", "rout_since_text", "rout_sofia", "rout_sofia_text", "rout_tables", "rout_utf8_next"]
+
+[module."//apps/resv/fmt/out:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/resv/fmt/out:rout_list_test"]
+allow = ["bcmp", "fprintf", "memcmp", "memcpy", "memset", "stderr", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/fmt/out:rout_find_test"]
+allow = ["bcmp", "fprintf", "memcmp", "memcpy", "memset", "stderr", "strchr", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/resv/fmt/out:rout_show_test"]
+allow = ["bcmp", "fprintf", "memcmp", "memcpy", "snprintf", "stderr", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/resv/fmt/out:rout_time_test"]
+allow = ["bcmp", "memcmp", "memset"]
+exports = ["main"]
+
+[module."//apps/resv/fmt/out:rout_fold_test"]
+allow = ["bcmp", "memcmp", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/fmt/out:rout_edge_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strchr", "strlen", "strncmp", "strstr"]
+exports = ["main"]
