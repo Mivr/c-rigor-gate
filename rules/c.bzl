@@ -448,7 +448,7 @@ def c_wasm(name, deps, exports, stack_bytes = 65536, memory_pages = 32, visibili
     so `buck2 build //pkg:<name>` needs no `--target-platforms` (and builds the same with
     `--target-platforms toolchains//:wasm32_release`). Their transitive sources are compiled for wasm32 with the release
     flags and warnings, `-ffreestanding -nostdlib`, no sysroot: only clang's builtin headers and the gate's <string.h>.
-    The gate's toolchains/wasm/rt/fsl.c (memcpy, memmove, memset, memcmp, strlen, strcmp, strncmp, strchr) is linked
+    The gate's toolchains/wasm/rt/fsl.c (memcpy, memmove, memset, memcmp, memchr, strlen, strcmp, strncmp, strchr) is linked
     in, then `lld -flavor wasm --no-entry --export=<each of exports> -z stack-size=<stack_bytes>
     --initial-memory=<memory_pages * 64 KiB> --max-memory=<the same> --strip-debug`. An undefined symbol is a link error.
     The module is an artifact, like a `c_binary`'s executable: it is not graded and has no facts of its own; the

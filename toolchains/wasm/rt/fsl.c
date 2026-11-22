@@ -1,6 +1,6 @@
 /* The freestanding string library of every wasm32 module (`c_wasm`, docs/toolchain.md "WebAssembly (wasm32)").
  *
- * Exactly the eight functions of toolchains/wasm/include/string.h, as plain byte loops: no allocation, no state.
+ * Exactly the nine functions of toolchains/wasm/include/string.h, as plain byte loops: no allocation, no state.
  * Compiled with -ffreestanding (so -fno-builtin): clang neither turns these loops back into calls to themselves
  * nor assumes anything about them. The compiler may also call memcpy, memmove and memset for struct copies and
  * zero-initialisation; this file is where those calls land. Functions a module does not reach are dropped by
@@ -51,6 +51,19 @@ int memcmp(const void *a, const void *b, size_t n) {
         }
     }
     return 0;
+}
+
+/* C's memchr, like strchr below, returns a non-const pointer into const memory: the pointer goes through
+   uintptr_t (a value conversion, not a cast that drops a qualifier), as -Wcast-qual demands. */
+void *memchr(const void *s, int c, size_t n) {
+    const unsigned char *p = s;
+    unsigned char want = (unsigned char)c;
+    for (size_t i = 0; i < n; i++) {
+        if (p[i] == want) {
+            return (void *)(uintptr_t)(p + i);
+        }
+    }
+    return NULL;
 }
 
 size_t strlen(const char *s) {

@@ -114,9 +114,9 @@ functions. That is already the C rule of the products (pure core, injected ports
 add code that must never be called. The include path is therefore clang's builtin headers (`stdint.h`, `stddef.h`,
 `stdbool.h`, `limits.h`, `float.h`, `stdarg.h`, `stdalign.h`, `stdnoreturn.h`, `iso646.h`, ...: types and macros,
 no functions) plus the gate's `toolchains/wasm/include/string.h`, which declares only `memcpy`, `memmove`, `memset`,
-`memcmp`, `strlen`, `strcmp`, `strncmp` and `strchr`. Any other libc or POSIX header (`stdio.h`, `stdlib.h`,
+`memcmp`, `memchr`, `strlen`, `strcmp`, `strncmp` and `strchr`. Any other libc or POSIX header (`stdio.h`, `stdlib.h`,
 `errno.h`, `unistd.h`, `inttypes.h`, ...) does not exist for wasm32 and fails the compile with clang's
-`fatal error: 'stdio.h' file not found`; they are deliberately not stubbed. The eight functions are implemented by
+`fatal error: 'stdio.h' file not found`; they are deliberately not stubbed. The nine functions are implemented by
 `toolchains/wasm/rt/fsl.c` (plain byte loops, no allocation, no state), which `c_wasm` compiles with the same flags
 and links into every module. clang may also call `memcpy`, `memmove` and `memset` itself (struct copies,
 zero-initialisation); those calls land there too. Not supported here: WASI, threads, SIMD, exceptions.

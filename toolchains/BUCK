@@ -272,7 +272,7 @@ wasm_cc(name = "wasm_cc", llvm = ":llvm", llvm_major = "19", string_h = "wasm/in
 
 wasm_ld(name = "wasm_ld", llvm = ":llvm", visibility = ["PUBLIC"])
 
-# The freestanding string library linked into every wasm module (the eight functions of wasm/include/string.h).
+# The freestanding string library linked into every wasm module (the nine functions of wasm/include/string.h).
 export_file(name = "wasm_fsl.c", src = "wasm/rt/fsl.c", visibility = ["PUBLIC"])
 
 cxx_toolchain(
