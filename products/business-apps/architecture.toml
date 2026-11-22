@@ -6,7 +6,7 @@ order = ["lib-base", "lib-ds", "lib-rt", "lib-fmt", "lib-io", "lib-ui", "lib-sim
          "app-domain", "app-contract", "app-safety", "app-reactors", "app-adapters", "app-sim", "app-ui", "app-root",
          "fiscal-contract", "fiscal-domain", "fiscal-safety", "fiscal-adapters", "fiscal-sim", "fiscal-root",
          "resv-dom", "resv-fmt", "resv-ops", "staffbot-core", "viva-tx", "books-ledger",
-         "staffbot-ops", "staffbot-root"]
+         "books-ops", "staffbot-ops", "staffbot-root"]
 
 [layer."lib-base"]
 # design.md section 3 puts the number/text formatting kit `fmt` in the base tier although it lives under lib/fmt/ (it is
