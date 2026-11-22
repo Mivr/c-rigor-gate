@@ -6522,7 +6522,7 @@ allow = ["memcpy", "strlen"]
 exports = ["main"]
 
 [module."//apps/resv/ops/engine/state:state_test"]
-allow = ["memset", "strlen"]
+allow = ["memset", "strcmp", "strlen"]
 exports = ["main"]
 
 [module."//apps/resv/ops/engine/stmt:stmt_guard_test"]
