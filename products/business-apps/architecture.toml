@@ -1666,3 +1666,40 @@ kind = "pure"
 from = "//apps/resv/ops/engine/rows:rows"
 to = "//lib/fmt/jpull:jpull"
 kind = "pure"
+
+# books/ops/flow (P009 T2.2d, #369): the booking flow in books-ops; module edges to the lib-fmt modules.
+
+[[edge]]
+from = "//apps/books/ops/flow:flow"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/flow:testkit"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/flow/replay:bkfreplay"
+to = "//lib/fmt/lines:lines"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/flow/text:bkftext"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/flow/text:bkftext"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/flow/pend:bkfpend"
+to = "//lib/fmt/lines:lines"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/flow/needs:bkfneeds"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"

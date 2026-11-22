@@ -6547,3 +6547,72 @@ exports = []
 level = "L1"
 allow = []
 exports = []
+
+# apps/books/ops/flow (P009 T2.2d, #369): pending/undo/commit over the replay; split for the mutant budget (S9).
+# Symbols from clang -O0/-O1/-O2 objects.
+[module."//apps/books/ops/flow:flow"]
+level = "L3"
+impl = ["apps/books/ops/flow/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["bkf_row_line", "bkf_run"]
+
+[module."//apps/books/ops/flow/replay:bkfreplay"]
+level = "L3"
+impl = ["apps/books/ops/flow/replay/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["bkf_after_replay", "bkf_all_steps", "bkf_diff", "bkf_fail_text", "bkf_read_step", "bkf_replay"]
+
+[module."//apps/books/ops/flow/text:bkftext"]
+level = "L3"
+impl = ["apps/books/ops/flow/text/src/**"]
+allow = []
+exports = ["bkf_describe", "bkf_put_crew_line", "bkf_put_cut"]
+
+[module."//apps/books/ops/flow/pend:bkfpend"]
+level = "L3"
+impl = ["apps/books/ops/flow/pend/src/**"]
+allow = []
+exports = ["bkf_pending"]
+
+[module."//apps/books/ops/flow/needs:bkfneeds"]
+level = "L3"
+impl = ["apps/books/ops/flow/needs/src/**"]
+allow = []
+exports = ["bkf_needs"]
+
+[module."//apps/books/ops/flow:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/books/ops/flow/needs:bkfneeds_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/flow/pend:bkfpend_test"]
+allow = ["memcmp", "memcpy", "memset", "snprintf", "sprintf", "strlen", "strrchr", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/flow/replay:bkfreplay_test"]
+allow = ["memcmp", "memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/flow/text:bkftext_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/flow:bkflow_call_test"]
+allow = ["memcpy", "memset", "sprintf", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/flow:bkflow_commit_test"]
+allow = ["memcmp", "memcpy", "memset", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/flow:bkflow_prop_test"]
+allow = ["memcmp", "memcpy", "memset", "snprintf", "strlen", "strncmp"]
+exports = ["main"]
+
+[module."//apps/books/ops/flow:bkflow_session_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen", "strncmp", "strstr"]
+exports = ["main"]
