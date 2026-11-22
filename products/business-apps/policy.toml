@@ -6210,7 +6210,7 @@ exports = ["LLVMFuzzerTestOneInput"]
 level = "L3"
 impl = ["apps/books/ops/args/text/src/**"]
 allow = ["memset"]
-exports = ["bka_cp", "bka_has", "bka_head", "bka_negnum", "bka_repr", "bka_space", "bka_trim", "bka_utf8_ok"]
+exports = ["bka_cp", "bka_has", "bka_head", "bka_negnum", "bka_oneline", "bka_repr", "bka_space", "bka_trim", "bka_utf8_ok"]
 
 [module."//apps/books/ops/args/ap:bkaap"]
 level = "L3"
