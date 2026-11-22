@@ -1775,3 +1775,37 @@ kind = "pure"
 from = "//apps/books/ops/wire:bkw_fuzz"
 to = "//lib/fmt/jutf8:jutf8"
 kind = "pure"
+
+# fiscal night/income (P009 T1.2b, #378): night income per event night, five packages in fiscal-domain (top :income,
+# check/:nichk, row/:nirow, util/:niutil, header-only types/:nitypes); inside the layer they use zperiod and the receipt
+# parser. Module edges to lib-fmt: :nitypes exports money.h and tzeu.h; :nichk calls tzeu_date_valid; :nirow calls
+# money_add, money_vat_split and tzeu_date_valid; :income calls money_add and money_sub.
+[[edge]]
+from = "//apps/fiscal/night/income/types:nitypes"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/income/types:nitypes"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/income/check:nichk"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/income/row:nirow"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/income/row:nirow"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/fiscal/night/income:income"
+to = "//lib/fmt/money:money"
+kind = "pure"

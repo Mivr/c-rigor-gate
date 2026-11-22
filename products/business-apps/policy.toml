@@ -6702,3 +6702,69 @@ exports = ["main"]
 [module."//apps/staffbot/wasm:root_books_test"]
 allow = ["bcmp", "memcmp", "memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
+
+# apps/fiscal/night/income (P009 T1.2b, #378). Symbols from clang -O0/-O1/-O2 san objects.
+[module."//apps/fiscal/night/income:income"]
+level = "L3"
+impl = ["apps/fiscal/night/income/src/**"]
+allow = ["memmove", "memset"]
+exports = ["ninc_run"]
+
+[module."//apps/fiscal/night/income/check:nichk"]
+level = "L3"
+impl = ["apps/fiscal/night/income/check/src/**"]
+allow = []
+exports = ["nichk_input"]
+
+[module."//apps/fiscal/night/income/row:nirow"]
+level = "L3"
+impl = ["apps/fiscal/night/income/row/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["ninc_row", "ninc_tips_from_rcpt"]
+
+[module."//apps/fiscal/night/income/util:niutil"]
+level = "L3"
+impl = ["apps/fiscal/night/income/util/src/**"]
+allow = ["memset"]
+exports = ["ninc_date_cmp", "ninc_fail", "ninc_find_sale", "ninc_in_range"]
+
+[module."//apps/fiscal/night/income/types:nitypes"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/fiscal/night/income:ninc_run_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/income:ninc_parts_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/income:ninc_waits_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/income:ninc_build_errors_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/income/check:nichk_args_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/income/check:nichk_rows_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/income/row:nirow_row_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/income/row:nirow_tips_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/fiscal/night/income/util:niutil_test"]
+allow = ["memset"]
+exports = ["main"]
