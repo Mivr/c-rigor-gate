@@ -41,6 +41,7 @@ modules = ["//lib/io/posix_fs:testkit",
            "//apps/resv/ops/rules/pick:testkit",
            "//apps/resv/fmt/out:testkit",
            "//apps/resv/dom/args:testkit",
+           "//apps/resv/ops/engine:testkit",
            "//apps/resv/dom/tables:testkit",
            "//apps/viva/tx:testkit",
            "//apps/lockers/lk/auditplan:testkit",
@@ -1581,4 +1582,22 @@ kind = "pure"
 [[edge]]
 from = "//apps/books/ops/args:testkit"
 to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+# reservations engine (P008 S5b, #361): apps/resv/ops/engine (flow, plan, rows, state, stmt) in resv-ops; the staff bot's
+# composition root now runs it (staffbot-root -> resv-ops); module edges to the lib-fmt modules it calls (jpull, jw).
+
+[[edge]]
+from = "staffbot-root"
+to = "resv-ops"
+kind = "pure"
+
+[[edge]]
+from = "//apps/resv/ops/engine/flow:flow"
+to = "//lib/fmt/jw:jw"
+kind = "pure"
+
+[[edge]]
+from = "//apps/resv/ops/engine/rows:rows"
+to = "//lib/fmt/jpull:jpull"
 kind = "pure"
