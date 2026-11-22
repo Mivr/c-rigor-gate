@@ -1703,3 +1703,65 @@ kind = "pure"
 from = "//apps/books/ops/flow/needs:bkfneeds"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
+
+# books/ops/wire (P009 T2.2e, #376): the wasm root runs the books flow through wire; module edges to the lib-fmt modules.
+
+[[edge]]
+from = "staffbot-root"
+to = "books-ops"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire:wire"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/rd:bkwrd"
+to = "//lib/fmt/jnum:jnum"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/rd:bkwrd"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/rd:bkwrd"
+to = "//lib/fmt/jpull:jpull"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/rd:bkwrd"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/snap:bkwsnap"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/nights:bkwnights"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/nights:bkwnights"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/reply:bkwreply"
+to = "//lib/fmt/jw:jw"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire/reply:bkwreply"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire:wire"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"

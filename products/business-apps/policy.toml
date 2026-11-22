@@ -6620,3 +6620,85 @@ exports = ["main"]
 [module."//apps/books/ops/flow:bkflow_session_test"]
 allow = ["memcpy", "memset", "snprintf", "strlen", "strncmp", "strstr"]
 exports = ["main"]
+
+# apps/books/ops/wire (P009 T2.2e, #376): the books flow behind sb_call2 (snapshot, nights, ledger chunks, run);
+# split for the mutant budget (S9). Symbols from clang -O0/-O1/-O2 objects.
+[module."//apps/books/ops/wire:wire"]
+level = "L3"
+impl = ["apps/books/ops/wire/src/**"]
+allow = ["memcmp", "memcpy"]
+exports = ["bkw_begin", "bkw_ledger", "bkw_nights", "bkw_run"]
+
+[module."//apps/books/ops/wire/nights:bkwnights"]
+level = "L3"
+impl = ["apps/books/ops/wire/nights/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["bkw_event_ok", "bkw_nights_decode"]
+
+[module."//apps/books/ops/wire/rd:bkwrd"]
+level = "L3"
+impl = ["apps/books/ops/wire/rd/src/**"]
+allow = ["bcmp", "memchr", "memcmp", "memset"]
+exports = ["bkw_rd_bool", "bkw_rd_cents", "bkw_rd_date", "bkw_rd_expect", "bkw_rd_fail", "bkw_rd_finish", "bkw_rd_key", "bkw_rd_next", "bkw_rd_open", "bkw_rd_str", "bkw_rd_tok_cents", "bkw_rd_tok_u32", "bkw_rd_u32", "bkw_rd_word"]
+
+[module."//apps/books/ops/wire/reply:bkwreply"]
+level = "L3"
+impl = ["apps/books/ops/wire/reply/src/**"]
+allow = []
+exports = ["bkw_put_num", "bkw_put_text", "bkw_reply_done", "bkw_reply_have", "bkw_reply_need", "bkw_reply_run", "bkw_reset_out"]
+
+[module."//apps/books/ops/wire/snap:bkwsnap"]
+level = "L3"
+impl = ["apps/books/ops/wire/snap/src/**"]
+allow = ["memchr", "memcpy"]
+exports = ["bkw_snap_decode"]
+
+[module."//apps/books/ops/wire:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/books/ops/wire:bkw_fuzz"]
+allow = ["memchr"]
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+
+[module."//apps/books/ops/wire/nights:bkwnights_test"]
+allow = ["memcmp", "memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/wire/rd:bkwrd_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/wire/reply:bkwreply_test"]
+allow = ["memcpy", "memset", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/wire/snap:bkwsnap_test"]
+allow = ["memcmp", "memset", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/wire:wire_equiv_test"]
+allow = ["__isoc23_sscanf", "bcmp", "memcmp", "memcpy", "memmove", "memset", "snprintf", "sscanf", "strchr", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/wire:wire_fsm_test"]
+allow = ["memcpy", "memset", "snprintf", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/wire:wire_limits_test"]
+allow = ["memcpy", "memset", "printf", "snprintf", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/wire:wire_session_test"]
+allow = ["memcpy", "snprintf", "strchr", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/staffbot/wasm:root_books_big_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "printf", "snprintf", "strlen"]
+exports = ["main"]
+
+[module."//apps/staffbot/wasm:root_books_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "snprintf", "strlen"]
+exports = ["main"]
