@@ -1619,3 +1619,30 @@ kind = "pure"
 from = "//apps/books/ops/post:post"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
+
+# books/ops/night (P009 T2.2c, #368): income and crew bookings in books-ops; module edges to the lib-fmt modules.
+
+[[edge]]
+from = "//apps/books/ops/night/income:bkincome"
+to = "//lib/fmt/csv:csv"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/night/income:bkincome"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/night/income:bkincome"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/night/crew:bkcrew"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/night/crew:bkcrew"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
