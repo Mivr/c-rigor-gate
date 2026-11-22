@@ -6417,7 +6417,7 @@ exports = ["reng_begin", "reng_emit", "reng_rows"]
 level = "L3"
 impl = ["apps/resv/ops/engine/plan/src/**"]
 allow = ["memcpy", "memset"]
-exports = ["reng_answer", "reng_ask_resolve", "reng_on_active_read", "reng_on_active_write", "reng_on_cancelsel", "reng_on_events", "reng_on_find", "reng_on_getres", "reng_on_getres_show", "reng_on_gone", "reng_on_recent", "reng_on_resolve_read", "reng_on_resolve_write", "reng_on_write", "reng_start_op", "reng_start_write"]
+exports = ["reng_answer", "reng_ask_getres", "reng_ask_resolve", "reng_book_decide", "reng_on_active_read", "reng_on_active_write", "reng_on_cancelsel", "reng_on_events", "reng_on_find", "reng_on_getres", "reng_on_getres_show", "reng_on_gone", "reng_on_recent", "reng_on_resolve_read", "reng_on_resolve_write", "reng_on_write", "reng_reinstate_decide", "reng_resolves_for_write", "reng_start_cancel", "reng_start_events", "reng_start_find", "reng_start_key_op", "reng_start_op", "reng_start_recent", "reng_start_show", "reng_start_write", "reng_update_finish"]
 
 [module."//apps/resv/ops/engine/rows:rows"]
 level = "L3"
