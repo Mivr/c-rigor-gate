@@ -6434,7 +6434,7 @@ allow = ["memcmp", "memcpy", "memset", "strlen", "strstr"]
 exports = ["main"]
 
 [module."//apps/books/ops/night/crew:bkcrew_test"]
-allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen", "strstr"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen", "strncmp", "strstr"]
 exports = ["main"]
 
 # apps/resv/ops/engine (P008 S5b, #361). Symbols from clang -O0/-O1/-O2 objects.
