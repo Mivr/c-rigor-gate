@@ -5783,7 +5783,7 @@ exports = ["LLVMFuzzerTestOneInput"]
 [module."//apps/staffbot/wasm:root"]
 level = "L1"
 allow_mutable_data = true
-allow = ["core_buf_init", "core_buf_len", "memcmp"]
+allow = ["core_buf_init", "core_buf_len", "memcmp", "memset"]
 exports = ["sb_call2"]
 
 [module."//apps/staffbot/wasm:root_test"]
@@ -6407,10 +6407,6 @@ level = "L1"
 allow = []
 exports = []
 
-[module."//apps/resv/ops/engine:testkit"]
-level = "L1"
-allow = []
-exports = []
 
 [module."//apps/resv/ops/engine/rows:rows_errors_test"]
 allow = ["memset", "strlen"]
@@ -6424,32 +6420,64 @@ exports = ["main"]
 allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
 exports = ["main"]
 
-[module."//apps/resv/ops/engine:reng_edge_test"]
-allow = ["memset", "strlen"]
-exports = ["main"]
 
-[module."//apps/resv/ops/engine:reng_golden_test"]
-allow = ["strlen"]
-exports = ["main"]
 
-[module."//apps/resv/ops/engine:reng_limits_test"]
-allow = []
-exports = ["main"]
 
-[module."//apps/resv/ops/engine:reng_slices_test"]
-allow = ["memcpy", "memset", "strlen"]
-exports = ["main"]
 
 [module."//apps/resv/ops/engine/rows:rows_fuzz"]
 allow = ["memset"]
 allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
 
-[module."//apps/resv/ops/engine:reng_fuzz"]
-allow = ["memset"]
-allow_builtins = ["__builtin_trap"]
-exports = ["LLVMFuzzerTestOneInput"]
 
 [module."//apps/staffbot/wasm:root_resv_test"]
 allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
 exports = ["main"]
+
+# apps/resv/ops/engine tests per package (P008 S5b round 3: tests moved into their packages).
+[module."//apps/resv/ops/engine/flow:reng_edge_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/flow:reng_golden_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/flow:reng_limits_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/flow:reng_slices_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/plan:plan_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/state:state_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/stmt:stmt_guard_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/rows:rows_skip_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/flow:reng_fuzz"]
+allow = ["memcpy", "memset"]
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+
+[module."//apps/resv/ops/engine/flow:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/resv/ops/engine/plan:golden"]
+level = "L1"
+allow = []
+exports = []
