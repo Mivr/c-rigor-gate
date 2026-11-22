@@ -6768,3 +6768,8 @@ exports = ["main"]
 [module."//apps/fiscal/night/income/util:niutil_test"]
 allow = ["memset"]
 exports = ["main"]
+
+# 378 fix round 3: RANGE per money sum.
+[module."//apps/fiscal/night/income:ninc_range_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
