@@ -6434,5 +6434,5 @@ allow = ["memcmp", "memcpy", "memset", "strlen", "strstr"]
 exports = ["main"]
 
 [module."//apps/books/ops/night/crew:bkcrew_test"]
-allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen", "strstr"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen", "strncmp", "strstr"]
 exports = ["main"]
