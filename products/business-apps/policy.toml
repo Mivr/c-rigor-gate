@@ -6664,7 +6664,7 @@ allow_builtins = ["__builtin_trap"]
 exports = ["LLVMFuzzerTestOneInput"]
 
 [module."//apps/books/ops/wire/nights:bkwnights_test"]
-allow = ["memcmp", "memcpy", "memset", "snprintf", "strlen"]
+allow = ["memcmp", "memcpy", "memset", "snprintf", "strlen", "strstr"]
 exports = ["main"]
 
 [module."//apps/books/ops/wire/rd:bkwrd_test"]
