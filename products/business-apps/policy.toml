@@ -5783,7 +5783,7 @@ exports = ["LLVMFuzzerTestOneInput"]
 [module."//apps/staffbot/wasm:root"]
 level = "L1"
 allow_mutable_data = true
-allow = ["core_buf_init", "core_buf_len"]
+allow = ["core_buf_init", "core_buf_len", "memcmp", "memset"]
 exports = ["sb_call2"]
 
 [module."//apps/staffbot/wasm:root_test"]
@@ -6436,3 +6436,114 @@ exports = ["main"]
 [module."//apps/books/ops/night/crew:bkcrew_test"]
 allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen", "strstr"]
 exports = ["main"]
+
+# apps/resv/ops/engine (P008 S5b, #361). Symbols from clang -O0/-O1/-O2 objects.
+[module."//apps/resv/ops/engine/flow:flow"]
+level = "L3"
+impl = ["apps/resv/ops/engine/flow/src/**"]
+allow = ["memcpy"]
+exports = ["reng_begin", "reng_emit", "reng_rows"]
+
+[module."//apps/resv/ops/engine/plan:plan"]
+level = "L3"
+impl = ["apps/resv/ops/engine/plan/src/**"]
+allow = ["memcpy", "memset"]
+exports = ["reng_answer", "reng_ask_getres", "reng_ask_resolve", "reng_book_decide", "reng_on_active_read", "reng_on_active_write", "reng_on_cancelsel", "reng_on_events", "reng_on_find", "reng_on_getres", "reng_on_getres_show", "reng_on_gone", "reng_on_recent", "reng_on_resolve_read", "reng_on_resolve_write", "reng_on_write", "reng_reinstate_decide", "reng_resolves_for_write", "reng_start_cancel", "reng_start_events", "reng_start_find", "reng_start_key_op", "reng_start_op", "reng_start_recent", "reng_start_show", "reng_start_write", "reng_update_finish"]
+
+[module."//apps/resv/ops/engine/rows:rows"]
+level = "L3"
+impl = ["apps/resv/ops/engine/rows/src/**"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["reng_col_find", "reng_cols_of", "reng_dec_body", "reng_dec_fail", "reng_int_parse", "reng_row_begin", "reng_row_end", "reng_store_value"]
+
+[module."//apps/resv/ops/engine/state:state"]
+level = "L3"
+impl = ["apps/resv/ops/engine/state/src/**"]
+allow = ["memset"]
+exports = ["reng_ask", "reng_ask_active", "reng_cmd", "reng_cmd_name", "reng_done", "reng_event_key", "reng_fail_count", "reng_forget", "reng_put_c", "reng_refuse", "reng_refuse_cmd", "reng_refuse_dec"]
+
+[module."//apps/resv/ops/engine/stmt:stmt"]
+level = "L3"
+impl = ["apps/resv/ops/engine/stmt/src/**"]
+allow = ["memset", "strlen"]
+exports = ["reng_st_active", "reng_st_cancel", "reng_st_cancelsel", "reng_st_events", "reng_st_find", "reng_st_getres", "reng_st_gone", "reng_st_insert", "reng_st_recent", "reng_st_reinstate", "reng_st_resolve", "reng_st_str_ok", "reng_st_update"]
+
+[module."//apps/resv/ops/engine:engine"]
+level = "L1"
+allow = []
+exports = []
+
+
+[module."//apps/resv/ops/engine/rows:rows_errors_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/rows:rows_shapes_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/stmt:stmt_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+
+
+
+
+[module."//apps/resv/ops/engine/rows:rows_fuzz"]
+allow = ["memset"]
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+
+
+[module."//apps/staffbot/wasm:root_resv_test"]
+allow = ["bcmp", "memcmp", "memcpy", "memset", "strlen"]
+exports = ["main"]
+
+# apps/resv/ops/engine tests per package (P008 S5b round 3: tests moved into their packages).
+[module."//apps/resv/ops/engine/flow:reng_edge_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/flow:reng_golden_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/flow:reng_limits_test"]
+allow = ["memcpy", "memset"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/flow:reng_slices_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/plan:plan_test"]
+allow = ["memcpy", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/state:state_test"]
+allow = ["memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/stmt:stmt_guard_test"]
+allow = ["memcpy", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/rows:rows_skip_test"]
+allow = ["memset"]
+exports = ["main"]
+
+[module."//apps/resv/ops/engine/flow:reng_fuzz"]
+allow = ["memcpy", "memset"]
+allow_builtins = ["__builtin_trap"]
+exports = ["LLVMFuzzerTestOneInput"]
+
+[module."//apps/resv/ops/engine/flow:testkit"]
+level = "L1"
+allow = []
+exports = []
+
+[module."//apps/resv/ops/engine/plan:golden"]
+level = "L1"
+allow = []
+exports = []
