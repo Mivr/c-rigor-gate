@@ -1577,3 +1577,8 @@ kind = "pure"
 from = "//apps/books/ops/args/text:bkatext"
 to = "//lib/fmt/jutf8:jutf8"
 kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args:testkit"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
