@@ -6593,6 +6593,10 @@ exports = ["main"]
 allow = ["memcmp", "memcpy", "memset", "snprintf", "sprintf", "strlen", "strrchr", "strstr"]
 exports = ["main"]
 
+[module."//apps/books/ops/flow/pend:bkfpend_counts_test"]
+allow = ["memcpy", "memset", "strlen", "strrchr", "strstr"]
+exports = ["main"]
+
 [module."//apps/books/ops/flow/replay:bkfreplay_test"]
 allow = ["memcmp", "memcpy", "memset", "snprintf", "strlen"]
 exports = ["main"]
