@@ -214,6 +214,12 @@ modules = ["//apps/viva/tx/**"]
 [layer."books-ledger"]
 modules = ["//apps/books/ledger/**"]
 
+# The club books ops (P009 T2.2): apps/books/ops — types (header-only, over the ledger's types) and args (the argv rules
+# of club-fiscal's books commands, split into text, ap, canon, field, item, cmds and the top bkargs for the mutant budget).
+# Above books-ledger, down to lib-base and, as module edges, to the lib-fmt modules they call.
+[layer."books-ops"]
+modules = ["//apps/books/ops/**"]
+
 # The staff bot's ops (P009 T4.2a): apps/staffbot/ops/viva runs the Viva walk (apps/viva/tx) for the bot. Above viva-tx (the
 # first edge from one app to another: the staff bot uses the viva app's walk), down to lib-base (core) and, as a module
 # edge, to lib-fmt tzeu (now -> night). Pure: the caller owns the one vop_t.
@@ -1511,3 +1517,63 @@ from = "//apps/resv/ops/rules/time:time"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
 
+# books/ops (P009 T2.2a).
+[[edge]]
+from = "books-ops"
+to = "books-ops"
+kind = "pure"
+
+[[edge]]
+from = "books-ops"
+to = "books-ledger"
+kind = "pure"
+
+[[edge]]
+from = "books-ops"
+to = "lib-base"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/types:bktypes"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/types:bktypes"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args:bkargs"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/canon:bkacanon"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/canon:bkacanon"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/field:bkafield"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/field:bkafield"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/item:bkaitem"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/args/text:bkatext"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
