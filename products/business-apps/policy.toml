@@ -6435,7 +6435,7 @@ exports = ["reng_ask", "reng_ask_active", "reng_cmd", "reng_cmd_name", "reng_don
 level = "L3"
 impl = ["apps/resv/ops/engine/stmt/src/**"]
 allow = ["memset", "strlen"]
-exports = ["reng_st_active", "reng_st_cancel", "reng_st_cancelsel", "reng_st_events", "reng_st_find", "reng_st_getres", "reng_st_gone", "reng_st_insert", "reng_st_recent", "reng_st_reinstate", "reng_st_resolve", "reng_st_update"]
+exports = ["reng_st_active", "reng_st_cancel", "reng_st_cancelsel", "reng_st_events", "reng_st_find", "reng_st_getres", "reng_st_gone", "reng_st_insert", "reng_st_recent", "reng_st_reinstate", "reng_st_resolve", "reng_st_str_ok", "reng_st_update"]
 
 [module."//apps/resv/ops/engine:engine"]
 level = "L1"
