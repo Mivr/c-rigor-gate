@@ -6370,3 +6370,38 @@ exports = ["LLVMFuzzerTestOneInput"]
 [module."//apps/books/ops/args/ap:bkaap_words_test"]
 allow = ["memcpy", "memset", "strlen"]
 exports = ["main"]
+
+# apps/books/ops/post (P009 T2.2b, #367). Symbols from clang -O0/-O1/-O2 objects.
+[module."//apps/books/ops/post/base:bkpbase"]
+level = "L3"
+impl = ["apps/books/ops/post/base/src/**"]
+allow = ["memset"]
+exports = ["bkpost_day", "bkpost_insert", "bkpost_line_close", "bkpost_line_open", "bkpost_num", "bkpost_row", "bkpost_scratch", "bkpost_scratch_clear"]
+
+[module."//apps/books/ops/post/count:bkpcount"]
+level = "L3"
+impl = ["apps/books/ops/post/count/src/**"]
+allow = ["memchr", "memcpy", "memset"]
+exports = ["bkpcount_apply"]
+
+[module."//apps/books/ops/post:post"]
+level = "L3"
+impl = ["apps/books/ops/post/src/**"]
+allow = ["memcmp", "memcpy", "memset"]
+exports = ["bkpost_apply"]
+
+[module."//apps/books/ops/post/base:bkpbase_test"]
+allow = ["memcmp", "memset", "strlen"]
+exports = ["main"]
+
+[module."//apps/books/ops/post/count:bkpcount_test"]
+allow = ["memcmp", "memcpy", "memset", "snprintf", "strlen", "strncmp", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/post:bkpost_ledger_test"]
+allow = ["memcmp", "memcpy", "memset", "strcat", "strcpy", "strlen", "strstr"]
+exports = ["main"]
+
+[module."//apps/books/ops/post:bkpost_tips_test"]
+allow = ["memcpy", "memset", "strlen", "strstr"]
+exports = ["main"]

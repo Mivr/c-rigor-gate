@@ -1582,3 +1582,40 @@ kind = "pure"
 from = "//apps/books/ops/args:testkit"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
+
+# books/ops/post (P009 T2.2b, #367): ledger, tips and count bookings in books-ops; module edges to the lib-fmt modules.
+
+[[edge]]
+from = "//apps/books/ops/post/base:bkpbase"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/post/base:bkpbase"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/post/count:bkpcount"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/post/count:bkpcount"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/post:post"
+to = "//lib/fmt/csv:csv"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/post:post"
+to = "//lib/fmt/money:money"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/post:post"
+to = "//lib/fmt/tzeu:tzeu"
+kind = "pure"
