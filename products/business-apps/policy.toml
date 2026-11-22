@@ -6680,7 +6680,7 @@ allow = ["memcmp", "memset", "snprintf", "strlen"]
 exports = ["main"]
 
 [module."//apps/books/ops/wire:wire_equiv_test"]
-allow = ["__isoc23_sscanf", "bcmp", "memcmp", "memcpy", "memmove", "memset", "snprintf", "sscanf", "strchr", "strlen", "strncmp", "strstr"]
+allow = ["__isoc23_sscanf", "__isoc99_sscanf", "bcmp", "memcmp", "memcpy", "memmove", "memset", "snprintf", "sscanf", "strchr", "strlen", "strncmp", "strstr"]
 exports = ["main"]
 
 [module."//apps/books/ops/wire:wire_fsm_test"]

@@ -1765,3 +1765,13 @@ kind = "pure"
 from = "//apps/books/ops/wire:wire"
 to = "//lib/fmt/tzeu:tzeu"
 kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire:bkw_fuzz"
+to = "//lib/fmt/jpull:jpull"
+kind = "pure"
+
+[[edge]]
+from = "//apps/books/ops/wire:bkw_fuzz"
+to = "//lib/fmt/jutf8:jutf8"
+kind = "pure"
